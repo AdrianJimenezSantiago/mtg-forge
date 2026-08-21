@@ -12,6 +12,7 @@ from mpc_forge.clients.moxfield import MoxfieldClient
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.config import PATHS
 from mpc_forge.db import init_db, session_scope
+from mpc_forge.paths import static_dir
 from mpc_forge.routes import custom_art as custom_art_routes
 from mpc_forge.routes import debug as debug_routes
 from mpc_forge.routes import decks, export, integrations, settings as settings_routes, ui
@@ -32,7 +33,7 @@ logging.basicConfig(
 # de que se instancien conexiones.
 _SSL_MODE = configure_ssl()
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = static_dir()
 
 
 @asynccontextmanager

@@ -1,0 +1,81 @@
+name: Release
+
+# Se dispara cuando pusheas un tag v*, ej:
+#   git tag v1.0.0 && git push origin v1.0.0
+# También se puede lanzar manualmente desde la pestaña Actions.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # necesario para crear la release y subir assets
+
+jobs:
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --distpath packaging/dist `
+            --workpath packaging/build `
+            packaging/mpc-forge.spec
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}"
+
+      - name: Package as ZIP
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "MPC-Forge-$version-windows.zip"
+          Compress-Archive `
+            -Path "packaging/dist/MPC-Forge/*" `
+            -DestinationPath "packaging/dist/$zipName" `
+            -CompressionLevel Optimal
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          Get-ChildItem "packaging/dist/$zipName" | Format-Table -Property Name, Length
+
+      - name: Upload as workflow artifact (siempre disponible)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MPC-Forge-windows
+          path: packaging/dist/${{ env.ZIP_NAME }}
+          retention-days: 30
+
+      - name: Upload to GitHub Release (solo en push de tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/dist/${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

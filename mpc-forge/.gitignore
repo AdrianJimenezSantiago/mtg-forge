@@ -1,0 +1,76 @@
+# -------- Python --------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+develop-eggs/
+dist/
+build/
+sdist/
+wheels/
+share/python-wheels/
+MANIFEST
+*.manifest
+*.spec.bak
+
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.local
+
+# -------- PyInstaller --------
+# La spec la commiteamos, pero los outputs no
+/packaging/dist/
+/packaging/build/
+*.spec.log
+
+# -------- Testing / linting / type checking --------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+
+# -------- Datos de usuario (NUNCA subir a git) --------
+# Bases de datos, artes descargadas, logs, exports
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+data/
+logs/
+
+# -------- IDEs --------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# -------- Notebooks / temporales --------
+.ipynb_checkpoints/
+*.ipynb
+
+# -------- Node (por si algún día compilamos assets) --------
+node_modules/
+package-lock.json
+
+# -------- Archivos de entorno propios --------
+.local/
+.cache/
