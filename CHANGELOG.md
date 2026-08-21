@@ -4,7 +4,7 @@ Todos los cambios notables se documentan aquí. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) y el proyecto usa
 versionado semántico ([SemVer](https://semver.org/lang/es/)).
 
-## [Unreleased]
+## [0.1.0]
 
 ### Added
 - Empaquetado con PyInstaller (modo `--onedir`).
