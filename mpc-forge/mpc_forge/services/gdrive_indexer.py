@@ -41,34 +41,52 @@ from mpc_forge.ssl_config import ssl_insecure
 log = logging.getLogger(__name__)
 
 
-# Semáforo global: máximo 1 indexado concurrente.
-# SQLite serializa escrituras y con 67 tareas escribiendo miles de filas se
-# saturaría el busy_timeout de 30s. Con concurrencia=1 nunca hay conflicto y
-# los indexados son igual de rápidos porque la API v3 es más lenta que SQLite.
-_INDEX_SEMAPHORE = asyncio.Semaphore(1)
+# Semáforo global: máximo 3 indexados concurrentes.
+# Con WAL mode + busy_timeout=30s, SQLite aguanta bien 3 escritores en paralelo.
+# El bottleneck real es Google Drive API (rate limit ~10 req/s por usuario), no SQLite.
+# Un drive gigante (source 3 tiene decenas de miles de imágenes) puede tardar minutos;
+# con concurrencia=3 los otros drives no esperan innecesariamente.
+_INDEX_SEMAPHORE = asyncio.Semaphore(3)
 
 
 # ---------------------------------------------------------------------------
 # Nombres normalizados para fuzzy search
 # ---------------------------------------------------------------------------
+# Filosofía: queremos que "Forest (Full Art).png", "Forest - Alt by Chowning.png",
+# y "Forest.png" TODOS se normalicen a "forest" (nombre canónico de la carta).
+# En cambio "Forest Warden.png" se queda como "forest warden" — es una carta
+# distinta. Así el matching exacto ya nos filtra el ruido.
 
 _STRIP_EXT_RE = re.compile(r"\.(png|jpe?g|webp|gif)$", re.IGNORECASE)
 _PAREN_RE = re.compile(r"\s*[\[\(\{].*?[\]\)\}]\s*")   # elimina "(Anime)" "[BACK]" etc.
+# Corta el nombre en el primer separador de variante ("-", "by", "feat", "|"):
+_VARIANT_SPLIT_RE = re.compile(
+    r"\s+(?:-|—|–|by|feat(?:\.|uring)?|\||//)\s+", re.IGNORECASE
+)
 _NONALNUM_RE = re.compile(r"[^a-z0-9\s]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 
 
 def normalize_filename(name: str) -> str:
-    """Convierte "Sol Ring (Daubrez Borderless).png" → "sol ring".
+    """Convierte cualquier variante de filename al nombre canónico de la carta.
 
-    Nos quedamos con la parte "canónica" del nombre para el índice principal.
-    En búsqueda seguiremos comparando también contra el nombre completo para
-    respetar variantes.
+    Ejemplos:
+      "Forest.png"                          → "forest"
+      "Forest (Full Art).png"               → "forest"
+      "Forest - Alt Art.png"                → "forest"
+      "Forest by Chowning.png"              → "forest"
+      "Forest [BACK].png"                   → "forest"
+      "Sol Ring (Daubrez Borderless).png"   → "sol ring"
+      "Bruna, the Fading Light (Women's Day).jpg" → "bruna the fading light"
+      "Forest Warden.png"                   → "forest warden"  (carta distinta)
     """
     if not name:
         return ""
     n = _STRIP_EXT_RE.sub("", name)
     n = _PAREN_RE.sub(" ", n)      # quita paréntesis, corchetes, llaves
+    # Cortar por " - ", " by ", " | ", etc. — nos quedamos solo con la parte previa
+    parts = _VARIANT_SPLIT_RE.split(n, maxsplit=1)
+    n = parts[0]
     n = n.lower()
     n = _NONALNUM_RE.sub(" ", n)   # cualquier no-alfanumérico → espacio
     n = _MULTISPACE_RE.sub(" ", n).strip()
@@ -152,26 +170,56 @@ async def _index_via_api(
 
     Recorre subcarpetas en BFS (una capa a la vez para no explotar la pila).
     Guarda cada imagen con su ruta relativa desde la raíz.
+
+    Commits parciales cada 500 filas: si el proceso se corta o el usuario
+    consulta durante el indexado, ve el progreso real, no todo o nada.
+    Log periódico para poder ver el avance en el fichero de log.
     """
+    from sqlalchemy import func
     files_added = 0
     files_updated = 0
     folders_visited = 0
+    since_last_commit = 0
+    _COMMIT_EVERY = 500
+    _LOG_FOLDERS_EVERY = 20
+
     # Cola: (folder_id, path_relativo)
     queue: list[tuple[str, str]] = [(folder_id, "")]
     seen_folders: set[str] = {folder_id}
+
+    async def _partial_commit() -> None:
+        """Persiste lo acumulado y actualiza indexed_files para la UI."""
+        nonlocal since_last_commit
+        source.indexed_files = int(await db.scalar(
+            select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source.id)
+        ) or 0)
+        await db.commit()
+        since_last_commit = 0
 
     async with httpx.AsyncClient(verify=not ssl_insecure()) as client:
         while queue:
             current_id, current_path = queue.pop(0)
             folders_visited += 1
+
+            if folders_visited % _LOG_FOLDERS_EVERY == 0:
+                log.info(
+                    "  [%s] %d folders visitados, +%d archivos hasta ahora "
+                    "(cola: %d folders pendientes)",
+                    source.name, folders_visited, files_added, len(queue),
+                )
+
             try:
                 items = await _drive_api_list(client, current_id, api_key)
             except httpx.HTTPStatusError as e:
                 # Un 403/404 en una subcarpeta no debe abortar todo el drive.
                 # Solo abortamos si es en la raíz o es un error de auth.
                 if e.response.status_code in (401, 403) and current_id == folder_id:
+                    # Persistir lo acumulado antes de salir
+                    if since_last_commit > 0:
+                        await _partial_commit()
                     return IndexResult(
-                        source_id=source.id, files_added=0, files_updated=0,
+                        source_id=source.id, files_added=files_added,
+                        files_updated=files_updated,
                         folders_visited=folders_visited,
                         error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
                         used_api_key=True,
@@ -232,10 +280,16 @@ async def _index_via_api(
                         mime_type=mime,
                     ))
                     files_added += 1
+                since_last_commit += 1
 
-            # Flush periódico para no acumular demasiado en memoria
-            if (files_added + files_updated) % 500 == 0:
-                await db.flush()
+                # Commit parcial: la UI ve progreso y no perdemos datos si
+                # algo va mal.
+                if since_last_commit >= _COMMIT_EVERY:
+                    await _partial_commit()
+
+    # Commit final del residuo
+    if since_last_commit > 0:
+        await _partial_commit()
 
     return IndexResult(
         source_id=source.id, files_added=files_added, files_updated=files_updated,
@@ -361,14 +415,14 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
         await db.commit()
         return result
 
-    async with _INDEX_SEMAPHORE:  # solo un indexado a la vez
+    async with _INDEX_SEMAPHORE:  # máx 3 concurrentes
         api_key = (getattr(cfg, "GOOGLE_API_KEY", "") or "").strip()
+        mode = "API v3" if api_key else "scraping (sin API key)"
+        log.info("▶ Empezando indexado de source %d (%s) vía %s",
+                 source_id, source.name, mode)
         if api_key:
-            log.info("Indexando source %d (%s) vía API v3", source_id, source.name)
             result = await _index_via_api(db, source, folder_id, api_key)
         else:
-            log.info("Indexando source %d (%s) vía scraping (sin API key)",
-                     source_id, source.name)
             result = await _index_via_scraping(db, source, folder_id)
 
         # Actualizar estado del source. Contamos filas reales de IndexedArt.
@@ -381,9 +435,10 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
         await db.commit()
 
     log.info(
-        "Indexado source %d: +%d, ~%d, %d folders visitados (err=%s)",
-        source_id, result.files_added, result.files_updated,
-        result.folders_visited, result.error,
+        "✓ Terminado source %d (%s): total=%d archivos (+%d nuevos, ~%d actualizados) "
+        "en %d folders. Error=%s",
+        source_id, source.name, source.indexed_files, result.files_added,
+        result.files_updated, result.folders_visited, result.error or "ninguno",
     )
     return result
 

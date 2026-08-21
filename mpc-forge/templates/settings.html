@@ -265,7 +265,15 @@
                 </div>
               </template>
               {# Estado del índice #}
-              <template x-if="s.indexed_files > 0">
+              <template x-if="indexingIds.includes(s.id)">
+                <div class="text-[10px] text-indigo-300 mt-1.5 font-mono animate-pulse">
+                  ⟳ Indexando…
+                  <template x-if="s.indexed_files > 0">
+                    <span>(<span x-text="s.indexed_files.toLocaleString()"></span> hasta ahora)</span>
+                  </template>
+                </div>
+              </template>
+              <template x-if="!indexingIds.includes(s.id) && s.indexed_files > 0">
                 <div class="text-[10px] text-indigo-300 mt-1.5 font-mono">
                   ✓ Indexado: <span x-text="s.indexed_files.toLocaleString()"></span> archivos
                 </div>
@@ -688,22 +696,43 @@ function artSourcesPanel() {
         window.toast('Sin drives pinned', 'Marca algunos con ★ primero.');
         return;
       }
-      if (!confirm(`Indexar ${pinned.length} drives pinned? Puede tardar varios minutos con muchos drives.`)) return;
-      for (const s of pinned) {
+      // Filtrar los ya indexados — el usuario tiene el botón individual de
+      // cada tarjeta si quiere re-indexar uno concreto.
+      const pending = pinned.filter(s => !s.indexed_at);
+      const skipped = pinned.length - pending.length;
+      if (pending.length === 0) {
+        window.toast('Ya están indexados', `Los ${pinned.length} pinned ya tienen índice. Usa el botón ↻ de cada tarjeta para re-indexar.`);
+        return;
+      }
+      const msg = skipped > 0
+        ? `Indexar ${pending.length} drives pinned pendientes? (${skipped} ya indexados se saltan)`
+        : `Indexar ${pending.length} drives pinned?`;
+      if (!confirm(msg)) return;
+      for (const s of pending) {
         this.indexingIds.push(s.id);
         fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
       }
-      window.toast('Indexando pinned', `${pinned.length} drives en background`);
+      window.toast('Indexando pinned', `${pending.length} drives en background`);
       this._startPolling();
     },
 
     async indexAll() {
-      if (!confirm(`Indexar los ${this.sources.length} drives? Puede tardar 10-30 minutos y consumir cuota de tu API key.`)) return;
-      for (const s of this.sources) {
+      // Filtrar los ya indexados. Para re-indexar uno concreto, botón individual.
+      const pending = this.sources.filter(s => !s.indexed_at);
+      const skipped = this.sources.length - pending.length;
+      if (pending.length === 0) {
+        window.toast('Ya están todos indexados', `Los ${this.sources.length} drives ya tienen índice. Usa el botón ↻ de cada tarjeta para re-indexar.`);
+        return;
+      }
+      const msg = skipped > 0
+        ? `Indexar ${pending.length} drives pendientes? (${skipped} ya indexados se saltan)\n\nPuede tardar varios minutos y consumir cuota de tu API key.`
+        : `Indexar los ${pending.length} drives? Puede tardar 10-30 minutos y consumir cuota de tu API key.`;
+      if (!confirm(msg)) return;
+      for (const s of pending) {
         this.indexingIds.push(s.id);
         fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
       }
-      window.toast('Indexando todos', `${this.sources.length} drives en background`);
+      window.toast('Indexando pendientes', `${pending.length} drives en background`);
       this._startPolling();
     },
 

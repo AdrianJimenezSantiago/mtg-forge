@@ -318,7 +318,7 @@ async def list_printings_for_card(
                 variant_label=ca.variant_label,
                 filename=ca.filename,
                 face=face,
-                image_small=f"/custom_art/{ca.relative_path}",
+                image_small=custom_art.custom_art_url(ca.relative_path),
                 is_chosen=is_chosen,
             ))
 
@@ -428,7 +428,7 @@ async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
     if dc.custom_art_front_id:
         ca = await db.get(CustomArt, dc.custom_art_front_id)
         if ca:
-            thumb = f"/custom_art/{ca.relative_path}"
+            thumb = custom_art.custom_art_url(ca.relative_path)
     if not thumb:
         thumb = printing.image_normal if printing else None
 
@@ -572,7 +572,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         printing = printings_by_id.get(dc.scryfall_id)
         thumb: str | None = None
         if dc.custom_art_front_id and dc.custom_art_front_id in customs_by_id:
-            thumb = f"/custom_art/{customs_by_id[dc.custom_art_front_id].relative_path}"
+            thumb = custom_art.custom_art_url(customs_by_id[dc.custom_art_front_id].relative_path)
         if not thumb:
             thumb = printing.image_normal if printing else None
         is_dfc = printing.layout in _DFC_LAYOUTS if printing else False

@@ -18,7 +18,7 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import httpx
 from slugify import slugify
@@ -36,7 +36,52 @@ _BACK_MARK_RE = re.compile(r"\[\s*(back|b)\s*\]", re.IGNORECASE)
 _VARIANT_DASH_RE = re.compile(r"\s+-\s+(.+)$")
 _VARIANT_PAREN_RE = re.compile(r"\s*\((.+?)\)\s*$")
 
+# Caracteres que rompen URLs (#, ?) o son inválidos en filesystems Windows
+# (\ / : * " < > |). Los reemplazamos por variantes seguras que preservan la
+# legibilidad del nombre.
+_UNSAFE_FILENAME_CHARS = {
+    "#": "",       # elimina — evita fragment identifier en URLs
+    "?": "",       # elimina — evita query string en URLs
+    "\\": "-",
+    "/": "-",
+    ":": "-",
+    "*": "",
+    '"': "",
+    "<": "",
+    ">": "",
+    "|": "-",
+}
+
+
+def _sanitize_filename(name: str) -> str:
+    """Devuelve `name` sin caracteres que rompan URLs o filesystems.
+
+    Ejemplo: "Atraxa - MPCFill #02 (2)" → "Atraxa - MPCFill 02 (2)".
+    Colapsa espacios múltiples que pudieran resultar del reemplazo.
+    """
+    out = name
+    for bad, good in _UNSAFE_FILENAME_CHARS.items():
+        out = out.replace(bad, good)
+    # Colapsar espacios y quitar puntos/espacios al final (Windows los pierde)
+    out = re.sub(r"\s+", " ", out).strip(" .")
+    return out or "arte"
+
+
 DOWNLOADED_SUBDIR = "_downloaded"
+
+
+def custom_art_url(relative_path: str) -> str:
+    """Construye una URL segura a /custom_art/... a partir del relative_path.
+
+    Usa urllib.parse.quote() para escapar caracteres que rompen URLs (`#`, `?`,
+    espacios, etc.). Sin esto, un filename como "Atraxa - MPCFill #02.jpg"
+    quedaría cortado en '#' porque el navegador interpreta lo posterior como
+    fragment identifier y no lo envía al servidor.
+
+    `safe="/"` preserva las barras de separación de directorios pero escapa
+    todo lo demás.
+    """
+    return f"/custom_art/{quote(relative_path, safe='/')}"
 
 
 def normalize_card_name(name: str) -> str:
@@ -182,6 +227,12 @@ async def add_from_url(
         base += " [BACK]"
     if variant:
         base += f" - {variant}"
+    # Saneamos caracteres problemáticos:
+    #   - '#' rompe URLs (todo lo que va después se interpreta como fragment)
+    #   - '?' rompe URLs (empieza query string)
+    #   - '\\/:*"<>|' son inválidos en Windows filesystems
+    # Los reemplazamos por variantes seguras que preservan la legibilidad.
+    base = _sanitize_filename(base)
     filename = f"{base}{ext}"
 
     # Subcarpeta bajo _downloaded para que el usuario sepa qué añadió por URL.

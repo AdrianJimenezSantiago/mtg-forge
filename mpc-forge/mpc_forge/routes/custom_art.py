@@ -47,7 +47,7 @@ async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict:
         "card_name_normalized": art.card_name_normalized,
         "variant_label": art.variant_label,
         "face": art.face,
-        "image_url": f"/custom_art/{art.relative_path}",
+        "image_url": custom_art_service.custom_art_url(art.relative_path),
     }
 
 
@@ -80,7 +80,7 @@ async def list_custom_arts(db: DbDep, card_name: str | None = None) -> list[Cust
             variant_label=r.variant_label,
             face=r.face,
             bytes_size=r.bytes_size,
-            image_url=f"/custom_art/{r.relative_path}",
+            image_url=custom_art_service.custom_art_url(r.relative_path),
         )
         for r in rows
     ]

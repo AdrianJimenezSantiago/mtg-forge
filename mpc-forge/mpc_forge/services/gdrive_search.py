@@ -1,22 +1,25 @@
-"""Búsqueda fuzzy de artes en el índice de drives.
+"""Búsqueda de artes en el índice de drives.
 
-Estrategia:
-- Prefiltro SQL con LIKE contra el nombre normalizado (rápido, elimina el 90%
-  del ruido). Si hay pocos resultados, ampliamos con LIKE partido por tokens.
-- Ranking fino con rapidfuzz.WRatio para tolerar variantes del nombre:
-  "Sol Ring", "Sol Ring (Anime)", "Sol Ring - Alt Art", etc. Todos matchean bien.
-- Devolvemos los top-N con score, ordenados por relevancia.
+Filosofía:
+- Los filenames se han normalizado agresivamente al indexar: "Forest.png",
+  "Forest (Full Art).png" y "Forest - by Chowning.png" todos son "forest".
+- Un match útil es: nombre_normalizado == query_normalizado (exacto).
+- Nunca queremos "Forest Warden" cuando el usuario busca "Forest".
+- Aceptamos algo de tolerancia por typos con rapidfuzz solo cuando el match
+  exacto no da suficientes resultados.
 
-Cada resultado incluye URLs listas para consumir:
-- thumb_url: para vista previa en la UI (Google renderiza automáticamente)
-- download_url: para el flujo "+ Añadir por URL" ya existente
+Rendimiento:
+- Prefijo primero (`LIKE 'query%'`) — SQLite usa el índice sobre name_normalized,
+  es prácticamente instantáneo aunque tengamos 500k filas.
+- Solo si eso da 0 resultados hacemos LIKE '%query%' (más lento) como fallback.
+- Rapidfuzz solo se aplica sobre el conjunto pequeño ya prefiltrado.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,15 +52,74 @@ def _download_url(file_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Scoring
+# ---------------------------------------------------------------------------
+
+def _score_match(query_norm: str, name_norm: str) -> int:
+    """Puntúa la similitud entre query y nombre normalizado (0-100).
+
+    Idea clave: **noise_ratio** = (tokens extra en el filename) / (tokens del query).
+    Un token extra sobre un query de 1 palabra es 100% ruido → probablemente
+    otra carta. Un token extra sobre query de 4 palabras es solo 25% ruido →
+    probablemente variante de arte del mismo nombre.
+
+    Ejemplos:
+      "forest" vs "forest"          → 100 (exacto)
+      "forest" vs "forest warden"   → noise 1/1 = 1.0 → 40 (bajo threshold, oculto)
+      "sol ring" vs "cursed sol ring" → noise 1/2 = 0.5 → 60 (aparece pero abajo)
+      "bruna the fading light" vs "bruna the fading light retro" → noise 1/4 = 0.25 → 90
+    """
+    if not query_norm or not name_norm:
+        return 0
+
+    # 1. Match exacto — caso ideal
+    if query_norm == name_norm:
+        return 100
+
+    q_tokens = query_norm.split()
+    n_tokens = name_norm.split()
+    q_set = set(q_tokens)
+    n_set = set(n_tokens)
+    q_len = max(len(q_tokens), 1)
+
+    def _by_noise_ratio(extra: int) -> int:
+        """Score basado en cuánto del query es proporcionalmente 'ruido' extra."""
+        noise_ratio = extra / q_len
+        if noise_ratio == 0:
+            return 100
+        elif noise_ratio <= 0.25:  # 1 extra sobre 4+ tokens
+            return 90
+        elif noise_ratio <= 0.5:   # 1 extra sobre 2 tokens, o 2 sobre 4
+            return 60
+        elif noise_ratio <= 1.0:   # 1 extra sobre 1 token → seguramente otra carta
+            return 40  # queda bajo _MIN_SCORE=55 y se filtra
+        else:
+            return 0
+
+    # 2. Query es subset de tokens del filename (prefix o desordenado)
+    if q_set.issubset(n_set):
+        # Bonus si además va como prefijo consecutivo (más "canónico")
+        if name_norm.startswith(query_norm + " ") or name_norm == query_norm:
+            base = _by_noise_ratio(len(n_tokens) - len(q_tokens))
+            return min(base + 5, 100)  # pequeño bonus por prefix
+        return _by_noise_ratio(len(n_set) - len(q_set))
+
+    # 3. Fallback: rapidfuzz para tolerar typos (Sol Rong → Sol Ring)
+    r = int(fuzz.ratio(query_norm, name_norm))
+    if r >= 85:
+        return r
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Búsqueda
 # ---------------------------------------------------------------------------
 
-# Umbral mínimo de similitud (0-100). Con WRatio, 65 es un match aceptable,
-# 80+ es muy bueno. Filtramos ruido con 55.
+# Umbral mínimo: 55. Filtramos "casi-matches" ruidosos.
 _MIN_SCORE = 55
-# Candidatos que pedimos al SQL antes del re-rank fino. Suficientemente grande
-# para no perder buenos matches, no tanto que ralentice.
-_SQL_PREFETCH = 500
+# Prefetch inicial: cuántos candidatos pedimos al SQL antes de re-score.
+# Con prefix match y índice usado, esto es rápido incluso con números altos.
+_SQL_PREFETCH = 300
 
 
 async def search(
@@ -68,54 +130,57 @@ async def search(
 ) -> list[SearchResult]:
     """Busca `query` en el índice y devuelve top-N por relevancia.
 
-    Args:
-        query: nombre de carta o parte de él ("sol ring", "delver", "brisela top")
-        limit: nº máximo de resultados a devolver
-        source_ids: opcional, restringir a estos sources
+    Prefiltro SQL en tres fases (parando en la primera que dé resultados):
+      1. Match exacto por name_normalized (usa índice)
+      2. Prefix (LIKE 'query%') sobre name_normalized (usa índice)
+      3. LIKE '%query%' como fallback (más lento pero necesario cuando el nombre
+         tiene tokens delante, ej. "sol ring" busca en "cursed sol ring")
     """
     q_norm = normalize_filename(query)
     if not q_norm:
         return []
 
-    # --- Prefiltro SQL ---
-    # 1. Match "empieza por el primer token" (rápido, LIKE con prefijo)
-    tokens = q_norm.split()
-    stmt = select(IndexedArt, ArtSource.name).join(
+    base = select(IndexedArt, ArtSource.name).join(
         ArtSource, ArtSource.id == IndexedArt.source_id
     )
     if source_ids:
-        stmt = stmt.where(IndexedArt.source_id.in_(source_ids))
+        base = base.where(IndexedArt.source_id.in_(source_ids))
 
-    # LIKE por cualquier token principal (>2 chars)
-    long_tokens = [t for t in tokens if len(t) > 2]
-    if long_tokens:
-        conds = [IndexedArt.name_normalized.like(f"%{t}%") for t in long_tokens]
-        stmt = stmt.where(or_(*conds))
-    else:
-        stmt = stmt.where(IndexedArt.name_normalized.like(f"%{q_norm}%"))
-
-    stmt = stmt.limit(_SQL_PREFETCH)
+    # --- Fase 1: match exacto (súper rápido, índice B-tree) ---
+    stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_SQL_PREFETCH)
     rows = (await db.execute(stmt)).all()
+
+    # --- Fase 2: prefix (rápido, sí usa índice) ---
+    if len(rows) < 20:
+        stmt = base.where(
+            IndexedArt.name_normalized.like(f"{q_norm}%"),
+            IndexedArt.name_normalized != q_norm,  # no duplicar los ya encontrados
+        ).limit(_SQL_PREFETCH - len(rows))
+        rows += (await db.execute(stmt)).all()
+
+    # --- Fase 3: substring en cualquier posición (más lento, solo si hace falta) ---
+    if len(rows) < 20:
+        # Solo si el query tiene >=3 chars (evitar '%a%' que barre toda la BD)
+        long_tokens = [t for t in q_norm.split() if len(t) >= 3]
+        if long_tokens:
+            conds = [IndexedArt.name_normalized.like(f"%{t}%") for t in long_tokens]
+            stmt = base.where(
+                or_(*conds),
+                ~IndexedArt.name_normalized.like(f"{q_norm}%"),
+                IndexedArt.name_normalized != q_norm,
+            ).limit(_SQL_PREFETCH - len(rows))
+            rows += (await db.execute(stmt)).all()
 
     if not rows:
         return []
 
-    # --- Re-rank fino con rapidfuzz ---
-    # WRatio tolera bien las variantes ("Sol Ring (Anime)" vs "sol ring")
-    candidates = [(r[0], r[1]) for r in rows]
-    scored = process.extract(
-        q_norm,
-        {i: art.name_normalized for i, (art, _) in enumerate(candidates)},
-        scorer=fuzz.WRatio,
-        limit=limit * 3,  # tomamos más y filtramos por umbral
-    )
-
-    results: list[SearchResult] = []
-    for _match_str, score, idx in scored:
-        if score < _MIN_SCORE:
+    # --- Re-scoring y ordenación ---
+    scored: list[tuple[int, SearchResult]] = []
+    for art, source_name in rows:
+        s = _score_match(q_norm, art.name_normalized)
+        if s < _MIN_SCORE:
             continue
-        art, source_name = candidates[idx]
-        results.append(SearchResult(
+        scored.append((s, SearchResult(
             file_id=art.file_id,
             filename=art.filename,
             source_id=art.source_id,
@@ -123,12 +188,11 @@ async def search(
             folder_path=art.folder_path,
             thumb_url=_thumb_url(art.file_id),
             download_url=_download_url(art.file_id),
-            score=int(score),
-        ))
-        if len(results) >= limit:
-            break
+            score=s,
+        )))
 
-    return results
+    scored.sort(key=lambda x: (-x[0], x[1].filename))
+    return [r for _, r in scored[:limit]]
 
 
 async def stats(db: AsyncSession) -> dict:
