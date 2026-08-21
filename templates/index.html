@@ -3,35 +3,46 @@
 {% block content %}
 <div class="max-w-6xl mx-auto p-8 space-y-8">
 
-  <div class="flex items-end justify-between">
+  {# ============= HEADER ============= #}
+  <div class="flex items-end justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Mazos</h1>
-      <p class="text-sm text-fg-muted mt-1">Importa desde Moxfield o pega una lista.</p>
+      <h1 class="text-2xl font-display font-semibold tracking-tight text-fg flex items-center gap-3">
+        <i data-lucide="layers" class="w-6 h-6 text-accent"></i>
+        Mazos
+      </h1>
+      <p class="text-sm text-fg-muted mt-1.5">Importa desde Moxfield o pega una lista para empezar.</p>
     </div>
   </div>
 
-  {# Import panel #}
+  {# ============= IMPORT PANELS ============= #}
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-data="importPanel()">
 
     {# Moxfield #}
-    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card">
+    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
+                hover:border-accent/30 transition">
       <div class="flex items-center gap-2 mb-3">
-        <div class="w-2 h-2 bg-accent rounded-full"></div>
+        <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
+          <i data-lucide="download" class="w-4 h-4"></i>
+        </div>
         <h2 class="font-medium">Desde Moxfield</h2>
       </div>
       <p class="text-xs text-fg-muted mb-3">Pega una URL o el ID del mazo. Debe ser público.</p>
       <form @submit.prevent="importMoxfield">
         <div class="flex gap-2">
-          <input type="text" x-model="moxUrl"
-                 placeholder="https://www.moxfield.com/decks/XXXXXXXXXX"
-                 class="flex-1 bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm
-                        focus:outline-none focus:border-accent">
+          <div class="flex-1 relative">
+            <i data-lucide="link" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint"></i>
+            <input type="text" x-model="moxUrl"
+                   placeholder="https://www.moxfield.com/decks/XXXXXXXXXX"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded-md pl-9 pr-3 py-2 text-sm
+                          focus:outline-none focus:border-accent transition">
+          </div>
           <button type="submit"
                   :disabled="loading"
-                  class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
-                         disabled:opacity-50 disabled:cursor-not-allowed transition">
-            <span x-show="!loading">Importar</span>
-            <span x-show="loading">Importando…</span>
+                  class="bg-accent hover:bg-accent-glow text-bg-base text-sm font-medium px-4 py-2 rounded-md
+                         disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5">
+            <i data-lucide="download" class="w-3.5 h-3.5" x-show="!loading"></i>
+            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="loading"></i>
+            <span x-text="loading ? 'Importando…' : 'Importar'"></span>
           </button>
         </div>
         <label class="flex items-start gap-2 mt-3 text-xs text-fg-muted cursor-pointer group">
@@ -39,27 +50,30 @@
                  class="mt-0.5 w-3.5 h-3.5 rounded border-border-strong bg-bg-subtle text-accent focus:ring-accent/50">
           <span class="group-hover:text-fg transition">
             Incluir también sideboard, tokens, maybeboard, companion
-            <span class="block text-fg-faint mt-0.5">Por defecto: solo comandante + 99 del mazo principal. El coste siempre se calcula sobre las 100 principales.</span>
+            <span class="block text-fg-faint mt-0.5">Por defecto solo comandante + 99 principales. El coste se calcula sobre las 100.</span>
           </span>
         </label>
       </form>
     </div>
 
     {# Plain text #}
-    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card">
+    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
+                hover:border-accent/30 transition">
       <div class="flex items-center gap-2 mb-3">
-        <div class="w-2 h-2 bg-fg-faint rounded-full"></div>
+        <div class="w-8 h-8 rounded-lg bg-fg-faint/10 text-fg-muted flex items-center justify-center">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+        </div>
         <h2 class="font-medium">Pegar lista</h2>
       </div>
       <p class="text-xs text-fg-muted mb-3">Un nombre por línea (con cantidad opcional).</p>
       <form @submit.prevent="importText">
         <input type="text" x-model="deckName" placeholder="Nombre del mazo"
                class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm mb-2
-                      focus:outline-none focus:border-accent">
+                      focus:outline-none focus:border-accent transition">
         <textarea x-model="deckText" rows="4"
                   placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;1 Command Tower"
                   class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm font-mono
-                         focus:outline-none focus:border-accent"></textarea>
+                         focus:outline-none focus:border-accent transition"></textarea>
         <label class="flex items-start gap-2 mt-2 text-xs text-fg-muted cursor-pointer group">
           <input type="checkbox" x-model="includeExtrasText"
                  class="mt-0.5 w-3.5 h-3.5 rounded border-border-strong bg-bg-subtle text-accent focus:ring-accent/50">
@@ -69,40 +83,59 @@
         </label>
         <button type="submit" :disabled="loading"
                 class="mt-2 w-full bg-bg-subtle hover:bg-border-subtle border border-border-strong text-sm
-                       font-medium px-4 py-2 rounded-md disabled:opacity-50 transition">
+                       font-medium px-4 py-2 rounded-md disabled:opacity-50 transition flex items-center justify-center gap-1.5">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
           Crear mazo
         </button>
       </form>
     </div>
   </div>
 
-  {# Deck list #}
+  {# ============= DECK LIST ============= #}
   <div>
-    <h2 class="text-sm font-medium text-fg-muted mb-3 uppercase tracking-wider">Tus mazos</h2>
+    <div class="flex items-center gap-2 mb-3">
+      <h2 class="text-xs font-medium text-fg-muted uppercase tracking-wider">Tus mazos</h2>
+      {% if decks %}
+        <span class="text-xs text-fg-faint font-mono">({{ decks|length }})</span>
+      {% endif %}
+    </div>
+
     {% if not decks %}
-      <div class="text-center py-16 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
-        Aún no tienes mazos. Importa uno arriba.
+      <div class="text-center py-16 border border-dashed border-border-subtle rounded-xl">
+        <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
+          <i data-lucide="inbox" class="w-6 h-6"></i>
+        </div>
+        <p class="text-sm text-fg-muted">Aún no tienes mazos.</p>
+        <p class="text-xs text-fg-faint mt-1">Importa uno arriba para empezar.</p>
       </div>
     {% else %}
       <div x-data="deckListActions()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for deck in decks %}
-          <div class="group relative bg-bg-elevated border border-border-subtle hover:border-border-strong rounded-xl shadow-card transition hover:-translate-y-0.5">
+          <div class="group relative bg-bg-elevated border border-border-subtle hover:border-accent/40
+                      rounded-xl shadow-card transition hover:-translate-y-0.5 hover:shadow-glow">
             <a href="/decks/{{ deck.id }}" class="block p-5">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
                   <div class="font-medium truncate group-hover:text-accent transition">{{ deck.name }}</div>
-                  <div class="text-xs text-fg-muted mt-1">
-                    {{ deck.cards|length }} entradas · {{ deck.format }}
+                  <div class="text-xs text-fg-muted mt-1 flex items-center gap-2">
+                    <span class="flex items-center gap-1">
+                      <i data-lucide="library" class="w-3 h-3"></i>
+                      {{ deck.cards|length }} entradas
+                    </span>
+                    <span class="text-fg-faint">·</span>
+                    <span>{{ deck.format }}</span>
                   </div>
                 </div>
                 {% if deck.moxfield_id %}
-                  <span class="text-[10px] font-mono text-fg-faint bg-bg-subtle px-1.5 py-0.5 rounded shrink-0">
+                  <span class="text-[10px] font-mono text-fg-faint bg-bg-subtle px-1.5 py-0.5 rounded shrink-0"
+                        title="Importado desde Moxfield">
                     MX
                   </span>
                 {% endif %}
               </div>
-              <div class="text-[11px] text-fg-faint mt-3">
-                Actualizado {{ deck.updated_at.strftime("%Y-%m-%d %H:%M") }}
+              <div class="text-[11px] text-fg-faint mt-3 flex items-center gap-1">
+                <i data-lucide="clock" class="w-3 h-3"></i>
+                {{ deck.updated_at.strftime("%Y-%m-%d %H:%M") }}
               </div>
             </a>
             {# Menú de acciones #}
@@ -111,20 +144,21 @@
               <button @click="open = !open"
                       class="p-1.5 rounded hover:bg-bg-subtle text-fg-muted hover:text-fg"
                       title="Acciones">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="6" r="1.5" fill="currentColor"/>
-                  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                  <circle cx="12" cy="18" r="1.5" fill="currentColor"/>
-                </svg>
+                <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
               <div x-show="open" x-transition
-                   class="absolute right-0 top-8 z-10 bg-bg-elevated border border-border-strong rounded-lg shadow-lg py-1 min-w-[160px]">
+                   class="absolute right-0 top-8 z-10 bg-bg-elevated border border-border-strong
+                          rounded-lg shadow-modal py-1 min-w-[180px]">
                 <button @click="rename({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
-                        class="block w-full text-left px-3 py-1.5 text-xs hover:bg-bg-subtle text-fg-muted hover:text-fg">
+                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
+                               hover:bg-bg-subtle text-fg-muted hover:text-fg">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                   Renombrar…
                 </button>
                 <button @click="del({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
-                        class="block w-full text-left px-3 py-1.5 text-xs hover:bg-red-500/10 text-red-400">
+                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
+                               hover:bg-danger/10 text-danger">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                   Eliminar mazo
                 </button>
               </div>
@@ -152,16 +186,13 @@ function importPanel() {
         const r = await fetch('/api/decks/import/moxfield', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            url_or_id: this.moxUrl,
-            include_extras: this.includeExtrasMox,
-          })
+          body: JSON.stringify({url_or_id: this.moxUrl, include_extras: this.includeExtrasMox})
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
         window.location.href = `/decks/${data.id}`;
       } catch (e) {
-        window.toast('Error importando', e.message);
+        Alpine.store('ui').error('Error importando', e.message);
         this.loading = false;
       }
     },
@@ -173,16 +204,14 @@ function importPanel() {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            name: this.deckName,
-            text: this.deckText,
-            include_extras: this.includeExtrasText,
+            name: this.deckName, text: this.deckText, include_extras: this.includeExtrasText,
           })
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
         window.location.href = `/decks/${data.id}`;
       } catch (e) {
-        window.toast('Error creando', e.message);
+        Alpine.store('ui').error('Error creando', e.message);
         this.loading = false;
       }
     }
@@ -195,18 +224,20 @@ function deckListActions() {
       const newName = prompt('Nuevo nombre para el mazo:', oldName);
       if (!newName || newName.trim() === oldName) return;
       const r = await fetch(`/api/decks/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: newName.trim()})
       });
       if (r.ok) location.reload();
-      else window.toast('Error', 'No se pudo renombrar');
+      else Alpine.store('ui').error('Error', 'No se pudo renombrar');
     },
     async del(id, name) {
-      if (!confirm(`¿Eliminar el mazo "${name}"?\n\nSe perderán las cartas y las elecciones de arte. Los archivos descargados NO se borran.`)) return;
+      if (!await window.confirmDialog(
+        'Eliminar mazo',
+        `¿Eliminar el mazo "${name}"?\n\nSe perderán las cartas y elecciones de arte. Los archivos descargados NO se borran.`,
+        { danger: true, icon: 'trash-2', confirmLabel: 'Eliminar' })) return;
       const r = await fetch(`/api/decks/${id}`, {method: 'DELETE'});
       if (r.ok) location.reload();
-      else window.toast('Error', 'No se pudo eliminar');
+      else Alpine.store('ui').error('Error', 'No se pudo eliminar');
     }
   }
 }

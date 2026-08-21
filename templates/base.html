@@ -4,15 +4,46 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}MPC Forge{% endblock %}</title>
+
+  {# Tailwind CDN #}
   <script src="https://cdn.tailwindcss.com"></script>
-  {# Iconos oficiales de mana MTG (mana.andrewgioia.com — usado por Scryfall, EDHREC, etc.) #}
+
+  {# Iconos oficiales de mana MTG #}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css">
+
+  {# Lucide icons: se usan como <i data-lucide="X"></i>; app.js llama createIcons() automáticamente #}
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+
   <style>
-    /* Ajustes finos para que los símbolos de mana encajen en la línea de texto */
+    /* Símbolos de mana en línea con texto */
     .mana-cost { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
     .mana-cost i.ms { font-size: 14px; line-height: 1; }
     .mana-cost i.ms.ms-cost { text-shadow: 0 1px 1px rgba(0,0,0,0.3); }
+
+    /* Scrollbar sutil que combina con el tema oscuro */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2f394d; border-radius: 5px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3d4a63; }
+
+    /* Barra de progreso del toast (animación pura CSS) */
+    @keyframes toast-progress {
+      from { transform: scaleX(1); }
+      to   { transform: scaleX(0); }
+    }
+    .toast-progress {
+      transform-origin: left;
+      animation: toast-progress linear forwards;
+    }
+
+    /* Fondo mágico para el header/sidebar: sutil resplandor dorado en gradiente radial */
+    .bg-arcane-panel {
+      background:
+        radial-gradient(circle at 20% 0%, rgba(212,175,55,0.05), transparent 40%),
+        #141821;
+    }
   </style>
+
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -20,94 +51,223 @@
         extend: {
           colors: {
             bg: {
-              base: '#0b0d10',
+              base:     '#0a0d13',   /* casi negro con tinte azulado (arcane) */
               elevated: '#141821',
-              subtle: '#1c2230',
+              subtle:   '#1c2230',
+              inset:    '#0f131b',
             },
             border: {
               subtle: '#232a3a',
-              strong: '#2f394d',
+              strong: '#3a4358',
             },
+            /* Paleta MTG-inspired ---------------------------------------- */
             accent: {
-              DEFAULT: '#eab308',
-              soft: '#ca8a04',
+              /* Oro de las cartas mythic-rare: cálido y llamativo sin ser chillón */
+              DEFAULT: '#d4af37',
+              soft:    '#a58524',
+              glow:    '#e9c86a',
             },
+            mtg: {
+              white: '#f5f0d8',
+              blue:  '#5b9bd5',
+              black: '#3a3a4a',
+              red:   '#d9534f',
+              green: '#5cb85c',
+              gold:  '#d4af37',
+            },
+            /* Colores semánticos alineados con las tierras básicas ------- */
+            success: { DEFAULT: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.30)' },
+            warning: { DEFAULT: '#fb923c', bg: 'rgba(251,146,60,0.10)', border: 'rgba(251,146,60,0.30)' },
+            danger:  { DEFAULT: '#f87171', bg: 'rgba(248,113,113,0.10)', border: 'rgba(248,113,113,0.30)' },
+            info:    { DEFAULT: '#60a5fa', bg: 'rgba(96,165,250,0.10)', border: 'rgba(96,165,250,0.30)' },
             fg: {
-              DEFAULT: '#e5e7eb',
-              muted: '#9ca3af',
-              faint: '#6b7280',
+              DEFAULT: '#e8e6dd',    /* ligero cálido, no gris frío */
+              muted:   '#a8a8b8',
+              faint:   '#6a6a80',
             },
           },
           fontFamily: {
-            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+            sans:    ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+            mono:    ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+            display: ['Cinzel', 'Georgia', 'serif'], /* para títulos "arcane" opcional */
           },
           boxShadow: {
-            'card': '0 1px 2px 0 rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,0.02)',
+            'card':   '0 1px 2px 0 rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,0.02)',
+            'glow':   '0 0 24px 0 rgba(212,175,55,0.15)',
+            'modal':  '0 25px 60px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.10)',
+          },
+          animation: {
+            'shimmer':    'shimmer 2s linear infinite',
+            'toast-in':   'toast-in 220ms ease-out',
+          },
+          keyframes: {
+            shimmer: {
+              '0%':   { backgroundPosition: '-200% 0' },
+              '100%': { backgroundPosition: '200% 0' },
+            },
+            'toast-in': {
+              '0%':   { opacity: '0', transform: 'translateX(20px) scale(0.95)' },
+              '100%': { opacity: '1', transform: 'translateX(0) scale(1)' },
+            },
           },
         }
       }
     }
   </script>
+
+  {# Fuente decorativa opcional para títulos MTG-style. Precargamos discreto. #}
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
+
   <script defer src="https://unpkg.com/@alpinejs/collapse@3.13.5/dist/cdn.min.js"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
+
 <body class="bg-bg-base text-fg antialiased min-h-screen font-sans">
   <div class="flex min-h-screen">
-    {# Sidebar #}
-    <aside class="w-56 shrink-0 bg-bg-elevated border-r border-border-subtle flex flex-col">
+
+    {# ============= SIDEBAR ============= #}
+    <aside class="w-56 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
       <div class="p-5 border-b border-border-subtle">
-        <a href="/" class="flex items-center gap-2 group">
-          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-orange-500 flex items-center justify-center text-black font-bold">
+        <a href="/" class="flex items-center gap-2.5 group">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent via-accent-glow to-accent-soft
+                      flex items-center justify-center text-bg-base font-display font-bold text-lg
+                      shadow-glow group-hover:scale-105 transition">
             F
           </div>
-          <span class="font-semibold tracking-tight">MPC Forge</span>
+          <div class="flex flex-col leading-tight">
+            <span class="font-display font-semibold tracking-wide text-accent-glow">MPC Forge</span>
+            <span class="text-[10px] text-fg-faint uppercase tracking-widest">Proxy pipeline</span>
+          </div>
         </a>
       </div>
+
       <nav class="flex-1 p-3 space-y-1 text-sm">
         {% set current = request.url.path %}
-        <a href="/"
-           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
-                  {% if current == '/' %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1"/></svg>
-          Mazos
-        </a>
-        <a href="/history"
-           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
-                  {% if current.startswith('/history') %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Historial
-        </a>
-        <a href="/settings"
-           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
-                  {% if current.startswith('/settings') %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-          Ajustes
-        </a>
+        {% set nav_items = [
+          ('/',         'layers',    'Mazos'),
+          ('/history',  'history',   'Historial'),
+          ('/settings', 'settings',  'Ajustes'),
+        ] %}
+        {% for path, icon, label in nav_items %}
+          {% set active = (path == '/' and current == '/') or (path != '/' and current.startswith(path)) %}
+          <a href="{{ path }}"
+             class="group flex items-center gap-3 px-3 py-2 rounded-md transition
+                    {% if active %}
+                      bg-bg-subtle text-accent-glow border-l-2 border-accent
+                    {% else %}
+                      text-fg-muted hover:bg-bg-subtle hover:text-fg border-l-2 border-transparent
+                    {% endif %}">
+            <i data-lucide="{{ icon }}" class="w-4 h-4"></i>
+            <span>{{ label }}</span>
+          </a>
+        {% endfor %}
       </nav>
-      <div class="p-3 text-xs text-fg-faint border-t border-border-subtle">
-        v0.1.0 · local-only
+
+      <div class="p-3 border-t border-border-subtle">
+        <div class="flex items-center gap-2 text-[10px] text-fg-faint">
+          <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+          <span>v0.1.0 · local-only</span>
+        </div>
       </div>
     </aside>
 
-    {# Main #}
+    {# ============= MAIN ============= #}
     <main class="flex-1 overflow-x-hidden">
       {% block content %}{% endblock %}
     </main>
   </div>
 
-  {# Toast area #}
-  <div x-data="{ toasts: [] }"
-       x-on:toast.window="toasts.push({...$event.detail, id: Date.now()}); setTimeout(() => toasts.shift(), 4000)"
-       class="fixed bottom-5 right-5 z-50 space-y-2">
-    <template x-for="t in toasts" :key="t.id">
-      <div class="bg-bg-elevated border border-border-strong rounded-lg shadow-card px-4 py-3 max-w-sm"
-           x-transition>
-        <div class="text-sm font-medium" x-text="t.title"></div>
-        <div class="text-xs text-fg-muted mt-1" x-text="t.body" x-show="t.body"></div>
+  {# ============= TOAST CONTAINER GLOBAL ============= #}
+  <div class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
+    <template x-for="t in $store.ui.toasts" :key="t.id">
+      <div class="pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border animate-toast-in"
+           :class="{
+             'bg-bg-elevated border-border-strong':            t.type === 'info',
+             'bg-bg-elevated border-success/40':               t.type === 'success',
+             'bg-bg-elevated border-danger/40':                t.type === 'error',
+             'bg-bg-elevated border-warning/40':               t.type === 'warning',
+           }">
+        <div class="flex items-start gap-3 p-4">
+          <div class="shrink-0 w-8 h-8 rounded-md flex items-center justify-center"
+               :class="{
+                 'bg-info-bg text-info':       t.type === 'info',
+                 'bg-success-bg text-success': t.type === 'success',
+                 'bg-danger-bg text-danger':   t.type === 'error',
+                 'bg-warning-bg text-warning': t.type === 'warning',
+               }">
+            <i class="w-4 h-4"
+               :data-lucide="{info:'info', success:'check-circle-2', error:'x-circle', warning:'alert-triangle'}[t.type]"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-fg" x-text="t.title"></div>
+            <div class="text-xs text-fg-muted mt-0.5 break-words" x-text="t.message" x-show="t.message"></div>
+          </div>
+          <button @click="$store.ui.dismissToast(t.id)"
+                  class="shrink-0 text-fg-faint hover:text-fg transition p-1 -m-1 rounded">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        {# Barra de progreso de auto-dismiss (CSS pura) #}
+        <div class="absolute bottom-0 left-0 right-0 h-0.5 toast-progress"
+             :class="{
+               'bg-info':    t.type === 'info',
+               'bg-success': t.type === 'success',
+               'bg-danger':  t.type === 'error',
+               'bg-warning': t.type === 'warning',
+             }"
+             :style="`animation-duration: ${t.ttl}ms`"
+             x-show="t.ttl > 0"></div>
       </div>
     </template>
+  </div>
+
+  {# ============= CONFIRM MODAL GLOBAL ============= #}
+  <div x-cloak x-show="$store.ui.confirmState.open"
+       @keydown.escape.window="$store.ui.confirmState.open && $store.ui._closeConfirm(false)"
+       class="fixed inset-0 z-[110] flex items-center justify-center p-6"
+       x-transition:enter="ease-out duration-150"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+         @click="$store.ui._closeConfirm(false)"></div>
+    <div class="relative bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-md
+                overflow-hidden"
+         x-transition:enter="ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95 translate-y-2"
+         x-transition:enter-end="opacity-100 scale-100 translate-y-0">
+      <div class="p-6">
+        <div class="flex items-start gap-4">
+          <div class="shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
+               :class="$store.ui.confirmState.danger
+                       ? 'bg-danger-bg text-danger'
+                       : 'bg-accent/10 text-accent'">
+            <i :data-lucide="$store.ui.confirmState.icon" class="w-5 h-5"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-lg font-medium text-fg" x-text="$store.ui.confirmState.title"></h3>
+            <p class="mt-1.5 text-sm text-fg-muted whitespace-pre-line"
+               x-text="$store.ui.confirmState.message"
+               x-show="$store.ui.confirmState.message"></p>
+          </div>
+        </div>
+      </div>
+      <div class="px-6 py-3 bg-bg-inset border-t border-border-subtle flex items-center justify-end gap-2">
+        <button @click="$store.ui._closeConfirm(false)"
+                class="px-4 py-2 rounded-md text-sm text-fg-muted hover:text-fg hover:bg-bg-subtle
+                       transition font-medium">
+          <span x-text="$store.ui.confirmState.cancelLabel"></span>
+        </button>
+        <button @click="$store.ui._closeConfirm(true)"
+                x-init="$nextTick(() => $el.focus())"
+                class="px-4 py-2 rounded-md text-sm font-medium transition"
+                :class="$store.ui.confirmState.danger
+                        ? 'bg-danger text-bg-base hover:brightness-110'
+                        : 'bg-accent text-bg-base hover:bg-accent-glow'">
+          <span x-text="$store.ui.confirmState.confirmLabel"></span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
