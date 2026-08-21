@@ -11,8 +11,6 @@ elegir arte oficial o custom para cada carta, y genera:
   para enviar el pedido directamente a MakePlayingCards.
 - Un **PDF 3×3 tamaño real** para impresión doméstica en A4 o Letter.
 
-Se distribuye como un `.exe` empaquetado — tus amigos descargan un ZIP, hacen
-doble click, y la app se abre en su navegador.
 
 ---
 
@@ -44,8 +42,7 @@ doble click, y la app se abre en su navegador.
 3. Entra en la carpeta `MPC-Forge` y haz doble click en **`MPC-Forge.exe`**.
 4. La primera vez, Windows Defender puede avisar de que es una aplicación no
    verificada. Pulsa **Más información → Ejecutar de todas formas**.
-   Es porque no está firmada con un certificado de código (300€/año que no vamos
-   a pagar para 4 amigos).
+   Es porque no está firmada con un certificado.
 5. Se abrirá una ventana negra de consola con el mensaje de arranque, y a los
    pocos segundos tu navegador por defecto se abrirá en
    [http://127.0.0.1:8765](http://127.0.0.1:8765).
@@ -177,17 +174,6 @@ para diagnóstico.
 
 Si la app crashea sin poder acceder a la UI, el log también se conserva en
 `%APPDATA%\MPC-Forge\logs\mpc-forge.log`.
-
-### SSL / errores de certificado (portátil de empresa)
-
-Si tu red corporativa hace inspección SSL, la app usa el trust store del sistema
-por defecto (via `truststore`). Si aun así falla, arranca con:
-
-```powershell
-$env:MPC_FORGE_INSECURE_SSL="1"; .\MPC-Forge.exe
-```
-
-Esto desactiva la verificación SSL (solo en tu red segura).
 
 ---
 
