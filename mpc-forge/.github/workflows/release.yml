@@ -33,8 +33,11 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
+        # Usamos "python -m PyInstaller" (misma razón que en build.ps1):
+        # más robusto que llamar "pyinstaller" directamente si Scripts/ no
+        # está en el PATH.
         run: |
-          pyinstaller `
+          python -m PyInstaller `
             --noconfirm `
             --distpath packaging/dist `
             --workpath packaging/build `

@@ -30,10 +30,14 @@ Write-Host "[2/3] Limpiando builds anteriores..." -ForegroundColor Yellow
 if (Test-Path "packaging\dist")  { Remove-Item -Recurse -Force "packaging\dist"  }
 if (Test-Path "packaging\build") { Remove-Item -Recurse -Force "packaging\build" }
 
-# 4. Ejecutar PyInstaller
+# 4. Ejecutar PyInstaller.
+# Usamos "python -m PyInstaller" en vez de "pyinstaller" directo por robustez:
+# en instalaciones --user (habitual cuando Python esta en C:\ProgramData) el
+# comando "pyinstaller.exe" queda en %APPDATA%\Python\...\Scripts que NO
+# esta en el PATH. Llamandolo como modulo evita el problema.
 Write-Host ""
 Write-Host "[3/3] Compilando con PyInstaller..." -ForegroundColor Yellow
-pyinstaller `
+python -m PyInstaller `
     --noconfirm `
     --distpath "packaging\dist" `
     --workpath "packaging\build" `
