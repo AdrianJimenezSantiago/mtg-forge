@@ -66,6 +66,26 @@ document.addEventListener('alpine:init', () => {
 });
 
 // -----------------------------------------------------------------------
+// Error handler global: captura excepciones no manejadas y las muestra como
+// toast. Sin esto un error silencioso en un @click hace que ese botón parezca
+// "no hacer nada" desde la perspectiva del usuario.
+// -----------------------------------------------------------------------
+window.addEventListener('error', (e) => {
+  console.error('[MPC Forge] Uncaught error:', e.error || e.message);
+  try {
+    Alpine.store('ui').error('Error inesperado',
+      (e.error && e.error.message) || e.message || 'Revisa la consola (F12)');
+  } catch (_) { /* Alpine no cargado aún */ }
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[MPC Forge] Unhandled promise rejection:', e.reason);
+  try {
+    Alpine.store('ui').error('Error asíncrono',
+      (e.reason && e.reason.message) || String(e.reason) || 'Revisa la consola (F12)');
+  } catch (_) { /* Alpine no cargado aún */ }
+});
+
+// -----------------------------------------------------------------------
 // API global de backwards compatibility
 // -----------------------------------------------------------------------
 // window.toast(title, message, type='info')

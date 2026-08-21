@@ -42,6 +42,13 @@
         radial-gradient(circle at 20% 0%, rgba(212,175,55,0.05), transparent 40%),
         #141821;
     }
+
+    /* Iconos Lucide: no capturan clicks — el evento va al elemento padre (botón/link).
+       Sin esto, click justo sobre el icono no siempre burbujea bien y "no hace nada". */
+    [data-lucide],
+    svg.lucide {
+      pointer-events: none;
+    }
   </style>
 
   <script>
@@ -179,7 +186,8 @@
   </div>
 
   {# ============= TOAST CONTAINER GLOBAL ============= #}
-  <div class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
+  {# x-data vacío activa el subtree en Alpine — sin él los x-for/x-show/@click no funcionan. #}
+  <div x-data class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
     <template x-for="t in $store.ui.toasts" :key="t.id">
       <div class="pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border animate-toast-in"
            :class="{
@@ -223,7 +231,8 @@
   </div>
 
   {# ============= CONFIRM MODAL GLOBAL ============= #}
-  <div x-cloak x-show="$store.ui.confirmState.open"
+  {# x-data vacío activa el subtree — sin él el x-show y los @click son ignorados. #}
+  <div x-data x-cloak x-show="$store.ui.confirmState.open"
        @keydown.escape.window="$store.ui.confirmState.open && $store.ui._closeConfirm(false)"
        class="fixed inset-0 z-[110] flex items-center justify-center p-6"
        x-transition:enter="ease-out duration-150"
