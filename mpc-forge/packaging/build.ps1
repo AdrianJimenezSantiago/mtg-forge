@@ -1,5 +1,5 @@
-# Compila MPC Forge a un .exe distribuible (modo --onedir).
-# Uso desde la raíz del proyecto:
+﻿# Compila MPC Forge a un .exe distribuible (modo --onedir).
+# Uso desde la raiz del proyecto:
 #   cd C:\ruta\a\mtg-forge
 #   .\packaging\build.ps1
 #
@@ -10,15 +10,15 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
-Write-Host "=== MPC Forge — build local ===" -ForegroundColor Cyan
+Write-Host "=== MPC Forge - build local ===" -ForegroundColor Cyan
 Write-Host "Working dir: $repoRoot"
 Write-Host ""
 
-# 1. Comprobamos Python
+# 1. Comprobar Python
 $py = python --version 2>&1
 Write-Host "Python: $py"
 
-# 2. Instalar deps si hace falta
+# 2. Instalar deps
 Write-Host ""
 Write-Host "[1/3] Instalando dependencias..." -ForegroundColor Yellow
 python -m pip install --upgrade pip pyinstaller
@@ -43,5 +43,5 @@ Write-Host ""
 Write-Host "=== Build completo ===" -ForegroundColor Green
 Write-Host "Output: packaging\dist\MPC-Forge\"
 Write-Host ""
-Write-Host "Para probar:  packaging\dist\MPC-Forge\MPC-Forge.exe"
-Write-Host "Para distribuir: comprime toda la carpeta 'MPC-Forge' en un ZIP."
+Write-Host "Para probar: packaging\dist\MPC-Forge\MPC-Forge.exe"
+Write-Host "Para distribuir: comprime toda la carpeta MPC-Forge en un ZIP."

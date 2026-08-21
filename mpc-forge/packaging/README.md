@@ -8,10 +8,10 @@ Contenido de esta carpeta:
 
 ## Build local
 
-```powershell
-# Desde la raíz del repositorio, en un Windows con Python 3.11+
-.\packaging\build.ps1
-```
+Dos formas equivalentes en Windows con Python 3.11+:
+
+- **Doble click en `packaging\build.bat`** — evita advertencias de política de PowerShell.
+- **Desde PowerShell**: `.\packaging\build.ps1` (necesita `Unblock-File` la primera vez).
 
 Output: `packaging\dist\MPC-Forge\` — carpeta que contiene `MPC-Forge.exe` y todas
 sus dependencias. Para distribuir, comprime esa carpeta entera en un ZIP.

@@ -277,13 +277,20 @@ Se pierden los mazos, historial y settings — pero **no** los artes en disco
 
 ### Compilar el `.exe` en local
 
-Necesitas estar en Windows con Python 3.11+:
+Necesitas estar en Windows con Python 3.11+. Dos formas equivalentes:
+
+**A) Doble click** en `packaging\build.bat` (más simple).
+
+**B) Desde PowerShell**:
 
 ```powershell
+# Si es la primera vez, desbloquea el script (o usa la opción A que evita esto):
+Unblock-File -Path .\packaging\build.ps1
+
 .\packaging\build.ps1
 ```
 
-Genera `packaging\dist\MPC-Forge\` con el `.exe` y todas sus dependencias.
+Ambas generan `packaging\dist\MPC-Forge\` con el `.exe` y todas sus dependencias.
 Comprime esa carpeta en un ZIP para distribuir.
 
 ---
