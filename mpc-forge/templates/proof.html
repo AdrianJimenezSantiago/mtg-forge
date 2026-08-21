@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Proof · {{ deck.name }} · MPC Forge{% endblock %}
+{% block content %}
+<div x-data="proofView({{ deck.id }})" x-init="load()" class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div class="min-w-0">
+      <a href="/decks/{{ deck.id }}" class="text-fg-muted hover:text-fg text-sm">← Editor</a>
+      <h1 class="text-2xl font-semibold tracking-tight mt-2 truncate">Proof · {{ deck.name }}</h1>
+      <p class="text-sm text-fg-muted mt-1">
+        Cuadrícula completa a tamaño casi real. Así se imprimirá cada slot del XML.
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <label class="text-xs text-fg-muted flex items-center gap-2">
+        Zoom
+        <input type="range" min="60" max="200" step="10" x-model.number="cardWidth"
+               class="w-32 accent-accent">
+        <span class="font-mono w-10 text-right" x-text="cardWidth + 'px'"></span>
+      </label>
+      <label class="text-xs text-fg-muted flex items-center gap-2">
+        <input type="checkbox" x-model="showBacks" class="accent-accent">
+        Mostrar reversos DFC
+      </label>
+    </div>
+  </div>
+
+  <template x-if="loading">
+    <div class="text-center py-16 text-fg-faint">Cargando…</div>
+  </template>
+
+  <div x-show="!loading && deck">
+    <div class="flex items-center gap-4 text-sm text-fg-muted border-b border-border-subtle pb-3 mb-4">
+      <span>
+        <span class="text-fg font-medium" x-text="totalSlots"></span> slots
+      </span>
+      <template x-if="deck && deck.validation">
+        <span x-text="deck.validation.message"
+              :class="{
+                'text-green-400': deck.validation.level === 'ok',
+                'text-amber-400': deck.validation.level === 'warn',
+                'text-red-400': deck.validation.level === 'error'
+              }"></span>
+      </template>
+    </div>
+
+    <template x-for="group in groupedSlots" :key="group.role">
+      <div class="mb-8">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="text-xs font-medium uppercase tracking-wider text-fg-muted"
+               x-text="group.label"></div>
+          <div class="text-xs font-mono text-fg-faint" x-text="'(' + group.total + ')'"></div>
+          <div class="flex-1 h-px bg-border-subtle"></div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <template x-for="slot in group.slots" :key="slot.key">
+            <div class="relative group"
+                 :style="`width: ${cardWidth}px; height: ${Math.round(cardWidth * 88 / 63)}px`">
+              <img :src="slot.thumbnail"
+                   :alt="slot.name"
+                   class="w-full h-full object-cover rounded border border-border-subtle bg-bg-subtle"
+                   loading="lazy">
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-1.5">
+                <div class="text-[10px] text-white/90 truncate" x-text="slot.name"></div>
+                <template x-if="slot.copy_index > 1">
+                  <div class="text-[9px] text-white/60" x-text="slot.copy_index + '/' + slot.quantity"></div>
+                </template>
+              </div>
+              <template x-if="slot.is_dfc">
+                <div class="absolute top-1 right-1 text-[8px] font-mono bg-black/70 text-white px-1 py-0.5 rounded">DFC</div>
+              </template>
+              <template x-if="slot.face === 'back'">
+                <div class="absolute top-1 left-1 text-[8px] font-mono bg-fuchsia-500 text-white px-1 py-0.5 rounded">BACK</div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function proofView(deckId) {
+  return {
+    deckId,
+    deck: null,
+    loading: true,
+    cardWidth: 100,
+    showBacks: false,
+
+    get totalSlots() {
+      if (!this.deck) return 0;
+      return this.deck.cards.filter(c => c.include).reduce((n, c) => n + c.quantity, 0);
+    },
+
+    get groupedSlots() {
+      if (!this.deck) return [];
+      // Genera una entrada por cada copia (slot). Agrupa por rol.
+      const labels = {
+        commander: 'Comandante',
+        mainboard: 'Mazo',
+        companion: 'Compañero',
+        sideboard: 'Sideboard',
+        maybeboard: 'Maybeboard',
+        tokens: 'Tokens',
+      };
+      const order = ['commander', 'mainboard', 'companion', 'sideboard', 'maybeboard', 'tokens'];
+      const groups = {};
+
+      for (const c of this.deck.cards) {
+        if (!c.include) continue;
+        if (!groups[c.role]) groups[c.role] = [];
+        for (let i = 1; i <= c.quantity; i++) {
+          groups[c.role].push({
+            key: `${c.id}-front-${i}`,
+            name: c.name,
+            thumbnail: c.thumbnail_url,
+            is_dfc: c.is_dfc,
+            face: 'front',
+            copy_index: i,
+            quantity: c.quantity,
+          });
+          if (this.showBacks && c.is_dfc) {
+            groups[c.role].push({
+              key: `${c.id}-back-${i}`,
+              name: c.name + ' (reverso)',
+              thumbnail: c.thumbnail_url,   // TODO: back-specific thumb si existe
+              is_dfc: true,
+              face: 'back',
+              copy_index: i,
+              quantity: c.quantity,
+            });
+          }
+        }
+      }
+      return order
+        .filter(r => groups[r] && groups[r].length)
+        .map(r => ({
+          role: r,
+          label: labels[r] || r,
+          slots: groups[r],
+          total: groups[r].length,
+        }));
+    },
+
+    async load() {
+      this.loading = true;
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}`);
+        this.deck = await r.json();
+      } finally {
+        this.loading = false;
+      }
+    }
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,39 @@
+[project]
+name = "mpc-forge"
+version = "0.1.0"
+description = "Local MTG proxy printing workflow — Moxfield → art picker → MPC-Autofill XML"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.27",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "cloudscraper>=1.2.71",
+    "aiofiles>=24.1",
+    "platformdirs>=4.3",
+    "python-slugify>=8.0",
+    "truststore>=0.10",
+    "reportlab>=4.2",
+]
+
+[project.optional-dependencies]
+window = ["pywebview>=5.3"]
+build = ["pyinstaller>=6.10"]
+dev = ["ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+mpc-forge = "mpc_forge.__main__:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true

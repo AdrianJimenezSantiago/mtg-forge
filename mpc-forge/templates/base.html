@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}MPC Forge{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  {# Iconos oficiales de mana MTG (mana.andrewgioia.com — usado por Scryfall, EDHREC, etc.) #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css">
+  <style>
+    /* Ajustes finos para que los símbolos de mana encajen en la línea de texto */
+    .mana-cost { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+    .mana-cost i.ms { font-size: 14px; line-height: 1; }
+    .mana-cost i.ms.ms-cost { text-shadow: 0 1px 1px rgba(0,0,0,0.3); }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: {
+              base: '#0b0d10',
+              elevated: '#141821',
+              subtle: '#1c2230',
+            },
+            border: {
+              subtle: '#232a3a',
+              strong: '#2f394d',
+            },
+            accent: {
+              DEFAULT: '#eab308',
+              soft: '#ca8a04',
+            },
+            fg: {
+              DEFAULT: '#e5e7eb',
+              muted: '#9ca3af',
+              faint: '#6b7280',
+            },
+          },
+          fontFamily: {
+            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          boxShadow: {
+            'card': '0 1px 2px 0 rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,0.02)',
+          },
+        }
+      }
+    }
+  </script>
+  <script defer src="https://unpkg.com/@alpinejs/collapse@3.13.5/dist/cdn.min.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-bg-base text-fg antialiased min-h-screen font-sans">
+  <div class="flex min-h-screen">
+    {# Sidebar #}
+    <aside class="w-56 shrink-0 bg-bg-elevated border-r border-border-subtle flex flex-col">
+      <div class="p-5 border-b border-border-subtle">
+        <a href="/" class="flex items-center gap-2 group">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-orange-500 flex items-center justify-center text-black font-bold">
+            F
+          </div>
+          <span class="font-semibold tracking-tight">MPC Forge</span>
+        </a>
+      </div>
+      <nav class="flex-1 p-3 space-y-1 text-sm">
+        {% set current = request.url.path %}
+        <a href="/"
+           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
+                  {% if current == '/' %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1"/></svg>
+          Mazos
+        </a>
+        <a href="/history"
+           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
+                  {% if current.startswith('/history') %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Historial
+        </a>
+        <a href="/settings"
+           class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-bg-subtle transition
+                  {% if current.startswith('/settings') %}bg-bg-subtle text-fg{% else %}text-fg-muted{% endif %}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Ajustes
+        </a>
+      </nav>
+      <div class="p-3 text-xs text-fg-faint border-t border-border-subtle">
+        v0.1.0 · local-only
+      </div>
+    </aside>
+
+    {# Main #}
+    <main class="flex-1 overflow-x-hidden">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {# Toast area #}
+  <div x-data="{ toasts: [] }"
+       x-on:toast.window="toasts.push({...$event.detail, id: Date.now()}); setTimeout(() => toasts.shift(), 4000)"
+       class="fixed bottom-5 right-5 z-50 space-y-2">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="bg-bg-elevated border border-border-strong rounded-lg shadow-card px-4 py-3 max-w-sm"
+           x-transition>
+        <div class="text-sm font-medium" x-text="t.title"></div>
+        <div class="text-xs text-fg-muted mt-1" x-text="t.body" x-show="t.body"></div>
+      </div>
+    </template>
+  </div>
+
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

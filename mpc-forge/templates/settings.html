@@ -1,0 +1,804 @@
+{% extends "base.html" %}
+{% block title %}Ajustes · MPC Forge{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto p-8 space-y-6" x-data="settingsPage()" x-init="load()">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Ajustes</h1>
+    <p class="text-sm text-fg-muted mt-1">
+      Los cambios se aplican inmediatamente. Se persisten en tu carpeta de datos.
+    </p>
+  </div>
+
+  {# ============ PANEL DE SETTINGS AGRUPADOS ============ #}
+  <template x-if="loading">
+    <div class="text-center py-8 text-fg-faint">Cargando ajustes…</div>
+  </template>
+
+  <template x-for="group in groupedDefs" :key="group.name">
+    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+      <h2 class="font-medium flex items-center gap-2">
+        <span class="w-1.5 h-1.5 bg-accent rounded-full"></span>
+        <span x-text="group.name"></span>
+      </h2>
+      <div class="space-y-4">
+        <template x-for="def in group.defs" :key="def.key">
+          <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 md:gap-4 items-center">
+            <div class="min-w-0">
+              <label class="text-sm font-medium" x-text="def.label"></label>
+              <div class="text-xs text-fg-muted mt-0.5" x-text="def.description"></div>
+              <template x-if="values[def.key] !== def.default">
+                <div class="text-[11px] text-accent/80 mt-1">
+                  ≠ default (<span x-text="def.default"></span>)
+                </div>
+              </template>
+            </div>
+            <div>
+              {# bool → toggle #}
+              <template x-if="def.type === 'bool'">
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" class="sr-only peer"
+                         :checked="values[def.key]"
+                         @change="update(def.key, $event.target.checked)">
+                  <div class="w-11 h-6 bg-bg-subtle border border-border-subtle rounded-full
+                              peer peer-checked:after:translate-x-full
+                              after:content-[''] after:absolute after:top-[3px] after:left-[3px]
+                              after:bg-fg-muted after:rounded-full after:h-4 after:w-4
+                              after:transition-all peer-checked:bg-accent/30 peer-checked:after:bg-accent
+                              peer-checked:border-accent/50"></div>
+                </label>
+              </template>
+
+              {# str con choices → select #}
+              <template x-if="def.type === 'str' && def.choices">
+                <select :value="values[def.key]"
+                        @change="update(def.key, $event.target.value)"
+                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                               focus:outline-none focus:border-accent min-w-[220px]">
+                  <template x-for="c in def.choices" :key="c">
+                    <option :value="c" x-text="c"></option>
+                  </template>
+                </select>
+              </template>
+
+              {# str simple → input text #}
+              <template x-if="def.type === 'str' && !def.choices">
+                <input type="text" :value="values[def.key]"
+                       @change="update(def.key, $event.target.value)"
+                       class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                              focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">
+              </template>
+
+              {# float/int → input number #}
+              <template x-if="def.type === 'float' || def.type === 'int'">
+                <input :type="def.type === 'int' ? 'number' : 'number'"
+                       :step="def.type === 'int' ? '1' : '0.01'"
+                       :min="def.min_value"
+                       :max="def.max_value"
+                       :value="values[def.key]"
+                       @change="update(def.key, def.type === 'int' ? parseInt($event.target.value) : parseFloat($event.target.value))"
+                       class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm text-right
+                              focus:outline-none focus:border-accent w-32">
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  {# ============ INTEGRACIÓN: MPC AUTOFILL DESKTOP TOOL ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3"
+       x-data="autofillStatus()" x-init="load()">
+    <div class="flex items-center gap-2">
+      <span class="w-1.5 h-1.5 rounded-full"
+            :class="status.available ? 'bg-green-400' : 'bg-fg-faint'"></span>
+      <h2 class="font-medium">MPC Autofill (desktop tool)</h2>
+    </div>
+    <p class="text-sm text-fg-muted">
+      Cuando lo tienes instalado, MPC Forge puede lanzarlo directamente con el XML generado
+      para que suba todo a MakePlayingCards.com automáticamente.
+    </p>
+    <template x-if="status.available">
+      <div class="text-xs bg-green-500/10 border border-green-500/30 rounded p-3 space-y-1">
+        <div class="text-green-300 font-medium">✓ Detectado</div>
+        <div class="text-fg-muted font-mono break-all" x-text="status.exe_path"></div>
+        <div class="text-fg-faint">Origen: <span x-text="status.source"></span></div>
+      </div>
+    </template>
+    <template x-if="!status.available">
+      <div class="text-xs bg-bg-subtle border border-border-subtle rounded p-3 space-y-2">
+        <div class="text-fg-muted">
+          No se ha encontrado el binario.
+          <span x-text="status.hint" class="block mt-1"></span>
+        </div>
+        <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank"
+           class="inline-block text-accent hover:underline">
+          → Descargar releases de chilli-axe/mpc-autofill
+        </a>
+        <div class="text-fg-faint pt-2 border-t border-border-subtle">
+          Coloca el ejecutable en la carpeta del proyecto, en el PATH del sistema,
+          o configura la ruta en <em>Ejecutable de MPC Autofill</em> más arriba.
+        </div>
+      </div>
+    </template>
+    <button @click="load()"
+            class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
+                   px-3 py-1 rounded transition">
+      Volver a comprobar
+    </button>
+  </div>
+
+  {# ============ ART SOURCES (Google Drives comunitarios) ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4"
+       x-data="artSourcesPanel()" x-init="load()">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+        <h2 class="font-medium">Fuentes de arte custom (Google Drives)</h2>
+        <span class="text-xs text-fg-faint font-mono" x-text="'(' + sources.length + ')'"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="restore()"
+                :disabled="restoring"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
+                       text-fg-muted hover:text-fg px-3 py-1 rounded transition disabled:opacity-50"
+                :title="`Restaurar los ${catalogSize} drives del catálogo curado (idempotente)`">
+          <span x-show="!restoring">↻ Restaurar catálogo</span>
+          <span x-show="restoring">Restaurando…</span>
+        </button>
+        <button @click="showAdd = !showAdd"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
+                       text-fg-muted hover:text-fg px-3 py-1 rounded transition">
+          <span x-show="!showAdd">+ Añadir drive</span>
+          <span x-show="showAdd">Cancelar</span>
+        </button>
+      </div>
+    </div>
+    <p class="text-sm text-fg-muted">
+      Como hace mpcfill.com, mantenemos una lista de <span x-text="catalogSize"></span> Google Drives comunitarios
+      con arte custom pre-sembrada. Cada drive es un link: click para abrir en el navegador,
+      dentro hay archivos (a veces sueltos, a veces organizados por carpetas) con nombres tipo
+      <span class="font-mono text-fg-muted">"Sol Ring (Daubrez Borderless).png"</span>. Descarga lo
+      que quieras y añádelo al mazo con <em>+ Añadir por URL</em>.
+    </p>
+
+    {# Panel de índice global (fuzzy search) #}
+    <div class="bg-indigo-500/5 border border-indigo-500/20 rounded-lg p-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <span class="text-xs font-medium text-indigo-200">Índice para búsqueda fuzzy</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button @click="indexPinned()" :disabled="indexingIds.length > 0"
+                  class="text-[10px] bg-bg-subtle hover:bg-indigo-500/20 border border-border-subtle
+                         text-fg-muted hover:text-indigo-200 px-2 py-1 rounded disabled:opacity-50 transition"
+                  title="Indexa los drives que has marcado como pinned">
+            Indexar pinned
+          </button>
+          <button @click="indexAll()" :disabled="indexingIds.length > 0"
+                  class="text-[10px] bg-bg-subtle hover:bg-indigo-500/20 border border-border-subtle
+                         text-fg-muted hover:text-indigo-200 px-2 py-1 rounded disabled:opacity-50 transition"
+                  title="Indexa todos los drives (puede tardar varios minutos)">
+            Indexar todos
+          </button>
+        </div>
+      </div>
+      <div class="text-[11px] text-fg-muted">
+        <span x-text="stats.total_files.toLocaleString()"></span> archivos indexados
+        en <span x-text="stats.sources_indexed"></span> drives
+        <template x-if="indexingIds.length > 0">
+          · <span class="text-indigo-300 animate-pulse">indexando <span x-text="indexingIds.length"></span>…</span>
+        </template>
+      </div>
+      <div class="text-[10px] text-fg-faint">
+        <template x-if="!hasApiKey">
+          <span>
+            ⚠ Sin Google API key: solo se indexa el primer nivel de cada drive.
+            Configura tu API key arriba en <em>Google API key (Drive)</em> para indexado completo con subcarpetas.
+          </span>
+        </template>
+        <template x-if="hasApiKey">
+          <span class="text-green-400">✓ API key configurada — indexado recursivo completo disponible.</span>
+        </template>
+      </div>
+    </div>
+
+    {# Form añadir #}
+    <div x-show="showAdd" x-transition
+         class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 space-y-2">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <input type="text" x-model="draft.name" placeholder="Nombre (ej. Cardstock Con)"
+               class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                      focus:outline-none focus:border-accent">
+        <input type="text" x-model="draft.tags" placeholder="Tags separadas por coma"
+               class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                      focus:outline-none focus:border-accent">
+      </div>
+      <input type="url" x-model="draft.url"
+             placeholder="https://drive.google.com/drive/folders/…"
+             class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                    focus:outline-none focus:border-accent">
+      <textarea x-model="draft.description" rows="2"
+                placeholder="Descripción (opcional)"
+                class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                       focus:outline-none focus:border-accent"></textarea>
+      <div class="flex items-center justify-between">
+        <label class="flex items-center gap-2 text-xs text-fg-muted">
+          <input type="checkbox" x-model="draft.pinned"
+                 class="rounded border-border-strong bg-bg-subtle text-accent">
+          Fijar (aparecerá destacado)
+        </label>
+        <button @click="add()" :disabled="!draft.name || !draft.url || saving"
+                class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-1.5 rounded-md
+                       disabled:opacity-50 transition">
+          <span x-show="!saving">Añadir</span>
+          <span x-show="saving">Guardando…</span>
+        </button>
+      </div>
+    </div>
+
+    {# Lista #}
+    <template x-if="sources.length === 0 && !loading">
+      <div class="text-sm text-fg-faint text-center py-4">Sin sources. Añade uno arriba.</div>
+    </template>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-96 overflow-y-auto pr-1">
+      <template x-for="s in sources" :key="s.id">
+        <div class="bg-bg-subtle/50 border rounded-lg p-3 text-xs space-y-2 transition"
+             :class="s.pinned ? 'border-accent/40' : 'border-border-subtle'">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <template x-if="s.pinned">
+                  <svg class="w-3 h-3 text-accent shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </template>
+                <div class="font-medium text-fg truncate" x-text="s.name"></div>
+              </div>
+              <template x-if="s.description">
+                <div class="text-fg-faint mt-1 line-clamp-2" x-text="s.description"></div>
+              </template>
+              <template x-if="s.tags && s.tags.length">
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  <template x-for="t in s.tags" :key="t">
+                    <span class="text-[10px] bg-bg-subtle border border-border-subtle rounded px-1 py-0.5 text-fg-faint" x-text="t"></span>
+                  </template>
+                </div>
+              </template>
+              {# Estado del índice #}
+              <template x-if="s.indexed_files > 0">
+                <div class="text-[10px] text-indigo-300 mt-1.5 font-mono">
+                  ✓ Indexado: <span x-text="s.indexed_files.toLocaleString()"></span> archivos
+                </div>
+              </template>
+              <template x-if="s.index_error">
+                <div class="text-[10px] text-red-400 mt-1.5" x-text="'✗ ' + s.index_error"></div>
+              </template>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <a :href="s.url" target="_blank" rel="noopener"
+                 class="p-1.5 rounded bg-bg-subtle hover:bg-border-subtle text-fg-muted hover:text-accent transition"
+                 title="Abrir en el navegador">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              </a>
+              <button @click="indexOne(s)"
+                      :disabled="indexingIds.includes(s.id)"
+                      class="p-1.5 rounded bg-bg-subtle hover:bg-indigo-500/20 text-fg-muted hover:text-indigo-300 transition disabled:opacity-50"
+                      :title="s.indexed_files > 0 ? 'Re-indexar' : 'Indexar para búsqueda fuzzy'">
+                <svg class="w-3.5 h-3.5" :class="indexingIds.includes(s.id) ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              </button>
+              <button @click="togglePin(s)"
+                      class="p-1.5 rounded bg-bg-subtle hover:bg-border-subtle text-fg-muted hover:text-accent transition"
+                      :title="s.pinned ? 'Desfijar' : 'Fijar'">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </button>
+              <button @click="remove(s)"
+                      class="p-1.5 rounded bg-bg-subtle hover:bg-red-500/20 text-fg-muted hover:text-red-400 transition"
+                      title="Eliminar">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="text-[10px] font-mono text-fg-faint truncate" x-text="s.url"></div>
+        </div>
+      </template>
+    </div>
+
+    <div class="text-[11px] text-fg-faint mt-1 space-y-1 pt-2 border-t border-border-subtle">
+      <div>Cómo usar arte descargado de estos drives:</div>
+      <div class="pl-3">
+        <strong class="text-fg-muted">1)</strong> Descarga la imagen (Google Drive → "Descargar")<br>
+        <strong class="text-fg-muted">2a)</strong> Cópiala a
+        <span class="font-mono text-accent">%APPDATA%\MPC-Forge\custom_art\</span>
+        con el nombre exacto de la carta (ej: <span class="font-mono">Sol Ring.png</span>)<br>
+        <strong class="text-fg-muted">2b)</strong> O en el editor: selecciona la carta →
+        <span class="text-fuchsia-300">+ Añadir por URL</span> con la URL directa.
+      </div>
+    </div>
+  </div>
+
+  {# ============ RESTORE DEFAULTS ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3">
+    <h2 class="font-medium">Restablecer</h2>
+    <p class="text-sm text-fg-muted">
+      Devuelve todos los ajustes a los valores por defecto del código.
+    </p>
+    <button @click="resetAll()"
+            class="text-sm bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
+                   px-3 py-1.5 rounded-md transition">
+      Restablecer valores por defecto
+    </button>
+  </div>
+
+  {# ============ ARTE CUSTOM ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3">
+    <h2 class="font-medium">Arte custom</h2>
+    <p class="text-sm text-fg-muted">
+      Puedes usar tus propios artes (o los que hayas descargado de la comunidad) mezclados
+      con los oficiales de Scryfall. Dos formas de añadirlos:
+    </p>
+    <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
+      <li>
+        <strong class="text-fg">Desde la propia app</strong>: en el editor de mazo, selecciona una carta
+        y pulsa <span class="text-fuchsia-300">+ Añadir por URL</span>.
+      </li>
+      <li>
+        <strong class="text-fg">Dropeando archivos</strong> en
+        <span class="font-mono text-accent">%APPDATA%\MPC-Forge\custom_art\</span>.
+        El nombre debe coincidir con el de la carta.
+      </li>
+    </ol>
+    <div class="text-xs text-fg-muted space-y-1 pt-2 border-t border-border-subtle">
+      <div class="font-medium text-fg mb-1">Convenciones de nombre:</div>
+      <div><span class="font-mono text-accent">Sol Ring.png</span></div>
+      <div><span class="font-mono text-accent">Sol Ring - Anime.png</span></div>
+      <div><span class="font-mono text-accent">Sol Ring (Retro Frame).png</span></div>
+      <div><span class="font-mono text-accent">Delver of Secrets [BACK].png</span></div>
+    </div>
+  </div>
+
+  {# ============ LOG DE DEPURACIÓN ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3"
+       x-data="debugLogPanel()" x-init="load()">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-1.5 h-1.5 rounded-full" :class="info.exists ? 'bg-yellow-400' : 'bg-fg-faint'"></span>
+        <h2 class="font-medium">Log de depuración</h2>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="load()"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
+                       text-fg-muted hover:text-fg px-3 py-1 rounded transition">
+          Recargar
+        </button>
+        <button @click="viewTail()" :disabled="!info.exists"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
+                       text-fg-muted hover:text-fg px-3 py-1 rounded transition disabled:opacity-40">
+          Ver últimas líneas
+        </button>
+        <a :href="info.exists ? '/api/debug/log/download' : '#'"
+           :class="info.exists ? '' : 'opacity-40 pointer-events-none'"
+           class="text-xs bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/40
+                  text-yellow-200 px-3 py-1 rounded transition">
+          ↓ Descargar log
+        </a>
+      </div>
+    </div>
+    <p class="text-sm text-fg-muted">
+      Todo lo que hace la app se registra en un archivo temporal mientras está corriendo.
+      El log se <strong>borra automáticamente</strong> al cerrar la app en condiciones normales.
+      Si algo va mal, descárgalo antes de cerrar para compartirlo.
+    </p>
+    <template x-if="info.exists">
+      <div class="text-xs text-fg-faint font-mono bg-bg-subtle rounded p-2 break-all space-y-1">
+        <div><span class="text-fg-muted">Ruta:</span> <span x-text="info.path"></span></div>
+        <div><span class="text-fg-muted">Tamaño:</span> <span x-text="(info.size_bytes / 1024).toFixed(1) + ' KB'"></span></div>
+      </div>
+    </template>
+    <template x-if="!info.exists">
+      <div class="text-xs text-fg-faint">Sin log activo (aún no se ha escrito nada esta sesión).</div>
+    </template>
+
+    {# Modal con las últimas líneas #}
+    <template x-if="showTail">
+      <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+           @click="showTail = false" @keydown.escape.window="showTail = false">
+        <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-card w-full max-w-4xl max-h-[85vh] flex flex-col"
+             @click.stop>
+          <div class="flex items-center justify-between p-4 border-b border-border-subtle">
+            <h3 class="font-medium">Últimas líneas del log</h3>
+            <div class="flex items-center gap-2">
+              <button @click="copyTail()"
+                      class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
+                             text-fg-muted hover:text-fg px-3 py-1 rounded transition">
+                <span x-show="!copied">Copiar</span>
+                <span x-show="copied" class="text-green-400">Copiado ✓</span>
+              </button>
+              <button @click="showTail = false" class="text-fg-muted hover:text-fg p-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <pre class="flex-1 overflow-auto p-4 text-[11px] font-mono text-fg-muted whitespace-pre-wrap break-all"
+               x-text="tailText"></pre>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  {# ============ BACKUP ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+    <h2 class="font-medium">Backup</h2>
+    <p class="text-sm text-fg-muted">
+      Zip con la BD, artes descargados y cardbacks.
+    </p>
+    <button @click="createBackup()"
+            :disabled="backingUp"
+            class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md disabled:opacity-50 transition">
+      <span x-show="!backingUp">Crear backup</span>
+      <span x-show="backingUp">Comprimiendo…</span>
+    </button>
+    <template x-if="lastBackup">
+      <div class="text-xs text-fg-muted mt-2 bg-bg-subtle rounded p-3 font-mono break-all">
+        <span x-text="lastBackup.path"></span>
+        <span class="text-fg-faint">(<span x-text="(lastBackup.size_bytes / 1e6).toFixed(2)"></span> MB)</span>
+      </div>
+    </template>
+  </div>
+
+  {# ============ CARDBACK ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3">
+    <h2 class="font-medium">Cardback</h2>
+    <p class="text-sm text-fg-muted">
+      Coloca un archivo llamado <span class="font-mono text-accent" x-text="values.default_cardback_name + '.png'"></span>
+      (o <span class="font-mono text-accent" x-text="values.default_cardback_name + '.jpg'"></span>)
+      en la carpeta:
+    </p>
+    <div class="text-xs font-mono bg-bg-subtle rounded p-2 text-fg-muted break-all">
+      %APPDATA%\MPC-Forge\cardbacks\
+    </div>
+  </div>
+
+  {# ============ CÓMO FUNCIONA ============ #}
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3">
+    <h2 class="font-medium">Cómo funciona el pipeline</h2>
+    <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
+      <li>Importas un mazo (Moxfield o texto).</li>
+      <li>Ajustas artes por carta. Doble-click recuerda tu preferencia para futuros mazos.</li>
+      <li>Generas XML o PDF → la app descarga las imágenes a disco y produce el archivo.</li>
+      <li>Abres el XML con el desktop client de <a href="https://github.com/chilli-axe/mpc-autofill" target="_blank" class="text-accent hover:underline">mpc-autofill</a> para subir a MPC, o imprimes el PDF y recortas.</li>
+      <li>Cada generación se guarda en el historial.</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+function settingsPage() {
+  return {
+    loading: true,
+    definitions: [],
+    values: {},
+    saving: false,
+    backingUp: false,
+    lastBackup: null,
+
+    get groupedDefs() {
+      const groups = {};
+      for (const d of this.definitions) {
+        if (!groups[d.group]) groups[d.group] = { name: d.group, defs: [] };
+        groups[d.group].defs.push(d);
+      }
+      return Object.values(groups);
+    },
+
+    async load() {
+      this.loading = true;
+      try {
+        const r = await fetch('/api/settings/');
+        const data = await r.json();
+        this.definitions = data.definitions;
+        this.values = data.values;
+      } catch (e) {
+        window.toast('Error cargando ajustes', e.message);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async update(key, value) {
+      // Actualización optimista
+      this.values[key] = value;
+      try {
+        const r = await fetch('/api/settings/', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({values: {[key]: value}}),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        const data = await r.json();
+        this.values = data.values;
+        window.toast('Guardado', key);
+      } catch (e) {
+        window.toast('Error guardando', e.message);
+        this.load();  // recarga estado auténtico
+      }
+    },
+
+    async resetAll() {
+      if (!confirm('¿Restablecer todos los ajustes a los valores por defecto?')) return;
+      const updates = {};
+      for (const d of this.definitions) updates[d.key] = d.default;
+      try {
+        const r = await fetch('/api/settings/', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({values: updates}),
+        });
+        const data = await r.json();
+        this.values = data.values;
+        window.toast('Restablecido', 'Todos los ajustes vueltos a default');
+      } catch (e) {
+        window.toast('Error', e.message);
+      }
+    },
+
+    async createBackup() {
+      this.backingUp = true;
+      try {
+        const r = await fetch('/api/backup', {method: 'POST'});
+        if (!r.ok) throw new Error('Error del servidor');
+        this.lastBackup = await r.json();
+        window.toast('Backup creado', this.lastBackup.path);
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.backingUp = false;
+      }
+    }
+  }
+}
+function autofillStatus() {
+  return {
+    status: {available: false, exe_path: null, source: 'not_found', hint: null},
+    async load() {
+      try {
+        const r = await fetch('/api/mpc-autofill/status');
+        if (r.ok) this.status = await r.json();
+      } catch (e) { /* silent */ }
+    }
+  };
+}
+
+function artSourcesPanel() {
+  return {
+    sources: [],
+    loading: true,
+    showAdd: false,
+    saving: false,
+    restoring: false,
+    catalogSize: 67,
+    stats: {total_files: 0, sources_indexed: 0},
+    indexingIds: [],  // ids de drives que se están indexando ahora mismo
+    hasApiKey: false,
+    _pollTimer: null,
+    draft: {name: '', url: '', description: '', tags: '', pinned: false},
+
+    async load() {
+      this.loading = true;
+      try {
+        const [r, info, statsR, settingsR] = await Promise.all([
+          fetch('/api/art-sources/'),
+          fetch('/api/art-sources/catalog-info'),
+          fetch('/api/drives/stats'),
+          fetch('/api/settings/'),
+        ]);
+        if (r.ok) this.sources = await r.json();
+        if (info.ok) {
+          const d = await info.json();
+          this.catalogSize = d.total_curated;
+        }
+        if (statsR.ok) this.stats = await statsR.json();
+        if (settingsR.ok) {
+          const s = await settingsR.json();
+          this.hasApiKey = !!(s.values.google_api_key || '').trim();
+        }
+      } catch (e) { /* silent */ }
+      finally { this.loading = false; }
+    },
+
+    async indexOne(s) {
+      if (this.indexingIds.includes(s.id)) return;
+      this.indexingIds.push(s.id);
+      try {
+        // wait=true en drives sin API key (rápido); async en drives con API key
+        const wait = !this.hasApiKey;
+        const r = await fetch(`/api/art-sources/${s.id}/index?wait=${wait}`, {method: 'POST'});
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (wait) {
+          const data = await r.json();
+          if (data.error) {
+            window.toast('Indexado con problemas', data.error.substring(0, 100));
+          } else {
+            window.toast(`Indexado ${s.name}`,
+              `+${data.files_added} / ~${data.files_updated} en ${data.folders_visited} carpetas`);
+          }
+        } else {
+          window.toast('Indexando en background', s.name);
+          // Empezamos a hacer polling para actualizar el estado
+          this._startPolling();
+        }
+      } catch (e) {
+        window.toast('Error indexando', e.message);
+      } finally {
+        // Si fue sync, quitamos ya. Si fue async, dejamos que el polling lo saque
+        // cuando detecte que ha terminado.
+        if (!this.hasApiKey) {
+          this.indexingIds = this.indexingIds.filter(id => id !== s.id);
+          await this.load();
+        }
+      }
+    },
+
+    _startPolling() {
+      if (this._pollTimer) return;
+      // Snapshot inicial: para cada drive en indexingIds, guardamos su
+      // indexed_at ACTUAL. Consideraremos "terminado" cuando indexed_at cambie
+      // (éxito) o index_error se llene (fallo). Además timeout de safety.
+      const initialSnapshot = {};
+      for (const id of this.indexingIds) {
+        const s = this.sources.find(x => x.id === id);
+        initialSnapshot[id] = s ? {indexed_at: s.indexed_at, error: s.index_error} : null;
+      }
+      this._pollStartedAt = Date.now();
+      this._pollSnapshot = initialSnapshot;
+
+      this._pollTimer = setInterval(async () => {
+        await this.load();
+        const done = [];
+        for (const id of this.indexingIds) {
+          const before = this._pollSnapshot[id];
+          const after = this.sources.find(s => s.id === id);
+          if (!after) { done.push(id); continue; }
+          // Terminó si indexed_at cambió respecto al inicio, o si hay nuevo error.
+          const timeChanged = before && after.indexed_at && after.indexed_at !== before.indexed_at;
+          const errorAppeared = after.index_error && (!before || after.index_error !== before.error);
+          if (timeChanged || errorAppeared) done.push(id);
+        }
+        this.indexingIds = this.indexingIds.filter(id => !done.includes(id));
+
+        // Timeout de safety: si tras 15 min seguimos con drives "indexando",
+        // asumimos que se colgaron y paramos el poll.
+        const elapsed = (Date.now() - this._pollStartedAt) / 1000;
+        if (this.indexingIds.length === 0 || elapsed > 900) {
+          if (this.indexingIds.length > 0) {
+            window.toast(
+              'Polling timeout',
+              `${this.indexingIds.length} indexados no completaron en 15 min. Comprueba logs.`
+            );
+          }
+          this.indexingIds = [];
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+        }
+      }, 3000);
+    },
+
+    async indexPinned() {
+      const pinned = this.sources.filter(s => s.pinned);
+      if (pinned.length === 0) {
+        window.toast('Sin drives pinned', 'Marca algunos con ★ primero.');
+        return;
+      }
+      if (!confirm(`Indexar ${pinned.length} drives pinned? Puede tardar varios minutos con muchos drives.`)) return;
+      for (const s of pinned) {
+        this.indexingIds.push(s.id);
+        fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
+      }
+      window.toast('Indexando pinned', `${pinned.length} drives en background`);
+      this._startPolling();
+    },
+
+    async indexAll() {
+      if (!confirm(`Indexar los ${this.sources.length} drives? Puede tardar 10-30 minutos y consumir cuota de tu API key.`)) return;
+      for (const s of this.sources) {
+        this.indexingIds.push(s.id);
+        fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
+      }
+      window.toast('Indexando todos', `${this.sources.length} drives en background`);
+      this._startPolling();
+    },
+
+    async restore() {
+      this.restoring = true;
+      try {
+        const r = await fetch('/api/art-sources/restore-catalog', {method: 'POST'});
+        if (!r.ok) throw new Error('Error');
+        const d = await r.json();
+        if (d.added === 0) {
+          window.toast('Nada que restaurar', `Ya tienes los ${d.total_curated} drives del catálogo.`);
+        } else {
+          window.toast(`Restaurados ${d.added} drives`, `${d.skipped} ya existían, catálogo: ${d.total_curated}`);
+        }
+        await this.load();
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.restoring = false;
+      }
+    },
+
+    async add() {
+      if (!this.draft.name || !this.draft.url) return;
+      this.saving = true;
+      try {
+        const r = await fetch('/api/art-sources/', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(this.draft),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        window.toast('Source añadido', this.draft.name);
+        this.draft = {name: '', url: '', description: '', tags: '', pinned: false};
+        this.showAdd = false;
+        await this.load();
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async togglePin(s) {
+      try {
+        const r = await fetch(`/api/art-sources/${s.id}`, {
+          method: 'PATCH', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({pinned: !s.pinned}),
+        });
+        if (!r.ok) throw new Error('Error');
+        await this.load();
+      } catch (e) { window.toast('Error', e.message); }
+    },
+
+    async remove(s) {
+      if (!confirm(`¿Eliminar "${s.name}"?`)) return;
+      try {
+        const r = await fetch(`/api/art-sources/${s.id}`, {method: 'DELETE'});
+        if (!r.ok) throw new Error('Error');
+        window.toast('Eliminado', s.name);
+        await this.load();
+      } catch (e) { window.toast('Error', e.message); }
+    }
+  };
+}
+function debugLogPanel() {
+  return {
+    info: {exists: false, path: null, size_bytes: 0},
+    showTail: false,
+    tailText: '',
+    copied: false,
+    async load() {
+      try {
+        const r = await fetch('/api/debug/log/info');
+        if (r.ok) this.info = await r.json();
+      } catch (e) { /* silent */ }
+    },
+    async viewTail() {
+      try {
+        const r = await fetch('/api/debug/log/tail?n=500');
+        this.tailText = await r.text();
+        this.showTail = true;
+      } catch (e) {
+        window.toast('Error', e.message);
+      }
+    },
+    async copyTail() {
+      try {
+        await navigator.clipboard.writeText(this.tailText);
+        this.copied = true;
+        setTimeout(() => this.copied = false, 2000);
+      } catch (e) {
+        window.toast('No se pudo copiar', 'Selecciona el texto manualmente.');
+      }
+    }
+  };
+}
+</script>
+{% endblock %}

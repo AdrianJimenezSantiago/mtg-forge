@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Historial · MPC Forge{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto p-8 space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Historial de impresiones</h1>
+    <p class="text-sm text-fg-muted mt-1">Cada vez que generas un XML se registra una tirada.</p>
+  </div>
+
+  {% if not runs %}
+    <div class="text-center py-16 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
+      No has generado ningún XML todavía.
+    </div>
+  {% else %}
+    <div class="bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-bg-subtle text-fg-muted text-xs uppercase tracking-wider">
+          <tr>
+            <th class="text-left px-4 py-3 font-medium">Nombre</th>
+            <th class="text-left px-4 py-3 font-medium">Fecha</th>
+            <th class="text-right px-4 py-3 font-medium">Cartas</th>
+            <th class="text-right px-4 py-3 font-medium">Tier</th>
+            <th class="text-right px-4 py-3 font-medium">Coste</th>
+            <th class="text-left px-4 py-3 font-medium">Stock</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr class="border-t border-border-subtle hover:bg-bg-subtle transition">
+              <td class="px-4 py-3">
+                <div class="font-medium">{{ run.name }}</div>
+                {% if run.xml_path %}
+                  <div class="text-[11px] text-fg-faint font-mono truncate max-w-md">{{ run.xml_path }}</div>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-fg-muted text-xs">{{ run.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td class="px-4 py-3 text-right font-mono">{{ run.total_cards }}</td>
+              <td class="px-4 py-3 text-right font-mono text-fg-muted">{{ run.tier_size }}</td>
+              <td class="px-4 py-3 text-right font-mono">{{ "%.2f"|format(run.estimated_cost_eur) }} €</td>
+              <td class="px-4 py-3 text-xs text-fg-muted">{{ run.cardstock }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
