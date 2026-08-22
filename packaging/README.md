@@ -4,7 +4,23 @@ Contenido de esta carpeta:
 
 - **`launcher.py`** — entry point del ejecutable. Arranca uvicorn y abre el navegador.
 - **`mpc-forge.spec`** — spec de PyInstaller (modo `--onedir`).
-- **`build.ps1`** — script PowerShell para compilar localmente en Windows.
+- **`build.ps1`** / **`build.bat`** — scripts para compilar localmente en Windows.
+- **`make_icon.py`** — genera `icon.ico` (multi-resolución para el `.exe`) y los assets del favicon web.
+- **`icon.ico`** — icono del ejecutable Windows (16/32/48/64/128/256 px).
+- **`icon-previews/`** — PNGs por resolución para inspeccionar el diseño (no se distribuye).
+
+## Regenerar el icono
+
+Si cambias el diseño en `make_icon.py`:
+
+```bash
+python packaging/make_icon.py
+```
+
+Genera:
+- `packaging/icon.ico` — para el `.exe` (referenciado en `mpc-forge.spec`).
+- `static/logo.png` — usado en la sidebar de la app (512×512).
+- `static/favicon.png` — favicon del navegador (32×32).
 
 ## Build local
 

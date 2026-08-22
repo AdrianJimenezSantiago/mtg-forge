@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}MPC Forge{% endblock %}</title>
 
+  {# Favicon (mismo diseño que el .exe) #}
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+
   {# Tailwind CDN #}
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -137,11 +140,8 @@
     <aside class="w-56 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
       <div class="p-5 border-b border-border-subtle">
         <a href="/" class="flex items-center gap-2.5 group">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-accent via-accent-glow to-accent-soft
-                      flex items-center justify-center text-bg-base font-display font-bold text-lg
-                      shadow-glow group-hover:scale-105 transition">
-            F
-          </div>
+          <img src="/static/logo.png" alt="MPC Forge"
+               class="w-9 h-9 rounded-lg shadow-glow group-hover:scale-105 transition">
           <div class="flex flex-col leading-tight">
             <span class="font-display font-semibold tracking-wide text-accent-glow">MPC Forge</span>
             <span class="text-[10px] text-fg-faint uppercase tracking-widest">Proxy pipeline</span>

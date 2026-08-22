@@ -29,6 +29,7 @@ env/
 # La spec la commiteamos, pero los outputs no
 /packaging/dist/
 /packaging/build/
+/packaging/icon-previews/
 *.spec.log
 
 # -------- Testing / linting / type checking --------

@@ -75,7 +75,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,           # sin icono personalizado (usa el default)
+    icon=str(PROJECT_ROOT / "packaging" / "icon.ico"),   # icono del .exe (multi-resolución)
 )
 
 coll = COLLECT(
