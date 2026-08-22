@@ -1,9 +1,11 @@
 """Endpoints REST para gestión de mazos."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,9 +26,10 @@ from mpc_forge.schemas import (
     UpdateCardRequest,
     UpdateDeckRequest,
 )
-from mpc_forge.services import custom_art, deck_service, deck_validation, history
+from mpc_forge.services import custom_art, deck_service, deck_validation, history, preloader
 
 router = APIRouter(prefix="/api/decks", tags=["decks"])
+log = logging.getLogger(__name__)
 
 DbDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -197,6 +200,214 @@ async def delete_card(deck_id: int, card_id: int, db: DbDep) -> None:
     await db.commit()
 
 
+# ================================================================
+# ANÁLISIS DE TOKENS DEL MAZO
+# ================================================================
+
+@router.get("/{deck_id}/tokens-analysis")
+async def tokens_analysis(
+    deck_id: int,
+    db: DbDep,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> dict:
+    """Devuelve todos los tokens únicos que las cartas del mazo generan.
+
+    Consolida los `related_parts` (filtrando SOLO `component=='token'`) de
+    las cartas activas del mazo (con include=True), dedupe por scryfall_id,
+    y para cada token indica:
+      - metadata (nombre, tipo, colores, imagen)
+      - qué carta(s) del mazo lo genera
+      - si ya está en el mazo (con role='tokens')
+
+    Los meld parts/results NO se incluyen aquí: van por el botón individual
+    de cada carta porque son específicos y no consolidables.
+    """
+    import json as _json
+
+    # Cartas activas del mazo (excluyendo tokens/meld_result — los generadores
+    # son commander/mainboard/sideboard, no queremos que los tokens generen tokens
+    # de sí mismos si por accidente tuvieran related_parts).
+    generator_roles = {"commander", "mainboard", "sideboard"}
+    cards = (
+        await db.scalars(
+            select(DeckCard).where(
+                DeckCard.deck_id == deck_id,
+                DeckCard.include.is_(True),
+                DeckCard.role.in_(generator_roles),
+            )
+        )
+    ).all()
+
+    if not cards:
+        return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
+
+    # BATCH: printings de todos los generadores (para leer related_parts)
+    scryfall_ids = {c.scryfall_id for c in cards}
+    printings = (
+        await db.scalars(
+            select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
+        )
+    ).all()
+    printings_by_id = {p.scryfall_id: p for p in printings}
+
+    # Recolectar tokens únicos y quién los genera
+    # tokens_map[scryfall_id_del_token] = {
+    #   "name": str, "generated_by": [{deck_card_id, name, quantity}, ...]
+    # }
+    tokens_map: dict[str, dict] = {}
+    for dc in cards:
+        printing = printings_by_id.get(dc.scryfall_id)
+        if not printing or not printing.related_parts:
+            continue
+        try:
+            related = _json.loads(printing.related_parts)
+        except (ValueError, TypeError):
+            continue
+        for part in related:
+            if part.get("component") != "token":
+                continue
+            token_sfid = part.get("id")
+            if not token_sfid:
+                continue
+            entry = tokens_map.setdefault(token_sfid, {
+                "name": part.get("name") or "Token",
+                "generated_by": [],
+            })
+            entry["generated_by"].append({
+                "deck_card_id": dc.id,
+                "name": dc.name,
+                "quantity": dc.quantity,
+            })
+
+    if not tokens_map:
+        return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
+
+    # BATCH: metadata de todos los tokens desde cache local (imagen, tipo, etc.)
+    token_sfids = list(tokens_map.keys())
+    token_printings = (
+        await db.scalars(
+            select(PrintingCache).where(PrintingCache.scryfall_id.in_(token_sfids))
+        )
+    ).all()
+    token_meta_by_id = {p.scryfall_id: p for p in token_printings}
+
+    # BATCH: qué tokens ya están en el mazo (por scryfall_id)
+    already_in_deck_rows = (
+        await db.execute(
+            select(DeckCard.id, DeckCard.scryfall_id, DeckCard.quantity)
+            .where(
+                DeckCard.deck_id == deck_id,
+                DeckCard.scryfall_id.in_(token_sfids),
+            )
+        )
+    ).all()
+    in_deck_by_sfid = {sfid: (dc_id, qty) for dc_id, sfid, qty in already_in_deck_rows}
+
+    # Para tokens sin metadata cacheada, la pedimos a Scryfall (uno por uno con
+    # el rate limit de ScryfallClient). Suele ser rápido porque son pocos por mazo.
+    missing_meta = [s for s in token_sfids if s not in token_meta_by_id]
+    for sfid in missing_meta:
+        try:
+            raw = await scryfall.by_id(sfid)
+            if raw:
+                cached = await deck_service.upsert_printing(db, raw)
+                token_meta_by_id[sfid] = cached
+        except Exception as e:  # noqa: BLE001
+            log.warning("No se pudo cachear metadata de token %s: %s", sfid, e)
+    if missing_meta:
+        await db.commit()
+
+    # Ensamblar respuesta
+    tokens_out = []
+    already_count = 0
+    for sfid, info in tokens_map.items():
+        meta = token_meta_by_id.get(sfid)
+        deck_card_id, qty_in_deck = in_deck_by_sfid.get(sfid, (None, 0))
+        in_deck = deck_card_id is not None
+        if in_deck:
+            already_count += 1
+        tokens_out.append({
+            "scryfall_id": sfid,
+            "name": (meta.name if meta else info["name"]) or "Token",
+            "type_line": meta.type_line if meta else "",
+            "colors": meta.colors.split(",") if (meta and meta.colors) else [],
+            "image_url": meta.image_normal if meta else None,
+            "set_code": meta.set_code if meta else "",
+            "in_deck": in_deck,
+            "deck_card_id": deck_card_id,
+            "quantity_in_deck": qty_in_deck,
+            "generated_by": info["generated_by"],
+        })
+
+    # Orden estable: primero los que faltan, luego los que están, alfabético por nombre
+    tokens_out.sort(key=lambda t: (t["in_deck"], t["name"].lower()))
+
+    return {
+        "tokens": tokens_out,
+        "total_unique": len(tokens_out),
+        "already_in_deck": already_count,
+        "missing": len(tokens_out) - already_count,
+    }
+
+
+class TokensAddManyRequest(BaseModel):
+    scryfall_ids: list[str]
+
+
+@router.post("/{deck_id}/tokens-add-many", response_model=list[DeckCardView])
+async def tokens_add_many(
+    deck_id: int,
+    payload: TokensAddManyRequest,
+    db: DbDep,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> list[DeckCardView]:
+    """Añade varios tokens al mazo de una vez con role='tokens'.
+
+    - Idempotente: si un token ya está, lo salta (no incrementa quantity).
+    - Los tokens NO cuentan para el mazo de 100 (role='tokens' está excluido
+      de _COUNTING_ROLES_BY_FORMAT) pero SÍ van al PDF/XML (include=True).
+    """
+    if not payload.scryfall_ids:
+        return []
+
+    # ¿Qué scryfall_ids ya están?
+    existing_ids = {
+        r for r in (
+            await db.scalars(
+                select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id)
+            )
+        ).all()
+    }
+
+    added: list[DeckCard] = []
+    for sfid in payload.scryfall_ids:
+        if sfid in existing_ids:
+            continue
+        cached = await db.get(PrintingCache, sfid)
+        if not cached:
+            raw = await scryfall.by_id(sfid)
+            if not raw:
+                continue
+            cached = await deck_service.upsert_printing(db, raw)
+        new_dc = DeckCard(
+            deck_id=deck_id,
+            oracle_id=cached.oracle_id or "",
+            name=cached.name or "Token",
+            quantity=1,
+            scryfall_id=sfid,
+            role="tokens",  # excluido del count del mazo, incluido en PDF/XML
+            include=True,
+        )
+        db.add(new_dc)
+        added.append(new_dc)
+        existing_ids.add(sfid)
+
+    await db.commit()
+    for dc in added:
+        await db.refresh(dc)
+    return [await _deckcard_to_view(db, dc) for dc in added]
+
+
 @router.post("/{deck_id}/cards/{card_id}/add-related", response_model=list[DeckCardView])
 async def add_related_cards(
     deck_id: int,
@@ -350,6 +561,45 @@ async def list_printings_for_card(
             is_last_used=(last_used is not None and last_used == p.scryfall_id),
         ))
     return options
+
+
+# ================================================================
+# PRECARGA DE PRINTS EN BACKGROUND
+# ================================================================
+# Cuando el usuario abre un mazo, disparamos precarga de todas las
+# impresiones alternativas (fetch_printings_for_oracle) en background.
+# Así cuando abre el modal de arte para cualquier carta, ya está cacheado
+# y la respuesta es instantánea desde BD (sin llamar a Scryfall).
+
+@router.post("/{deck_id}/preload-prints")
+async def preload_prints(
+    deck_id: int,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> dict:
+    """Arranca precarga en background. Devuelve el estado inicial (total, done=0).
+
+    Si ya hay una precarga en curso para este mazo, la cancela y arranca una nueva.
+    Los oracle_ids ya cacheados (>=2 prints en BD) se procesan en <10ms cada uno;
+    solo los no cacheados llaman a Scryfall API.
+    """
+    state = await preloader.start(deck_id, scryfall)
+    return state.to_dict()
+
+
+@router.get("/{deck_id}/preload-progress")
+async def preload_progress(deck_id: int) -> dict:
+    """Estado de la precarga (para polling desde el frontend)."""
+    state = preloader.get_state(deck_id)
+    if state is None:
+        return {"deck_id": deck_id, "total": 0, "done": 0, "in_progress": False}
+    return state.to_dict()
+
+
+@router.post("/{deck_id}/preload-cancel")
+async def preload_cancel(deck_id: int) -> dict:
+    """Cancela la precarga en curso (ej. cuando el user cambia de mazo)."""
+    await preloader.cancel(deck_id)
+    return {"deck_id": deck_id, "cancelled": True}
 
 
 @router.post("/{deck_id}/cards/change-art", response_model=DeckCardView)

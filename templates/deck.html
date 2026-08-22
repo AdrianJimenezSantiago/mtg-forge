@@ -112,12 +112,36 @@
       <input type="checkbox" x-model="foil" class="accent-accent"> Foil
     </label>
 
+    {# Indicador de precarga (solo visible mientras precarga en background) #}
+    <template x-if="preload.inProgress && preload.total > 0">
+      <div class="flex items-center gap-2 text-xs text-fg-muted bg-bg-subtle/50 border border-border-subtle
+                  rounded-md px-3 py-1.5"
+           :title="`Precargando artes alternativos en background — abrir el modal después será instantáneo`">
+        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-accent"></i>
+        <span>Precargando</span>
+        <span class="font-mono text-accent" x-text="`${preload.done}/${preload.total}`"></span>
+        {# Mini barra de progreso #}
+        <div class="w-16 h-1 bg-bg-inset rounded-full overflow-hidden">
+          <div class="h-full bg-accent transition-all duration-500"
+               :style="`width: ${Math.round(100 * preload.done / Math.max(preload.total, 1))}%`"></div>
+        </div>
+      </div>
+    </template>
+
     <button @click="openStats()"
             class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium
                    px-3 py-2 rounded-md transition flex items-center gap-1.5"
             title="Ver estadísticas del mazo (curva, colores, tipos)">
       <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
       Estadísticas
+    </button>
+
+    <button @click="openTokens()"
+            class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium
+                   px-3 py-2 rounded-md transition flex items-center gap-1.5"
+            title="Tokens que las cartas del mazo generan (no cuentan al mazo de 100, sí al PDF)">
+      <i data-lucide="sparkles" class="w-4 h-4"></i>
+      Tokens
     </button>
 
     <button @click="buildXml()" :disabled="building"
@@ -753,6 +777,163 @@
     </div>
   </template>
 
+  {# ============ MODAL DE TOKENS DEL MAZO ============ #}
+  <template x-if="tokensOpen">
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @click="closeTokens()"
+         @keydown.escape.window="closeTokens()">
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-5xl
+                  max-h-[92vh] flex flex-col overflow-hidden"
+           @click.stop>
+
+        {# Header #}
+        <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <i data-lucide="sparkles" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="font-display text-lg text-accent-glow truncate" x-text="deck ? deck.name : ''"></div>
+              <div class="text-xs text-fg-muted mt-0.5">
+                <template x-if="tokensLoading">
+                  <span class="flex items-center gap-1.5">
+                    <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                    Analizando cartas…
+                  </span>
+                </template>
+                <template x-if="!tokensLoading">
+                  <span>
+                    Tokens que este mazo genera ·
+                    <span class="text-accent" x-text="tokensData.total_unique"></span> únicos
+                    (<span class="text-success" x-text="tokensData.already_in_deck"></span> ya en mazo,
+                    <span :class="tokensData.missing > 0 ? 'text-warning' : 'text-fg-muted'"
+                          x-text="tokensData.missing"></span> faltan)
+                  </span>
+                </template>
+              </div>
+            </div>
+          </div>
+          <button @click="closeTokens()"
+                  class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
+                  title="Cerrar (Esc)">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        {# Body: grid de tokens #}
+        <div class="flex-1 overflow-y-auto p-5">
+          {# Empty state #}
+          <template x-if="!tokensLoading && tokensData.tokens.length === 0">
+            <div class="text-center py-16">
+              <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
+                <i data-lucide="ghost" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm text-fg-muted">Ninguna carta de este mazo genera tokens.</p>
+              <p class="text-xs text-fg-faint mt-1">
+                Los datos vienen de <code>related_parts</code> de Scryfall.
+              </p>
+            </div>
+          </template>
+
+          {# Grid con tokens #}
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <template x-for="token in tokensData.tokens" :key="token.scryfall_id">
+              <div class="bg-bg-subtle/40 border rounded-lg overflow-hidden transition"
+                   :class="token.in_deck
+                           ? 'border-success/40'
+                           : 'border-warning/40 hover:border-warning/70'">
+                <div class="flex gap-3 p-3">
+                  {# Thumbnail #}
+                  <div class="w-16 h-[92px] rounded overflow-hidden bg-bg-inset shrink-0
+                              border border-border-subtle relative">
+                    <template x-if="token.image_url">
+                      <img :src="token.image_url" :data-preview="token.image_url"
+                           :alt="token.name" loading="lazy"
+                           class="w-full h-full object-cover object-top">
+                    </template>
+                    <template x-if="!token.image_url">
+                      <div class="w-full h-full flex items-center justify-center text-fg-faint">
+                        <i data-lucide="image-off" class="w-4 h-4"></i>
+                      </div>
+                    </template>
+                  </div>
+                  {# Info + acciones #}
+                  <div class="flex-1 min-w-0 flex flex-col">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <div class="text-sm font-medium truncate" x-text="token.name"></div>
+                        <div class="text-[11px] text-fg-muted truncate" x-text="token.type_line || 'Token'"></div>
+                      </div>
+                      {# Badge estado #}
+                      <template x-if="token.in_deck">
+                        <span class="shrink-0 text-[9px] font-bold bg-success/15 text-success rounded px-1.5 py-0.5
+                                     flex items-center gap-1">
+                          <i data-lucide="check" class="w-2.5 h-2.5"></i>
+                          EN MAZO
+                        </span>
+                      </template>
+                      <template x-if="!token.in_deck">
+                        <span class="shrink-0 text-[9px] font-bold bg-warning/15 text-warning rounded px-1.5 py-0.5">
+                          FALTA
+                        </span>
+                      </template>
+                    </div>
+                    {# Generadores #}
+                    <div class="mt-1.5 text-[11px] text-fg-faint">
+                      <span>Lo genera</span>
+                      <span x-text="token.generated_by.length"></span>
+                      <span x-text="token.generated_by.length === 1 ? 'carta:' : 'cartas:'"></span>
+                    </div>
+                    <div class="text-[11px] text-fg-muted line-clamp-2 mt-0.5"
+                         :title="token.generated_by.map(g => g.name).join(', ')"
+                         x-text="token.generated_by.map(g => g.name).join(', ')"></div>
+                    {# Botón individual añadir #}
+                    <template x-if="!token.in_deck">
+                      <button @click="addOneToken(token)"
+                              :disabled="tokensAdding"
+                              class="mt-auto self-start text-[11px] bg-accent hover:bg-accent-glow text-bg-base
+                                     font-medium px-2 py-1 rounded transition flex items-center gap-1
+                                     disabled:opacity-50">
+                        <i data-lucide="plus" class="w-3 h-3"></i>
+                        Añadir al mazo
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        {# Footer con acción bulk #}
+        <div class="px-5 py-3 border-t border-border-subtle bg-bg-inset shrink-0
+                    flex items-center justify-between gap-3 flex-wrap">
+          <div class="text-[11px] text-fg-faint">
+            Los tokens se añaden con rol <code class="text-accent-glow">tokens</code> —
+            <strong class="text-fg-muted">no cuentan al mazo</strong> pero
+            <strong class="text-fg-muted">sí se incluyen</strong> en el PDF y XML.
+          </div>
+          <button @click="addAllMissingTokens()"
+                  :disabled="tokensAdding || tokensData.missing === 0"
+                  class="bg-accent hover:bg-accent-glow text-bg-base font-medium text-sm px-4 py-2 rounded-md
+                         transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <template x-if="!tokensAdding">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            </template>
+            <template x-if="tokensAdding">
+              <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            </template>
+            <span x-show="!tokensAdding">
+              Añadir <span x-text="tokensData.missing"></span>
+              <span x-text="tokensData.missing === 1 ? 'token que falta' : 'tokens que faltan'"></span>
+            </span>
+            <span x-show="tokensAdding">Añadiendo…</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
   {# ============ MODAL DE ESTADÍSTICAS ============ #}
   <template x-if="statsOpen">
     <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
@@ -933,6 +1114,24 @@ function deckEditor(deckId) {
       rarities: [],               // ['mythic', 'rare', 'uncommon', 'common', 'special']
       sort: 'recent',             // 'recent' | 'old' | 'set' | 'artist'
     },
+    // Cache in-memory de resultados del picker por card_id → {arts, ts}
+    // Al elegir un arte (chooseArt/chooseCustom) se invalida esa entrada.
+    // Se resetea al cambiar de mazo (la instancia Alpine es por-vista de mazo).
+    _pickerCache: {},
+
+    // -- Precarga de prints en background --
+    preload: {
+      total: 0,
+      done: 0,
+      inProgress: false,
+      pollTimer: null,
+    },
+
+    // -- Modal de tokens del mazo --
+    tokensOpen: false,
+    tokensLoading: false,
+    tokensData: {tokens: [], total_unique: 0, already_in_deck: 0, missing: 0},
+    tokensAdding: false,
 
     // -- Modal de estadísticas --
     statsOpen: false,
@@ -1095,6 +1294,12 @@ function deckEditor(deckId) {
         } catch (e) { /* no crítico */ }
         this._settingsLoaded = true;
       }
+      // Arrancar precarga de prints en background (solo la primera vez que se
+      // llama load; no en reloads posteriores dentro del mismo mazo).
+      if (!this._preloadStarted) {
+        this._preloadStarted = true;
+        this._startPreload();
+      }
     },
     async loadEstimate() {
       const r = await fetch(`/api/decks/${this.deckId}/estimate`);
@@ -1131,25 +1336,39 @@ function deckEditor(deckId) {
       this.pickerCard = card;
       this.selectedCardId = card.id;
       this.artPickerOpen = true;
-      this.pickerLoading = true;
-      this.pickerAllArts = [];
       this.pickerVisibleCount = 60;
       this.driveHits = [];
+
+      // Cache hit: reabrir instantáneo, sin fetch (Plan C)
+      const cached = this._pickerCache[card.id];
+      if (cached) {
+        this.pickerAllArts = cached;
+        this.allArts = cached.filter(a => a.kind !== 'drive');   // compat con métodos existentes
+        this.pickerLoading = false;
+        this.$nextTick(() => window.icons?.());
+        // Aún así, refrescamos búsqueda de drives (por si añadiste artes desde otra pestaña)
+        if (this.driveIndexStats.total_files > 0) {
+          this._loadDrivesForPicker(card.name);
+        }
+        return;
+      }
+
+      // Cache miss: fetch normal
+      this.pickerLoading = true;
+      this.pickerAllArts = [];
       try {
-        // Cargamos oficiales + custom en paralelo con drives
         const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}/prints`);
         if (!r.ok) throw new Error('Error cargando artes');
         const arts = await r.json();
-        this.allArts = arts;  // mantener por compatibilidad con métodos existentes
-        // Preprocesar cada arte: __key, __label, __sublabel, __tooltip, __badges,
-        // __source (all|custom|drives|scryfall), __year
+        this.allArts = arts;
         this.pickerAllArts = arts.map((a, i) => this._preprocessArt(a, i, 'local'));
+        // Guardar en cache (los drives se añaden después y también quedan cacheados)
+        this._pickerCache[card.id] = this.pickerAllArts;
       } catch (e) {
         window.toast('Error', e.message);
       } finally {
         this.pickerLoading = false;
       }
-      // Búsqueda en drives (asíncrono, se añadirá al array cuando termine)
       if (this.driveIndexStats.total_files > 0) {
         this._loadDrivesForPicker(card.name);
       }
@@ -1178,8 +1397,46 @@ function deckEditor(deckId) {
           score: h.score,
           _drive_hit: h,
         }, i, 'drives'));
-        this.pickerAllArts = [...this.pickerAllArts, ...driveArts];
+        // Fusionar: filtrar drives previos + añadir nuevos
+        const nonDrive = this.pickerAllArts.filter(a => a.__source !== 'drives');
+        this.pickerAllArts = [...nonDrive, ...driveArts];
+        // Actualizar cache
+        if (this.pickerCard) {
+          this._pickerCache[this.pickerCard.id] = this.pickerAllArts;
+        }
       } catch (e) { /* silent */ }
+    },
+
+    // ---- Precarga en background (Plan A) ----
+    async _startPreload() {
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/preload-prints`, {method: 'POST'});
+        if (!r.ok) return;
+        const st = await r.json();
+        this.preload.total = st.total || 0;
+        this.preload.done = st.done || 0;
+        this.preload.inProgress = st.in_progress;
+        if (this.preload.total === 0) return;  // mazo vacío o nada que precargar
+        this._pollPreload();
+      } catch (e) { /* silent */ }
+    },
+
+    _pollPreload() {
+      if (this.preload.pollTimer) return;
+      this.preload.pollTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/decks/${this.deckId}/preload-progress`);
+          if (!r.ok) return;
+          const st = await r.json();
+          this.preload.total = st.total || 0;
+          this.preload.done = st.done || 0;
+          this.preload.inProgress = st.in_progress;
+          if (!st.in_progress) {
+            clearInterval(this.preload.pollTimer);
+            this.preload.pollTimer = null;
+          }
+        } catch (e) { /* silent */ }
+      }, 2000);
     },
 
     _preprocessArt(art, idx, kindHint) {
@@ -1500,6 +1757,8 @@ function deckEditor(deckId) {
       const updated = await r.json();
       this._updateCard(updated);
       this.allArts = this.allArts.map(a => ({...a, is_chosen: a.kind === 'scryfall' && a.scryfall_id === scryfall_id}));
+      // Invalidar cache del picker para esta carta — is_chosen ha cambiado
+      delete this._pickerCache[card.id];
       if (remember) window.toast('Recordado globalmente', card.name);
     },
     async chooseCustom(art) {
@@ -1517,6 +1776,8 @@ function deckEditor(deckId) {
         if (art.face === 'front') return {...a, is_chosen: false};
         return a;
       });
+      // Invalidar cache del picker
+      delete this._pickerCache[card.id];
     },
     async addFromUrl() {
       const card = this.selectedCard;
@@ -1704,6 +1965,78 @@ function deckEditor(deckId) {
     // ================================================================
     // ESTADÍSTICAS DEL MAZO
     // ================================================================
+
+    // ================================================================
+    // TOKENS DEL MAZO
+    // ================================================================
+
+    async openTokens() {
+      this.tokensOpen = true;
+      this.tokensLoading = true;
+      this.tokensData = {tokens: [], total_unique: 0, already_in_deck: 0, missing: 0};
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/tokens-analysis`);
+        if (!r.ok) throw new Error('Error analizando tokens');
+        this.tokensData = await r.json();
+      } catch (e) {
+        window.toast('Error', e.message);
+        this.closeTokens();
+      } finally {
+        this.tokensLoading = false;
+        this.$nextTick(() => window.icons?.());
+      }
+    },
+
+    closeTokens() {
+      this.tokensOpen = false;
+    },
+
+    async addOneToken(token) {
+      if (token.in_deck || this.tokensAdding) return;
+      this.tokensAdding = true;
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/tokens-add-many`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({scryfall_ids: [token.scryfall_id]})
+        });
+        if (!r.ok) throw new Error('Error añadiendo');
+        const added = await r.json();
+        if (added.length > 0) {
+          window.toast('Token añadido', token.name);
+          // Refrescar mazo y re-analizar (para actualizar el count del token)
+          await this.load();
+          await this.openTokens();
+        }
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.tokensAdding = false;
+      }
+    },
+
+    async addAllMissingTokens() {
+      const missing = this.tokensData.tokens.filter(t => !t.in_deck).map(t => t.scryfall_id);
+      if (missing.length === 0 || this.tokensAdding) return;
+      this.tokensAdding = true;
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/tokens-add-many`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({scryfall_ids: missing})
+        });
+        if (!r.ok) throw new Error('Error añadiendo tokens');
+        const added = await r.json();
+        window.toast(
+          `${added.length} ${added.length === 1 ? 'token añadido' : 'tokens añadidos'}`,
+          added.map(c => c.name).slice(0, 3).join(', ') + (added.length > 3 ? '…' : '')
+        );
+        await this.load();
+        await this.openTokens();
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.tokensAdding = false;
+      }
+    },
 
     openStats() {
       // Calculamos primero para tener los datos listos antes de que Alpine
