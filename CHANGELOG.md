@@ -10,7 +10,7 @@ versionado semántico ([SemVer](https://semver.org/lang/es/)).
 - Empaquetado con PyInstaller (modo `--onedir`).
 - Workflow de GitHub Actions que compila el `.exe` al pushear un tag `v*`.
 
-## [0.1.0] — 2026-08-21
+## [0.2.0] — 2026-08-22
 
 Primera versión funcional completa.
 
