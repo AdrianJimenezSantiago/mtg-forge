@@ -341,6 +341,7 @@ async def list_printings_for_card(
             layout=p.layout,
             artist=p.artist,
             released_at=p.released_at,
+            rarity=p.rarity,
             face="front",
             image_small=p.image_normal,
             # Solo se marca como chosen si no hay custom front seleccionado.

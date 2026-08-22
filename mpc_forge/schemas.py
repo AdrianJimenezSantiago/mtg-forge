@@ -92,6 +92,7 @@ class ArtOption(BaseModel):
     layout: str = "normal"
     artist: str | None = None
     released_at: str | None = None
+    rarity: str = ""                   # common | uncommon | rare | mythic | special | bonus
 
     # Custom:
     custom_art_id: int | None = None

@@ -197,11 +197,11 @@
     </div>
   </div>
 
-  {# ============ GRID PRINCIPAL ============ #}
-  <div class="grid grid-cols-12 gap-6">
+  {# ============ LISTA DE CARTAS (full width tras rediseño del selector de arte) ============ #}
+  <div class="space-y-6">
 
     {# ----- Lista de cartas con separadores por rol ----- #}
-    <div class="col-span-12 lg:col-span-7 xl:col-span-8 space-y-4">
+    <div class="space-y-4">
 
       {# Filtros + añadir carta + orden #}
       <div class="flex items-center gap-2 text-sm flex-wrap">
@@ -313,9 +313,9 @@
               <div class="flex items-center gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0 hover:bg-bg-subtle transition"
                    :class="selectedCardId === card.id ? 'bg-bg-subtle ring-1 ring-inset ring-accent/40' : ''">
 
-                {# Thumb clickable → selecciona la carta para ver artes #}
-                <button @click="selectCard(card)"
-                        class="w-10 h-14 rounded-md bg-bg-base overflow-hidden shrink-0 border border-border-subtle relative">
+                {# Thumb clickable → abre el modal de selección de arte #}
+                <button @click="openArtPicker(card)"
+                        class="w-10 h-14 rounded-md bg-bg-base overflow-hidden shrink-0 border border-border-subtle relative hover:border-accent/50 transition">
                   <template x-if="card.thumbnail_url">
                     <img :src="card.thumbnail_url" :data-preview="card.thumbnail_url"
                          class="w-full h-full object-cover object-top" loading="lazy">
@@ -325,7 +325,7 @@
                   </template>
                 </button>
 
-                <div class="flex-1 min-w-0 cursor-pointer" @click="selectCard(card)">
+                <div class="flex-1 min-w-0 cursor-pointer" @click="openArtPicker(card)">
                   <div class="flex items-center gap-2 min-w-0">
                     <span class="text-sm text-fg-muted font-mono" x-text="card.quantity + '×'"></span>
                     <span class="text-sm font-medium truncate" x-text="card.name"></span>
@@ -395,6 +395,11 @@
 
                 {# Controles CRUD por carta #}
                 <div class="flex items-center gap-1 shrink-0" @click.stop>
+                  <button @click="openArtPicker(card)"
+                          class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
+                          title="Cambiar arte">
+                    <i data-lucide="image" class="w-4 h-4"></i>
+                  </button>
                   <button @click="changeQty(card, card.quantity - 1)"
                           :disabled="card.quantity <= 1"
                           class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg disabled:opacity-30"
@@ -431,255 +436,296 @@
       </div>
     </div>
 
-    {# ----- Panel de arte ----- #}
-    <div class="col-span-12 lg:col-span-5 xl:col-span-4">
-      <div class="sticky top-6">
-        <template x-if="!selectedCard">
-          <div class="bg-bg-elevated border border-dashed border-border-subtle rounded-xl p-8 text-center text-sm text-fg-faint">
-            Selecciona una carta para ver sus impresiones y artes custom.<br>
-            <span class="text-fg-faint mt-2 block text-[11px]">Truco: mantén <kbd class="bg-bg-subtle border border-border-subtle rounded px-1 py-0.5 text-fg-muted">Ctrl</kbd> mientras pasas el cursor sobre una miniatura para verla grande.</span>
+  </div>
+
+  {# ============ MODAL DE SELECCIÓN DE ARTE ============ #}
+  <template x-if="artPickerOpen">
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @keydown.escape.window="closeArtPicker()">
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-[1600px]
+                  h-[92vh] flex flex-col overflow-hidden"
+           @click.stop>
+
+        {# ---- Header ---- #}
+        <div class="flex items-center justify-between p-4 border-b border-border-subtle shrink-0 gap-4">
+          <div class="flex items-center gap-3 min-w-0">
+            <template x-if="pickerCard && pickerCard.thumbnail_url">
+              <img :src="pickerCard?.thumbnail_url" :data-preview="pickerCard?.thumbnail_url"
+                   class="w-11 h-14 rounded object-cover object-top border border-border-subtle shrink-0">
+            </template>
+            <div class="min-w-0">
+              <div class="text-[10px] uppercase tracking-widest text-fg-faint">Elegir arte para</div>
+              <div class="font-display text-lg text-accent-glow truncate" x-text="pickerCard?.name || ''"></div>
+              <div class="text-xs text-fg-muted mt-0.5 flex items-center gap-2">
+                <template x-if="!pickerLoading">
+                  <span>
+                    <span x-text="pickerFilteredCount"></span>
+                    <span> de </span>
+                    <span x-text="pickerTotalCount"></span>
+                    <span> opciones</span>
+                  </span>
+                </template>
+                <template x-if="pickerLoading">
+                  <span class="flex items-center gap-1.5">
+                    <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                    Cargando…
+                  </span>
+                </template>
+              </div>
+            </div>
           </div>
-        </template>
-        <template x-if="selectedCard">
-          <div class="bg-bg-elevated border border-border-subtle rounded-xl shadow-card overflow-hidden">
-            <div class="p-4 border-b border-border-subtle">
-              <div class="text-xs text-fg-muted uppercase tracking-wider mb-1">Impresiones</div>
-              <div class="font-medium truncate" x-text="selectedCard.name"></div>
+          <button @click="closeArtPicker()"
+                  class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
+                  title="Cerrar (Esc)">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        {# ---- Cuerpo: sidebar filtros + grid ---- #}
+        <div class="flex-1 min-h-0 flex overflow-hidden">
+
+          {# ---- SIDEBAR FILTROS ---- #}
+          <aside class="w-64 shrink-0 border-r border-border-subtle overflow-y-auto p-4 space-y-4 text-xs
+                        bg-bg-inset/50">
+
+            {# Buscador de texto libre #}
+            <div>
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Buscar</label>
+              <div class="relative">
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint"></i>
+                <input type="text" x-model="pickerFilters.q"
+                       placeholder="Set, artista, número…"
+                       class="w-full bg-bg-subtle border border-border-subtle rounded pl-8 pr-2 py-1.5
+                              focus:outline-none focus:border-accent">
+              </div>
             </div>
 
-            <div class="p-3 max-h-[75vh] overflow-y-auto space-y-4">
-              <template x-if="loadingPrints">
-                <div class="text-center py-8 text-fg-faint text-sm">Cargando…</div>
+            {# Fuente #}
+            <div>
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Fuente</label>
+              <div class="space-y-1">
+                <template x-for="opt in [
+                  {v:'all',      l:'Todo',        c:pickerCounts.all},
+                  {v:'custom',   l:'Custom',      c:pickerCounts.custom},
+                  {v:'drives',   l:'Drives',      c:pickerCounts.drives},
+                  {v:'scryfall', l:'Oficiales',   c:pickerCounts.scryfall},
+                ]" :key="opt.v">
+                  <label class="flex items-center justify-between gap-2 py-1 px-2 rounded cursor-pointer
+                                hover:bg-bg-subtle transition"
+                         :class="pickerFilters.source === opt.v ? 'bg-bg-subtle text-accent' : 'text-fg-muted'">
+                    <div class="flex items-center gap-2">
+                      <input type="radio" :value="opt.v" x-model="pickerFilters.source"
+                             class="accent-accent w-3 h-3">
+                      <span x-text="opt.l"></span>
+                    </div>
+                    <span class="text-[10px] font-mono text-fg-faint" x-text="opt.c"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+
+            {# Set (dropdown solo con sets presentes) - solo si hay oficiales #}
+            <div x-show="pickerAvailableSets.length > 1 && (pickerFilters.source === 'all' || pickerFilters.source === 'scryfall')">
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Set</label>
+              <select x-model="pickerFilters.set"
+                      class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                             focus:outline-none focus:border-accent">
+                <option value="">Todos</option>
+                <template x-for="s in pickerAvailableSets" :key="s.code">
+                  <option :value="s.code" x-text="s.code.toUpperCase() + ' — ' + s.name"></option>
+                </template>
+              </select>
+            </div>
+
+            {# Tipo de arte (solo para oficiales) #}
+            <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'scryfall'">
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Tipo de arte</label>
+              <div class="space-y-1">
+                <template x-for="opt in [
+                  {v:'borderless', l:'Borderless'},
+                  {v:'full_art',   l:'Full art'},
+                  {v:'textless',   l:'Textless'},
+                  {v:'retro',      l:'Retro frame (1997)'},
+                  {v:'promo',      l:'Promo'},
+                ]" :key="opt.v">
+                  <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                    <input type="checkbox" :value="opt.v" x-model="pickerFilters.artTypes"
+                           class="accent-accent w-3 h-3">
+                    <span x-text="opt.l"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+
+            {# Rareza #}
+            <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'scryfall'">
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Rareza</label>
+              <div class="space-y-1">
+                <template x-for="opt in [
+                  {v:'mythic',   l:'Mythic',   c:'text-amber-400'},
+                  {v:'rare',     l:'Rare',     c:'text-yellow-500'},
+                  {v:'uncommon', l:'Uncommon', c:'text-slate-300'},
+                  {v:'common',   l:'Common',   c:'text-fg-muted'},
+                  {v:'special',  l:'Special',  c:'text-purple-400'},
+                ]" :key="opt.v">
+                  <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle"
+                         :class="opt.c">
+                    <input type="checkbox" :value="opt.v" x-model="pickerFilters.rarities"
+                           class="accent-accent w-3 h-3">
+                    <span x-text="opt.l"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+
+            {# Ordenar #}
+            <div>
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Ordenar</label>
+              <select x-model="pickerFilters.sort"
+                      class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                             focus:outline-none focus:border-accent">
+                <option value="recent">Más recientes</option>
+                <option value="old">Más antiguas</option>
+                <option value="set">Set (A-Z)</option>
+                <option value="artist">Artista (A-Z)</option>
+              </select>
+            </div>
+
+            {# Reset filtros #}
+            <button @click="resetPickerFilters()"
+                    class="w-full py-1.5 rounded border border-border-subtle text-fg-faint hover:text-fg
+                           hover:bg-bg-subtle transition flex items-center justify-center gap-1.5">
+              <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+              Reset filtros
+            </button>
+          </aside>
+
+          {# ---- ÁREA PRINCIPAL: grid de artes ---- #}
+          <div class="flex-1 min-w-0 overflow-y-auto p-5" @scroll="onPickerScroll($event)" x-ref="pickerScroll">
+
+            {# Acciones sobre custom art (añadir por URL) — solo en tab custom #}
+            <div x-show="pickerFilters.source === 'custom'" class="mb-4">
+              <div x-data="{open: false}">
+                <button @click="open = !open"
+                        class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
+                               px-3 py-1.5 rounded transition flex items-center gap-1.5">
+                  <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                  <span x-show="!open">Añadir arte por URL</span>
+                  <span x-show="open">Cancelar</span>
+                </button>
+                <div x-show="open" x-transition class="mt-2 flex gap-2">
+                  <input type="text" x-model="pickerAddUrl"
+                         placeholder="https://…imagen"
+                         class="flex-1 bg-bg-subtle border border-border-subtle rounded px-3 py-1.5 text-xs
+                                focus:outline-none focus:border-accent">
+                  <button @click="addCustomFromUrl(); open = false"
+                          :disabled="!pickerAddUrl.trim() || addingUrl"
+                          class="bg-accent hover:bg-accent-glow text-bg-base text-xs font-medium px-3 py-1.5 rounded
+                                 disabled:opacity-50 transition">
+                    <span x-show="!addingUrl">Descargar</span>
+                    <span x-show="addingUrl">…</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {# Empty state #}
+            <template x-if="!pickerLoading && pickerFilteredArts.length === 0">
+              <div class="text-center py-16">
+                <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
+                  <i data-lucide="image-off" class="w-6 h-6"></i>
+                </div>
+                <p class="text-sm text-fg-muted">Ningún arte coincide con los filtros.</p>
+                <button @click="resetPickerFilters()"
+                        class="mt-3 text-xs text-accent hover:text-accent-glow underline">
+                  Reset filtros
+                </button>
+              </div>
+            </template>
+
+            {# Grid de thumbnails #}
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <template x-for="art in pickerVisibleArts" :key="art.__key">
+                <div class="group relative">
+                  <button @click="pickArt(art, false)"
+                          @dblclick="pickArt(art, true)"
+                          class="block w-full aspect-[63/88] rounded-md overflow-hidden border-2 transition
+                                 hover:scale-[1.02] hover:z-10 relative"
+                          :class="art.is_chosen ? 'border-accent shadow-glow' :
+                                  art.is_preferred ? 'border-emerald-500/50' :
+                                  'border-border-subtle hover:border-accent/60'"
+                          :title="art.__tooltip">
+                    <img :src="art.image_small" :alt="art.__label" :data-preview="art.image_small"
+                         loading="lazy" class="w-full h-full object-cover object-top bg-bg-subtle"
+                         onerror="this.style.opacity=0.3">
+                    {# Overlay bottom con info #}
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent
+                                p-1.5 text-left">
+                      <div class="text-[10px] text-white font-mono truncate" x-text="art.__label"></div>
+                      <div class="text-[9px] text-white/60 truncate" x-text="art.__sublabel" x-show="art.__sublabel"></div>
+                    </div>
+                    {# Badges superiores #}
+                    <div class="absolute top-1 right-1 flex flex-col gap-1 items-end">
+                      <template x-if="art.is_chosen">
+                        <span class="text-[9px] font-bold bg-accent text-bg-base rounded px-1 py-0.5">USANDO</span>
+                      </template>
+                      <template x-if="art.is_preferred && !art.is_chosen">
+                        <span class="text-[9px] font-bold bg-emerald-500/90 text-white rounded px-1 py-0.5"
+                              title="Preferencia global">GLOBAL</span>
+                      </template>
+                      <template x-if="art.is_last_used && !art.is_chosen && !art.is_preferred">
+                        <span class="text-[9px] font-bold bg-indigo-500/80 text-white rounded px-1 py-0.5"
+                              title="Última usada en otro mazo">LAST</span>
+                      </template>
+                    </div>
+                    {# Badges inferior-izquierda de tipo especial #}
+                    <div class="absolute top-1 left-1 flex flex-col gap-0.5 items-start">
+                      <template x-for="b in art.__badges" :key="b">
+                        <span class="text-[8px] font-mono bg-black/70 text-accent-glow rounded px-1"
+                              x-text="b"></span>
+                      </template>
+                    </div>
+                  </button>
+                  {# Botones de acción sobre custom art (eliminar/reverso) #}
+                  <template x-if="art.kind === 'custom'">
+                    <button @click.stop="deleteCustom(art)"
+                            class="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                   bg-red-500/90 hover:bg-red-500 text-white rounded p-1"
+                            title="Eliminar arte custom">
+                      <i data-lucide="trash-2" class="w-3 h-3"></i>
+                    </button>
+                  </template>
+                </div>
               </template>
+            </div>
 
-              {# CUSTOM #}
-              <div x-show="!loadingPrints">
-                <div class="flex items-center justify-between mb-2">
-                  <div class="text-xs font-medium text-fuchsia-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 bg-fuchsia-400 rounded-full"></span>
-                    Custom
-                    <span class="text-fg-faint font-mono" x-text="'(' + customArts.length + ')'"></span>
-                  </div>
-                  <div class="flex items-center gap-1.5">
-                    {# Dropdown: explorar drives comunitarios #}
-                    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
-                      <button @click="open = !open"
-                              class="text-[11px] text-fg-muted hover:text-fg border border-border-subtle hover:border-border-strong rounded-md px-2 py-1 transition flex items-center gap-1"
-                              :disabled="artSources.length === 0"
-                              :class="artSources.length === 0 ? 'opacity-40 cursor-not-allowed' : ''">
-                        Drives ▾
-                      </button>
-                      <div x-show="open" x-transition
-                           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg py-1 w-64 max-h-64 overflow-y-auto">
-                        <div class="text-[10px] text-fg-faint uppercase px-3 py-1.5 border-b border-border-subtle">
-                          Fuentes de arte custom
-                        </div>
-                        <template x-for="s in artSources" :key="s.id">
-                          <a :href="s.url" target="_blank" rel="noopener"
-                             @click="open = false"
-                             class="block px-3 py-1.5 text-xs hover:bg-bg-subtle text-fg-muted hover:text-fg transition">
-                            <div class="flex items-center gap-1.5">
-                              <template x-if="s.pinned">
-                                <i data-lucide="star" class="w-2.5 h-2.5 text-accent shrink-0 fill-current"></i>
-                              </template>
-                              <span class="truncate" x-text="s.name"></span>
-                            </div>
-                          </a>
-                        </template>
-                        <div class="border-t border-border-subtle mt-1 pt-1">
-                          <a href="/settings" class="block px-3 py-1.5 text-[10px] text-fg-faint hover:text-fg-muted">
-                            Gestionar drives en Ajustes →
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                    <button @click="showAddUrlForm = !showAddUrlForm"
-                            class="text-[11px] text-fuchsia-300 hover:text-fuchsia-200 border border-fuchsia-500/40 hover:border-fuchsia-500/60 rounded-md px-2 py-1 transition">
-                      <span x-show="!showAddUrlForm">+ Añadir por URL</span>
-                      <span x-show="showAddUrlForm">Cancelar</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div x-show="showAddUrlForm" x-transition
-                     class="mb-3 bg-bg-subtle border border-border-subtle rounded-lg p-3 space-y-2">
-                  <input type="url" x-model="urlInput" placeholder="https://i.imgur.com/… o cualquier URL de imagen"
-                         class="w-full bg-bg-base border border-border-subtle rounded px-2 py-1.5 text-xs
-                                focus:outline-none focus:border-fuchsia-500">
-                  <div class="flex gap-2">
-                    <select x-model="urlFace" class="bg-bg-base border border-border-subtle rounded px-2 py-1.5 text-xs">
-                      <option value="front">Frente</option>
-                      <option value="back">Reverso</option>
-                    </select>
-                    <input type="text" x-model="urlVariant" placeholder="Etiqueta opcional (Anime, v2…)"
-                           class="flex-1 bg-bg-base border border-border-subtle rounded px-2 py-1.5 text-xs
-                                  focus:outline-none focus:border-fuchsia-500">
-                  </div>
-                  <button @click="addFromUrl()" :disabled="addingUrl || !urlInput"
-                          class="w-full bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-40 text-white text-xs font-medium py-1.5 rounded transition">
-                    <span x-show="!addingUrl">Descargar y añadir</span>
-                    <span x-show="addingUrl">Descargando…</span>
-                  </button>
-                </div>
-
-                <template x-if="customArts.length === 0 && !showAddUrlForm">
-                  <div class="text-[11px] text-fg-faint bg-bg-subtle/50 border border-dashed border-border-subtle rounded-lg py-4 px-3 text-center">
-                    Sin artes custom para esta carta.<br>
-                    Añade por URL o coloca archivos en<br>
-                    <span class="font-mono text-fg-muted">%APPDATA%\MPC-Forge\custom_art\</span>
-                  </div>
-                </template>
-
-                <div class="grid grid-cols-2 gap-2" x-show="customArts.length > 0">
-                  <template x-for="p in customArts" :key="'custom-' + p.custom_art_id + '-' + p.face">
-                    <div class="relative group">
-                      <button @click="chooseCustom(p)"
-                              class="w-full text-left rounded-lg overflow-hidden border transition hover:-translate-y-0.5"
-                              :class="p.is_chosen ? 'border-fuchsia-400 ring-2 ring-fuchsia-400/50' : 'border-border-subtle hover:border-border-strong'">
-                        <img :src="p.image_small" :data-preview="p.image_small"
-                             class="w-full aspect-[63/88] object-cover object-top bg-bg-subtle"
-                             loading="lazy">
-                        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2">
-                          <div class="text-[10px] text-white/80 truncate" x-text="p.variant_label || p.filename"></div>
-                        </div>
-                        <span class="absolute top-1.5 right-1.5 text-[9px] font-mono bg-fuchsia-500 text-white px-1.5 py-0.5 rounded">CUSTOM</span>
-                        <template x-if="p.face === 'back'">
-                          <span class="absolute top-1.5 left-1.5 text-[9px] font-mono bg-black/70 text-white px-1.5 py-0.5 rounded">REVERSO</span>
-                        </template>
-                      </button>
-                      <button @click="deleteCustom(p)"
-                              class="absolute -top-1 -left-1 opacity-0 group-hover:opacity-100 bg-red-500 hover:bg-red-600 text-white w-5 h-5 rounded-full text-xs flex items-center justify-center transition"
-                              title="Eliminar">×</button>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              {# DRIVES (fuzzy search en Google Drives comunitarios) #}
-              <div x-show="!loadingPrints" x-data="{ open: driveHits.length > 0 }">
-                <div class="text-xs font-medium text-indigo-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
-                  Drives comunitarios
-                  <span class="text-fg-faint font-mono" x-text="'(' + driveHits.length + (driveSearching ? ' · buscando…' : '') + ')'"></span>
-                  <button @click="searchDrives(selectedCard.name)"
-                          :disabled="driveSearching"
-                          class="ml-auto text-[10px] bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg px-2 py-0.5 rounded transition disabled:opacity-50">
-                    <span x-show="!driveSearching">↻ Buscar</span>
-                    <span x-show="driveSearching">…</span>
-                  </button>
-                </div>
-
-                <template x-if="driveIndexStats.total_files === 0 && !driveSearching">
-                  <div class="text-[11px] text-fg-faint bg-bg-subtle/50 border border-dashed border-border-subtle rounded-lg py-3 px-3">
-                    <div class="mb-1">Ningún drive indexado todavía.</div>
-                    <a href="/settings" class="text-indigo-300 hover:underline">
-                      → Ve a Ajustes e indexa un drive
-                    </a>
-                  </div>
-                </template>
-
-                <template x-if="driveIndexStats.total_files > 0 && driveHits.length === 0 && !driveSearching">
-                  <div class="text-[11px] text-fg-faint bg-bg-subtle/50 border border-dashed border-border-subtle rounded-lg py-3 px-3 text-center">
-                    Sin resultados para "<span x-text="selectedCard.name"></span>" en
-                    <span x-text="driveIndexStats.total_files.toLocaleString()"></span> archivos indexados.
-                  </div>
-                </template>
-
-                <div x-show="driveHits.length > 0" class="grid grid-cols-2 gap-2">
-                  <template x-for="h in driveHits" :key="'drv-' + h.file_id">
-                    <div class="relative group text-left rounded-lg overflow-hidden border border-border-subtle
-                                hover:border-indigo-500/60 transition">
-                      <img :src="h.thumb_url" :data-preview="h.thumb_url"
-                           loading="lazy"
-                           class="w-full aspect-[63/88] object-cover bg-bg-subtle"
-                           onerror="this.style.opacity=0.3">
-                      {# Score badge #}
-                      <div class="absolute top-1 right-1 bg-black/70 text-white text-[9px] font-mono px-1 py-0.5 rounded"
-                           x-text="h.score"></div>
-                      {# Info + botones #}
-                      <div class="p-1.5 space-y-1">
-                        <div class="text-[10px] font-medium text-fg truncate" :title="h.filename" x-text="h.filename"></div>
-                        <div class="text-[9px] text-fg-faint truncate" x-text="h.source_name + (h.folder_path ? ' · ' + h.folder_path : '')"></div>
-                        <div class="flex gap-1">
-                          <button @click="useDriveArt(h, 'front')"
-                                  :disabled="addingFromDrive === h.file_id"
-                                  class="flex-1 text-[10px] bg-indigo-500/20 hover:bg-indigo-500/40 border border-indigo-500/50
-                                         text-indigo-200 py-1 rounded transition disabled:opacity-50">
-                            <span x-show="addingFromDrive !== h.file_id">Usar frente</span>
-                            <span x-show="addingFromDrive === h.file_id">…</span>
-                          </button>
-                          <button @click="useDriveArt(h, 'back')"
-                                  :disabled="addingFromDrive === h.file_id"
-                                  class="text-[10px] bg-bg-subtle hover:bg-border-subtle border border-border-subtle
-                                         text-fg-muted hover:text-fg px-2 py-1 rounded transition disabled:opacity-50"
-                                  title="Usar como reverso (DFC/meld)">
-                            ⇄
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </div>
-
-              {# OFICIALES #}
-              <div x-show="!loadingPrints">
-                <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 bg-fg-muted rounded-full"></span>
-                  Oficiales (Scryfall)
-                  <span class="text-fg-faint font-mono" x-text="'(' + officialArts.length + ')'"></span>
-                </div>
-
-                <div class="flex flex-wrap gap-1.5 text-xs mb-2">
-                  <template x-for="f in artFilters" :key="f.key">
-                    <button @click="toggleArtFilter(f.key)"
-                            :class="activeArtFilters[f.key] ? 'bg-accent text-black' : 'bg-bg-subtle text-fg-muted hover:bg-border-subtle'"
-                            class="px-2 py-1 rounded-md transition"
-                            x-text="f.label"></button>
-                  </template>
-                </div>
-
-                <div class="grid grid-cols-2 gap-2">
-                  <template x-for="p in filteredOfficial" :key="'sf-' + p.scryfall_id">
-                    <button @click="chooseArt(p.scryfall_id, false)"
-                            @dblclick="chooseArt(p.scryfall_id, true)"
-                            class="relative group text-left rounded-lg overflow-hidden border transition hover:-translate-y-0.5"
-                            :class="p.is_chosen ? 'border-accent ring-2 ring-accent/50' : 'border-border-subtle hover:border-border-strong'">
-                      <img :src="p.image_small" :data-preview="p.image_small"
-                           class="w-full aspect-[63/88] object-cover object-top bg-bg-subtle"
-                           loading="lazy">
-                      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-2">
-                        <div class="text-[10px] font-mono text-white/80 uppercase" x-text="p.set_code + ' · ' + p.collector_number"></div>
-                        <div class="text-[10px] text-white/60 truncate" x-text="p.artist"></div>
-                      </div>
-                      <div class="absolute top-1.5 right-1.5 flex flex-col gap-1 items-end">
-                        <template x-if="p.is_preferred">
-                          <span class="text-[9px] font-mono bg-accent text-black px-1.5 py-0.5 rounded">DEFAULT</span>
-                        </template>
-                        <template x-if="p.is_last_used">
-                          <span class="text-[9px] font-mono bg-fg-muted/80 text-black px-1.5 py-0.5 rounded">ÚLTIMO USO</span>
-                        </template>
-                        <template x-if="p.full_art">
-                          <span class="text-[9px] font-mono bg-black/70 text-white px-1.5 py-0.5 rounded">FULL</span>
-                        </template>
-                        <template x-if="p.textless">
-                          <span class="text-[9px] font-mono bg-black/70 text-white px-1.5 py-0.5 rounded">TEXTLESS</span>
-                        </template>
-                      </div>
-                    </button>
-                  </template>
-                </div>
-
-                <div class="text-[11px] text-fg-faint mt-3 text-center px-2">
-                  Click: elegir solo en este mazo · Doble click: recordar globalmente
-                </div>
-              </div>
+            {# Loader al final si hay más por mostrar #}
+            <div x-show="pickerVisibleCount < pickerFilteredArts.length && !pickerLoading"
+                 class="text-center py-4 text-xs text-fg-faint">
+              <button @click="pickerVisibleCount = Math.min(pickerVisibleCount + 60, pickerFilteredArts.length)"
+                      class="bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted
+                             hover:text-fg px-4 py-2 rounded transition">
+                Cargar más (<span x-text="pickerVisibleCount"></span> de <span x-text="pickerFilteredArts.length"></span>)
+              </button>
             </div>
           </div>
-        </template>
+        </div>
+
+        {# ---- Footer con instrucciones ---- #}
+        <div class="px-4 py-2.5 border-t border-border-subtle bg-bg-inset text-[11px] text-fg-faint shrink-0
+                    flex items-center justify-between">
+          <span>
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> elegir ·
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Doble click</kbd> recordar globalmente ·
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Ctrl+hover</kbd> preview
+          </span>
+          <span>
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Esc</kbd> cerrar
+          </span>
+        </div>
       </div>
     </div>
-  </div>
+  </template>
 
   {# ============ MODAL DE REVERSO (DFC/meld/battle) ============ #}
   <template x-if="backModal">
@@ -872,6 +918,22 @@ function deckEditor(deckId) {
     // Modal de reverso (DFC/meld/battle)
     backModal: null,  // {name, url} o null
 
+    // -- Selector de arte (modal grande) --
+    artPickerOpen: false,
+    pickerCard: null,             // referencia a la carta actual (para header y actions)
+    pickerLoading: false,
+    pickerAllArts: [],            // todas las opciones cargadas (custom + drives + oficiales)
+    pickerVisibleCount: 60,       // paginación incremental
+    pickerAddUrl: '',             // input del "añadir por URL" dentro del modal
+    pickerFilters: {
+      q: '',
+      source: 'all',              // 'all' | 'custom' | 'drives' | 'scryfall'
+      set: '',                    // set_code o '' = todos
+      artTypes: [],               // ['borderless', 'full_art', 'textless', 'retro', 'promo']
+      rarities: [],               // ['mythic', 'rare', 'uncommon', 'common', 'special']
+      sort: 'recent',             // 'recent' | 'old' | 'set' | 'artist'
+    },
+
     // -- Modal de estadísticas --
     statsOpen: false,
     stats: {
@@ -1058,6 +1120,291 @@ function deckEditor(deckId) {
       // Buscar en drives en paralelo (no bloquea la UI de oficiales)
       if (this.driveIndexStats.total_files > 0) {
         this.searchDrives(card.name);
+      }
+    },
+
+    // ================================================================
+    // ART PICKER (modal grande de selección)
+    // ================================================================
+
+    async openArtPicker(card) {
+      this.pickerCard = card;
+      this.selectedCardId = card.id;
+      this.artPickerOpen = true;
+      this.pickerLoading = true;
+      this.pickerAllArts = [];
+      this.pickerVisibleCount = 60;
+      this.driveHits = [];
+      try {
+        // Cargamos oficiales + custom en paralelo con drives
+        const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}/prints`);
+        if (!r.ok) throw new Error('Error cargando artes');
+        const arts = await r.json();
+        this.allArts = arts;  // mantener por compatibilidad con métodos existentes
+        // Preprocesar cada arte: __key, __label, __sublabel, __tooltip, __badges,
+        // __source (all|custom|drives|scryfall), __year
+        this.pickerAllArts = arts.map((a, i) => this._preprocessArt(a, i, 'local'));
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.pickerLoading = false;
+      }
+      // Búsqueda en drives (asíncrono, se añadirá al array cuando termine)
+      if (this.driveIndexStats.total_files > 0) {
+        this._loadDrivesForPicker(card.name);
+      }
+      this.$nextTick(() => window.icons?.());
+    },
+
+    async _loadDrivesForPicker(cardName) {
+      try {
+        const r = await fetch(`/api/drives/search?q=${encodeURIComponent(cardName)}&limit=100`);
+        if (!r.ok) return;
+        const hits = await r.json();
+        this.driveHits = hits;
+        // Añadir cada hit al pickerAllArts como si fuera un "arte" más
+        const driveArts = hits.map((h, i) => this._preprocessArt({
+          kind: 'drive',
+          image_small: h.thumb_url,
+          download_url: h.download_url,
+          filename: h.filename,
+          set_name: h.source_name,
+          collector_number: h.folder_path || '',
+          artist: null,
+          released_at: null,
+          rarity: '',
+          full_art: false, textless: false, promo: false, border_color: '', frame: '',
+          face: 'front',
+          score: h.score,
+          _drive_hit: h,
+        }, i, 'drives'));
+        this.pickerAllArts = [...this.pickerAllArts, ...driveArts];
+      } catch (e) { /* silent */ }
+    },
+
+    _preprocessArt(art, idx, kindHint) {
+      // Enriquecer cada art con campos derivados para la UI del picker.
+      const source =
+        art.kind === 'custom' ? 'custom' :
+        art.kind === 'drive'  ? 'drives' :
+        'scryfall';
+
+      // Etiquetas visibles en el thumbnail
+      let label, sublabel, tooltip;
+      if (source === 'custom') {
+        label = art.variant_label || 'custom';
+        sublabel = art.filename || '';
+        tooltip = art.filename || 'Arte custom';
+      } else if (source === 'drives') {
+        label = art.set_name || 'Drive';        // en drives, set_name = source_name
+        sublabel = art.filename || '';
+        tooltip = `${art.set_name} · ${art.filename}`;
+      } else {
+        label = (art.set_code || '?').toUpperCase() + ' · ' + (art.collector_number || '?');
+        const year = art.released_at ? art.released_at.slice(0, 4) : '';
+        sublabel = art.artist ? `${art.artist}${year ? ' · ' + year : ''}` : year;
+        tooltip = `${art.set_name || art.set_code} #${art.collector_number} · ${art.artist || 'artist unknown'}${year ? ' (' + year + ')' : ''}`;
+      }
+
+      // Badges de tipo especial (solo para scryfall)
+      const badges = [];
+      if (source === 'scryfall') {
+        if (art.border_color === 'borderless') badges.push('BRDLESS');
+        if (art.full_art)                      badges.push('FULL');
+        if (art.textless)                      badges.push('TEXT-');
+        if (art.frame === '1997')              badges.push('RETRO');
+        if (art.promo)                         badges.push('PROMO');
+      }
+
+      return {
+        ...art,
+        __key: `${source}-${art.scryfall_id || art.custom_art_id || art.file_id || idx}`,
+        __source: source,
+        __label: label,
+        __sublabel: sublabel,
+        __tooltip: tooltip,
+        __badges: badges,
+        __year: art.released_at ? parseInt(art.released_at.slice(0, 4), 10) : 0,
+      };
+    },
+
+    closeArtPicker() {
+      this.artPickerOpen = false;
+      this.pickerCard = null;
+      this.pickerAllArts = [];
+      this.pickerVisibleCount = 60;
+    },
+
+    resetPickerFilters() {
+      this.pickerFilters = {
+        q: '', source: 'all', set: '', artTypes: [], rarities: [], sort: 'recent',
+      };
+      this.pickerVisibleCount = 60;
+    },
+
+    // Cuando cambian filtros, resetear el contador incremental
+    get pickerFilteredArts() {
+      let arts = this.pickerAllArts;
+
+      // Filtro por fuente
+      if (this.pickerFilters.source !== 'all') {
+        arts = arts.filter(a => a.__source === this.pickerFilters.source);
+      }
+
+      // Búsqueda por texto libre (set name, artist, collector, filename)
+      const q = this.pickerFilters.q.trim().toLowerCase();
+      if (q) {
+        arts = arts.filter(a => {
+          const hay = [
+            a.set_code, a.set_name, a.collector_number,
+            a.artist, a.filename, a.variant_label,
+          ].filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(q);
+        });
+      }
+
+      // Set (solo aplica a scryfall)
+      if (this.pickerFilters.set) {
+        arts = arts.filter(a => a.__source !== 'scryfall' || a.set_code === this.pickerFilters.set);
+      }
+
+      // Tipos de arte (solo scryfall)
+      if (this.pickerFilters.artTypes.length > 0) {
+        arts = arts.filter(a => {
+          if (a.__source !== 'scryfall') return false;
+          return this.pickerFilters.artTypes.some(t => {
+            if (t === 'borderless') return a.border_color === 'borderless';
+            if (t === 'full_art')   return a.full_art;
+            if (t === 'textless')   return a.textless;
+            if (t === 'retro')      return a.frame === '1997';
+            if (t === 'promo')      return a.promo;
+            return false;
+          });
+        });
+      }
+
+      // Rareza (solo scryfall)
+      if (this.pickerFilters.rarities.length > 0) {
+        arts = arts.filter(a => {
+          if (a.__source !== 'scryfall') return false;
+          return this.pickerFilters.rarities.includes(a.rarity);
+        });
+      }
+
+      // Ordenación
+      const sorted = [...arts];
+      const cmp = {
+        recent:  (a, b) => (b.__year || 0) - (a.__year || 0),
+        old:     (a, b) => (a.__year || 9999) - (b.__year || 9999),
+        set:     (a, b) => (a.set_code || 'zzz').localeCompare(b.set_code || 'zzz'),
+        artist:  (a, b) => (a.artist || 'zzz').localeCompare(b.artist || 'zzz'),
+      }[this.pickerFilters.sort] || ((a, b) => 0);
+      // Custom y Drives siempre primero (independiente del sort)
+      sorted.sort((a, b) => {
+        const rank = { custom: 0, drives: 1, scryfall: 2 };
+        const dr = (rank[a.__source] ?? 3) - (rank[b.__source] ?? 3);
+        if (dr !== 0) return dr;
+        // Elegido primero dentro de cada bucket
+        if (a.is_chosen !== b.is_chosen) return a.is_chosen ? -1 : 1;
+        return cmp(a, b);
+      });
+
+      return sorted;
+    },
+
+    get pickerVisibleArts() {
+      return this.pickerFilteredArts.slice(0, this.pickerVisibleCount);
+    },
+
+    get pickerFilteredCount() { return this.pickerFilteredArts.length; },
+    get pickerTotalCount()    { return this.pickerAllArts.length; },
+
+    get pickerCounts() {
+      const c = { all: this.pickerAllArts.length, custom: 0, drives: 0, scryfall: 0 };
+      for (const a of this.pickerAllArts) c[a.__source] = (c[a.__source] || 0) + 1;
+      return c;
+    },
+
+    get pickerAvailableSets() {
+      const seen = new Map();
+      for (const a of this.pickerAllArts) {
+        if (a.__source === 'scryfall' && a.set_code && !seen.has(a.set_code)) {
+          seen.set(a.set_code, { code: a.set_code, name: a.set_name || a.set_code });
+        }
+      }
+      return [...seen.values()].sort((a, b) => a.code.localeCompare(b.code));
+    },
+
+    onPickerScroll(e) {
+      const el = e.target;
+      // Cargar más cuando queden 300px al final
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+        if (this.pickerVisibleCount < this.pickerFilteredArts.length) {
+          this.pickerVisibleCount = Math.min(this.pickerVisibleCount + 60, this.pickerFilteredArts.length);
+        }
+      }
+    },
+
+    // Elegir un arte: single click = solo este mazo; doble click = recordar globalmente
+    async pickArt(art, remember) {
+      if (art.__source === 'custom') {
+        await this.chooseCustom({custom_art_id: art.custom_art_id, face: art.face});
+        window.toast('Arte actualizado', art.filename || 'Custom art');
+        this.closeArtPicker();
+      } else if (art.__source === 'drives') {
+        // Descargar el arte del drive y asignarlo (como useDriveArt)
+        try {
+          const r = await fetch('/api/custom-art/from-url', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              url: art.download_url,
+              card_name: this.pickerCard.name,
+              face: 'front',
+              variant: art.set_name,   // en drives, set_name es el source_name
+            })
+          });
+          if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+          const data = await r.json();
+          await this.chooseCustom({custom_art_id: data.id, face: 'front'});
+          window.toast(`Añadido desde ${art.set_name}`, art.filename);
+          this.closeArtPicker();
+        } catch (e) {
+          window.toast('Error añadiendo arte', e.message);
+        }
+      } else {
+        // Oficial de Scryfall
+        await this.chooseArt(art.scryfall_id, remember);
+        window.toast(
+          remember ? 'Arte recordado' : 'Arte actualizado',
+          `${art.set_code?.toUpperCase() || ''} #${art.collector_number || ''}`
+        );
+        this.closeArtPicker();
+      }
+    },
+
+    async addCustomFromUrl() {
+      // Reutiliza el flujo existente pero desde dentro del picker
+      if (!this.pickerAddUrl.trim() || !this.pickerCard) return;
+      this.addingUrl = true;
+      try {
+        const r = await fetch('/api/custom-art/from-url', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            url: this.pickerAddUrl.trim(),
+            card_name: this.pickerCard.name,
+            face: 'front',
+          })
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        const data = await r.json();
+        window.toast('Arte añadido', data.filename || 'Custom art');
+        this.pickerAddUrl = '';
+        // Recargar arts para incluir el nuevo
+        await this.openArtPicker(this.pickerCard);
+      } catch (e) {
+        window.toast('Error descargando', e.message);
+      } finally {
+        this.addingUrl = false;
       }
     },
 
