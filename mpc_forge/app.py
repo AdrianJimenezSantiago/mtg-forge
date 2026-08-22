@@ -7,12 +7,13 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from mpc_forge.clients.moxfield import MoxfieldClient
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.config import PATHS
 from mpc_forge.db import init_db, session_scope
-from mpc_forge.paths import static_dir
+from mpc_forge.paths import diagnose as paths_diagnose, is_frozen, static_dir
 from mpc_forge.routes import custom_art as custom_art_routes
 from mpc_forge.routes import debug as debug_routes
 from mpc_forge.routes import decks, export, integrations, settings as settings_routes, ui
@@ -46,6 +47,13 @@ async def lifespan(app: FastAPI):
         logging.info("Logging a archivo activo: %s", log_path)
     except Exception as e:  # noqa: BLE001
         logging.warning("No se pudo configurar file logging: %s", e)
+
+    # Si estamos en frozen (release .exe), pinta un dump de las rutas resueltas.
+    # Muy útil para diagnosticar problemas de assets/templates que solo aparecen
+    # en release y no en dev.
+    if is_frozen():
+        for line in paths_diagnose().splitlines():
+            logging.info(line)
 
     await init_db()
     # Cargar settings persistidos y aplicarlos a config.py antes de instanciar
@@ -94,6 +102,24 @@ async def lifespan(app: FastAPI):
             pass
 
 
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles con Cache-Control para que el navegador no re-descargue
+    los assets en cada refresh.
+
+    - /static/ (nuestros JS/CSS/imágenes) → 1 día (max-age=86400)
+    - /art/ y /custom_art/ (imágenes de cartas) → 30 días (max-age=2592000)
+      porque tienen un hash/UUID en el nombre y son efectivamente inmutables.
+    """
+    def __init__(self, *args, max_age: int = 86400, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._max_age = max_age
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = f"public, max-age={self._max_age}"
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MPC Forge",
@@ -101,9 +127,21 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    app.mount("/art", StaticFiles(directory=str(PATHS.art_dir)), name="art")
-    app.mount("/custom_art", StaticFiles(directory=str(PATHS.custom_art_dir)), name="custom_art")
+
+    # -- GZip middleware --
+    # Comprime responses >1KB. Impacto real:
+    #   GET /api/decks/{id} con 100 cartas: 60-80 KB → 8-12 KB (~85% menos)
+    #   GET /api/decks/{id}/prints con 900+ prints: 400 KB → 40 KB
+    # No comprime imágenes (ya están comprimidas). Cero contra.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+    # Assets con cache aggressive. Un day para /static (JS/CSS que podríamos
+    # cambiar entre versiones), un mes para /art y /custom_art (nombres con
+    # hash → contenido inmutable).
+    app.mount("/static", CachedStaticFiles(directory=str(STATIC_DIR), max_age=86400), name="static")
+    app.mount("/art", CachedStaticFiles(directory=str(PATHS.art_dir), max_age=2592000), name="art")
+    app.mount("/custom_art", CachedStaticFiles(directory=str(PATHS.custom_art_dir), max_age=2592000), name="custom_art")
+
     app.include_router(ui.router)
     app.include_router(decks.router)
     app.include_router(export.router)

@@ -8,6 +8,15 @@
   {# Favicon (mismo diseño que el .exe) #}
   <link rel="icon" type="image/png" href="/static/favicon.png">
 
+  {# Preconnect hints: el navegador abre TCP+TLS a estos CDNs en paralelo
+     mientras parsea el HTML, así cuando llega la primera petición al asset ya
+     está la conexión lista. Ahorra 100-300 ms en primera carga. #}
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
   {# Tailwind CDN #}
   <script src="https://cdn.tailwindcss.com"></script>
 

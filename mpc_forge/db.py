@@ -85,6 +85,24 @@ async def init_db() -> None:
             {"v": SCHEMA_VERSION},
         )
 
+        # Índices adicionales sobre columnas "hot" que SQLAlchemy no crea
+        # automáticamente. En SQLite las FKs NO tienen índice implícito, así
+        # que hay que crearlos a mano o los queries hacen full scan.
+        # Usamos CREATE INDEX IF NOT EXISTS para que sea idempotente y no
+        # requiera schema bump (se aplica sobre BD existente sin destruir).
+        extra_indexes = [
+            # DeckCard.deck_id: consultado en cada carga de editor, preloader, estimator
+            "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_id ON deck_cards(deck_id)",
+            # DeckCard.scryfall_id: consultado al invalidar cache tras cambio arte
+            "CREATE INDEX IF NOT EXISTS ix_deck_cards_scryfall_id ON deck_cards(scryfall_id)",
+            # DeckCard.role: filtrado en stats, preloader, xml/pdf export
+            "CREATE INDEX IF NOT EXISTS ix_deck_cards_role ON deck_cards(role)",
+            # Composite para el patrón más común: WHERE deck_id=? AND role IN (...)
+            "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_role ON deck_cards(deck_id, role)",
+        ]
+        for stmt in extra_indexes:
+            await conn.execute(text(stmt))
+
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Dependencia FastAPI para inyección de sesión."""

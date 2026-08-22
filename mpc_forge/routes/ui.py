@@ -9,12 +9,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from mpc_forge.paths import template_dir
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
-from mpc_forge.models import Deck, PrintRun
+from mpc_forge.models import Deck, DeckCard, PrintRun
 
 TEMPLATES_DIR = template_dir()
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -26,11 +26,20 @@ DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: DbDep) -> HTMLResponse:
-    decks = (
-        await db.scalars(
-            select(Deck).options(selectinload(Deck.cards)).order_by(Deck.updated_at.desc())
-        )
-    ).all()
+    # Optimización: en vez de traer TODAS las cartas de TODOS los mazos solo
+    # para contar el len (lo que hacía selectinload(Deck.cards)), hacemos un
+    # JOIN con COUNT. Con 20 mazos × 100 cartas pasamos de traer 2000 rows
+    # a solo 20 filas con el count agregado.
+    result = await db.execute(
+        select(Deck, func.count(DeckCard.id).label("card_count"))
+        .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
+        .group_by(Deck.id)
+        .order_by(Deck.updated_at.desc())
+    )
+    decks = []
+    for deck, count in result.all():
+        deck.card_count = count  # atributo runtime, disponible en el template
+        decks.append(deck)
     return templates.TemplateResponse(
         request,
         "index.html",
