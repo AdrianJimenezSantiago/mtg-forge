@@ -18,7 +18,9 @@
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 
   {# Chart.js para el modal de estadísticas del mazo #}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  {# crossorigin=anonymous → si algo peta, window.error tendrá stack trace completo
+     (sin esto los errores de scripts CDN llegan como "Script error." sin detalle). #}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 
   <style>
     /* Símbolos de mana en línea con texto */

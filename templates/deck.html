@@ -1372,10 +1372,19 @@ function deckEditor(deckId) {
 
     closeStats() {
       // Destruimos las instancias de Chart.js para no leak memoria si se
-      // reabre el modal (Chart.js retiene canvases).
-      this._chartInstances.forEach(c => { try { c.destroy(); } catch (e) {} });
+      // reabre el modal. Ojo con el orden:
+      //   1) Primero destruimos los charts (mientras el canvas aún existe)
+      //   2) Después escondemos el modal (x-if quita el canvas del DOM)
+      // Si el orden fuese inverso, el canvas ya no existe y .destroy() peta.
+      this._chartInstances.forEach(c => {
+        try { c.stop(); c.destroy(); } catch (e) {}
+      });
       this._chartInstances = [];
-      this.statsOpen = false;
+      // Doble RAF para asegurar que cualquier frame pendiente de Chart.js
+      // se ejecute (o descarte) antes de quitar el canvas del DOM.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        this.statsOpen = false;
+      }));
     },
 
     computeStats() {
@@ -1513,6 +1522,14 @@ function deckEditor(deckId) {
       Chart.defaults.color = FG_MUTED;
       Chart.defaults.font.family = 'ui-sans-serif, system-ui, sans-serif';
       Chart.defaults.font.size = 11;
+      // Sin animaciones: evita que un requestAnimationFrame pendiente intente
+      // dibujar sobre un canvas ya destruido cuando el usuario cierra el modal
+      // rápido (click fuera / ESC) durante la animación inicial de aparición.
+      Chart.defaults.animation = false;
+      Chart.defaults.animations.colors = false;
+      Chart.defaults.animations.x = false;
+      Chart.defaults.animations.y = false;
+      Chart.defaults.transitions.active.animation.duration = 0;
 
       const commonAxes = {
         grid: { color: GRID, drawBorder: false },
