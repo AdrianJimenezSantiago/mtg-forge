@@ -40,3 +40,18 @@ def template_dir() -> Path:
 
 def static_dir() -> Path:
     return resource_root() / "static"
+
+
+def diagnose() -> str:
+    """Dump multilínea con las rutas resueltas — se pinta en el log al arrancar
+    en modo frozen para diagnosticar problemas de packaging.
+    """
+    lines = [
+        f"paths.is_frozen     = {is_frozen()}",
+        f"paths.resource_root = {resource_root()}",
+        f"paths.template_dir  = {template_dir()}",
+        f"paths.static_dir    = {static_dir()}",
+        f"sys.executable      = {sys.executable}",
+        f"sys._MEIPASS        = {getattr(sys, '_MEIPASS', '(not set)')}",
+    ]
+    return "\n".join(lines)

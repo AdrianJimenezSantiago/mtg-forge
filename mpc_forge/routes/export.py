@@ -19,7 +19,7 @@ from mpc_forge.db import get_session
 from mpc_forge.models import Deck, PrintRun
 from mpc_forge.schemas import BuildXMLRequest
 from mpc_forge.services import backup as backup_service
-from mpc_forge.services import cost_estimator, history
+from mpc_forge.services import cost_estimator, decklist_export, history
 from mpc_forge.services.art_cache import ArtCache
 from mpc_forge.services.pdf_generator import PDFOptions, build_pdf
 from mpc_forge.services.xml_generator import (
@@ -141,6 +141,78 @@ async def build_xml_endpoint(
         estimated_cost_eur=est.total_eur,  # devolvemos EUR total al frontend
         run_id=run_id,
     )
+
+
+# ---- Decklist como texto plano ---------------------------------------------
+# Copiar la lista serializada al portapapeles o descargarla como .txt para
+# reimportarla en MTGPrint, MPCFill, Moxfield, MTGA, etc.
+
+class DecklistResponse(BaseModel):
+    text: str
+    format: str
+    total_cards: int
+    filename: str
+
+
+@router.get("/decks/{deck_id}/decklist", response_model=DecklistResponse)
+async def get_decklist(
+    deck_id: int,
+    db: DbDep,
+    format: str = "with_set",  # "simple" | "with_set" | "arena"
+    include_headers: bool = True,
+) -> DecklistResponse:
+    """Devuelve el mazo serializado como texto plano.
+
+    Solo cuenta cartas con include=True. Los tokens y meld_result se omiten
+    porque no forman parte de la lista importable.
+    """
+    if format not in {"simple", "with_set", "arena"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Formato desconocido: {format!r}")
+
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    text = await decklist_export.build_decklist_text(
+        db, deck_id, fmt=format, include_headers=include_headers,  # type: ignore[arg-type]
+    )
+    if not text.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mazo no tiene cartas activas")
+
+    total = sum(1 for line in text.splitlines() if line and line[0].isdigit())
+    return DecklistResponse(
+        text=text,
+        format=format,
+        total_cards=total,
+        filename=decklist_export.filename_for(deck.name, format),  # type: ignore[arg-type]
+    )
+
+
+@router.get("/decks/{deck_id}/decklist.txt")
+async def download_decklist(
+    deck_id: int,
+    db: DbDep,
+    format: str = "with_set",
+    include_headers: bool = True,
+) -> FileResponse:
+    """Descarga el mazo como fichero .txt (para guardar/enviar)."""
+    if format not in {"simple", "with_set", "arena"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Formato desconocido: {format!r}")
+
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    text = await decklist_export.build_decklist_text(
+        db, deck_id, fmt=format, include_headers=include_headers,  # type: ignore[arg-type]
+    )
+    if not text.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mazo no tiene cartas activas")
+
+    filename = decklist_export.filename_for(deck.name, format)  # type: ignore[arg-type]
+    out_path = PATHS.exports_dir / filename
+    out_path.write_text(text, encoding="utf-8")
+    return FileResponse(out_path, media_type="text/plain; charset=utf-8", filename=filename)
 
 
 @router.get("/exports/{filename}")

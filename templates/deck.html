@@ -181,6 +181,83 @@
       </div>
     </template>
 
+    {# Botón: cambiar idioma de las cartas (arte oficial en el idioma pedido) #}
+    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+      <button @click="open = !open" :disabled="localizing"
+              class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-3 py-2 rounded-md
+                     disabled:opacity-50 transition flex items-center gap-1.5"
+              title="Cambiar el idioma del arte oficial de las cartas del mazo (usa Scryfall)">
+        <i data-lucide="languages" class="w-4 h-4"></i>
+        <span x-show="!localizing">Idioma ▾</span>
+        <span x-show="localizing">Localizando…</span>
+      </button>
+      <div x-show="open" x-transition
+           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Idioma del arte</div>
+        <p class="text-[11px] text-fg-faint leading-relaxed">
+          Aplica a todas las cartas del mazo. Las que no tengan impresión en ese idioma
+          (promos, Secret Lair…) se quedan como estén. Las que tengan arte custom no se tocan.
+        </p>
+        <label class="flex items-center justify-between text-xs gap-2 pt-1">
+          <span class="text-fg-muted">Idioma</span>
+          <select x-model="localizeLang"
+                  class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs min-w-[9rem]">
+            <template x-for="(label, code) in supportedLangs" :key="code">
+              <option :value="code" x-text="label + ' (' + code + ')'"></option>
+            </template>
+          </select>
+        </label>
+        <button @click="localizeDeck(); open = false"
+                :disabled="localizing"
+                class="w-full bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition mt-1 disabled:opacity-50">
+          Aplicar a todo el mazo
+        </button>
+      </div>
+    </div>
+
+    {# Botón: Copiar/descargar decklist como texto plano #}
+    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+      <button @click="open = !open" :disabled="exportingDecklist"
+              class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-3 py-2 rounded-md
+                     disabled:opacity-50 transition flex items-center gap-1.5"
+              title="Exportar la lista del mazo como texto plano">
+        <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+        <span x-show="!exportingDecklist">Decklist ▾</span>
+        <span x-show="exportingDecklist">Preparando…</span>
+      </button>
+      <div x-show="open" x-transition
+           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Formato de la lista</div>
+        <label class="flex items-center justify-between text-xs gap-2">
+          <span class="text-fg-muted">Formato</span>
+          <select x-model="decklistFormat" class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
+            <option value="with_set">Con set (MTGO/MPCFill)</option>
+            <option value="arena">Arena (SET mayúsculas)</option>
+            <option value="simple">Simple (solo nombre)</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-2 text-xs text-fg-muted">
+          <input type="checkbox" x-model="decklistHeaders" class="accent-accent">
+          Cabeceras por sección (Commander/Deck)
+        </label>
+        <div class="flex gap-2 pt-1">
+          <button @click="copyDecklist(); open = false"
+                  class="flex-1 bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            Copiar
+          </button>
+          <button @click="downloadDecklist(); open = false"
+                  class="flex-1 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            .txt
+          </button>
+        </div>
+        <div class="text-[10px] text-fg-faint text-center pt-1">
+          Solo cartas activas · tokens y meld excluidos
+        </div>
+      </div>
+    </div>
+
     <div x-data="{ open: false }" @click.outside="open = false" class="relative">
       <button @click="open = !open" :disabled="buildingPdf"
               class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-4 py-2 rounded-md
@@ -1057,6 +1134,16 @@ function deckEditor(deckId) {
     pdfIncludeBacks: false,
     pdfGapMm: 0,
 
+    // Decklist export options
+    exportingDecklist: false,
+    decklistFormat: 'with_set',  // 'simple' | 'with_set' | 'arena'
+    decklistHeaders: true,
+
+    // Localización (idioma del arte)
+    localizing: false,
+    localizeLang: 'es',                       // se pisa con el default de settings al cargar
+    supportedLangs: {en: 'English', es: 'Español'},  // se rellena vía /_/supported-langs
+
     // Renombrar
     editingName: false,
     editNameValue: '',
@@ -1275,7 +1362,13 @@ function deckEditor(deckId) {
             if (typeof data.values.foil_default === 'boolean') this.foil = data.values.foil_default;
             if (data.values.prefer_full_art) this.activeArtFilters.full = true;
             if (data.values.prefer_borderless) this.activeArtFilters.borderless = true;
+            if (data.values.preferred_language) this.localizeLang = data.values.preferred_language;
           }
+        } catch (e) { /* no crítico */ }
+        // Cargar mapa de idiomas soportados por Scryfall (para el selector)
+        try {
+          const lr = await fetch('/api/decks/_/supported-langs');
+          if (lr.ok) this.supportedLangs = await lr.json();
         } catch (e) { /* no crítico */ }
         // Detectar autofill al arrancar (para mostrar u ocultar el botón)
         try {
@@ -2385,6 +2478,103 @@ function deckEditor(deckId) {
         window.toast('Error generando PDF', e.message);
       } finally {
         this.buildingPdf = false;
+      }
+    },
+
+    // ---- Localización (idioma del arte) ----
+    async localizeDeck() {
+      if (!this.localizeLang) return;
+      this.localizing = true;
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/localize`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({lang: this.localizeLang}),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        const data = await r.json();
+        const langLabel = this.supportedLangs[data.lang] || data.lang;
+
+        // Recargar el mazo para que aparezcan los nuevos artes/thumbnails
+        await this.load();
+
+        // Toast con resumen y detalle de las que no se pudieron localizar
+        let msg = `${data.localized} cambiadas · ${data.unchanged} ya estaban`;
+        if (data.skipped_custom > 0) {
+          msg += ` · ${data.skipped_custom} con arte custom respetadas`;
+        }
+        if (data.unavailable && data.unavailable.length > 0) {
+          // Mostramos las primeras 3-4 en el toast; el resto queda en la consola
+          const shown = data.unavailable.slice(0, 4).join(', ');
+          const more = data.unavailable.length > 4 ? ` (+${data.unavailable.length - 4} más)` : '';
+          msg += `\nSin arte en ${langLabel}: ${shown}${more}`;
+          console.log('[localize] Cartas sin arte en', langLabel, ':', data.unavailable);
+        }
+        Alpine.store('ui').success(`Idioma → ${langLabel}`, msg);
+      } catch (e) {
+        window.toast('Error localizando', e.message);
+      } finally {
+        this.localizing = false;
+      }
+    },
+
+    // ---- Decklist como texto ----
+    async _fetchDecklist() {
+      // Devuelve {text, format, total_cards, filename} o null si falla.
+      const params = new URLSearchParams({
+        format: this.decklistFormat,
+        include_headers: this.decklistHeaders ? 'true' : 'false',
+      });
+      const r = await fetch(`/api/decks/${this.deckId}/decklist?${params.toString()}`);
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.detail || 'No se pudo generar la decklist');
+      }
+      return await r.json();
+    },
+    async copyDecklist() {
+      this.exportingDecklist = true;
+      try {
+        const data = await this._fetchDecklist();
+        // Fallback si el navegador no soporta clipboard API o falla el permiso
+        // (ocurre p.ej. si la página no está en https/localhost).
+        try {
+          await navigator.clipboard.writeText(data.text);
+        } catch (clipErr) {
+          const ta = document.createElement('textarea');
+          ta.value = data.text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        window.toast(
+          'Decklist copiada',
+          `${data.total_cards} entradas · formato ${data.format}`
+        );
+      } catch (e) {
+        window.toast('Error copiando decklist', e.message);
+      } finally {
+        this.exportingDecklist = false;
+      }
+    },
+    async downloadDecklist() {
+      // No pasamos por _fetchDecklist porque el endpoint de descarga es distinto
+      // (streamea el fichero directamente en lugar de devolver JSON).
+      this.exportingDecklist = true;
+      try {
+        const params = new URLSearchParams({
+          format: this.decklistFormat,
+          include_headers: this.decklistHeaders ? 'true' : 'false',
+        });
+        window.location.href = `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`;
+      } catch (e) {
+        window.toast('Error descargando decklist', e.message);
+      } finally {
+        // El browser lanza la descarga y no bloquea el hilo — reseteamos ya.
+        setTimeout(() => { this.exportingDecklist = false; }, 500);
       }
     }
   }

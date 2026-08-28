@@ -167,6 +167,10 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
        "1 Sol Ring (C21) 263"
        "1 Sol Ring [C21] 263"
        "Lightning Bolt"  (asume 1)
+
+    Cada entrada incluye ``raw_line`` con el texto tal cual lo escribió el
+    usuario, para que si la resolución falla podamos mostrárselo de vuelta
+    exactamente igual (útil cuando hay typos o caracteres raros).
     """
     entries: list[dict[str, Any]] = []
     line_re = re.compile(
@@ -176,7 +180,8 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
         r"\s*(?P<num>\S+)?)?\s*$"
     )
     for raw in text.splitlines():
-        if not raw.strip() or raw.strip().startswith("//") or raw.strip().startswith("#"):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("//") or stripped.startswith("#"):
             continue
         # Cabeceras tipo "Mainboard (99)" u otras — ignoramos las que no tienen nombre.
         if re.match(r"^(mainboard|commander|sideboard|maybeboard|tokens)\b", raw, re.I):
@@ -184,12 +189,16 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
         m = line_re.match(raw)
         if not m:
             # intento más simple: "Lightning Bolt"
-            entries.append({"name": raw.strip(), "quantity": 1, "set": None, "number": None})
+            entries.append({
+                "name": stripped, "quantity": 1, "set": None, "number": None,
+                "raw_line": raw,
+            })
             continue
         entries.append({
             "name": m.group("name").strip(),
             "quantity": int(m.group("qty") or 1),
             "set": (m.group("set") or "").lower() or None,
             "number": m.group("num") or None,
+            "raw_line": raw,
         })
     return entries

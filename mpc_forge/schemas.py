@@ -168,3 +168,31 @@ class DeckView(BaseModel):
     updated_at: datetime
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
+
+
+class UnresolvedEntry(BaseModel):
+    """Una carta que no se pudo resolver contra Scryfall durante el import.
+
+    Se muestra al usuario tras importar para que sepa qué falta y pueda
+    editarlo (o copiar toda la lista de fallos y reintentar).
+    """
+    name: str                           # el nombre tal cual se leyó
+    quantity: int = 1
+    raw_line: str | None = None         # línea original si venía de texto plano
+    set: str | None = None              # set intentado si lo había
+    number: str | None = None           # collector number intentado si lo había
+    role: str = "mainboard"
+    reason: str = "not_found_on_scryfall"
+
+
+class ImportResult(BaseModel):
+    """Resultado de importar un mazo desde Moxfield o texto plano.
+
+    Además del ``DeckView`` habitual devolvemos las entradas que no se pudieron
+    resolver, para que el frontend enseñe un banner/modal con la lista de
+    fallos y opción de copiar al portapapeles.
+    """
+    deck: DeckView
+    unresolved: list[UnresolvedEntry] = []
+    resolved_count: int = 0
+    total_entries: int = 0

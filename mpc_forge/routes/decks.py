@@ -23,6 +23,8 @@ from mpc_forge.schemas import (
     DeckView,
     ImportFromMoxfieldRequest,
     ImportFromTextRequest,
+    ImportResult,
+    UnresolvedEntry,
     UpdateCardRequest,
     UpdateDeckRequest,
 )
@@ -44,34 +46,46 @@ def _get_moxfield(request: Request) -> MoxfieldClient:
 
 # --- Import / CRUD -------------------------------------------------------
 
-@router.post("/import/moxfield", response_model=DeckView)
+@router.post("/import/moxfield", response_model=ImportResult)
 async def import_moxfield(
     payload: ImportFromMoxfieldRequest,
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
     moxfield: Annotated[MoxfieldClient, Depends(_get_moxfield)],
-) -> DeckView:
+) -> ImportResult:
     try:
-        deck = await deck_service.import_from_moxfield(
+        deck, unresolved = await deck_service.import_from_moxfield(
             db, scryfall, moxfield, payload.url_or_id,
             include_extras=payload.include_extras,
         )
     except MoxfieldError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
-    return await _deck_to_view(db, deck)
+    view = await _deck_to_view(db, deck)
+    return ImportResult(
+        deck=view,
+        unresolved=[UnresolvedEntry(**u) for u in unresolved],
+        resolved_count=sum(c.quantity for c in view.cards),
+        total_entries=sum(c.quantity for c in view.cards) + sum(u["quantity"] for u in unresolved),
+    )
 
 
-@router.post("/import/text", response_model=DeckView)
+@router.post("/import/text", response_model=ImportResult)
 async def import_text(
     payload: ImportFromTextRequest,
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
-) -> DeckView:
-    deck = await deck_service.import_from_plaintext(
+) -> ImportResult:
+    deck, unresolved = await deck_service.import_from_plaintext(
         db, scryfall, payload.name, payload.text, payload.format,
         include_extras=payload.include_extras,
     )
-    return await _deck_to_view(db, deck)
+    view = await _deck_to_view(db, deck)
+    return ImportResult(
+        deck=view,
+        unresolved=[UnresolvedEntry(**u) for u in unresolved],
+        resolved_count=sum(c.quantity for c in view.cards),
+        total_entries=sum(c.quantity for c in view.cards) + sum(u["quantity"] for u in unresolved),
+    )
 
 
 @router.get("/", response_model=list[DeckView])
@@ -472,6 +486,80 @@ async def add_related_cards(
     for dc in added:
         await db.refresh(dc)
     return [await _deckcard_to_view(db, dc) for dc in added]
+
+
+# ================================================================
+# LOCALIZACIÓN DE ARTE (idioma de las cartas)
+# ================================================================
+
+# Idiomas soportados por Scryfall que exponemos en la UI. La lista completa
+# es más larga (he, la, grc, ar, sa, ph, qya…) pero solo tienen impresiones
+# reales unas pocas: mantenemos las principales para no abrumar al usuario.
+SUPPORTED_LANGS: dict[str, str] = {
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "it": "Italiano",
+    "pt": "Português",
+    "ja": "日本語",
+    "ko": "한국어",
+    "ru": "Русский",
+    "zhs": "简体中文",
+    "zht": "繁體中文",
+}
+
+
+class LocalizeDeckRequest(BaseModel):
+    lang: str  # Uno de los códigos de SUPPORTED_LANGS
+
+
+class LocalizeDeckResponse(BaseModel):
+    lang: str
+    localized: int          # nº de cartas cuyo scryfall_id se cambió al localizado
+    unchanged: int          # nº que ya estaban en ese idioma
+    unavailable: list[str]  # nombres de cartas sin impresión en ese idioma
+    skipped_custom: int     # nº saltadas por tener custom art frontal
+
+
+@router.get("/_/supported-langs")
+async def get_supported_langs() -> dict[str, str]:
+    """Diccionario code → label para poblar el selector de idiomas del frontend."""
+    return SUPPORTED_LANGS
+
+
+@router.post("/{deck_id}/localize", response_model=LocalizeDeckResponse)
+async def localize_deck_endpoint(
+    deck_id: int,
+    payload: LocalizeDeckRequest,
+    db: DbDep,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> LocalizeDeckResponse:
+    """Cambia todas las cartas del mazo al idioma pedido, cuando exista impresión.
+
+    - Cartas con custom_art_front_id se saltan (respeta el arte custom del usuario).
+    - Cartas ya en ese idioma no se tocan.
+    - Cartas sin impresión disponible en ese idioma conservan la impresión actual
+      y se listan en ``unavailable`` para que el usuario sepa cuáles siguen en su
+      idioma original.
+
+    Los printings localizados se cachean como filas independientes de
+    ``PrintingCache`` (Scryfall les da su propio scryfall_id por idioma), por lo
+    que llamar dos veces con el mismo idioma es prácticamente gratis la segunda
+    vez.
+    """
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    if payload.lang not in SUPPORTED_LANGS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Idioma no soportado: {payload.lang!r}. Válidos: {sorted(SUPPORTED_LANGS)}",
+        )
+
+    result = await deck_service.localize_deck(db, scryfall, deck_id, payload.lang)
+    return LocalizeDeckResponse(**result)
 
 
 @router.get("/_/autocomplete")

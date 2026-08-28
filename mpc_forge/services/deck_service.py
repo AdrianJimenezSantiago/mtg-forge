@@ -273,17 +273,46 @@ async def create_deck_from_entries(
     return deck
 
 
+def _unresolved_from_entries(resolved: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extrae las entradas que ``resolve_cards`` no consiguió resolver.
+
+    Devuelve dicts con exactamente los campos que espera ``UnresolvedEntry``,
+    para que las routes solo tengan que envolverlos en el schema Pydantic.
+    """
+    out: list[dict[str, Any]] = []
+    for e in resolved:
+        if e.get("resolved"):
+            continue
+        out.append({
+            "name": e.get("name", "") or "",
+            "quantity": int(e.get("quantity", 1) or 1),
+            "raw_line": e.get("raw_line"),
+            "set": e.get("set"),
+            "number": e.get("number"),
+            "role": e.get("role", "mainboard"),
+            "reason": "not_found_on_scryfall",
+        })
+    return out
+
+
 async def import_from_moxfield(
     db: AsyncSession,
     scryfall: ScryfallClient,
     mox: MoxfieldClient,
     url_or_id: str,
     include_extras: bool = False,
-) -> Deck:
+) -> tuple[Deck, list[dict[str, Any]]]:
+    """Importa desde Moxfield y devuelve ``(deck, unresolved)``.
+
+    ``unresolved`` es una lista de entradas que Scryfall no reconoció (rara
+    para imports de Moxfield porque Moxfield ya trae scryfall_id, pero puede
+    ocurrir con cartas muy nuevas aún no en Scryfall).
+    """
     payload = await mox.fetch_deck(url_or_id)
     norm = normalize_deck(payload)
     resolved = await resolve_cards(db, scryfall, norm["cards"])
-    return await create_deck_from_entries(
+    unresolved = _unresolved_from_entries(resolved)
+    deck = await create_deck_from_entries(
         db,
         name=norm["name"],
         entries=resolved,
@@ -292,6 +321,7 @@ async def import_from_moxfield(
         fmt=norm["format"],
         include_extras=include_extras,
     )
+    return deck, unresolved
 
 
 async def import_from_plaintext(
@@ -301,14 +331,144 @@ async def import_from_plaintext(
     text: str,
     fmt: str = "commander",
     include_extras: bool = False,
-) -> Deck:
+) -> tuple[Deck, list[dict[str, Any]]]:
+    """Importa desde texto plano y devuelve ``(deck, unresolved)``.
+
+    Las entradas no resueltas conservan la línea original (``raw_line``) para
+    que el usuario vea exactamente qué texto no se pudo interpretar.
+    """
     entries = parse_plain_decklist(text)
     for e in entries:
         e.setdefault("role", "mainboard")
     resolved = await resolve_cards(db, scryfall, entries)
-    return await create_deck_from_entries(
+    unresolved = _unresolved_from_entries(resolved)
+    deck = await create_deck_from_entries(
         db, name=name, entries=resolved, fmt=fmt, include_extras=include_extras,
     )
+    return deck, unresolved
+
+
+async def try_localize_card(
+    db: AsyncSession,
+    scryfall: ScryfallClient,
+    scryfall_id: str,
+    lang: str,
+) -> PrintingCache | None:
+    """Intenta encontrar la versión localizada del printing dado.
+
+    Estrategia: leer el printing en cache para obtener (set, collector_number)
+    y pedir a Scryfall ``/cards/{set}/{number}/{lang}``. Si Scryfall responde,
+    lo cacheamos como printing propio (con su scryfall_id de idioma) y lo
+    devolvemos.
+
+    Devuelve ``None`` si:
+    - el printing base no está en cache (no debería pasar tras un import normal)
+    - la impresión no existe en ese idioma en Scryfall (secret lairs, promos…)
+    - hay un error de red
+    """
+    if lang == "en":
+        # Los printings ingleses son "el default" de Scryfall — no requiere lookup extra
+        return await db.get(PrintingCache, scryfall_id)
+
+    base = await db.get(PrintingCache, scryfall_id)
+    if not base or not base.set_code or not base.collector_number:
+        return None
+    # Si ya está en el idioma pedido, no hace falta llamar a Scryfall
+    if base.lang == lang:
+        return base
+
+    # ¿Ya lo tenemos cacheado bajo el mismo (set, collector_number, lang)?
+    # PrintingCache no está indexado por (set, number, lang) — hacemos scan.
+    # En la práctica hay pocas rows por oracle_id, así que compensa filtrar por
+    # oracle_id primero (que sí está indexado).
+    if base.oracle_id:
+        candidates = (
+            await db.scalars(
+                select(PrintingCache).where(
+                    PrintingCache.oracle_id == base.oracle_id,
+                    PrintingCache.set_code == base.set_code,
+                    PrintingCache.collector_number == base.collector_number,
+                    PrintingCache.lang == lang,
+                )
+            )
+        ).all()
+        if candidates:
+            return candidates[0]
+
+    try:
+        raw = await scryfall.by_set_and_number(base.set_code, base.collector_number, lang=lang)
+    except Exception as e:  # noqa: BLE001
+        log.debug("Localización de %s/%s a %s falló: %s",
+                  base.set_code, base.collector_number, lang, e)
+        return None
+    if not raw:
+        return None
+
+    return await upsert_printing(db, raw)
+
+
+async def localize_deck(
+    db: AsyncSession,
+    scryfall: ScryfallClient,
+    deck_id: int,
+    lang: str,
+) -> dict[str, Any]:
+    """Aplica el idioma pedido a TODAS las cartas del mazo.
+
+    Para cada carta:
+    - Si ya está en el idioma pedido → no toca nada
+    - Si no y Scryfall tiene esa versión → actualiza ``DeckCard.scryfall_id`` al
+      printing localizado (que ya se cachea con su nuevo scryfall_id)
+    - Si Scryfall no tiene esa versión → conserva la impresión actual y la
+      añade al reporte de "no disponibles" que se devuelve
+
+    NOTA: se saltan las cartas con custom_art_front_id — su arte de frente lo
+    define el custom, no la impresión oficial. Cambiarles el scryfall_id
+    dejaría la carta con custom art delante pero metadata (nombre localizado,
+    reverso DFC) del nuevo idioma, lo cual es confuso.
+
+    Devuelve un resumen: ``{localized, unchanged, unavailable: [names]}``.
+    """
+    cards = (
+        await db.scalars(
+            select(DeckCard).where(DeckCard.deck_id == deck_id)
+        )
+    ).all()
+
+    localized = 0
+    unchanged = 0
+    unavailable: list[str] = []
+    skipped_custom = 0
+
+    for dc in cards:
+        if dc.custom_art_front_id:
+            # Respetamos el arte custom del usuario — no cambiamos scryfall_id
+            skipped_custom += 1
+            continue
+
+        current = await db.get(PrintingCache, dc.scryfall_id)
+        if current and current.lang == lang:
+            unchanged += 1
+            continue
+
+        localized_printing = await try_localize_card(db, scryfall, dc.scryfall_id, lang)
+        if localized_printing is None:
+            unavailable.append(dc.name)
+            continue
+        if localized_printing.scryfall_id == dc.scryfall_id:
+            unchanged += 1
+            continue
+        dc.scryfall_id = localized_printing.scryfall_id
+        localized += 1
+
+    await db.commit()
+    return {
+        "lang": lang,
+        "localized": localized,
+        "unchanged": unchanged,
+        "unavailable": unavailable,
+        "skipped_custom": skipped_custom,
+    }
 
 
 async def fetch_printings_for_oracle(

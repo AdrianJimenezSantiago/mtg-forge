@@ -105,6 +105,19 @@ DEFINITIONS: list[SettingDef] = [
 
     # --- Preferencias de arte ---
     SettingDef(
+        key="preferred_language",
+        label="Idioma preferido de las cartas",
+        type="str",
+        group="Preferencias de arte",
+        default="en",
+        description=(
+            "Al pulsar «Idioma ▾» en el editor de un mazo, este idioma vendrá preseleccionado. "
+            "Scryfall solo tiene arte en el idioma pedido si esa impresión existe: promo, "
+            "secret lair y otras solo hay en inglés y se conservarán tal cual."
+        ),
+        choices=["en", "es", "fr", "de", "it", "pt", "ja", "ko", "ru", "zhs", "zht"],
+    ),
+    SettingDef(
         key="prefer_full_art",
         label="Preferir full art",
         type="bool",

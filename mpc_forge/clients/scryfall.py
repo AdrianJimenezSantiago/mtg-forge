@@ -53,8 +53,16 @@ class ScryfallClient:
     async def by_id(self, scryfall_id: str) -> dict[str, Any]:
         return await self._get(f"/cards/{scryfall_id}")
 
-    async def by_set_and_number(self, set_code: str, number: str) -> dict[str, Any]:
-        return await self._get(f"/cards/{set_code.lower()}/{number}")
+    async def by_set_and_number(
+        self, set_code: str, number: str, lang: str | None = None
+    ) -> dict[str, Any]:
+        """Devuelve una impresión concreta. Si se pasa ``lang``, intenta la
+        versión localizada. Devuelve ``{}`` si Scryfall no tiene esa combinación
+        (p.ej. la carta no se imprimió en ese idioma)."""
+        path = f"/cards/{set_code.lower()}/{number}"
+        if lang and lang != "en":
+            path = f"{path}/{lang}"
+        return await self._get(path)
 
     async def prints_by_oracle_id(self, oracle_id: str) -> list[dict[str, Any]]:
         """Devuelve todas las impresiones ('unique=prints') de un oracle_id."""
