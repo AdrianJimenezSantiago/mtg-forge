@@ -19,8 +19,9 @@ from mpc_forge.db import get_session
 from mpc_forge.models import Deck, PrintRun
 from mpc_forge.schemas import BuildXMLRequest
 from mpc_forge.services import backup as backup_service
-from mpc_forge.services import cost_estimator, decklist_export, history
+from mpc_forge.services import cost_estimator, deck_activity, decklist_export, history
 from mpc_forge.services.art_cache import ArtCache
+from mpc_forge.services.deck_activity import DeckActivityKind as K
 from mpc_forge.services.pdf_generator import PDFOptions, build_pdf
 from mpc_forge.services.xml_generator import (
     build_xml,
@@ -133,6 +134,24 @@ async def build_xml_endpoint(
             run_name=payload.run_name,
         )
         run_id = run.id
+
+    # Timeline: dejamos huella del XML generado con las opciones para que
+    # el usuario pueda ver más adelante qué configuración usó cada vez.
+    await deck_activity.log_event(
+        db, deck_id, K.XML_GENERATED,
+        payload={
+            "cardstock": cardstock,
+            "foil": foil,
+            "total_cards": result.total_cards,
+            "tier_size": est.tier_size,
+            "estimated_cost_eur": est.total_eur,
+            "xml_path": str(result.xml_path),
+            "xml_filename": Path(str(result.xml_path)).name,
+            "run_id": run_id,
+        },
+        deck_name=deck.name,
+    )
+    await db.commit()
 
     return XMLBuildResponse(
         xml_path=str(result.xml_path),
@@ -271,6 +290,21 @@ async def build_pdf_endpoint(
         gap_mm=payload.gap_mm,
     )
     result = build_pdf(resolved, out_path, options)
+    await deck_activity.log_event(
+        db, deck_id, K.PDF_GENERATED,
+        payload={
+            "page_size": options.page_size,
+            "cut_marks": options.cut_marks,
+            "include_backs": options.include_backs,
+            "gap_mm": options.gap_mm,
+            "total_pages": result.total_pages,
+            "total_slots": result.total_slots,
+            "pdf_path": str(result.pdf_path),
+            "pdf_filename": Path(str(result.pdf_path)).name,
+        },
+        deck_name=deck.name,
+    )
+    await db.commit()
     return PDFBuildResponse(
         pdf_path=str(result.pdf_path),
         total_pages=result.total_pages,

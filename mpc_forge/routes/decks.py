@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -28,7 +29,8 @@ from mpc_forge.schemas import (
     UpdateCardRequest,
     UpdateDeckRequest,
 )
-from mpc_forge.services import custom_art, deck_service, deck_validation, history, preloader
+from mpc_forge.services import custom_art, deck_activity, deck_service, deck_validation, history, preloader
+from mpc_forge.services.deck_activity import DeckActivityKind as K
 
 router = APIRouter(prefix="/api/decks", tags=["decks"])
 log = logging.getLogger(__name__)
@@ -61,11 +63,26 @@ async def import_moxfield(
     except MoxfieldError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
     view = await _deck_to_view(db, deck)
+    resolved_count = sum(c.quantity for c in view.cards)
+    # Registro del import en el timeline del propio mazo — el usuario lo verá
+    # como primer evento cuando abra su historial.
+    await deck_activity.log_event(
+        db, deck.id, K.DECK_CREATED,
+        payload={
+            "source": "moxfield",
+            "source_ref": payload.url_or_id,
+            "card_count": resolved_count,
+            "unresolved_count": len(unresolved),
+            "include_extras": payload.include_extras,
+        },
+        deck_name=deck.name,
+    )
+    await db.commit()
     return ImportResult(
         deck=view,
         unresolved=[UnresolvedEntry(**u) for u in unresolved],
-        resolved_count=sum(c.quantity for c in view.cards),
-        total_entries=sum(c.quantity for c in view.cards) + sum(u["quantity"] for u in unresolved),
+        resolved_count=resolved_count,
+        total_entries=resolved_count + sum(u["quantity"] for u in unresolved),
     )
 
 
@@ -80,11 +97,23 @@ async def import_text(
         include_extras=payload.include_extras,
     )
     view = await _deck_to_view(db, deck)
+    resolved_count = sum(c.quantity for c in view.cards)
+    await deck_activity.log_event(
+        db, deck.id, K.DECK_CREATED,
+        payload={
+            "source": "text",
+            "card_count": resolved_count,
+            "unresolved_count": len(unresolved),
+            "include_extras": payload.include_extras,
+        },
+        deck_name=deck.name,
+    )
+    await db.commit()
     return ImportResult(
         deck=view,
         unresolved=[UnresolvedEntry(**u) for u in unresolved],
-        resolved_count=sum(c.quantity for c in view.cards),
-        total_entries=sum(c.quantity for c in view.cards) + sum(u["quantity"] for u in unresolved),
+        resolved_count=resolved_count,
+        total_entries=resolved_count + sum(u["quantity"] for u in unresolved),
     )
 
 
@@ -121,12 +150,22 @@ async def update_deck(deck_id: int, payload: UpdateDeckRequest, db: DbDep) -> De
     deck = await db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+    old_name = deck.name
     if payload.name is not None:
         deck.name = payload.name
     if payload.format is not None:
         deck.format = payload.format
     if payload.notes is not None:
         deck.notes = payload.notes
+    # Solo loggeamos rename porque es el único cambio "material" que le puede
+    # importar al usuario en el timeline. Cambios de formato/notas rara vez
+    # ocurren y no aportan mucho al historial.
+    if payload.name is not None and payload.name != old_name:
+        await deck_activity.log_event(
+            db, deck_id, K.DECK_RENAMED,
+            payload={"old_name": old_name, "new_name": payload.name},
+            deck_name=payload.name,
+        )
     await db.commit()
     return await _deck_to_view(db, deck)
 
@@ -183,6 +222,15 @@ async def add_card(
             include=True,
         )
         db.add(dc)
+    await deck_activity.log_event(
+        db, deck_id, K.CARD_ADDED,
+        card_name=printing.name,
+        card_scryfall_id=printing.scryfall_id,
+        card_oracle_id=printing.oracle_id or None,
+        payload={"quantity": payload.quantity, "role": payload.role,
+                 "stacked": bool(existing)},
+        deck_name=deck.name,
+    )
     await db.commit()
     await db.refresh(dc)
     return await _deckcard_to_view(db, dc)
@@ -196,10 +244,24 @@ async def update_card(
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
-    if payload.quantity is not None:
+    # Guardamos el estado previo ANTES de mutar, para poder loggear (old → new).
+    old_qty = dc.quantity
+    old_role = dc.role
+
+    if payload.quantity is not None and payload.quantity != old_qty:
         dc.quantity = payload.quantity
-    if payload.role is not None:
+        await deck_activity.log_event(
+            db, deck_id, K.CARD_QTY_CHANGED,
+            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            payload={"old_qty": old_qty, "new_qty": payload.quantity, "role": dc.role},
+        )
+    if payload.role is not None and payload.role != old_role:
         dc.role = payload.role
+        await deck_activity.log_event(
+            db, deck_id, K.CARD_MOVED,
+            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            payload={"from_role": old_role, "to_role": payload.role},
+        )
     await db.commit()
     return await _deckcard_to_view(db, dc)
 
@@ -210,6 +272,12 @@ async def delete_card(deck_id: int, card_id: int, db: DbDep) -> None:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+    # Loggeamos ANTES de borrar para conservar los datos de la carta.
+    await deck_activity.log_event(
+        db, deck_id, K.CARD_REMOVED,
+        card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+        payload={"quantity": dc.quantity, "role": dc.role},
+    )
     await db.delete(dc)
     await db.commit()
 
@@ -239,10 +307,189 @@ async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
             )
         )
     ).all()
+    # Snapshot para el timeline: hasta 20 nombres (evita payloads gigantes en
+    # sideboards enormes). Solo se usa para mostrar en el modal, no es autoritativo.
+    card_names = [c.name for c in cards[:20]]
+    total_qty = sum(c.quantity for c in cards)
     for dc in cards:
         await db.delete(dc)
+    if cards:
+        await deck_activity.log_event(
+            db, deck_id, K.ROLE_CLEARED,
+            payload={
+                "role": role,
+                "deleted": len(cards),
+                "total_qty": total_qty,
+                "card_names_sample": card_names,
+                "truncated": len(cards) > len(card_names),
+            },
+            deck_name=deck.name,
+        )
     await db.commit()
     return ClearRoleResponse(role=role, deleted=len(cards))
+
+
+# ================================================================
+# TIMELINE DE ACTIVIDAD DEL MAZO
+# ================================================================
+# El frontend de /history usa estos endpoints para pintar:
+# - El grid de mazos con arte del commander (list_decks_with_activity)
+# - El timeline del modal al hacer clic en una card (list_activity)
+
+class ActivityEntry(BaseModel):
+    """Evento del timeline serializado.
+
+    ``payload`` viene YA como dict (parseado desde el JSON almacenado) para que
+    el frontend no tenga que hacer JSON.parse en cada fila. Si el JSON está
+    corrupto por lo que sea, devolvemos ``{}`` en lugar de romper el endpoint.
+    """
+    id: int
+    deck_id: int | None
+    deck_name_snapshot: str
+    created_at: datetime
+    kind: str
+    card_name: str | None
+    card_scryfall_id: str | None
+    card_oracle_id: str | None
+    payload: dict
+    summary: str
+
+
+class DeckWithActivityView(BaseModel):
+    """Card de mazo para el grid de la vista de historial.
+
+    Trae lo mínimo para pintar la card: arte del commander (o de la primera
+    carta si el mazo no tiene commander), nombre, contadores de actividad y
+    resumen del último evento.
+    """
+    id: int
+    name: str
+    format: str
+    imported_at: datetime
+    updated_at: datetime
+    card_count: int
+    activity_count: int
+    last_activity_at: datetime | None
+    last_activity_kind: str | None
+    last_activity_summary: str | None
+    commander_scryfall_id: str | None
+    # Arte para la card: usamos el image_normal del printing del commander.
+    # Si no hay commander, ``None`` y el frontend pinta un placeholder.
+    commander_name: str | None
+    commander_image_url: str | None
+
+
+@router.get("/_/with-activity", response_model=list[DeckWithActivityView])
+async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
+    """Lista los mazos + metadata para pintar el grid de la vista de historial.
+
+    Pensado para pintar cards visuales, no para el editor. Optimizado para
+    minimizar queries: usamos joins agregados para no ir carta a carta.
+    """
+    # Traemos todos los mazos con su count de cartas en una sola query.
+    deck_rows = (
+        await db.execute(
+            select(Deck, func.count(DeckCard.id).label("card_count"))
+            .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
+            .group_by(Deck.id)
+            .order_by(Deck.updated_at.desc())
+        )
+    ).all()
+
+    # Contadores de actividad por deck_id — una sola query agregada.
+    from mpc_forge.models import DeckActivity as _DA
+    activity_counts = dict(
+        (await db.execute(
+            select(_DA.deck_id, func.count(_DA.id))
+            .where(_DA.deck_id.isnot(None))
+            .group_by(_DA.deck_id)
+        )).all()
+    )
+
+    # Último evento por mazo. Con SQLite la forma más simple sin CTE es
+    # una subquery. Como los mazos suelen ser pocos (<50), lo hacemos con
+    # una query por mazo — el índice compuesto (deck_id, created_at DESC)
+    # que ya creamos en init_db hace que sea O(log N) por mazo.
+    last_activity: dict[int, tuple[datetime, str, str]] = {}
+    for deck, _ in deck_rows:
+        last = await deck_activity.last_activity_for_deck(db, deck.id)
+        if last:
+            last_activity[deck.id] = (last.created_at, last.kind, last.summary)
+
+    out: list[DeckWithActivityView] = []
+    for deck, card_count in deck_rows:
+        # Arte del commander: si hay commander_scryfall_id resolvemos su printing.
+        commander_name: str | None = None
+        commander_image: str | None = None
+        if deck.commander_scryfall_id:
+            printing = await db.get(PrintingCache, deck.commander_scryfall_id)
+            if printing:
+                commander_name = printing.name
+                commander_image = printing.image_normal or printing.image_large
+
+        last = last_activity.get(deck.id)
+        out.append(DeckWithActivityView(
+            id=deck.id,
+            name=deck.name,
+            format=deck.format,
+            imported_at=deck.imported_at,
+            updated_at=deck.updated_at,
+            card_count=int(card_count or 0),
+            activity_count=int(activity_counts.get(deck.id, 0)),
+            last_activity_at=last[0] if last else None,
+            last_activity_kind=last[1] if last else None,
+            last_activity_summary=last[2] if last else None,
+            commander_scryfall_id=deck.commander_scryfall_id,
+            commander_name=commander_name,
+            commander_image_url=commander_image,
+        ))
+    return out
+
+
+@router.get("/{deck_id}/activity", response_model=list[ActivityEntry])
+async def list_activity(
+    deck_id: int,
+    db: DbDep,
+    kinds: str | None = None,   # csv: "card_added,card_moved"
+    limit: int = 500,
+) -> list[ActivityEntry]:
+    """Devuelve las últimas ``limit`` entradas del timeline de un mazo.
+
+    Filtro opcional por ``kinds`` (csv). Si el mazo no existe, 404.
+    """
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    kinds_list = [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
+    limit = max(1, min(limit, 2000))  # bound duro para evitar payloads absurdos
+    rows = await deck_activity.list_for_deck(db, deck_id, kinds=kinds_list, limit=limit)
+
+    def _parse_payload(raw: str) -> dict:
+        # payload_json puede estar corrupto en teoría (edición manual de la BD,
+        # migración fallida…). No queremos romper la vista por eso.
+        import json as _json
+        try:
+            v = _json.loads(raw or "{}")
+            return v if isinstance(v, dict) else {"_raw": v}
+        except (ValueError, TypeError):
+            return {"_error": "invalid_json", "_raw": raw}
+
+    return [
+        ActivityEntry(
+            id=r.id,
+            deck_id=r.deck_id,
+            deck_name_snapshot=r.deck_name_snapshot,
+            created_at=r.created_at,
+            kind=r.kind,
+            card_name=r.card_name,
+            card_scryfall_id=r.card_scryfall_id,
+            card_oracle_id=r.card_oracle_id,
+            payload=_parse_payload(r.payload_json),
+            summary=r.summary,
+        )
+        for r in rows
+    ]
 
 
 # ================================================================
@@ -447,6 +694,15 @@ async def tokens_add_many(
         added.append(new_dc)
         existing_ids.add(sfid)
 
+    if added:
+        await deck_activity.log_event(
+            db, deck_id, K.RELATED_ADDED,
+            payload={
+                "count": len(added),
+                "kind": "tokens",
+                "card_names": [dc.name for dc in added][:20],
+            },
+        )
     await db.commit()
     for dc in added:
         await db.refresh(dc)
@@ -513,6 +769,24 @@ async def add_related_cards(
         added.append(new_dc)
         existing_ids.add(sfid)
 
+    if added:
+        # Contamos por componente para el summary (tokens vs meld_result…)
+        components: dict[str, int] = {}
+        for part in related:
+            if part.get("id") in {a.scryfall_id for a in added}:
+                components[part.get("component") or "related"] = \
+                    components.get(part.get("component") or "related", 0) + 1
+        await deck_activity.log_event(
+            db, deck_id, K.RELATED_ADDED,
+            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            payload={
+                "count": len(added),
+                "kind": "related",
+                "components": components,
+                "trigger_card": dc.name,
+                "card_names": [a.name for a in added][:20],
+            },
+        )
     await db.commit()
     for dc in added:
         await db.refresh(dc)
@@ -590,6 +864,22 @@ async def localize_deck_endpoint(
         )
 
     result = await deck_service.localize_deck(db, scryfall, deck_id, payload.lang)
+    # Solo dejamos huella si algo cambió realmente (o hubo cartas no disponibles
+    # que el usuario debería conocer). Si todo está ya en ese idioma y no hay
+    # unavailables, no ensuciamos el timeline.
+    if result["localized"] > 0 or result["unavailable"]:
+        await deck_activity.log_event(
+            db, deck_id, K.DECK_LOCALIZED,
+            payload={
+                "lang": payload.lang,
+                "localized": result["localized"],
+                "unchanged": result["unchanged"],
+                "unavailable": result["unavailable"],
+                "skipped_custom": result["skipped_custom"],
+            },
+            deck_name=deck.name,
+        )
+        await db.commit()
     return LocalizeDeckResponse(**result)
 
 
@@ -738,6 +1028,15 @@ async def change_art(
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
 
+    # Snapshot ANTES de mutar. Guardamos el set/número para el timeline —
+    # es lo más útil para el usuario, más que el scryfall_id.
+    old_sfid = dc.scryfall_id
+    old_custom_front = dc.custom_art_front_id
+    old_custom_back = dc.custom_art_back_id
+    old_printing = await db.get(PrintingCache, old_sfid) if old_sfid else None
+    old_set = old_printing.set_code if old_printing else None
+    old_number = old_printing.collector_number if old_printing else None
+
     if payload.custom_art_id is not None:
         ca = await db.get(CustomArt, payload.custom_art_id)
         if not ca:
@@ -772,6 +1071,41 @@ async def change_art(
             "Debe indicarse scryfall_id o custom_art_id"
         )
 
+    # Reunimos el nuevo estado para el payload del timeline.
+    new_printing = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
+    activity_payload = {
+        "face": payload.face,
+        "kind": "custom" if payload.custom_art_id else "official",
+    }
+    if payload.custom_art_id:
+        ca = await db.get(CustomArt, payload.custom_art_id)
+        activity_payload.update({
+            "custom_art_id": payload.custom_art_id,
+            "custom_filename": ca.filename if ca else None,
+            "custom_variant": ca.variant_label if ca else None,
+        })
+    else:
+        activity_payload.update({
+            "old_scryfall_id": old_sfid,
+            "new_scryfall_id": dc.scryfall_id,
+            "old_set": old_set, "old_number": old_number,
+            "new_set": new_printing.set_code if new_printing else None,
+            "new_number": new_printing.collector_number if new_printing else None,
+            "remember_globally": payload.remember_globally,
+        })
+    # Solo loggeamos si realmente cambió algo (evita ruido si el usuario
+    # hace click en el arte que ya estaba seleccionado).
+    changed = (
+        dc.scryfall_id != old_sfid
+        or dc.custom_art_front_id != old_custom_front
+        or dc.custom_art_back_id != old_custom_back
+    )
+    if changed:
+        await deck_activity.log_event(
+            db, deck_id, K.CARD_ART_CHANGED,
+            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            payload=activity_payload,
+        )
     await db.commit()
     return await _deckcard_to_view(db, dc)
 
@@ -782,6 +1116,11 @@ async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
     dc.include = not dc.include
+    await deck_activity.log_event(
+        db, deck_id, K.CARD_INCLUDE_TOGGLED,
+        card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+        payload={"new_include": dc.include, "role": dc.role, "quantity": dc.quantity},
+    )
     await db.commit()
     return await _deckcard_to_view(db, dc)
 

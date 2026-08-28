@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # Sube esto cuando el schema cambie de forma incompatible.
 # init_db() detecta el cambio y recrea las tablas (perdiendo datos de BD, pero
 # conservando artes descargados y arte custom en disco).
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 
 DATABASE_URL = f"sqlite+aiosqlite:///{PATHS.db_path}"
 
@@ -99,6 +99,10 @@ async def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS ix_deck_cards_role ON deck_cards(role)",
             # Composite para el patrón más común: WHERE deck_id=? AND role IN (...)
             "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_role ON deck_cards(deck_id, role)",
+            # DeckActivity: consulta más común es "todos los eventos de un mazo,
+            # ordenados por fecha desc". Composite index (deck_id, created_at)
+            # cubre exactamente ese patrón.
+            "CREATE INDEX IF NOT EXISTS ix_deck_activity_deck_created ON deck_activity(deck_id, created_at DESC)",
         ]
         for stmt in extra_indexes:
             await conn.execute(text(stmt))

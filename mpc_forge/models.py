@@ -235,6 +235,49 @@ class PhysicalInventory(Base):
     )
 
 
+class DeckActivity(Base):
+    """Timeline de eventos ocurridos sobre un mazo.
+
+    Cada operación relevante sobre un mazo (añadir carta, mover entre secciones,
+    cambiar arte, generar PDF/XML, localizar, …) inserta una fila aquí. El
+    frontend usa esto para pintar el "diario" del mazo en la vista de historial.
+
+    Guardamos snapshots (nombre de la carta, del mazo…) para que el evento siga
+    siendo legible aunque después se borre la carta o el mazo. Los detalles
+    específicos de cada tipo van en ``payload_json`` como JSON serializado — es
+    lo suficientemente flexible como para no tener que migrar el schema cada
+    vez que añadimos un nuevo tipo de evento.
+
+    ``kind`` es un string libre en vez de Enum para poder añadir tipos nuevos
+    sin migración de BD. Los tipos que reconoce el frontend (con su icono y
+    etiqueta) están en el JS de ``history.html``.
+    """
+    __tablename__ = "deck_activity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    deck_id: Mapped[int | None] = mapped_column(
+        ForeignKey("decks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Snapshot del nombre del mazo — persiste si se borra el mazo, para poder
+    # mantener eventos "huérfanos" en un futuro "historial global".
+    deck_name_snapshot: Mapped[str] = mapped_column(String(256), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    # Tipo de evento. Ver DeckActivityKind en services/deck_activity.py para
+    # el listado canónico. Es string libre a propósito (no Enum) para permitir
+    # extender sin migración.
+    kind: Mapped[str] = mapped_column(String(48), index=True)
+    # Snapshot de la carta implicada (si aplica). Muchos eventos no tienen
+    # carta asociada (deck_renamed, xml_generated…) — ahí quedan NULL.
+    card_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    card_scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    card_oracle_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Payload JSON con detalles específicos del tipo. Nunca vacío — al menos "{}".
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Resumen legible pre-computado. El frontend lo usa como fallback si no
+    # tiene renderer específico para ``kind``.
+    summary: Mapped[str] = mapped_column(String(512), default="")
+
+
 class KeyValue(Base):
     """Pequeño store clave-valor para settings serializados y flags."""
     __tablename__ = "kv_store"

@@ -72,17 +72,10 @@ async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
 
 
 @router.get("/history", response_class=HTMLResponse)
-async def history_page(request: Request, db: DbDep) -> HTMLResponse:
-    runs = (
-        await db.scalars(
-            select(PrintRun).options(selectinload(PrintRun.items)).order_by(PrintRun.created_at.desc())
-        )
-    ).all()
-    return templates.TemplateResponse(
-        request,
-        "history.html",
-        {"runs": runs},
-    )
+async def history_page(request: Request) -> HTMLResponse:
+    """Vista de historial. Los datos (mazos, runs, timelines) se cargan vía
+    fetch desde el frontend — el template no necesita context inicial."""
+    return templates.TemplateResponse(request, "history.html", {})
 
 
 @router.get("/settings", response_class=HTMLResponse)
