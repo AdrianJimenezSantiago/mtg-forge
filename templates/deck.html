@@ -31,12 +31,8 @@
                     'bg-amber-500/10 text-amber-400 border-amber-500/30': deck.validation.level === 'warn',
                     'bg-red-500/10 text-red-400 border-red-500/30': deck.validation.level === 'error'
                   }">
-              <template x-if="deck.validation.level === 'ok'">
-                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-              </template>
-              <template x-if="deck.validation.level !== 'ok'">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
-              </template>
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5" x-show="deck.validation.level === 'ok'"></i>
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5" x-show="deck.validation.level !== 'ok'"></i>
               <span x-text="deck.validation.message"></span>
             </span>
           </template>
@@ -406,6 +402,18 @@
                     x-show="!expandedGroups[group.role]">
                 (haz click para expandir)
               </span>
+              {# Botón vaciar sección — solo visible con al menos 1 carta.        #}
+              {# @click.stop porque el botón está dentro del <button> del header  #}
+              {# que ya toggle-a el colapso. Sin stop, colapsaría al vaciar.     #}
+              <template x-if="group.total > 0 && expandedGroups[group.role]">
+                <span @click.stop="clearRole(group.role, group.total)"
+                      class="ml-auto text-[10px] text-fg-faint hover:text-danger normal-case tracking-normal
+                             px-2 py-0.5 rounded hover:bg-danger-bg transition cursor-pointer flex items-center gap-1"
+                      :title="'Eliminar todas las cartas de ' + group.label">
+                  <i data-lucide="trash-2" class="w-3 h-3"></i>
+                  Vaciar
+                </span>
+              </template>
             </button>
 
             {# Cartas del grupo — solo si está expandido #}
@@ -516,13 +524,46 @@
                           :class="card.include ? 'text-fg-muted hover:text-amber-400' : 'text-fg-faint hover:text-green-400'"
                           class="p-1 rounded hover:bg-bg-base transition"
                           :title="card.include ? 'Excluir del XML' : 'Incluir'">
-                    <template x-if="card.include">
-                      <i data-lucide="eye-off" class="w-4 h-4"></i>
-                    </template>
-                    <template x-if="!card.include">
-                      <i data-lucide="eye" class="w-4 h-4"></i>
-                    </template>
+                    {# Nota: usamos x-show sobre <i> directo (no <template x-if>) porque
+                       Lucide reemplaza <i data-lucide> con un <svg> generado. Cuando
+                       un template x-if se destruye/recrea, Alpine puede dejar el <svg>
+                       viejo suelto y añadir el nuevo, apareciendo ambos iconos
+                       apilados. Con x-show ambos <i> existen desde el principio,
+                       Lucide los procesa una sola vez y solo cambia display. #}
+                    <i data-lucide="eye-off" class="w-4 h-4" x-show="card.include"></i>
+                    <i data-lucide="eye" class="w-4 h-4" x-show="!card.include"></i>
                   </button>
+
+                  {# Mover a otra sección. Dropdown con las opciones distintas    #}
+                  {# a la sección actual. Excluimos 'tokens' y 'meld_result' como #}
+                  {# destino porque son roles que se generan automáticamente y no #}
+                  {# tiene sentido mover cartas normales ahí manualmente.         #}
+                  <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+                    <button @click="open = !open"
+                            class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
+                            title="Mover a otra sección">
+                      <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                    </button>
+                    <div x-show="open" x-transition
+                         class="absolute right-0 top-full mt-1 z-30 bg-bg-elevated border border-border-strong
+                                rounded-md shadow-lg py-1 min-w-[10rem]">
+                      <div class="text-[10px] uppercase tracking-wider text-fg-faint px-3 py-1">Mover a</div>
+                      <template x-for="opt in [
+                        {role:'commander', label:'Comandante'},
+                        {role:'mainboard', label:'Mazo'},
+                        {role:'sideboard', label:'Sideboard'},
+                        {role:'maybeboard', label:'Maybeboard'},
+                        {role:'companion', label:'Compañero'},
+                      ]" :key="opt.role">
+                        <button x-show="opt.role !== card.role"
+                                @click="moveCardTo(card, opt.role); open = false"
+                                class="w-full text-left text-xs px-3 py-1.5 hover:bg-bg-subtle text-fg-muted hover:text-fg transition flex items-center gap-2">
+                          <span x-text="opt.label"></span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+
                   <button @click="deleteCard(card)"
                           class="p-1 rounded hover:bg-red-500/20 text-fg-faint hover:text-red-400 transition"
                           title="Eliminar del mazo">
@@ -542,6 +583,7 @@
   {# ============ MODAL DE SELECCIÓN DE ARTE ============ #}
   <template x-if="artPickerOpen">
     <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @click="closeArtPicker()"
          @keydown.escape.window="closeArtPicker()">
       <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-[1600px]
                   h-[92vh] flex flex-col overflow-hidden"
@@ -994,12 +1036,8 @@
                   :disabled="tokensAdding || tokensData.missing === 0"
                   class="bg-accent hover:bg-accent-glow text-bg-base font-medium text-sm px-4 py-2 rounded-md
                          transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-            <template x-if="!tokensAdding">
-              <i data-lucide="plus-circle" class="w-4 h-4"></i>
-            </template>
-            <template x-if="tokensAdding">
-              <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-            </template>
+            <i data-lucide="plus-circle" class="w-4 h-4" x-show="!tokensAdding"></i>
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin" x-show="tokensAdding"></i>
             <span x-show="!tokensAdding">
               Añadir <span x-text="tokensData.missing"></span>
               <span x-text="tokensData.missing === 1 ? 'token que falta' : 'tokens que faltan'"></span>
@@ -1957,6 +1995,55 @@ function deckEditor(deckId) {
         await this.load();
       } else {
         window.toast('Error', 'No se pudo eliminar');
+      }
+    },
+
+    // Mueve una carta a otra sección (rol). Usado por el menú "Mover a…" en las
+    // acciones por carta. Reutiliza el mismo endpoint PATCH que ya acepta `role`.
+    async moveCardTo(card, newRole) {
+      if (!newRole || card.role === newRole) return;
+      const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}`, {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role: newRole})
+      });
+      if (r.ok) {
+        // Aseguramos que el grupo destino queda expandido para que el usuario
+        // vea inmediatamente dónde ha ido a parar la carta.
+        this.expandedGroups[newRole] = true;
+        // El PATCH sí devuelve la carta actualizada pero re-cargamos el mazo
+        // entero para recalcular las validaciones y los totales por sección.
+        window.toast('Movida', `${card.name} → ${this.roleLabel(newRole)}`);
+        await this.load();
+      } else {
+        window.toast('Error', 'No se pudo mover');
+      }
+    },
+
+    // Devuelve la etiqueta legible de un rol (para toasts / confirmDialogs).
+    // Fallback al propio rol si es uno desconocido.
+    roleLabel(role) {
+      const g = this.cardGroups.find(g => g.role === role);
+      return g ? g.label : role;
+    },
+
+    // Vacía TODAS las cartas de una sección. Confirma primero. Usado por el
+    // botón "Vaciar" que aparece en la cabecera de cada grupo cuando tiene
+    // al menos una carta.
+    async clearRole(role, total) {
+      if (!total) return;
+      const label = this.roleLabel(role);
+      if (!await window.confirmDialog(
+        `Vaciar ${label}`,
+        `¿Eliminar las ${total} cartas de "${label}"? Esto no se puede deshacer.`,
+        { danger: true, icon: 'trash-2', confirmLabel: 'Vaciar' })) return;
+      const r = await fetch(`/api/decks/${this.deckId}/role/${role}`, {method: 'DELETE'});
+      if (r.ok) {
+        const data = await r.json();
+        window.toast(`${label} vaciado`, `${data.deleted} cartas eliminadas`);
+        if (this.selectedCardId) { this.selectedCardId = null; this.allArts = []; }
+        await this.load();
+      } else {
+        window.toast('Error', 'No se pudo vaciar la sección');
       }
     },
     async addCard() {

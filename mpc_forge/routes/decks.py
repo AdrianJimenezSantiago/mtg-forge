@@ -214,6 +214,37 @@ async def delete_card(deck_id: int, card_id: int, db: DbDep) -> None:
     await db.commit()
 
 
+class ClearRoleResponse(BaseModel):
+    role: str
+    deleted: int
+
+
+@router.delete("/{deck_id}/role/{role}", response_model=ClearRoleResponse)
+async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
+    """Elimina TODAS las cartas de un rol/sección del mazo (sideboard, tokens,
+    maybeboard, etc.). El frontend confirma antes de llamar — este endpoint no
+    pregunta, borra directo. Idempotente: si no hay cartas de ese rol, devuelve
+    ``deleted=0`` sin error.
+    """
+    # Validamos que el mazo existe (para dar 404 claro en vez de "deleted=0" silencioso)
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    cards = (
+        await db.scalars(
+            select(DeckCard).where(
+                DeckCard.deck_id == deck_id,
+                DeckCard.role == role,
+            )
+        )
+    ).all()
+    for dc in cards:
+        await db.delete(dc)
+    await db.commit()
+    return ClearRoleResponse(role=role, deleted=len(cards))
+
+
 # ================================================================
 # ANÁLISIS DE TOKENS DEL MAZO
 # ================================================================
