@@ -47,41 +47,12 @@ class SettingDef:
 # Registry de settings expuestos en la UI.
 # Los defaults se toman de config.py — si se cambia allí, se propaga al primer arranque.
 DEFINITIONS: list[SettingDef] = [
-    # --- Precio & envío ---
-    SettingDef(
-        key="usd_to_eur",
-        label="Tipo de cambio USD → EUR",
-        type="float",
-        group="Precio y envío",
-        default=cfg.USD_TO_EUR,
-        description="Se aplica al convertir los precios de MPC (USD) a euros.",
-        min_value=0.1, max_value=10.0,
-    ),
-    SettingDef(
-        key="shipping_base_eur",
-        label="Envío base (EUR)",
-        type="float",
-        group="Precio y envío",
-        default=cfg.SHIPPING_BASE_EUR,
-        description="Coste fijo de envío internacional MPC.",
-        min_value=0.0, max_value=100.0,
-    ),
-    SettingDef(
-        key="shipping_eu_extra_eur",
-        label="Envío extra EU (EUR)",
-        type="float",
-        group="Precio y envío",
-        default=cfg.SHIPPING_EU_EXTRA_EUR,
-        description="Extra para envíos dentro de la Unión Europea.",
-        min_value=0.0, max_value=100.0,
-    ),
-
-    # --- Defaults del XML/PDF ---
+    # --- General (impresión + preferencias de arte + idioma) ---
     SettingDef(
         key="default_cardstock",
         label="Stock por defecto",
         type="str",
-        group="Impresión (defaults)",
+        group="General",
         default=cfg.DEFAULT_CARDSTOCK,
         description="Se preselecciona en el editor de mazo antes de generar el XML.",
         choices=list(cfg.CARDSTOCK_OPTIONS),
@@ -90,7 +61,7 @@ DEFINITIONS: list[SettingDef] = [
         key="foil_default",
         label="Foil por defecto",
         type="bool",
-        group="Impresión (defaults)",
+        group="General",
         default=False,
         description="Marca la casilla de foil al abrir un mazo.",
     ),
@@ -98,17 +69,15 @@ DEFINITIONS: list[SettingDef] = [
         key="default_cardback_name",
         label="Nombre del cardback por defecto",
         type="str",
-        group="Impresión (defaults)",
+        group="General",
         default=cfg.DEFAULT_CARDBACK_NAME,
         description="Se busca en la carpeta de cardbacks como <nombre>.png/.jpg.",
     ),
-
-    # --- Preferencias de arte ---
     SettingDef(
         key="preferred_language",
         label="Idioma preferido de las cartas",
         type="str",
-        group="Preferencias de arte",
+        group="General",
         default="en",
         description=(
             "Al pulsar «Idioma ▾» en el editor de un mazo, este idioma vendrá preseleccionado. "
@@ -121,7 +90,7 @@ DEFINITIONS: list[SettingDef] = [
         key="prefer_full_art",
         label="Preferir full art",
         type="bool",
-        group="Preferencias de arte",
+        group="General",
         default=False,
         description="Al abrir la galería, activa el filtro «Full art» automáticamente.",
     ),
@@ -129,43 +98,86 @@ DEFINITIONS: list[SettingDef] = [
         key="prefer_borderless",
         label="Preferir borderless",
         type="bool",
-        group="Preferencias de arte",
+        group="General",
         default=False,
         description="Al abrir la galería, activa el filtro «Sin borde» automáticamente.",
     ),
 
-    # --- HTTP / integraciones ---
+    # --- Precios y envío ---
+    SettingDef(
+        key="usd_to_eur",
+        label="Tipo de cambio USD → EUR",
+        type="float",
+        group="Precios y envío",
+        default=cfg.USD_TO_EUR,
+        description="Se aplica al convertir los precios de MPC (USD) a euros.",
+        min_value=0.1, max_value=10.0,
+    ),
+    SettingDef(
+        key="shipping_base_eur",
+        label="Envío base (EUR)",
+        type="float",
+        group="Precios y envío",
+        default=cfg.SHIPPING_BASE_EUR,
+        description="Coste fijo de envío internacional MPC.",
+        min_value=0.0, max_value=100.0,
+    ),
+    SettingDef(
+        key="shipping_eu_extra_eur",
+        label="Envío extra EU (EUR)",
+        type="float",
+        group="Precios y envío",
+        default=cfg.SHIPPING_EU_EXTRA_EUR,
+        description="Extra para envíos dentro de la Unión Europea.",
+        min_value=0.0, max_value=100.0,
+    ),
+
+    # --- Red y conexión ---
     SettingDef(
         key="moxfield_user_agent",
         label="User-Agent para Moxfield",
         type="str",
-        group="Integraciones",
+        group="Red y conexión",
         default=cfg.MOXFIELD_USER_AGENT,
         description="Debería ser identificable con tu contacto. Cortesía con Moxfield.",
-    ),
-    SettingDef(
-        key="mpc_autofill_exe_path",
-        label="Ejecutable de MPC Autofill",
-        type="str",
-        group="Integraciones",
-        default="",
-        description=(
-            "Ruta al binario del desktop tool (chilli-axe/mpc-autofill). "
-            "Si lo dejas vacío, la app lo busca en el PATH y en la carpeta del proyecto. "
-            "Descárgalo de github.com/chilli-axe/mpc-autofill/releases."
-        ),
     ),
     SettingDef(
         key="google_api_key",
         label="Google API key (Drive)",
         type="str",
-        group="Integraciones",
+        group="Red y conexión",
         default="",
         description=(
             "Opcional pero recomendado. Se usa para indexar los Google Drives comunitarios "
             "y hacer búsqueda fuzzy de artes. Gratis en console.cloud.google.com "
             "(APIs & Services → Credentials → API key, y habilita 'Google Drive API'). "
             "Cuota: 10.000 requests/día."
+        ),
+    ),
+    SettingDef(
+        key="ssl_insecure",
+        label="Desactivar verificación SSL",
+        type="bool",
+        group="Red y conexión",
+        default=False,
+        description=(
+            "Solo si tu red corporativa intercepta HTTPS con una CA que ni truststore "
+            "reconoce y ves errores de CERTIFICATE_VERIFY_FAILED. Requiere reiniciar la app. "
+            "Equivale a la variable de entorno MPC_FORGE_INSECURE_SSL=1."
+        ),
+    ),
+
+    # --- MPC Autofill ---
+    SettingDef(
+        key="mpc_autofill_exe_path",
+        label="Ejecutable de MPC Autofill",
+        type="str",
+        group="MPC Autofill",
+        default="",
+        description=(
+            "Ruta al binario del desktop tool (chilli-axe/mpc-autofill). "
+            "Si lo dejas vacío, la app lo busca en el PATH y en la carpeta del proyecto. "
+            "Descárgalo de github.com/chilli-axe/mpc-autofill/releases."
         ),
     ),
 ]
@@ -262,7 +274,13 @@ def apply_to_config(values: dict[str, Any]) -> None:
             cfg.MPC_AUTOFILL_EXE_PATH = str(value)
         elif key == "google_api_key":
             cfg.GOOGLE_API_KEY = str(value).strip()
-        # foil_default y prefer_* los consume solo el frontend.
+        elif key == "ssl_insecure":
+            # Propaga al módulo ssl_config, que combina este flag con la env var.
+            # Cambiar en runtime marca el flag pero NO reconfigura los clientes
+            # HTTPX ya instanciados — la UI advierte que hace falta reiniciar.
+            from mpc_forge import ssl_config as _ssl
+            _ssl.set_runtime_insecure(bool(value))
+        # foil_default, prefer_*, preferred_language los consume solo el frontend.
 
 
 def definitions_dump() -> list[dict[str, Any]]:
