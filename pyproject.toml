@@ -24,7 +24,13 @@ dependencies = [
 [project.optional-dependencies]
 window = ["pywebview>=5.3"]
 build = ["pyinstaller>=6.10"]
-dev = ["ruff>=0.6", "mypy>=1.11"]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",  # ya está arriba pero explicitamos por si dev se instala sin main
+]
 
 [project.scripts]
 mpc-forge = "mpc_forge.__main__:main"
@@ -37,3 +43,19 @@ target-version = "py311"
 python_version = "3.11"
 strict = false
 warn_return_any = true
+
+[tool.pytest.ini_options]
+# asyncio_mode = "auto" hace que los tests async no necesiten @pytest.mark.asyncio
+# individual — evita boilerplate en cada test. En modo "strict" tendrías que
+# decorar cada uno; "auto" es más cómodo para una suite de este tamaño.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Silencia warnings de deprecation de librerías externas — ruido que no
+# aporta al developer. Los nuestros propios sí queremos verlos.
+filterwarnings = [
+    "ignore::DeprecationWarning:pydantic.*",
+    "ignore::DeprecationWarning:starlette.*",
+]

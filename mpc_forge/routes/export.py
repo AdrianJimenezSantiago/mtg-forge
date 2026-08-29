@@ -9,17 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from slugify import slugify
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.config import DEFAULT_CARDBACK_NAME, DEFAULT_CARDSTOCK, PATHS
 from mpc_forge.db import get_session
-from mpc_forge.models import Deck, PrintRun
+from mpc_forge.models import Deck, DeckCard, PrintRun
 from mpc_forge.schemas import BuildXMLRequest
 from mpc_forge.services import backup as backup_service
-from mpc_forge.services import cost_estimator, deck_activity, decklist_export, history
+from mpc_forge.services import build_progress, cost_estimator, deck_activity, decklist_export, history
 from mpc_forge.services.art_cache import ArtCache
 from mpc_forge.services.deck_activity import DeckActivityKind as K
 from mpc_forge.services.pdf_generator import PDFOptions, build_pdf
@@ -101,8 +101,27 @@ async def build_xml_endpoint(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    resolved = await resolve_deck_for_xml(db, scryfall, art_cache, deck)
+    # Contamos las cartas que va a procesar el resolver para inicializar el
+    # tracker. Es una query barata (index sobre deck_id + role).
+    total_to_resolve = (
+        await db.scalar(
+            select(func.count(DeckCard.id)).where(
+                DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
+            )
+        )
+    ) or 0
+    build_progress.start(deck_id, total_to_resolve, kind="xml")
+
+    try:
+        resolved = await resolve_deck_for_xml(
+            db, scryfall, art_cache, deck,
+            on_progress=lambda name: build_progress.tick(deck_id, name),
+        )
+    except Exception as e:  # noqa: BLE001
+        build_progress.finish(deck_id, error=str(e))
+        raise
     if not resolved:
+        build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
@@ -118,6 +137,7 @@ async def build_xml_endpoint(
         foil=foil,
         cardback_path=cardback,
     )
+    build_progress.finish(deck_id)
 
     est = cost_estimator.estimate(result.total_cards)
 
@@ -259,6 +279,43 @@ class PDFBuildResponse(BaseModel):
     total_slots: int
 
 
+class BuildProgressResponse(BaseModel):
+    active: bool
+    deck_id: int
+    total: int
+    current: int
+    current_name: str
+    kind: str  # "xml" | "pdf"
+    done: bool
+    error: str | None
+    elapsed_seconds: float
+    eta_seconds: float | None
+    percent: float
+
+
+@router.get("/decks/{deck_id}/build-progress", response_model=BuildProgressResponse)
+async def get_build_progress(deck_id: int) -> BuildProgressResponse:
+    """Estado del build XML/PDF en curso (o del último terminado, si el
+    frontend aún no lo ha limpiado).
+
+    El frontend hace polling a este endpoint cada ~300ms mientras el POST
+    /build-xml o /build-pdf está pendiente, para pintar una barra real de
+    "42/100 · Sol Ring…". Cuando ``done=true`` deja de hacer polling.
+
+    Si no hay build activo devuelve ``active=false`` (nunca 404 — es un
+    estado válido y evita ruido en la consola del navegador).
+    """
+    p = build_progress.get(deck_id)
+    if p is None:
+        return BuildProgressResponse(
+            active=False, deck_id=deck_id, total=0, current=0, current_name="",
+            kind="xml", done=True, error=None, elapsed_seconds=0.0,
+            eta_seconds=None, percent=0.0,
+        )
+    d = p.to_dict()
+    return BuildProgressResponse(active=True, **d)
+
+
 @router.post("/decks/{deck_id}/build-pdf", response_model=PDFBuildResponse)
 async def build_pdf_endpoint(
     deck_id: int,
@@ -277,8 +334,25 @@ async def build_pdf_endpoint(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    resolved = await resolve_deck_for_xml(db, scryfall, art_cache, deck)
+    total_to_resolve = (
+        await db.scalar(
+            select(func.count(DeckCard.id)).where(
+                DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
+            )
+        )
+    ) or 0
+    build_progress.start(deck_id, total_to_resolve, kind="pdf")
+
+    try:
+        resolved = await resolve_deck_for_xml(
+            db, scryfall, art_cache, deck,
+            on_progress=lambda name: build_progress.tick(deck_id, name),
+        )
+    except Exception as e:  # noqa: BLE001
+        build_progress.finish(deck_id, error=str(e))
+        raise
     if not resolved:
+        build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -290,6 +364,7 @@ async def build_pdf_endpoint(
         gap_mm=payload.gap_mm,
     )
     result = build_pdf(resolved, out_path, options)
+    build_progress.finish(deck_id)
     await deck_activity.log_event(
         db, deck_id, K.PDF_GENERATED,
         payload={

@@ -139,6 +139,8 @@ class DeckCardView(BaseModel):
     type_line: str = ""            # "Legendary Creature — Angel"
     colors: list[str] = []         # ["W","U"]
     color_identity: list[str] = []
+    rarity: str = ""               # common | uncommon | rare | mythic | special | bonus
+    keywords: list[str] = []       # ["Flying", "Trample", ...] — usado por stats
     # Reverso para cartas DFC/transform/MDFC:
     back_thumbnail_url: str | None = None
     back_name: str | None = None

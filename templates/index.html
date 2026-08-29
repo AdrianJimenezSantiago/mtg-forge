@@ -234,6 +234,12 @@
                   <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                   Renombrar…
                 </button>
+                <button @click="duplicate({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
+                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
+                               hover:bg-bg-subtle text-fg-muted hover:text-fg">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  Duplicar…
+                </button>
                 <button @click="del({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-danger/10 text-danger">
@@ -379,6 +385,32 @@ function deckListActions() {
       });
       if (r.ok) location.reload();
       else Alpine.store('ui').error('Error', 'No se pudo renombrar');
+    },
+    async duplicate(id, originalName) {
+      // Sugerimos "{original} (copia)" como default. Si el usuario borra el
+      // input y acepta, el backend usa el mismo default; si pulsa cancelar,
+      // abortamos.
+      const suggested = `${originalName} (copia)`;
+      const newName = prompt(
+        `Nombre del nuevo mazo:\n\nSe duplicarán todas las cartas, roles, y arte custom.\n` +
+        `No se copia el enlace a Moxfield ni el historial.`,
+        suggested
+      );
+      if (newName === null) return;  // cancelado
+      const trimmed = (newName || '').trim();
+      const r = await fetch(`/api/decks/${id}/duplicate`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: trimmed || null})
+      });
+      if (r.ok) {
+        const data = await r.json();
+        window.toast('Mazo duplicado', `"${data.name}" creado con ${data.cards.length} cartas`);
+        // Navegamos al mazo nuevo directamente (más útil que recargar)
+        window.location.href = `/decks/${data.id}`;
+      } else {
+        const err = await r.json().catch(() => ({}));
+        Alpine.store('ui').error('Error duplicando', err.detail || 'No se pudo duplicar');
+      }
     },
     async del(id, name) {
       if (!await window.confirmDialog(

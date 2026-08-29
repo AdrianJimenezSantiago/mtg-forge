@@ -144,6 +144,70 @@ async def delete_deck(deck_id: int, db: DbDep) -> None:
     await db.commit()
 
 
+class DuplicateDeckRequest(BaseModel):
+    name: str | None = None  # si es None, se usa "{original} (copia)"
+
+
+@router.post("/{deck_id}/duplicate", response_model=DeckView, status_code=status.HTTP_201_CREATED)
+async def duplicate_deck(
+    deck_id: int, payload: DuplicateDeckRequest, db: DbDep,
+) -> DeckView:
+    """Duplica un mazo con todas sus cartas.
+
+    El mazo nuevo hereda cartas (con su arte custom, roles, cantidades…) pero
+    **no** hereda historial, moxfield_id ni source_url — es un mazo nuevo con
+    su propia identidad. Se registra un evento ``deck_created`` en el timeline
+    con ``source: "duplicated"`` para que el usuario vea de dónde viene.
+    """
+    src = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not src:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    new_name = (payload.name or f"{src.name} (copia)").strip()
+    if not new_name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nombre no puede ser vacío")
+
+    new_deck = Deck(
+        name=new_name,
+        format=src.format,
+        commander_scryfall_id=src.commander_scryfall_id,
+        notes=src.notes,
+        # moxfield_id y source_url NO se copian — el duplicado es una entidad nueva
+    )
+    db.add(new_deck)
+    await db.flush()  # necesitamos el id para las cartas
+
+    total_qty = 0
+    for c in src.cards:
+        db.add(DeckCard(
+            deck_id=new_deck.id,
+            oracle_id=c.oracle_id,
+            name=c.name,
+            quantity=c.quantity,
+            scryfall_id=c.scryfall_id,
+            custom_art_front_id=c.custom_art_front_id,
+            custom_art_back_id=c.custom_art_back_id,
+            role=c.role,
+            include=c.include,
+        ))
+        total_qty += c.quantity
+
+    await deck_activity.log_event(
+        db, new_deck.id, K.DECK_CREATED,
+        payload={
+            "source": "duplicated",
+            "source_deck_id": src.id,
+            "source_deck_name": src.name,
+            "card_count": total_qty,
+            "unresolved_count": 0,
+        },
+        deck_name=new_deck.name,
+    )
+    await db.commit()
+    await db.refresh(new_deck, ["cards"])
+    return await _deck_to_view(db, new_deck)
+
+
 @router.patch("/{deck_id}", response_model=DeckView)
 async def update_deck(deck_id: int, payload: UpdateDeckRequest, db: DbDep) -> DeckView:
     """Renombra o edita metadatos del mazo."""
@@ -330,6 +394,136 @@ async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
 
 
 # ================================================================
+# BÚSQUEDA GLOBAL DE CARTAS ATRAVESANDO TODOS LOS MAZOS
+# ================================================================
+# Permite responder "¿en qué mazos tengo Sol Ring?" sin abrir uno a uno.
+# Case-insensitive, matching por substring, orden por relevancia.
+
+class CardInDeck(BaseModel):
+    """Una instancia concreta de una carta dentro de un mazo del usuario."""
+    deck_card_id: int
+    deck_id: int
+    deck_name: str
+    deck_format: str
+    role: str
+    quantity: int
+    scryfall_id: str
+    printing_set: str | None
+    printing_number: str | None
+    printing_lang: str | None
+    has_custom_art: bool
+    include: bool
+    thumbnail: str | None  # image_normal del printing (para preview)
+
+
+class CardSearchGroup(BaseModel):
+    """Agrupación por oracle_id — todas las copias de "la misma carta"
+    en todos los mazos, incluyendo distintas impresiones."""
+    oracle_id: str
+    canonical_name: str  # nombre normalizado, tomado del primer resultado
+    total_copies: int    # suma de quantities across all decks
+    deck_count: int      # nº de mazos distintos donde aparece
+    instances: list[CardInDeck]
+
+
+class CardSearchResponse(BaseModel):
+    query: str
+    total_groups: int    # nº de cartas distintas que matchean
+    total_instances: int # nº total de entradas DeckCard que matchean
+    groups: list[CardSearchGroup]
+
+
+@router.get("/_/search-cards", response_model=CardSearchResponse)
+async def search_cards_across_decks(
+    q: str,
+    db: DbDep,
+    limit: int = 200,
+) -> CardSearchResponse:
+    """Busca cartas por nombre (substring, case-insensitive) en TODOS los mazos.
+
+    Devuelve resultados agrupados por ``oracle_id`` para que "Sol Ring" salga
+    una sola vez con todas las instancias que hay en distintos mazos
+    (posiblemente con impresiones distintas). Incluye la impresión concreta
+    elegida en cada instancia para que el frontend pueda mostrar la thumbnail.
+
+    - Sin resultados si ``q`` tiene menos de 2 caracteres útiles.
+    - Los tokens y meld_result se INCLUYEN — a veces quieres saber en qué
+      mazos tienes generado un token concreto.
+    """
+    q_clean = (q or "").strip()
+    if len(q_clean) < 2:
+        return CardSearchResponse(query=q_clean, total_groups=0, total_instances=0, groups=[])
+
+    # Un LIKE con % delante y detrás. Case-insensitive por defecto en SQLite
+    # cuando el patrón LIKE usa ASCII (que es nuestro caso salvo diacríticos
+    # exóticos; los nombres de cartas MTG en inglés son puro ASCII).
+    pattern = f"%{q_clean}%"
+    limit = max(1, min(limit, 500))
+
+    # Traemos DeckCard + Deck + PrintingCache en una sola query con joins.
+    rows = (
+        await db.execute(
+            select(DeckCard, Deck, PrintingCache)
+            .join(Deck, Deck.id == DeckCard.deck_id)
+            .join(PrintingCache, PrintingCache.scryfall_id == DeckCard.scryfall_id, isouter=True)
+            .where(DeckCard.name.ilike(pattern))
+            .order_by(DeckCard.name, Deck.updated_at.desc())
+            .limit(limit)
+        )
+    ).all()
+
+    # Agrupamos por oracle_id (o por nombre si no hay oracle_id, poco común).
+    groups_map: dict[str, CardSearchGroup] = {}
+    for dc, deck, printing in rows:
+        key = dc.oracle_id or f"name:{dc.name.lower()}"
+        instance = CardInDeck(
+            deck_card_id=dc.id,
+            deck_id=deck.id,
+            deck_name=deck.name,
+            deck_format=deck.format,
+            role=dc.role,
+            quantity=dc.quantity,
+            scryfall_id=dc.scryfall_id,
+            printing_set=printing.set_code if printing else None,
+            printing_number=printing.collector_number if printing else None,
+            printing_lang=printing.lang if printing else None,
+            has_custom_art=bool(dc.custom_art_front_id),
+            include=dc.include,
+            thumbnail=printing.image_normal if printing else None,
+        )
+        if key not in groups_map:
+            groups_map[key] = CardSearchGroup(
+                oracle_id=dc.oracle_id or "",
+                canonical_name=dc.name,  # el primer nombre visto; suele ser consistente
+                total_copies=0,
+                deck_count=0,
+                instances=[],
+            )
+        groups_map[key].instances.append(instance)
+        groups_map[key].total_copies += dc.quantity
+
+    # Recalculamos deck_count (mazos distintos por grupo) y ordenamos.
+    for group in groups_map.values():
+        group.deck_count = len({inst.deck_id for inst in group.instances})
+
+    # Orden por relevancia: primero las que matchean el inicio del nombre,
+    # luego alfabético. "sol" → "Sol Ring" antes de "Consol...".
+    q_lower = q_clean.lower()
+    def _sort_key(g: CardSearchGroup) -> tuple[int, str]:
+        starts = 0 if g.canonical_name.lower().startswith(q_lower) else 1
+        return (starts, g.canonical_name.lower())
+
+    ordered = sorted(groups_map.values(), key=_sort_key)
+
+    return CardSearchResponse(
+        query=q_clean,
+        total_groups=len(ordered),
+        total_instances=sum(len(g.instances) for g in ordered),
+        groups=ordered,
+    )
+
+
+# ================================================================
 # TIMELINE DE ACTIVIDAD DEL MAZO
 # ================================================================
 # El frontend de /history usa estos endpoints para pintar:
@@ -490,6 +684,52 @@ async def list_activity(
         )
         for r in rows
     ]
+
+
+class UndoResponse(BaseModel):
+    ok: bool
+    summary: str
+    deck_id: int
+
+
+@router.post("/{deck_id}/activity/{event_id}/undo", response_model=UndoResponse)
+async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
+    """Deshace un evento del timeline aplicando su operación inversa.
+
+    Solo funciona para eventos reversibles (ver ``services.undo.UNDOABLE_KINDS``)
+    y solo si el estado actual del mazo permite la reversión con seguridad
+    (no puedes deshacer un movimiento si el usuario ha movido la carta otra vez
+    en medio — devuelve 409 con la razón).
+
+    Devuelve 400 si el evento no admite undo por su tipo, 404 si no existe,
+    409 si existe pero el estado ha divergido.
+    """
+    from mpc_forge.models import DeckActivity as _DA
+    from mpc_forge.services import undo as undo_svc
+
+    event = await db.get(_DA, event_id)
+    if not event or event.deck_id != deck_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evento no encontrado")
+
+    ok, reason = await undo_svc.can_undo(event)
+    if not ok:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, reason)
+
+    try:
+        result = await undo_svc.undo_event(db, event)
+    except undo_svc.UndoNotSupported as e:
+        # Estado en BD no permite el undo (409 Conflict es semánticamente correcto)
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
+
+    return UndoResponse(ok=True, summary=result["summary"], deck_id=deck_id)
+
+
+@router.get("/_/undoable-kinds")
+async def get_undoable_kinds() -> list[str]:
+    """Lista de kinds que admiten undo. El frontend la usa para decidir qué
+    eventos muestran el botón "Deshacer" en el timeline."""
+    from mpc_forge.services import undo as undo_svc
+    return sorted(undo_svc.UNDOABLE_KINDS)
 
 
 # ================================================================
@@ -1189,6 +1429,8 @@ async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
         type_line=printing.type_line if printing else "",
         colors=printing.colors.split(",") if printing and printing.colors else [],
         color_identity=printing.color_identity.split(",") if printing and printing.color_identity else [],
+        rarity=printing.rarity if printing else "",
+        keywords=[k for k in (printing.keywords or "").split(",") if k] if printing else [],
     )
 
 
@@ -1324,6 +1566,8 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             type_line=printing.type_line if printing else "",
             colors=printing.colors.split(",") if printing and printing.colors else [],
             color_identity=printing.color_identity.split(",") if printing and printing.color_identity else [],
+            rarity=printing.rarity if printing else "",
+            keywords=[k for k in (printing.keywords or "").split(",") if k] if printing else [],
             back_thumbnail_url=back_thumb,
             back_name=back_name,
             related_parts=related_parts,

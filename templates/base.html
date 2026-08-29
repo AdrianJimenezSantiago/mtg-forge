@@ -183,6 +183,110 @@
             <span>{{ label }}</span>
           </a>
         {% endfor %}
+
+        {# ============= BÚSQUEDA GLOBAL DE CARTAS ============= #}
+        {# Debounce con timeout ref porque Alpine no trae debounce en x-model
+           para nuestro caso concreto (queremos el input controlado pero la
+           llamada a la API espaciada). El dropdown se cierra con @click.outside
+           y con Escape. Al elegir un mazo se navega directamente al editor. #}
+        <div x-data="globalCardSearch()" class="pt-4 mt-4 border-t border-border-subtle relative"
+             @click.outside="open = false"
+             @keydown.escape.window="open = false">
+          <div class="px-3 pb-1 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
+            <i data-lucide="search" class="w-3 h-3"></i>
+            Buscar en mis mazos
+          </div>
+          <div class="relative px-1">
+            <input type="search" x-model="query"
+                   @input.debounce.300ms="search()"
+                   @focus="if (results.length > 0) open = true"
+                   placeholder="Nombre de carta…"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-xs
+                          focus:outline-none focus:border-accent transition">
+            <i data-lucide="loader-2" x-show="loading"
+               class="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-fg-faint animate-spin"></i>
+          </div>
+
+          {# Dropdown de resultados. Sale flotando por la DERECHA del sidebar
+             para no cortarse con el ancho de 224px del propio aside. #}
+          <div x-show="open && (results.length > 0 || (query.length >= 2 && !loading))"
+               x-transition
+               class="absolute z-40 left-full top-0 ml-2 w-[420px] max-h-[70vh] overflow-y-auto
+                      bg-bg-elevated border border-border-strong rounded-lg shadow-modal">
+            {# Sin resultados #}
+            <template x-if="results.length === 0 && query.length >= 2 && !loading">
+              <div class="p-4 text-center text-xs text-fg-faint">
+                Sin resultados para <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
+              </div>
+            </template>
+
+            {# Header con contadores #}
+            <template x-if="results.length > 0">
+              <div class="sticky top-0 bg-bg-elevated border-b border-border-subtle px-3 py-2
+                          text-[10px] text-fg-faint flex items-center justify-between">
+                <span>
+                  <span class="text-fg" x-text="totalGroups"></span> cartas ·
+                  <span class="text-fg" x-text="totalInstances"></span> instancias en
+                  <span class="text-fg" x-text="totalDecks"></span> mazos
+                </span>
+                <button @click="clearSearch()" class="hover:text-fg transition">Limpiar</button>
+              </div>
+            </template>
+
+            {# Grupos: una carta puede estar en varios mazos, y en cada mazo
+               con distinta impresión. La renderizamos como acordeón abierto
+               por defecto (los mazos como filas debajo del nombre de carta). #}
+            <template x-for="group in results" :key="group.oracle_id + group.canonical_name">
+              <div class="border-b border-border-subtle/60 last:border-b-0">
+                <div class="px-3 py-2 bg-bg-subtle/40">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="font-medium text-sm text-fg truncate" x-text="group.canonical_name"></div>
+                    <div class="text-[10px] text-fg-faint shrink-0 font-mono">
+                      <span x-text="group.total_copies"></span>× ·
+                      <span x-text="group.deck_count"></span> mazos
+                    </div>
+                  </div>
+                </div>
+                <template x-for="inst in group.instances" :key="inst.deck_card_id">
+                  <a :href="'/decks/' + inst.deck_id"
+                     class="flex items-center gap-2 px-3 py-2 hover:bg-bg-subtle transition group">
+                    {# Thumbnail 24×34 (ratio carta MTG) #}
+                    <template x-if="inst.thumbnail">
+                      <img :src="inst.thumbnail" :alt="group.canonical_name"
+                           class="w-6 h-8 rounded object-cover object-top border border-border-subtle shrink-0"
+                           loading="lazy">
+                    </template>
+                    <template x-if="!inst.thumbnail">
+                      <div class="w-6 h-8 rounded bg-bg-subtle border border-border-subtle shrink-0"></div>
+                    </template>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-xs text-fg truncate group-hover:text-accent-glow transition"
+                           x-text="inst.deck_name"></div>
+                      <div class="text-[10px] text-fg-faint flex items-center gap-1 truncate">
+                        <span x-text="inst.quantity + '×'" class="font-mono"></span>
+                        <span>·</span>
+                        <span x-text="inst.role"></span>
+                        <template x-if="inst.printing_set">
+                          <span>· <span class="font-mono uppercase" x-text="inst.printing_set"></span> <span x-text="inst.printing_number"></span></span>
+                        </template>
+                        <template x-if="inst.printing_lang && inst.printing_lang !== 'en'">
+                          <span class="text-accent/80">· <span x-text="inst.printing_lang"></span></span>
+                        </template>
+                        <template x-if="inst.has_custom_art">
+                          <span class="text-accent">· custom</span>
+                        </template>
+                        <template x-if="!inst.include">
+                          <span class="text-warning">· excluida</span>
+                        </template>
+                      </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-3 h-3 text-fg-faint group-hover:text-accent shrink-0"></i>
+                  </a>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
       </nav>
 
       <div class="p-3 border-t border-border-subtle">
@@ -294,6 +398,75 @@
   </div>
 
   <script src="/static/app.js"></script>
+
+  {# ============= COMPONENTE: BÚSQUEDA GLOBAL DE CARTAS ============= #}
+  {# Vive en base.html porque el input está en el sidebar (siempre visible).
+     Debounce nativo con @input.debounce en el HTML — este componente solo
+     hace fetch y agrupa. #}
+  <script>
+    function globalCardSearch() {
+      return {
+        query: '',
+        loading: false,
+        results: [],           // groups del backend
+        totalGroups: 0,
+        totalInstances: 0,
+        totalDecks: 0,
+        open: false,
+        _lastQuery: '',
+
+        async search() {
+          const q = this.query.trim();
+          if (q.length < 2) {
+            this.results = [];
+            this.totalGroups = 0;
+            this.totalInstances = 0;
+            this.totalDecks = 0;
+            this.open = false;
+            return;
+          }
+          // Evita race conditions: si el usuario escribe rápido y llegan
+          // respuestas fuera de orden, ignoramos las "viejas" comparando
+          // con la última query que se envió.
+          this._lastQuery = q;
+          this.loading = true;
+          try {
+            const r = await fetch(`/api/decks/_/search-cards?q=${encodeURIComponent(q)}`);
+            if (!r.ok) throw new Error('Error del servidor');
+            const data = await r.json();
+            if (q !== this._lastQuery) return;  // llegó tarde, hay una nueva query en curso
+            this.results = data.groups || [];
+            this.totalGroups = data.total_groups || 0;
+            this.totalInstances = data.total_instances || 0;
+            // Contamos mazos únicos across todos los grupos (backend agrupa
+            // por oracle_id, un mazo puede aparecer en varios grupos si
+            // tiene distintas cartas que matcheen).
+            const uniqueDecks = new Set();
+            for (const g of this.results) {
+              for (const inst of g.instances) uniqueDecks.add(inst.deck_id);
+            }
+            this.totalDecks = uniqueDecks.size;
+            this.open = true;
+            this.$nextTick(() => window.icons && window.icons());
+          } catch (e) {
+            window.toast && window.toast('Error buscando', e.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        clearSearch() {
+          this.query = '';
+          this.results = [];
+          this.totalGroups = 0;
+          this.totalInstances = 0;
+          this.totalDecks = 0;
+          this.open = false;
+        },
+      };
+    }
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

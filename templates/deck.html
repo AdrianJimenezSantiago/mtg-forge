@@ -3,6 +3,45 @@
 {% block content %}
 <div x-data="deckEditor({{ deck.id }})" x-init="load()" class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
 
+  {# ============ BARRA DE PROGRESO DE BUILD ============ #}
+  {# Fixed abajo a la derecha mientras hay build en curso. Cubre XML y PDF
+     (el ``kind`` del progress indica cuál). El polling refresca current /
+     current_name / percent cada 300ms. Cuando ``buildProgress`` vuelve a
+     null (finally del método), la barra desaparece con transición. #}
+  <template x-if="buildProgress && buildProgress.total > 0">
+    <div x-transition
+         class="fixed bottom-5 right-5 z-40 bg-bg-elevated border border-accent/40 rounded-xl shadow-modal
+                p-4 w-[380px] max-w-[calc(100vw-2.5rem)]">
+      <div class="flex items-center gap-2 mb-2">
+        <i data-lucide="loader-2" class="w-4 h-4 text-accent animate-spin"></i>
+        <span class="text-sm font-medium text-accent-glow">
+          Generando <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span>
+        </span>
+        <span class="ml-auto text-[11px] font-mono text-fg-faint">
+          <span x-text="buildProgress.current"></span>/<span x-text="buildProgress.total"></span>
+        </span>
+      </div>
+      {# Barra proper — width en % anima suavemente #}
+      <div class="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
+        <div class="h-full bg-accent transition-all duration-300 rounded-full"
+             :style="'width: ' + Math.min(100, Math.max(2, buildProgress.percent)) + '%'"></div>
+      </div>
+      <div class="mt-2 flex items-center gap-2 text-[11px] text-fg-muted min-h-[16px]">
+        <template x-if="buildProgress.current_name">
+          <span class="truncate" :title="buildProgress.current_name">
+            <i data-lucide="download" class="w-3 h-3 inline text-fg-faint"></i>
+            <span x-text="buildProgress.current_name"></span>
+          </span>
+        </template>
+        <span class="ml-auto shrink-0 font-mono text-fg-faint">
+          <template x-if="buildProgress.eta_seconds !== null && buildProgress.eta_seconds > 1">
+            <span>~<span x-text="Math.round(buildProgress.eta_seconds)"></span>s</span>
+          </template>
+        </span>
+      </div>
+    </div>
+  </template>
+
   {# ============ HEADER ============ #}
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0 flex-1">
@@ -1092,16 +1131,16 @@
 
           {# Grid de charts #}
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {# Curva de maná #}
-            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
+            {# Curva de maná — ahora apilada por color #}
+            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-medium flex items-center gap-2">
                   <i data-lucide="trending-up" class="w-4 h-4 text-accent"></i>
                   Curva de maná
                 </h3>
-                <span class="text-[10px] text-fg-faint">excluye tierras</span>
+                <span class="text-[10px] text-fg-faint">apilada por color · excluye tierras</span>
               </div>
-              <div class="h-52">
+              <div class="h-56">
                 <canvas x-ref="chartCurve"></canvas>
               </div>
             </div>
@@ -1120,6 +1159,20 @@
               </div>
             </div>
 
+            {# Rareza — nuevo chart #}
+            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-medium flex items-center gap-2">
+                  <i data-lucide="gem" class="w-4 h-4 text-accent"></i>
+                  Rareza
+                </h3>
+                <span class="text-[10px] text-fg-faint">todas las cartas incluidas</span>
+              </div>
+              <div class="h-52">
+                <canvas x-ref="chartRarity"></canvas>
+              </div>
+            </div>
+
             {# Tipos #}
             <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
               <div class="flex items-center justify-between mb-3">
@@ -1131,6 +1184,26 @@
               </div>
               <div class="h-64">
                 <canvas x-ref="chartTypes"></canvas>
+              </div>
+            </div>
+
+            {# Top keywords — nueva sección visual (no chart, más denso) #}
+            <div x-show="stats.topKeywords && stats.topKeywords.length > 0"
+                 class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-medium flex items-center gap-2">
+                  <i data-lucide="tag" class="w-4 h-4 text-accent"></i>
+                  Keywords más presentes
+                </h3>
+                <span class="text-[10px] text-fg-faint">nº de cartas que tienen cada keyword</span>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="kw in stats.topKeywords" :key="kw.name">
+                  <div class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 flex items-center gap-2">
+                    <span class="text-xs text-fg" x-text="kw.name"></span>
+                    <span class="text-[10px] text-accent font-mono" x-text="kw.count"></span>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -1160,6 +1233,12 @@ function deckEditor(deckId) {
     loadingPrints: false,
     building: false,
     rescanning: false,
+
+    // Progreso real del build (XML o PDF). Se puebla con polling a
+    // /build-progress mientras el POST está pendiente. Al terminar, el POST
+    // resuelve y esto vuelve a null.
+    buildProgress: null,        // { current, total, current_name, percent, eta_seconds, kind }
+    _buildPollTimer: null,      // handle del setInterval de polling
 
     // Stock / foil
     cardstock: '(S30) Standard Smooth',
@@ -2255,22 +2334,36 @@ function deckEditor(deckId) {
         c.include && relevantRoles.has(c.role)
       );
 
-      // Curva de maná: agrupamos por CMC entero. Excluimos tierras.
-      // CMC ≥ 7 se agrupa como "7+" (convención del deckbuilding).
-      const curve = { '0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7+': 0 };
+      // Buckets de CMC. 7+ agrupa el "topdeck" (convención de deckbuilding).
+      const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
+      const cmcBucket = (cmc) => cmc >= 7 ? '7+' : String(Math.floor(cmc || 0));
+
+      // Curva de maná apilada por color dominante. Para cada carta no-tierra
+      // elegimos UN color representativo (el primero que aparezca en su
+      // color identity) — así una barra apilada suma exactamente el nº de
+      // cartas, sin duplicar cartas multicolor.
+      const CURVE_COLORS = ['W', 'U', 'B', 'R', 'G', 'M', 'C'];  // M=multicolor, C=incoloro
+      const curveByColor = {};
+      for (const col of CURVE_COLORS) {
+        curveByColor[col] = Object.fromEntries(CMC_BUCKETS.map(b => [b, 0]));
+      }
+
+      // Métricas simples
       let landCount = 0;
+      let basicLandCount = 0;
+      let nonBasicLandCount = 0;
       let totalCmcNonLand = 0;
       let nonLandCount = 0;
 
-      // Colores: contamos pips en costes. Ej "{2}{U}{U}" → U+2.
-      // C = incoloro para cartas sin colored pips (recogemos genéricos aparte,
-      // no los mostramos como color, solo cartas 100% incoloras).
+      // Pips por color (para chart de colores) — como antes
       const colors = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
 
-      // Tipos: extraemos el primer super/tipo principal del type_line.
-      // "Legendary Creature — Angel" → "Creature".
-      // "Basic Land — Forest" → "Land".
+      // Tipos y rareza — un contador por categoría
       const types = {};
+      const rarity = {};
+      // Keywords: {name → count de cartas que la tienen}
+      // Contamos cartas únicas, no copias (una carta con quantity=4 cuenta 1)
+      const keywords = {};
 
       const MAIN_TYPES = [
         'Creature', 'Instant', 'Sorcery', 'Enchantment',
@@ -2281,19 +2374,31 @@ function deckEditor(deckId) {
         const qty = c.quantity || 1;
         const typeLine = c.type_line || '';
         const isLand = /\bLand\b/i.test(typeLine);
+        const isBasic = /\bBasic\b/i.test(typeLine);
 
-        // Curva
         if (isLand) {
           landCount += qty;
+          if (isBasic) basicLandCount += qty;
+          else nonBasicLandCount += qty;
         } else {
-          const cmc = Math.floor(c.cmc || 0);
-          const bucket = cmc >= 7 ? '7+' : String(cmc);
-          curve[bucket] = (curve[bucket] || 0) + qty;
+          // Bucket CMC
+          const bucket = cmcBucket(c.cmc || 0);
           totalCmcNonLand += (c.cmc || 0) * qty;
           nonLandCount += qty;
+
+          // Color dominante para apilar la barra:
+          // - Si tiene 2+ colores en color_identity → 'M' (multicolor)
+          // - Si tiene 1 → ese color
+          // - Si tiene 0 → 'C' (incoloro)
+          const ci = c.color_identity || [];
+          let bucketColor;
+          if (ci.length === 0) bucketColor = 'C';
+          else if (ci.length === 1) bucketColor = ci[0];
+          else bucketColor = 'M';
+          curveByColor[bucketColor][bucket] += qty;
         }
 
-        // Colores (pips en mana cost, excluyendo tierras que no tienen coste)
+        // Pips por color (para donut) — como antes, solo no-tierras con manaCost
         if (!isLand && c.mana_cost) {
           const pips = this._extractPips(c.mana_cost);
           let hasColor = false;
@@ -2306,43 +2411,54 @@ function deckEditor(deckId) {
           if (!hasColor) colors.C += qty;
         }
 
-        // Tipo principal (elegimos el más "importante" si hay varios)
+        // Tipo principal
         let mainType = 'Other';
         for (const t of MAIN_TYPES) {
           if (new RegExp('\\b' + t + '\\b', 'i').test(typeLine)) {
-            mainType = t;
-            break;  // orden de MAIN_TYPES = prioridad (Creature antes que Artifact, etc.)
+            mainType = t; break;
           }
         }
         types[mainType] = (types[mainType] || 0) + qty;
+
+        // Rareza
+        const r = c.rarity || 'unknown';
+        rarity[r] = (rarity[r] || 0) + qty;
+
+        // Keywords — cuenta cartas únicas (no multiplica por qty)
+        for (const kw of (c.keywords || [])) {
+          if (!kw) continue;
+          keywords[kw] = (keywords[kw] || 0) + 1;
+        }
       }
 
-      // Total incluidas
       const totalCards = cards.reduce((s, c) => s + (c.quantity || 1), 0);
-
-      // Métricas rápidas
       const avgCmc = nonLandCount > 0 ? (totalCmcNonLand / nonLandCount).toFixed(2) : '—';
       const landPct = totalCards > 0 ? Math.round(100 * landCount / totalCards) : 0;
+
+      // Top 12 keywords por número de cartas que las tienen (evita ensuciar
+      // con las 30+ keywords que puede tener un mazo grande).
+      const topKeywords = Object.entries(keywords)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([name, count]) => ({ name, count }));
+
       const summary = [
-        {
-          label: 'Total cartas', icon: 'library',
-          value: totalCards, hint: `${cards.length} entradas únicas`,
-        },
-        {
-          label: 'Tierras', icon: 'trees',
-          value: landCount, hint: landCount > 0 ? `${landPct}% del mazo` : null,
-        },
-        {
-          label: 'CMC medio', icon: 'trending-up',
-          value: avgCmc, hint: 'sin contar tierras',
-        },
-        {
-          label: 'No-tierras', icon: 'sparkles',
-          value: nonLandCount, hint: nonLandCount > 0 ? `${100 - landPct}% del mazo` : null,
-        },
+        { label: 'Total cartas', icon: 'library',
+          value: totalCards, hint: `${cards.length} entradas únicas` },
+        { label: 'Tierras', icon: 'trees',
+          value: landCount,
+          hint: landCount > 0 ? `${basicLandCount} básicas · ${nonBasicLandCount} no-básicas · ${landPct}% mazo` : null },
+        { label: 'CMC medio', icon: 'trending-up',
+          value: avgCmc, hint: 'sin contar tierras' },
+        { label: 'No-tierras', icon: 'sparkles',
+          value: nonLandCount, hint: nonLandCount > 0 ? `${100 - landPct}% del mazo` : null },
       ];
 
-      this.stats = { totalCards, summary, curve, colors, types };
+      this.stats = {
+        totalCards, summary,
+        curveByColor, cmcBuckets: CMC_BUCKETS,
+        colors, types, rarity, topKeywords,
+      };
     },
 
     // Extrae los símbolos de coste de una manaCost tipo "{2}{W}{U/B}".
@@ -2396,29 +2512,52 @@ function deckEditor(deckId) {
         ticks: { color: FG_MUTED },
       };
 
-      // --- Curva de maná (bar chart) ---
-      const curveLabels = Object.keys(this.stats.curve);
-      const curveData = Object.values(this.stats.curve);
+      // --- Curva de maná apilada por color (stacked bar) ---
+      // Cada bucket CMC es una barra dividida en segmentos, uno por "color
+      // dominante" de las cartas de ese coste (W/U/B/R/G/M/C).
+      const CURVE_COLOR_META = [
+        { key: 'W', label: 'Blanco',     color: '#f5f0d8' },
+        { key: 'U', label: 'Azul',       color: '#5b9bd5' },
+        { key: 'B', label: 'Negro',      color: '#4a4a5a' },
+        { key: 'R', label: 'Rojo',       color: '#d9534f' },
+        { key: 'G', label: 'Verde',      color: '#5cb85c' },
+        { key: 'M', label: 'Multicolor', color: GOLD },
+        { key: 'C', label: 'Incoloro',   color: '#8a8a9a' },
+      ];
+      const curveBuckets = this.stats.cmcBuckets;
+      const curveDatasets = CURVE_COLOR_META.map(meta => ({
+        label: meta.label,
+        data: curveBuckets.map(b => this.stats.curveByColor[meta.key][b] || 0),
+        backgroundColor: meta.color,
+        borderColor: meta.color === '#f5f0d8' ? '#0a0d13' : 'rgba(0,0,0,0.15)',
+        borderWidth: 1,
+        borderRadius: 2,
+        stack: 'curve',
+      })).filter(ds => ds.data.some(v => v > 0));  // no pintar datasets vacíos
+
       this._chartInstances.push(new Chart(this.$refs.chartCurve, {
         type: 'bar',
-        data: {
-          labels: curveLabels,
-          datasets: [{
-            label: 'Cartas',
-            data: curveData,
-            backgroundColor: GOLD_SOFT,
-            borderColor: GOLD,
-            borderWidth: 1,
-            borderRadius: 4,
-          }],
-        },
+        data: { labels: curveBuckets, datasets: curveDatasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: FG_MUTED, padding: 8, boxWidth: 12, font: { size: 10 } },
+            },
+            tooltip: {
+              callbacks: {
+                footer: (items) => {
+                  const total = items.reduce((s, it) => s + it.parsed.y, 0);
+                  return `Total CMC ${items[0].label}: ${total}`;
+                },
+              },
+            },
+          },
           scales: {
-            x: { ...commonAxes, title: { display: true, text: 'CMC', color: FG_FAINT } },
-            y: { ...commonAxes, beginAtZero: true, ticks: { ...commonAxes.ticks, stepSize: 1 } },
+            x: { ...commonAxes, stacked: true, title: { display: true, text: 'CMC', color: FG_FAINT } },
+            y: { ...commonAxes, stacked: true, beginAtZero: true, ticks: { ...commonAxes.ticks, stepSize: 1 } },
           },
         },
       }));
@@ -2463,6 +2602,58 @@ function deckEditor(deckId) {
         },
       }));
 
+      // --- Rareza (donut horizontal ordenado) ---
+      // Orden canónico de MTG. Colores estándar del juego para reforzar la
+      // convención visual (common=gris, uncommon=plateado, rare=dorado,
+      // mythic=naranja-rojo, special=violeta, bonus=cian).
+      const RARITY_META = [
+        { key: 'common',    label: 'Common',    color: '#8a8a9a' },
+        { key: 'uncommon',  label: 'Uncommon',  color: '#c0c8d0' },
+        { key: 'rare',      label: 'Rare',      color: '#c9a55a' },
+        { key: 'mythic',    label: 'Mythic',    color: '#d97539' },
+        { key: 'special',   label: 'Special',   color: '#a06cd5' },
+        { key: 'bonus',     label: 'Bonus',     color: '#5bc0be' },
+        { key: 'unknown',   label: 'Desconocida', color: '#4a4a5a' },
+      ];
+      const rarityEntries = RARITY_META
+        .map(m => ({ ...m, count: this.stats.rarity[m.key] || 0 }))
+        .filter(e => e.count > 0);
+      const rarityLabels = rarityEntries.map(e => e.label);
+      const rarityData = rarityEntries.map(e => e.count);
+      const rarityBg = rarityEntries.map(e => e.color);
+      this._chartInstances.push(new Chart(this.$refs.chartRarity, {
+        type: 'doughnut',
+        data: {
+          labels: rarityLabels,
+          datasets: [{
+            data: rarityData,
+            backgroundColor: rarityBg,
+            borderColor: '#0a0d13',
+            borderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: FG_MUTED, padding: 8, boxWidth: 12, font: { size: 11 } },
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const total = rarityData.reduce((s, v) => s + v, 0);
+                  const pct = total > 0 ? Math.round(100 * ctx.parsed / total) : 0;
+                  return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                },
+              },
+            },
+          },
+          cutout: '55%',
+        },
+      }));
+
       // --- Tipos (horizontal bar, ordenado descendente) ---
       const typeEntries = Object.entries(this.stats.types).sort((a, b) => b[1] - a[1]);
       const typeLabels = typeEntries.map(([k]) => k);
@@ -2499,9 +2690,39 @@ function deckEditor(deckId) {
       if (idx >= 0) this.cards[idx] = updated;
     },
 
+    // ---- Polling de progreso de build ----
+    // Arrancado por buildXml/buildPdf, parado al terminar (o si el usuario
+    // navega fuera). Actualiza this.buildProgress con el snapshot del backend.
+    _startBuildPolling() {
+      if (this._buildPollTimer) return;
+      this._buildPollTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/decks/${this.deckId}/build-progress`);
+          if (!r.ok) return;
+          const p = await r.json();
+          // Si no está activo (build no arrancó aún, o el POST ya vino/limpió),
+          // dejamos el estado anterior o lo limpiamos. Aquí solo pintamos
+          // mientras haya cambios reales.
+          if (p.active) this.buildProgress = p;
+          if (p.done) this._stopBuildPolling();
+        } catch (e) { /* silent */ }
+      }, 300);  // 300ms — perceptible sin saturar
+    },
+    _stopBuildPolling() {
+      if (this._buildPollTimer) {
+        clearInterval(this._buildPollTimer);
+        this._buildPollTimer = null;
+      }
+    },
+
     // ---- XML ----
     async buildXml() {
       this.building = true;
+      this.buildProgress = null;
+      // Arrancamos el polling ANTES del POST (el backend inicia el tracker
+      // en cuanto entra al endpoint). El intervalo captura los ticks
+      // conforme resolve_deck_for_xml los va emitiendo.
+      this._startBuildPolling();
       try {
         const r = await fetch(`/api/decks/${this.deckId}/build-xml`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2512,11 +2733,11 @@ function deckEditor(deckId) {
         const filename = data.xml_path.split(/[\\/]/).pop();
         this.lastXmlFilename = filename;
         window.toast('XML generado', `${data.total_cards} cartas · ${data.estimated_cost_usd.toFixed(2)} €`);
-        // Nota: NO descarga automática. El usuario decide entre descargar
-        // o "Enviar a MPC Autofill" (si detectamos el ejecutable local).
       } catch (e) {
         window.toast('Error generando XML', e.message);
       } finally {
+        this._stopBuildPolling();
+        this.buildProgress = null;
         this.building = false;
       }
     },
@@ -2546,6 +2767,8 @@ function deckEditor(deckId) {
 
     async buildPdf() {
       this.buildingPdf = true;
+      this.buildProgress = null;
+      this._startBuildPolling();
       try {
         const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2564,6 +2787,8 @@ function deckEditor(deckId) {
       } catch (e) {
         window.toast('Error generando PDF', e.message);
       } finally {
+        this._stopBuildPolling();
+        this.buildProgress = null;
         this.buildingPdf = false;
       }
     },

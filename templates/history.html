@@ -261,7 +261,7 @@
 
           <div x-show="!timelineLoading && filteredActivity.length > 0" class="divide-y divide-border-subtle/60">
             <template x-for="event in filteredActivity" :key="event.id">
-              <div class="flex items-start gap-3 px-5 py-3 hover:bg-bg-subtle/40 transition">
+              <div class="group flex items-start gap-3 px-5 py-3 hover:bg-bg-subtle/40 transition">
                 {# Icono según kind, dentro de un círculo con color del "tono" #}
                 <div :class="'w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ' + toneClass(event.kind)">
                   <i :data-lucide="iconForKind(event.kind)" class="w-4 h-4"></i>
@@ -277,6 +277,26 @@
                     <span x-text="formatDate(event.created_at)"></span>
                   </div>
                 </div>
+
+                {# Botón "Deshacer" — solo se muestra si el kind es reversible.
+                   Aparece siempre pero atenuado hasta hover para no saturar
+                   visualmente el timeline. Se deshabilita mientras el undo
+                   está en curso para evitar dobles clicks. #}
+                <template x-if="canUndo(event)">
+                  <button @click="undoEvent(event)"
+                          :disabled="undoingEventId === event.id"
+                          class="opacity-0 group-hover:opacity-100 transition
+                                 text-[11px] bg-bg-subtle hover:bg-warning-bg
+                                 border border-border-subtle hover:border-warning-border
+                                 text-fg-muted hover:text-warning
+                                 px-2 py-1 rounded flex items-center gap-1 shrink-0
+                                 disabled:opacity-50 disabled:cursor-wait"
+                          :title="'Deshacer: ' + event.summary">
+                    <i data-lucide="undo-2" class="w-3 h-3" x-show="undoingEventId !== event.id"></i>
+                    <i data-lucide="loader-2" class="w-3 h-3 animate-spin" x-show="undoingEventId === event.id"></i>
+                    <span>Deshacer</span>
+                  </button>
+                </template>
               </div>
             </template>
           </div>
@@ -459,6 +479,11 @@ function historyPage() {
 
     filterOptions: FILTER_GROUPS.map(g => ({ ...g, count: undefined })),
 
+    // Undo. Cargamos la lista de kinds reversibles al montar (una única vez).
+    // Fallback pesimista: si el fetch falla, ninguno es reversible.
+    undoableKinds: [],
+    undoingEventId: null,
+
     get totalActivityCount() {
       return this.decks.reduce((sum, d) => sum + (d.activity_count || 0), 0);
     },
@@ -475,12 +500,14 @@ function historyPage() {
     async load() {
       this.loading = true;
       try {
-        const [decksR, runsR] = await Promise.all([
+        const [decksR, runsR, undoR] = await Promise.all([
           fetch('/api/decks/_/with-activity'),
           fetch('/api/runs'),
+          fetch('/api/decks/_/undoable-kinds'),
         ]);
         this.decks = decksR.ok ? await decksR.json() : [];
         this.runs = runsR.ok ? await runsR.json() : [];
+        this.undoableKinds = undoR.ok ? await undoR.json() : [];
       } catch (e) {
         window.toast && window.toast('Error cargando historial', e.message);
       } finally {
@@ -553,6 +580,50 @@ function historyPage() {
       }
       // Fallback: usar el summary pre-computado por el backend
       return esc(ev.summary || ev.kind);
+    },
+
+    // ---- Undo ----
+    // Filtro doble: kind reversible + evento no marcado como "resultado de un
+    // undo previo" (para evitar la telaraña "deshacer un deshacer un deshacer").
+    canUndo(ev) {
+      if (!this.undoableKinds.includes(ev.kind)) return false;
+      if (ev.payload && ev.payload.undone_event_id) return false;
+      return true;
+    },
+
+    async undoEvent(ev) {
+      if (this.undoingEventId) return;  // ya hay uno en curso
+      if (!this.canUndo(ev)) return;
+      this.undoingEventId = ev.id;
+      try {
+        const r = await fetch(
+          `/api/decks/${ev.deck_id}/activity/${ev.id}/undo`,
+          { method: 'POST' }
+        );
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          // 409 = estado del mazo divergió, 400 = kind no reversible.
+          // El backend devuelve un mensaje legible en `detail`.
+          const detail = data.detail || 'No se pudo deshacer';
+          window.toast && window.toast('No se puede deshacer', detail);
+          return;
+        }
+        window.toast && window.toast('Deshecho', data.summary);
+        // Recargamos el timeline para que aparezca el evento nuevo del undo
+        // y los contadores queden bien. También refrescamos el grid principal
+        // porque el activity_count del mazo cambió.
+        if (this.timelineDeck) {
+          await this.openTimeline(this.timelineDeck);
+        }
+        // Fire-and-forget refrescamos los mazos (no queremos bloquear el UX)
+        fetch('/api/decks/_/with-activity').then(async r => {
+          if (r.ok) this.decks = await r.json();
+        });
+      } catch (e) {
+        window.toast && window.toast('Error deshaciendo', e.message);
+      } finally {
+        this.undoingEventId = null;
+      }
     },
 
     // "hace 3 min" / "hace 2 d". Fallback a la fecha si es hace mucho.

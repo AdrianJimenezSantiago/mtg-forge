@@ -36,6 +36,7 @@ Formato mínimo del XML esperado por mpc-autofill:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.dom import minidom
@@ -189,7 +190,14 @@ async def resolve_deck_for_xml(
     scryfall: ScryfallClient,
     art_cache: ArtCache,
     deck: Deck,
+    on_progress: Callable[[str], None] | None = None,
 ) -> list[DeckCardResolved]:
+    """Resuelve todas las cartas del mazo descargando artes faltantes.
+
+    ``on_progress(card_name)`` se llama tras descargar cada carta. Se usa desde
+    los endpoints de build para actualizar el tracker de progreso — pasar
+    ``None`` (default) desactiva el tracking.
+    """
     cards = (
         await db.scalars(
             select(DeckCard)
@@ -202,6 +210,12 @@ async def resolve_deck_for_xml(
         r = await _resolve_deckcard(db, scryfall, art_cache, dc)
         if r:
             resolved.append(r)
+        if on_progress is not None:
+            try:
+                on_progress(dc.name)
+            except Exception as e:  # noqa: BLE001
+                # Nunca romper el build por un fallo en el tracking.
+                log.debug("Progress callback falló: %s", e)
     return resolved
 
 
