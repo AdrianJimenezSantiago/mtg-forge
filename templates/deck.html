@@ -339,7 +339,7 @@
     {# ----- Lista de cartas con separadores por rol ----- #}
     <div class="space-y-4">
 
-      {# Filtros + añadir carta + orden #}
+      {# Filtros + añadir carta + orden + agrupación + layout #}
       <div class="flex items-center gap-2 text-sm flex-wrap">
         <input type="search" x-model="filter" placeholder="Buscar por nombre, tipo o color…"
                class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm w-72
@@ -352,6 +352,31 @@
           <option value="type">Ordenar: tipo</option>
           <option value="color">Ordenar: color</option>
         </select>
+        {# Agrupación: por rol (Commander/Mainboard/…) o por tipo (Creatures/…). #}
+        {# Estilo Moxfield: al elegir "Tipo", el mainboard se subdivide por tipo. #}
+        <select x-model="groupMode"
+                class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm text-fg-muted
+                       focus:outline-none focus:border-accent"
+                title="Cómo agrupar las cartas">
+          <option value="role">Agrupar: rol</option>
+          <option value="type">Agrupar: tipo</option>
+        </select>
+        {# Layout: masonry multi-columna (default, aprovecha ancho) vs lista larga. #}
+        <div class="inline-flex bg-bg-subtle border border-border-subtle rounded-md overflow-hidden"
+             title="Distribución de las secciones">
+          <button type="button" @click="layoutMode = 'columns'"
+                  :class="layoutMode === 'columns' ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg'"
+                  class="px-2 py-1.5 transition flex items-center gap-1">
+            <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+            <span class="text-xs">Columnas</span>
+          </button>
+          <button type="button" @click="layoutMode = 'list'"
+                  :class="layoutMode === 'list' ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg'"
+                  class="px-2 py-1.5 transition flex items-center gap-1 border-l border-border-subtle">
+            <i data-lucide="list" class="w-3.5 h-3.5"></i>
+            <span class="text-xs">Lista</span>
+          </button>
+        </div>
         <button @click="showAddCard = !showAddCard"
                 class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
                        px-3 py-1.5 rounded-md transition">
@@ -419,32 +444,40 @@
         </div>
       </div>
 
-      {# Grupos por rol #}
-      <div class="bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden">
-        <template x-for="group in cardGroups" :key="group.role">
-          <div>
-            {# Separador clickable #}
+      {# =============================================================
+         Grupos de cartas
+         =============================================================
+         Layout responsivo:
+         - "columns": CSS multi-columna (masonry-like). Cada grupo se comporta
+           como un bloque atómico que no se rompe entre columnas. El navegador
+           reparte automáticamente 1/2/3/4 columnas según ancho. Muy parecido
+           a Moxfield.
+         - "list": una sola columna larga (comportamiento tradicional). Útil si
+           el usuario prefiere scrollear todo en vertical.
+
+         Cada grupo pinta un card con header + lista de cartas. `break-inside:
+         avoid` (Tailwind: `break-inside-avoid`) mantiene un grupo entero en
+         la misma columna sin cortarse a media lista.
+      #}
+      <div :class="layoutMode === 'columns'
+                     ? 'md:columns-2 lg:columns-3 2xl:columns-4 gap-4 space-y-4'
+                     : 'space-y-4'">
+        <template x-for="group in displayGroups" :key="group.role">
+          <div class="bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden break-inside-avoid mb-4">
+            {# Separador clickable — mismo diseño pero adaptado a card individual #}
             <button type="button" @click="toggleGroup(group.role)"
                     class="w-full flex items-center gap-2 px-4 py-2 bg-bg-subtle/50 hover:bg-bg-subtle transition
-                           border-t border-b border-border-subtle text-xs uppercase tracking-wider">
+                           border-b border-border-subtle text-xs uppercase tracking-wider">
               <i data-lucide="chevron-right" class="w-3 h-3 text-fg-muted transition-transform"
-                 :class="expandedGroups[group.role] ? 'rotate-90' : ''"></i>
+                 :class="isGroupExpanded(group.role) ? 'rotate-90' : ''"></i>
               <div class="w-1.5 h-1.5 rounded-full" :class="group.dotClass"></div>
               <span class="font-medium text-fg-muted" x-text="group.label"></span>
               <span class="font-mono text-fg-faint" x-text="'(' + group.total + ')'"></span>
               <template x-if="group.role === 'sideboard' || group.role === 'tokens' || group.role === 'maybeboard'">
-                <span class="ml-2 text-[10px] text-fg-faint normal-case tracking-normal">
-                  · no cuenta para el mazo de <span x-text="deck && deck.validation ? deck.validation.expected : 100"></span>
-                </span>
+                <span class="ml-1 text-[10px] text-fg-faint normal-case tracking-normal">· no cuenta</span>
               </template>
-              <span class="ml-auto text-[10px] text-fg-faint normal-case tracking-normal"
-                    x-show="!expandedGroups[group.role]">
-                (haz click para expandir)
-              </span>
-              {# Botón vaciar sección — solo visible con al menos 1 carta.        #}
-              {# @click.stop porque el botón está dentro del <button> del header  #}
-              {# que ya toggle-a el colapso. Sin stop, colapsaría al vaciar.     #}
-              <template x-if="group.total > 0 && expandedGroups[group.role]">
+              {# Botón vaciar sección — solo para roles reales (no tipos) con contenido #}
+              <template x-if="group.total > 0 && isGroupExpanded(group.role) && !group.role.startsWith('type:')">
                 <span @click.stop="clearRole(group.role, group.total)"
                       class="ml-auto text-[10px] text-fg-faint hover:text-danger normal-case tracking-normal
                              px-2 py-0.5 rounded hover:bg-danger-bg transition cursor-pointer flex items-center gap-1"
@@ -455,8 +488,8 @@
               </template>
             </button>
 
-            {# Cartas del grupo — solo si está expandido #}
-            <div x-show="expandedGroups[group.role]" x-collapse>
+            {# Cartas del grupo — visible según isGroupExpanded (con defaults sensatos). #}
+            <div x-show="isGroupExpanded(group.role)">
             <template x-for="card in group.cards" :key="card.id">
               <div class="flex items-center gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0 hover:bg-bg-subtle transition"
                    :class="selectedCardId === card.id ? 'bg-bg-subtle ring-1 ring-inset ring-accent/40' : ''">
@@ -1281,6 +1314,20 @@ function deckEditor(deckId) {
     // Ordenación
     sortMode: 'name',  // name | cmc | type | color
 
+    // Modo de agrupación de la lista de cartas:
+    //   'role' → grupos por Commander/Mainboard/Sideboard/Tokens/Maybeboard (por defecto).
+    //   'type' → mainboard subdividido por tipo (Creatures/Sorceries/Instants/…),
+    //            estilo Moxfield. Commander y roles no-mainboard se mantienen como
+    //            grupos aparte al final.
+    groupMode: 'role',
+
+    // Layout de las columnas:
+    //   'list'    → una sola columna larga (comportamiento tradicional).
+    //   'columns' → multi-columna CSS masonry (secciones distribuidas por
+    //               columnas al estilo Moxfield). Por defecto para aprovechar
+    //               el ancho de pantalla.
+    layoutMode: 'columns',
+
     // Add URL custom
     showAddUrlForm: false,
     urlInput: '',
@@ -1447,6 +1494,114 @@ function deckEditor(deckId) {
         }
       }
       return out;
+    },
+
+    // Grupos por TIPO (estilo Moxfield). Divide el mainboard en subsecciones
+    // Creatures / Sorceries / Instants / Artifacts / Enchantments / Planeswalkers /
+    // Battles / Lands. Los roles fuera del mainboard (commander, sideboard, tokens,
+    // maybeboard, companion) siguen apareciendo como grupos aparte al final para
+    // que el usuario los siga viendo.
+    //
+    // Convención Moxfield: el "role" del grupo aquí es 'type:<Type>' para poder
+    // usarlo como key en expandedGroups sin colisionar con los roles reales.
+    get cardGroupsByType() {
+      const source = this.filteredCards;
+      // Orden y config visual por tipo. dotClass sigue la paleta del proyecto.
+      const typeConfig = [
+        {type: 'Creature',     label: 'Criaturas',     dotClass: 'bg-emerald-400'},
+        {type: 'Planeswalker', label: 'Planeswalkers', dotClass: 'bg-purple-400'},
+        {type: 'Sorcery',      label: 'Conjuros',      dotClass: 'bg-rose-400'},
+        {type: 'Instant',      label: 'Instantáneos',  dotClass: 'bg-sky-400'},
+        {type: 'Enchantment',  label: 'Encantamientos',dotClass: 'bg-amber-300'},
+        {type: 'Artifact',     label: 'Artefactos',    dotClass: 'bg-slate-300'},
+        {type: 'Battle',       label: 'Batallas',      dotClass: 'bg-red-500'},
+        {type: 'Land',         label: 'Tierras',       dotClass: 'bg-lime-500'},
+      ];
+
+      // Separa mainboard del resto — solo el mainboard se divide por tipo.
+      const mainboardCards = source.filter(c => c.role === 'mainboard');
+      const otherRoles = source.filter(c => c.role !== 'mainboard');
+
+      const out = [];
+
+      // Commander SIEMPRE arriba del todo (patrón Moxfield).
+      const commanders = otherRoles.filter(c => c.role === 'commander');
+      if (commanders.length > 0) {
+        out.push({
+          role: 'commander',
+          label: 'Comandante',
+          dotClass: 'bg-accent',
+          cards: this._sortCards(commanders),
+          total: commanders.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
+        });
+      }
+
+      // Subgrupos del mainboard por tipo — solo si hay cartas de ese tipo.
+      for (const cfg of typeConfig) {
+        const inType = mainboardCards.filter(c => {
+          const t = (c.type_line || '').split('—')[0];
+          const re = new RegExp('\\b' + cfg.type + '\\b', 'i');
+          // Priorizamos el primer tipo detectado; ver _mainType. Como usamos
+          // el mismo orden, la primera coincidencia en typeConfig gana.
+          if (!re.test(t)) return false;
+          // Evitar contar dos veces (una carta con "Artifact Creature" solo
+          // aparece como Creature, no como Artifact). Comprobamos que ningún
+          // tipo de mayor prioridad matchea antes.
+          for (const prev of typeConfig) {
+            if (prev.type === cfg.type) break;
+            if (new RegExp('\\b' + prev.type + '\\b', 'i').test(t)) return false;
+          }
+          return true;
+        });
+        if (inType.length === 0) continue;
+        out.push({
+          role: 'type:' + cfg.type,      // key único para expandedGroups
+          label: cfg.label,
+          dotClass: cfg.dotClass,
+          cards: this._sortCards(inType),
+          total: inType.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
+        });
+      }
+
+      // Otras cartas del mainboard cuyo tipo no matchee ninguno (raro).
+      const uncategorized = mainboardCards.filter(c => {
+        const t = (c.type_line || '').split('—')[0];
+        return !typeConfig.some(cfg => new RegExp('\\b' + cfg.type + '\\b', 'i').test(t));
+      });
+      if (uncategorized.length > 0) {
+        out.push({
+          role: 'type:Other',
+          label: 'Otros',
+          dotClass: 'bg-fg-faint',
+          cards: this._sortCards(uncategorized),
+          total: uncategorized.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
+        });
+      }
+
+      // Resto de roles (sideboard, tokens, maybeboard, companion) siguen al final.
+      const restConfig = [
+        {role: 'companion',  label: 'Compañero',  dotClass: 'bg-purple-400'},
+        {role: 'sideboard',  label: 'Sideboard',  dotClass: 'bg-fg-muted'},
+        {role: 'tokens',     label: 'Tokens',     dotClass: 'bg-emerald-400'},
+        {role: 'maybeboard', label: 'Maybeboard', dotClass: 'bg-fg-faint'},
+      ];
+      for (const cfg of restConfig) {
+        const inGroup = otherRoles.filter(c => c.role === cfg.role);
+        if (inGroup.length === 0) continue;
+        out.push({
+          role: cfg.role,
+          label: cfg.label,
+          dotClass: cfg.dotClass,
+          cards: this._sortCards(inGroup),
+          total: inGroup.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
+        });
+      }
+      return out;
+    },
+
+    // Getter unificado — la vista usa este. Elige según groupMode.
+    get displayGroups() {
+      return this.groupMode === 'type' ? this.cardGroupsByType : this.cardGroups;
     },
     get totalCards() { return this.cards.reduce((n, c) => n + (c.include ? c.quantity : 0), 0); },
     get uniqueCards() { return this.cards.filter(c => c.include).length; },
@@ -1921,8 +2076,27 @@ function deckEditor(deckId) {
       }
     },
     toggleArtFilter(k) { this.activeArtFilters[k] = !this.activeArtFilters[k]; },
+
+    // Devuelve si un grupo debe estar expandido.
+    //
+    // Defaults por tipo de grupo (solo se aplican si el usuario no ha tocado
+    // manualmente ese grupo):
+    //   - commander, mainboard         → expandido (siempre lo primero)
+    //   - type:*                       → expandido (agrupación estilo Moxfield)
+    //   - sideboard, tokens, maybeboard, companion → colapsado (info secundaria)
+    //
+    // Una vez el usuario hace toggleGroup, el valor pasa a estar explícito en
+    // expandedGroups y este helper solo devuelve ese valor.
+    isGroupExpanded(role) {
+      const v = this.expandedGroups[role];
+      if (v !== undefined) return v;
+      if (role === 'commander' || role === 'mainboard') return true;
+      if (role.startsWith('type:')) return true;
+      return false;  // sideboard/tokens/maybeboard/companion + roles desconocidos
+    },
     toggleGroup(role) {
-      this.expandedGroups[role] = !this.expandedGroups[role];
+      // Si nunca se ha tocado, invertimos desde el default calculado.
+      this.expandedGroups[role] = !this.isGroupExpanded(role);
     },
     showBackFor(card) {
       if (!card.back_thumbnail_url) return;

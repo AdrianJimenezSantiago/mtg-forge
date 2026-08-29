@@ -137,12 +137,18 @@ window.fmt = {
 };
 
 // -----------------------------------------------------------------------
-// Preview grande al mantener Ctrl y hover sobre cualquier <img data-preview>
+// Preview grande al hacer hover sobre cualquier <img data-preview>
 // -----------------------------------------------------------------------
+// Comportamiento tipo Moxfield: preview aparece automáticamente tras un
+// pequeño delay (evita spam cuando el usuario está solo pasando por encima
+// de la lista). Ctrl+hover se mantiene como shortcut de "mostrar ya" sin
+// delay para usuarios avanzados.
 (function() {
+  const HOVER_DELAY_MS = 180;      // delay para preview automático
   let ctrlHeld = false;
   let currentTarget = null;
   let previewEl = null;
+  let hoverTimer = null;
 
   function ensurePreview() {
     if (previewEl) return previewEl;
@@ -185,20 +191,25 @@ window.fmt = {
   }
 
   function hide() {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
     if (previewEl) previewEl.style.display = 'none';
   }
 
+  // Ctrl acelera: si ya estás sobre una carta y pulsas Ctrl, aparece
+  // instantáneamente sin esperar al delay.
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Control') {
       ctrlHeld = true;
       if (currentTarget) {
+        clearTimeout(hoverTimer);
         const rect = currentTarget.getBoundingClientRect();
         show(currentTarget, {clientX: rect.right, clientY: rect.top});
       }
     }
   });
   document.addEventListener('keyup', (e) => {
-    if (e.key === 'Control') { ctrlHeld = false; hide(); }
+    if (e.key === 'Control') { ctrlHeld = false; }
   });
   window.addEventListener('blur', () => { ctrlHeld = false; hide(); });
 
@@ -206,10 +217,19 @@ window.fmt = {
     const img = e.target.closest('img[data-preview], .card-hover-preview img, [data-preview] img');
     if (!img) return;
     currentTarget = img;
-    if (ctrlHeld) show(img, e);
+    clearTimeout(hoverTimer);
+    if (ctrlHeld) {
+      show(img, e);
+    } else {
+      // Delay corto — evita que el preview parpadee cuando el usuario
+      // simplemente pasa el ratón por encima sin querer ver la carta.
+      hoverTimer = setTimeout(() => {
+        if (currentTarget === img) show(img, e);
+      }, HOVER_DELAY_MS);
+    }
   });
   document.addEventListener('mousemove', (e) => {
-    if (ctrlHeld && previewEl && previewEl.style.display === 'block') {
+    if (previewEl && previewEl.style.display === 'block') {
       positionPreview(e);
     }
   });
@@ -217,4 +237,8 @@ window.fmt = {
     const img = e.target.closest('img[data-preview], .card-hover-preview img, [data-preview] img');
     if (img && img === currentTarget) { currentTarget = null; hide(); }
   });
+  // Al scrollear o hacer click, ocultamos el preview (se despega de la
+  // posición esperada del ratón y molesta más que ayuda).
+  document.addEventListener('scroll', hide, true);
+  document.addEventListener('click', hide);
 })();

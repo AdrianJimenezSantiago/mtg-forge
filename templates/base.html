@@ -45,18 +45,15 @@
   {# (Chart.js NO se carga aquí — se hace lazy en deck.html openStats()) #}
 
   <style>
-    /* Símbolos de mana en línea con texto */
     .mana-cost { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
     .mana-cost i.ms { font-size: 14px; line-height: 1; }
     .mana-cost i.ms.ms-cost { text-shadow: 0 1px 1px rgba(0,0,0,0.3); }
 
-    /* Scrollbar sutil que combina con el tema oscuro */
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2f394d; border-radius: 5px; }
     ::-webkit-scrollbar-thumb:hover { background: #3d4a63; }
 
-    /* Barra de progreso del toast (animación pura CSS) */
     @keyframes toast-progress {
       from { transform: scaleX(1); }
       to   { transform: scaleX(0); }
@@ -66,15 +63,12 @@
       animation: toast-progress linear forwards;
     }
 
-    /* Fondo mágico para el header/sidebar: sutil resplandor dorado en gradiente radial */
     .bg-arcane-panel {
       background:
         radial-gradient(circle at 20% 0%, rgba(212,175,55,0.05), transparent 40%),
         #141821;
     }
 
-    /* Iconos Lucide: no capturan clicks — el evento va al elemento padre (botón/link).
-       Sin esto, click justo sobre el icono no siempre burbujea bien y "no hace nada". */
     [data-lucide],
     svg.lucide {
       pointer-events: none;
@@ -88,7 +82,7 @@
         extend: {
           colors: {
             bg: {
-              base:     '#0a0d13',   /* casi negro con tinte azulado (arcane) */
+              base:     '#0a0d13',
               elevated: '#141821',
               subtle:   '#1c2230',
               inset:    '#0f131b',
@@ -97,9 +91,7 @@
               subtle: '#232a3a',
               strong: '#3a4358',
             },
-            /* Paleta MTG-inspired ---------------------------------------- */
             accent: {
-              /* Oro de las cartas mythic-rare: cálido y llamativo sin ser chillón */
               DEFAULT: '#d4af37',
               soft:    '#a58524',
               glow:    '#e9c86a',
@@ -112,13 +104,12 @@
               green: '#5cb85c',
               gold:  '#d4af37',
             },
-            /* Colores semánticos alineados con las tierras básicas ------- */
             success: { DEFAULT: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.30)' },
             warning: { DEFAULT: '#fb923c', bg: 'rgba(251,146,60,0.10)', border: 'rgba(251,146,60,0.30)' },
             danger:  { DEFAULT: '#f87171', bg: 'rgba(248,113,113,0.10)', border: 'rgba(248,113,113,0.30)' },
             info:    { DEFAULT: '#60a5fa', bg: 'rgba(96,165,250,0.10)', border: 'rgba(96,165,250,0.30)' },
             fg: {
-              DEFAULT: '#e8e6dd',    /* ligero cálido, no gris frío */
+              DEFAULT: '#e8e6dd',
               muted:   '#a8a8b8',
               faint:   '#6a6a80',
             },
@@ -126,7 +117,7 @@
           fontFamily: {
             sans:    ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
             mono:    ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-            display: ['Cinzel', 'Georgia', 'serif'], /* para títulos "arcane" opcional */
+            display: ['Cinzel', 'Georgia', 'serif'],
           },
           boxShadow: {
             'card':   '0 1px 2px 0 rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,0.02)',
