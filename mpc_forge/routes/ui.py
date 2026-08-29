@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
-from mpc_forge.models import Deck, DeckCard, PrintRun
+from mpc_forge.models import Deck, DeckCard, PrintingCache, PrintRun
 
 TEMPLATES_DIR = template_dir()
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -36,9 +36,28 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
         .group_by(Deck.id)
         .order_by(Deck.updated_at.desc())
     )
+    deck_rows = result.all()
+
+    # Batch: printings de los commanders para pintar la card con su arte.
+    # Mismo patrón que list_decks_with_activity — WHERE ... IN (?) en una sola
+    # query en lugar de N gets individuales.
+    commander_ids = {d.commander_scryfall_id for d, _ in deck_rows if d.commander_scryfall_id}
+    printings_by_id: dict[str, PrintingCache] = {}
+    if commander_ids:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(commander_ids))
+            )
+        ).all()
+        printings_by_id = {p.scryfall_id: p for p in rows}
+
     decks = []
-    for deck, count in result.all():
+    for deck, count in deck_rows:
         deck.card_count = count  # atributo runtime, disponible en el template
+        # Arte del commander (o None si no hay commander / printing sin cache).
+        printing = printings_by_id.get(deck.commander_scryfall_id) if deck.commander_scryfall_id else None
+        deck.commander_image_url = printing.image_normal if printing else None
+        deck.commander_name = printing.name if printing else None
         decks.append(deck)
     return templates.TemplateResponse(
         request,
