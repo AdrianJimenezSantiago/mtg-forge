@@ -204,6 +204,25 @@ async def create_deck_from_entries(
 
     added_scryfall_ids: set[str] = set()
 
+    # --- OPTIMIZACIÓN: batch prefetch de ArtPreferences ---
+    # En lugar de N queries db.get(ArtPreference, oid), traemos todas de golpe
+    # con un WHERE ... IN (?). Un mazo commander tiene ~100 cartas → pasamos
+    # de 100 queries a 1.
+    oracle_ids_needed = {
+        e.get("oracle_id", "") for e in entries
+        if e.get("resolved") and e.get("oracle_id")
+        and (include_extras or e.get("role", "mainboard") in _CORE_ROLES)
+    }
+    prefs_by_oracle: dict[str, str] = {}
+    if oracle_ids_needed:
+        rows = (
+            await db.execute(
+                select(ArtPreference.oracle_id, ArtPreference.scryfall_id)
+                .where(ArtPreference.oracle_id.in_(oracle_ids_needed))
+            )
+        ).all()
+        prefs_by_oracle = {oid: sfid for oid, sfid in rows}
+
     for e in entries:
         if not e.get("resolved"):
             continue
@@ -212,11 +231,7 @@ async def create_deck_from_entries(
             continue
 
         oracle_id = e.get("oracle_id", "")
-        chosen = e["scryfall_id"]
-        if oracle_id:
-            pref = await db.get(ArtPreference, oracle_id)
-            if pref:
-                chosen = pref.scryfall_id
+        chosen = prefs_by_oracle.get(oracle_id, e["scryfall_id"])
         dc = DeckCard(
             deck_id=deck.id,
             oracle_id=oracle_id,
@@ -231,16 +246,57 @@ async def create_deck_from_entries(
         if role == "commander":
             deck.commander_scryfall_id = chosen
 
-    # Auto-añadir meld_result: siempre, incluso sin include_extras
-    # (Brisela es parte del mazo tanto como Bruna).
+    # --- OPTIMIZACIÓN: prefetch batch de printings para detección de meld ---
+    # Necesitamos leer .layout y .related_parts de cada carta que se añadió.
+    # Antes: N queries db.get(PrintingCache, sfid). Ahora: 1 query WHERE IN.
     meld_results_added: set[str] = set()
+    printings_map: dict[str, PrintingCache] = {}
+    if added_scryfall_ids:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(added_scryfall_ids))
+            )
+        ).all()
+        printings_map = {p.scryfall_id: p for p in rows}
+
+    # También pre-fetcheamos las meld_result que vayamos a necesitar. Los ids
+    # los sabemos leyendo related_parts de cada printing meld.
+    meld_result_ids_needed: set[str] = set()
     for e in entries:
         if not e.get("resolved"):
             continue
         role = e.get("role", "mainboard")
         if not include_extras and role not in _CORE_ROLES:
             continue
-        printing = await db.get(PrintingCache, e["scryfall_id"])
+        printing = printings_map.get(e["scryfall_id"])
+        if not printing or printing.layout != "meld" or not printing.related_parts:
+            continue
+        try:
+            related = _json.loads(printing.related_parts)
+        except (ValueError, TypeError):
+            continue
+        for part in related:
+            if part.get("component") == "meld_result" and part.get("id"):
+                meld_result_ids_needed.add(part["id"])
+
+    meld_printings_map: dict[str, PrintingCache] = {}
+    if meld_result_ids_needed:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(meld_result_ids_needed))
+            )
+        ).all()
+        meld_printings_map = {p.scryfall_id: p for p in rows}
+
+    # Auto-añadir meld_result: siempre, incluso sin include_extras
+    # (Brisela es parte del mazo tanto como Bruna).
+    for e in entries:
+        if not e.get("resolved"):
+            continue
+        role = e.get("role", "mainboard")
+        if not include_extras and role not in _CORE_ROLES:
+            continue
+        printing = printings_map.get(e["scryfall_id"])
         if not printing or printing.layout != "meld" or not printing.related_parts:
             continue
         try:
@@ -253,7 +309,7 @@ async def create_deck_from_entries(
             sfid = part.get("id")
             if not sfid or sfid in added_scryfall_ids or sfid in meld_results_added:
                 continue
-            cached = await db.get(PrintingCache, sfid)
+            cached = meld_printings_map.get(sfid)
             if not cached:
                 continue
             db.add(DeckCard(
@@ -435,6 +491,19 @@ async def localize_deck(
         )
     ).all()
 
+    # --- OPTIMIZACIÓN: batch prefetch de printings actuales ---
+    # Antes: db.get(PrintingCache, dc.scryfall_id) por cada carta (N queries).
+    # Ahora: 1 query WHERE IN para todas las de golpe.
+    current_sfids = {dc.scryfall_id for dc in cards if not dc.custom_art_front_id}
+    current_by_sfid: dict[str, PrintingCache] = {}
+    if current_sfids:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(current_sfids))
+            )
+        ).all()
+        current_by_sfid = {p.scryfall_id: p for p in rows}
+
     localized = 0
     unchanged = 0
     unavailable: list[str] = []
@@ -446,7 +515,7 @@ async def localize_deck(
             skipped_custom += 1
             continue
 
-        current = await db.get(PrintingCache, dc.scryfall_id)
+        current = current_by_sfid.get(dc.scryfall_id)
         if current and current.lang == lang:
             unchanged += 1
             continue

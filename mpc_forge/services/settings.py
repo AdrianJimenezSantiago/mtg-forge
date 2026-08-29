@@ -224,7 +224,15 @@ async def get_all(db: AsyncSession) -> dict[str, Any]:
 
 
 async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
-    """Guarda los valores indicados y devuelve el snapshot actualizado."""
+    """Guarda los valores indicados y devuelve el snapshot actualizado.
+
+    OPTIMIZACIÓN: batch prefetch de KeyValues existentes. Antes: 1 SELECT por
+    cada key en updates (N queries). Ahora: 1 SELECT WHERE key IN (?) + N
+    updates in-memory + commit. Para "Restablecer defaults" con 15 settings
+    pasa de 15 → 1 query.
+    """
+    # Validación primero: si algún valor es inválido, abortamos sin tocar BD.
+    valid_updates: dict[str, tuple[Any, str]] = {}  # key → (raw_value, serialized)
     for key, value in updates.items():
         sd = _DEFS_BY_KEY.get(key)
         if not sd:
@@ -238,12 +246,28 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"{key} debe ser >= {sd.min_value}")
             if sd.max_value is not None and fv > sd.max_value:
                 raise ValueError(f"{key} debe ser <= {sd.max_value}")
-        serialized = _serialize(sd, value)
-        existing = await db.get(KeyValue, f"settings.{sd.key}")
+        valid_updates[key] = (value, _serialize(sd, value))
+
+    if not valid_updates:
+        # Nada que hacer — devolvemos snapshot sin tocar la BD.
+        return await get_all(db)
+
+    # Batch fetch de KeyValues existentes.
+    kv_keys = [f"settings.{k}" for k in valid_updates]
+    existing_rows = (
+        await db.scalars(
+            select(KeyValue).where(KeyValue.key.in_(kv_keys))
+        )
+    ).all()
+    existing_by_key: dict[str, KeyValue] = {kv.key: kv for kv in existing_rows}
+
+    for key, (_raw, serialized) in valid_updates.items():
+        kv_key = f"settings.{key}"
+        existing = existing_by_key.get(kv_key)
         if existing:
             existing.value = serialized
         else:
-            db.add(KeyValue(key=f"settings.{sd.key}", value=serialized))
+            db.add(KeyValue(key=kv_key, value=serialized))
     await db.commit()
     snapshot = await get_all(db)
     apply_to_config(snapshot)

@@ -282,3 +282,54 @@ class TestBuildProgress:
         assert r.json()["done"] is True
 
         build_progress.clear(deck["id"])
+
+
+# =============================================================================
+# Performance: endpoint de validation ligero + caching HTTP + list_decks ligero
+# =============================================================================
+
+class TestPerformanceEndpoints:
+    async def test_validation_endpoint_returns_only_validation(self, client, deck):
+        """Nuevo endpoint /validation: alternativa ligera a GET /{id} para
+        cuando solo hace falta refrescar contadores tras un toggle."""
+        r = await client.get(f"/api/decks/{deck['id']}/validation")
+        assert r.status_code == 200
+        val = r.json()
+        # DeckValidation tiene estos campos, y solo estos
+        assert "format" in val
+        assert "expected" in val
+        assert "counted" in val
+        assert "is_valid" in val
+        assert "message" in val
+        assert "level" in val
+        assert "breakdown" in val
+        # NO debe incluir las cartas (esa es la mejora — se ahorra ~50-80KB
+        # de payload para un mazo commander)
+        assert "cards" not in val
+
+    async def test_validation_endpoint_404_for_missing_deck(self, client):
+        r = await client.get("/api/decks/99999/validation")
+        assert r.status_code == 404
+
+    async def test_list_decks_returns_summary_view(self, client, deck):
+        """list_decks devuelve DeckSummaryView (ligero), no DeckView completo."""
+        r = await client.get("/api/decks/")
+        assert r.status_code == 200
+        summaries = r.json()
+        s = next(d for d in summaries if d["id"] == deck["id"])
+        # Contiene lo esencial
+        assert "card_count" in s
+        assert s["card_count"] == 3
+        # NO trae las cartas (esa es la optimización)
+        assert "cards" not in s
+        # NO trae validation (era muy pesada para un listing)
+        assert "validation" not in s
+
+    async def test_static_endpoints_have_cache_control(self, client):
+        r = await client.get("/api/decks/_/supported-langs")
+        assert r.status_code == 200
+        assert "cache-control" in {k.lower() for k in r.headers}
+        assert "max-age" in r.headers["cache-control"].lower()
+
+        r = await client.get("/api/decks/_/undoable-kinds")
+        assert "cache-control" in {k.lower() for k in r.headers}

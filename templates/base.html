@@ -8,28 +8,41 @@
   {# Favicon (mismo diseño que el .exe) #}
   <link rel="icon" type="image/png" href="/static/favicon.png">
 
-  {# Preconnect hints: el navegador abre TCP+TLS a estos CDNs en paralelo
-     mientras parsea el HTML, así cuando llega la primera petición al asset ya
-     está la conexión lista. Ahorra 100-300 ms en primera carga. #}
+  {# Preconnect + dns-prefetch a los CDNs de assets: el navegador establece
+     TCP+TLS y resuelve DNS en paralelo al parseo del HTML, ahorrando
+     100-300 ms en primera carga. dns-prefetch como fallback para navegadores
+     que ignoran preconnect. #}
   <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+  <link rel="dns-prefetch" href="https://unpkg.com">
 
-  {# Tailwind CDN #}
+  {# Tailwind CDN — síncrono a propósito: Tailwind procesa el HTML durante
+     parseo y aplica las clases. Con defer/async las primeras renders quedan
+     sin estilar (FOUC muy notable). Aceptamos el bloqueo (~200ms) a cambio
+     de UX correcta. #}
   <script src="https://cdn.tailwindcss.com"></script>
 
-  {# Iconos oficiales de mana MTG #}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css">
+  {# Iconos oficiales de mana MTG — solo se usan en el modal de stats y en
+     algunos tooltips. Preload como estilo pero cargar async con onload trick:
+     no bloquea el render inicial. #}
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css"
+        as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css"></noscript>
 
-  {# Lucide icons: se usan como <i data-lucide="X"></i>; app.js llama createIcons() automáticamente #}
-  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  {# Lucide icons: defer OK — se ejecuta al final. app.js llama createIcons()
+     tras DOMContentLoaded, así que no hay carrera. #}
+  <script defer src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 
-  {# Chart.js para el modal de estadísticas del mazo #}
-  {# crossorigin=anonymous → si algo peta, window.error tendrá stack trace completo
-     (sin esto los errores de scripts CDN llegan como "Script error." sin detalle). #}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  {# Chart.js: solo se usa en el modal de estadísticas del deck editor.
+     Ahorra ~80KB del initial load en todas las páginas donde no se abre stats.
+     El modal comprueba si `window.Chart` existe antes de renderizar; si no,
+     inyecta el script y espera a que cargue. #}
+  {# (Chart.js NO se carga aquí — se hace lazy en deck.html openStats()) #}
 
   <style>
     /* Símbolos de mana en línea con texto */

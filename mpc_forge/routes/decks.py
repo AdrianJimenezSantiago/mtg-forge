@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,14 +117,60 @@ async def import_text(
     )
 
 
-@router.get("/", response_model=list[DeckView])
-async def list_decks(db: DbDep) -> list[DeckView]:
-    decks = (
-        await db.scalars(
-            select(Deck).options(selectinload(Deck.cards)).order_by(Deck.updated_at.desc())
+class DeckSummaryView(BaseModel):
+    """Vista ligera para listings. Muchísimo más rápida que DeckView completo.
+
+    DeckView incluye la lista completa de cartas con sus 20+ campos cada una
+    (mana_cost, colors, keywords, image URLs, history_copies, custom_arts_count…)
+    lo cual escala mal con muchos mazos. Para la vista de listado no necesitamos
+    ese detalle — solo lo básico. Un cliente que necesite el detalle completo
+    llama a ``GET /api/decks/{id}``.
+    """
+    id: int
+    name: str
+    format: str
+    moxfield_id: str | None
+    source_url: str | None
+    commander_scryfall_id: str | None
+    imported_at: datetime
+    updated_at: datetime
+    card_count: int
+    notes: str = ""
+
+
+@router.get("/", response_model=list[DeckSummaryView])
+async def list_decks(db: DbDep) -> list[DeckSummaryView]:
+    """Listado de mazos con lo mínimo para pintar cards.
+
+    OPTIMIZACIÓN: usa un JOIN con COUNT en vez de traer todas las cartas
+    (selectinload) y luego llamar a _deck_to_view (que hace 5 queries por
+    mazo). Para 20 mazos × 30 cartas pasa de ~100 queries a 1 sola.
+    Para 100 mazos × 100 cartas pasa de ~500 queries + serializar 10k rows
+    a 1 query con 100 filas agregadas.
+    """
+    rows = (
+        await db.execute(
+            select(Deck, func.count(DeckCard.id).label("card_count"))
+            .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
+            .group_by(Deck.id)
+            .order_by(Deck.updated_at.desc())
         )
     ).all()
-    return [await _deck_to_view(db, d) for d in decks]
+    return [
+        DeckSummaryView(
+            id=deck.id,
+            name=deck.name,
+            format=deck.format,
+            moxfield_id=deck.moxfield_id,
+            source_url=deck.source_url,
+            commander_scryfall_id=deck.commander_scryfall_id,
+            imported_at=deck.imported_at,
+            updated_at=deck.updated_at,
+            card_count=int(card_count or 0),
+            notes=deck.notes or "",
+        )
+        for deck, card_count in rows
+    ]
 
 
 @router.get("/{deck_id}", response_model=DeckView)
@@ -133,6 +179,38 @@ async def get_deck(deck_id: int, db: DbDep) -> DeckView:
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
     return await _deck_to_view(db, deck)
+
+
+@router.get("/{deck_id}/validation", response_model=DeckValidation)
+async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
+    """Devuelve SOLO la validación del mazo. Endpoint ultra ligero para el
+    frontend — usado por cambios que solo afectan a totales (toggle include,
+    change qty, mover a otra sección) para no tener que refrescar el mazo
+    entero.
+
+    2 queries fijas (get deck + count agregado por rol). Muy rápido incluso
+    con mazos grandes.
+    """
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+    # Traemos solo (role, quantity, include) — no necesitamos las cartas enteras.
+    rows = (
+        await db.execute(
+            select(DeckCard.role, DeckCard.quantity, DeckCard.include)
+            .where(DeckCard.deck_id == deck_id)
+        )
+    ).all()
+    val = deck_validation.validate_deck(deck.format, list(rows))
+    return DeckValidation(
+        format=val.format,
+        expected=val.expected,
+        counted=val.counted,
+        is_valid=val.is_valid,
+        message=val.message,
+        level=val.level,
+        breakdown=val.breakdown,
+    )
 
 
 @router.delete("/{deck_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -577,10 +655,15 @@ class DeckWithActivityView(BaseModel):
 async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     """Lista los mazos + metadata para pintar el grid de la vista de historial.
 
-    Pensado para pintar cards visuales, no para el editor. Optimizado para
-    minimizar queries: usamos joins agregados para no ir carta a carta.
+    OPTIMIZACIÓN: todo en 4 queries fijas independientemente de nº de mazos:
+      1. Mazos + card_count (JOIN + GROUP BY)
+      2. Contadores de actividad por deck_id (GROUP BY)
+      3. Último evento por deck_id (MAX + JOIN, evita N+1)
+      4. Printings de commander en batch (WHERE IN, evita N+1)
     """
-    # Traemos todos los mazos con su count de cartas en una sola query.
+    from mpc_forge.models import DeckActivity as _DA
+
+    # --- BATCH 1: mazos + count de cartas ---
     deck_rows = (
         await db.execute(
             select(Deck, func.count(DeckCard.id).label("card_count"))
@@ -590,9 +673,11 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         )
     ).all()
 
-    # Contadores de actividad por deck_id — una sola query agregada.
-    from mpc_forge.models import DeckActivity as _DA
-    activity_counts = dict(
+    if not deck_rows:
+        return []
+
+    # --- BATCH 2: contadores de actividad por deck_id ---
+    activity_counts: dict[int, int] = dict(
         (await db.execute(
             select(_DA.deck_id, func.count(_DA.id))
             .where(_DA.deck_id.isnot(None))
@@ -600,26 +685,48 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         )).all()
     )
 
-    # Último evento por mazo. Con SQLite la forma más simple sin CTE es
-    # una subquery. Como los mazos suelen ser pocos (<50), lo hacemos con
-    # una query por mazo — el índice compuesto (deck_id, created_at DESC)
-    # que ya creamos en init_db hace que sea O(log N) por mazo.
-    last_activity: dict[int, tuple[datetime, str, str]] = {}
-    for deck, _ in deck_rows:
-        last = await deck_activity.last_activity_for_deck(db, deck.id)
-        if last:
-            last_activity[deck.id] = (last.created_at, last.kind, last.summary)
+    # --- BATCH 3: último evento por mazo ---
+    # Con SQLite la forma más portable sin CTE es una subquery correlacionada.
+    # Usamos MAX(id) porque los ids son autoincremental → correlaciona con
+    # created_at DESC. Un solo query en vez de N (era el N+1 anterior).
+    last_id_subq = (
+        select(func.max(_DA.id).label("last_id"), _DA.deck_id.label("d"))
+        .where(_DA.deck_id.isnot(None))
+        .group_by(_DA.deck_id)
+        .subquery()
+    )
+    last_rows = (
+        await db.execute(
+            select(_DA.deck_id, _DA.created_at, _DA.kind, _DA.summary)
+            .join(last_id_subq, _DA.id == last_id_subq.c.last_id)
+        )
+    ).all()
+    last_activity: dict[int, tuple[datetime, str, str]] = {
+        deck_id: (created_at, kind, summary)
+        for deck_id, created_at, kind, summary in last_rows
+    }
 
+    # --- BATCH 4: printings de commanders en una única query ---
+    commander_ids = {d.commander_scryfall_id for d, _ in deck_rows if d.commander_scryfall_id}
+    printings_by_id: dict[str, PrintingCache] = {}
+    if commander_ids:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(commander_ids))
+            )
+        ).all()
+        printings_by_id = {p.scryfall_id: p for p in rows}
+
+    # --- Composición sin más queries ---
     out: list[DeckWithActivityView] = []
     for deck, card_count in deck_rows:
-        # Arte del commander: si hay commander_scryfall_id resolvemos su printing.
         commander_name: str | None = None
         commander_image: str | None = None
         if deck.commander_scryfall_id:
-            printing = await db.get(PrintingCache, deck.commander_scryfall_id)
-            if printing:
-                commander_name = printing.name
-                commander_image = printing.image_normal or printing.image_large
+            p = printings_by_id.get(deck.commander_scryfall_id)
+            if p:
+                commander_name = p.name
+                commander_image = p.image_normal or p.image_large
 
         last = last_activity.get(deck.id)
         out.append(DeckWithActivityView(
@@ -725,10 +832,15 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
 
 
 @router.get("/_/undoable-kinds")
-async def get_undoable_kinds() -> list[str]:
+async def get_undoable_kinds(response: Response) -> list[str]:
     """Lista de kinds que admiten undo. El frontend la usa para decidir qué
-    eventos muestran el botón "Deshacer" en el timeline."""
+    eventos muestran el botón "Deshacer" en el timeline.
+
+    Cache HTTP: es una constante literal, solo cambia con deploy nuevo.
+    1 hora balancea "no re-fetchar" y "que pille cambios sin borrar caché".
+    """
     from mpc_forge.services import undo as undo_svc
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)
 
 
@@ -911,11 +1023,24 @@ async def tokens_add_many(
         ).all()
     }
 
+    # --- OPTIMIZACIÓN: batch prefetch de printings ya cacheados ---
+    # Antes: db.get(PrintingCache, sfid) por cada id (N queries).
+    # Ahora: 1 query WHERE IN, luego solo los que falten los pedimos a Scryfall.
+    ids_to_check = [s for s in payload.scryfall_ids if s not in existing_ids]
+    cached_printings: dict[str, PrintingCache] = {}
+    if ids_to_check:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(ids_to_check))
+            )
+        ).all()
+        cached_printings = {p.scryfall_id: p for p in rows}
+
     added: list[DeckCard] = []
     for sfid in payload.scryfall_ids:
         if sfid in existing_ids:
             continue
-        cached = await db.get(PrintingCache, sfid)
+        cached = cached_printings.get(sfid)
         if not cached:
             raw = await scryfall.by_id(sfid)
             if not raw:
@@ -946,7 +1071,7 @@ async def tokens_add_many(
     await db.commit()
     for dc in added:
         await db.refresh(dc)
-    return [await _deckcard_to_view(db, dc) for dc in added]
+    return await _deckcards_to_views(db, added)
 
 
 @router.post("/{deck_id}/cards/{card_id}/add-related", response_model=list[DeckCardView])
@@ -983,13 +1108,29 @@ async def add_related_cards(
         ).all()
     }
 
+    # --- OPTIMIZACIÓN: batch prefetch de printings ---
+    # Antes: db.get(PrintingCache, sfid) por cada part (N queries en el bucle).
+    # Ahora: 1 query WHERE IN por adelantado.
+    candidate_sfids = {
+        part.get("id") for part in related
+        if part.get("id") and part["id"] not in existing_ids
+    }
+    cached_map: dict[str, PrintingCache] = {}
+    if candidate_sfids:
+        rows = (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(candidate_sfids))
+            )
+        ).all()
+        cached_map = {p.scryfall_id: p for p in rows}
+
     added: list[DeckCard] = []
     for part in related:
         sfid = part.get("id")
         if not sfid or sfid in existing_ids:
             continue
         # Asegurar que el printing está cacheado
-        cached = await db.get(PrintingCache, sfid)
+        cached = cached_map.get(sfid)
         if not cached:
             raw = await scryfall.by_id(sfid)
             if not raw:
@@ -1030,7 +1171,7 @@ async def add_related_cards(
     await db.commit()
     for dc in added:
         await db.refresh(dc)
-    return [await _deckcard_to_view(db, dc) for dc in added]
+    return await _deckcards_to_views(db, added)
 
 
 # ================================================================
@@ -1068,8 +1209,13 @@ class LocalizeDeckResponse(BaseModel):
 
 
 @router.get("/_/supported-langs")
-async def get_supported_langs() -> dict[str, str]:
-    """Diccionario code → label para poblar el selector de idiomas del frontend."""
+async def get_supported_langs(response: Response) -> dict[str, str]:
+    """Diccionario code → label para poblar el selector de idiomas del frontend.
+
+    Cache HTTP: contenido esencialmente constante. 1 hora es suficiente para
+    que el navegador no pida esto en cada carga del deck editor.
+    """
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return SUPPORTED_LANGS
 
 
@@ -1366,6 +1512,113 @@ async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
 
 
 # --- Helpers de vista -----------------------------------------------------
+
+async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[DeckCardView]:
+    """Versión BATCH para listas de DeckCards (usada por endpoints que devuelven
+    varias cartas: tokens_add_many, add_related_cards, etc.).
+
+    Antes: [await _deckcard_to_view(db, dc) for dc in cards] → 4*N queries.
+    Ahora: 5 queries fijas independientemente de N. Reutiliza el mismo patrón
+    que `_deck_to_view` pero sin necesitar la validación del mazo.
+    """
+    if not cards:
+        return []
+
+    # --- BATCH 1: printings ---
+    scryfall_ids = {c.scryfall_id for c in cards}
+    printings_by_id: dict[str, PrintingCache] = {
+        p.scryfall_id: p for p in (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
+            )
+        ).all()
+    }
+
+    # --- BATCH 2: custom arts frontales ---
+    custom_ids = {c.custom_art_front_id for c in cards if c.custom_art_front_id}
+    customs_by_id: dict[int, CustomArt] = {}
+    if custom_ids:
+        customs_by_id = {
+            ca.id: ca for ca in (
+                await db.scalars(select(CustomArt).where(CustomArt.id.in_(custom_ids)))
+            ).all()
+        }
+
+    # --- BATCH 3: nº total de impresiones por oracle_id ---
+    oracle_ids = {c.oracle_id for c in cards if c.oracle_id}
+    prints_count_by_oracle: dict[str, int] = {}
+    if oracle_ids:
+        rows = (
+            await db.execute(
+                select(PrintingCache.oracle_id, func.count(PrintingCache.scryfall_id))
+                .where(PrintingCache.oracle_id.in_(oracle_ids))
+                .group_by(PrintingCache.oracle_id)
+            )
+        ).all()
+        prints_count_by_oracle = {oid: int(n) for oid, n in rows}
+
+    # --- BATCH 4: nº de custom arts disponibles por nombre normalizado ---
+    name_norms = {custom_art.normalize_card_name(c.name) for c in cards}
+    custom_count_by_name: dict[str, int] = {}
+    if name_norms:
+        rows = (
+            await db.execute(
+                select(CustomArt.card_name_normalized, func.count(CustomArt.id))
+                .where(
+                    CustomArt.card_name_normalized.in_(name_norms),
+                    CustomArt.face == "front",
+                )
+                .group_by(CustomArt.card_name_normalized)
+            )
+        ).all()
+        custom_count_by_name = {n: int(c) for n, c in rows}
+
+    # --- BATCH 5: history agregado ---
+    stats_map = await history.stats_for_oracle_ids(db, list(oracle_ids))
+
+    # --- Composición sin más queries ---
+    out: list[DeckCardView] = []
+    for dc in cards:
+        printing = printings_by_id.get(dc.scryfall_id)
+        thumb: str | None = None
+        if dc.custom_art_front_id:
+            ca = customs_by_id.get(dc.custom_art_front_id)
+            if ca:
+                thumb = custom_art.custom_art_url(ca.relative_path)
+        if not thumb:
+            thumb = printing.image_normal if printing else None
+
+        is_dfc = bool(printing and printing.layout in _DFC_LAYOUTS)
+        stat = stats_map.get(dc.oracle_id) if dc.oracle_id else None
+        out.append(DeckCardView(
+            id=dc.id,
+            oracle_id=dc.oracle_id,
+            name=dc.name,
+            quantity=dc.quantity,
+            scryfall_id=dc.scryfall_id,
+            custom_art_front_id=dc.custom_art_front_id,
+            custom_art_back_id=dc.custom_art_back_id,
+            role=dc.role,
+            include=dc.include,
+            layout=printing.layout if printing else "normal",
+            is_dfc=is_dfc,
+            thumbnail_url=thumb,
+            printings_available=prints_count_by_oracle.get(dc.oracle_id, 0),
+            custom_arts_available=custom_count_by_name.get(
+                custom_art.normalize_card_name(dc.name), 0
+            ),
+            history_copies=stat.total_copies if stat else 0,
+            history_decks=stat.decks if stat else [],
+            mana_cost=printing.mana_cost if printing else "",
+            cmc=printing.cmc if printing else 0.0,
+            type_line=printing.type_line if printing else "",
+            colors=printing.colors.split(",") if printing and printing.colors else [],
+            color_identity=printing.color_identity.split(",") if printing and printing.color_identity else [],
+            rarity=printing.rarity if printing else "",
+            keywords=[k for k in (printing.keywords or "").split(",") if k] if printing else [],
+        ))
+    return out
+
 
 async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
     """Versión single-card (para endpoints que devuelven una sola carta).

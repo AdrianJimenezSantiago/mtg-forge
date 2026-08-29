@@ -28,20 +28,31 @@ engine = create_async_engine(
 )
 
 
-# --- PRAGMAs de SQLite para concurrencia ---------------------------------
+# --- PRAGMAs de SQLite para concurrencia y performance --------------------
 # SQLite por defecto bloquea toda la BD durante escrituras. Con estas PRAGMAs:
 #   - WAL: readers y writers no se bloquean entre sí (mucho más concurrente)
 #   - busy_timeout: si hay contención, espera hasta N ms antes de fallar
 #     (evita "database is locked" en operaciones concurrentes)
 #   - synchronous=NORMAL: seguro con WAL, más rápido que FULL
+#   - cache_size=-20000: 20 MB de cache en RAM (default: 2 MB). Grande
+#     porque nuestros índices y páginas hot suelen ser < 5 MB en total y
+#     así casi todo cabe en memoria.
+#   - temp_store=MEMORY: operaciones temporales (ORDER BY sin índice,
+#     agregaciones grandes) en RAM en vez de fichero temporal en disco.
+#   - mmap_size=256MB: memory-mapped I/O para las páginas leídas — evita
+#     copias entre kernel y userspace. En Windows tiene menos beneficio
+#     pero no perjudica.
 # Esto es crítico para nuestro caso: 67 índices de drives en paralelo tocando
-# la misma tabla IndexedArt.
+# la misma tabla IndexedArt, editor con múltiples fetch concurrentes, etc.
 @event.listens_for(engine.sync_engine, "connect")
 def _sqlite_pragmas(dbapi_conn, _connection_record):
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=30000")  # 30 segundos
+    cursor.execute("PRAGMA busy_timeout=30000")           # 30 segundos
     cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA cache_size=-20000")            # 20 MB
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    cursor.execute("PRAGMA mmap_size=268435456")          # 256 MB
     cursor.close()
 
 
@@ -99,10 +110,24 @@ async def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS ix_deck_cards_role ON deck_cards(role)",
             # Composite para el patrón más común: WHERE deck_id=? AND role IN (...)
             "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_role ON deck_cards(deck_id, role)",
+            # DeckCard(deck_id, include) — usado por resolve_deck_for_xml para
+            # el WHERE include=True y por búsqueda global.
+            "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_include ON deck_cards(deck_id, include)",
             # DeckActivity: consulta más común es "todos los eventos de un mazo,
             # ordenados por fecha desc". Composite index (deck_id, created_at)
             # cubre exactamente ese patrón.
             "CREATE INDEX IF NOT EXISTS ix_deck_activity_deck_created ON deck_activity(deck_id, created_at DESC)",
+            # Deck.updated_at: todos los listings ordenan por esto DESC
+            # (list_decks, list_decks_with_activity, HTML home).
+            "CREATE INDEX IF NOT EXISTS ix_decks_updated_at ON decks(updated_at DESC)",
+            # PrintingCache(oracle_id, set_code, collector_number, lang):
+            # localize_deck busca por esta combinación para saber si ya cacheó
+            # una impresión localizada concreta.
+            "CREATE INDEX IF NOT EXISTS ix_printings_locate "
+            "ON printings(oracle_id, set_code, collector_number, lang)",
+            # KeyValue.key ya es PK (no hace falta index extra), pero para
+            # settings hacemos SELECT ... IN (?) — ver settings.get_all() /
+            # set_many(). El PK ya cubre esto por scan de índice.
         ]
         for stmt in extra_indexes:
             await conn.execute(text(stmt))
