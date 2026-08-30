@@ -124,6 +124,22 @@ async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     )
 
 
+@router.get("/decks/{deck_id}/pdf", response_class=HTMLResponse)
+async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
+    """PDF Studio — layout 3-columnas (config | preview | ajustes) al estilo
+    proxxied.com. La página carga los datos del mazo vía fetch, no por context,
+    para que el mismo template no tenga que preocuparse por serializar cartas.
+    """
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        return HTMLResponse("Deck no encontrado", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "pdf_studio.html",
+        {"deck": deck},
+    )
+
+
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request) -> HTMLResponse:
     """Vista de historial. Los datos (mazos, runs, timelines) se cargan vía

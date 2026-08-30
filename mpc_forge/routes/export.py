@@ -260,23 +260,131 @@ async def download_export(filename: str) -> FileResponse:
     if not target.exists() or PATHS.exports_dir not in target.parents:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Archivo no encontrado")
     # media_type se auto-detecta por extensión
-    media = "application/pdf" if filename.lower().endswith(".pdf") else "application/xml"
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    media = {
+        "pdf": "application/pdf",
+        "zip": "application/zip",
+        "txt": "text/plain; charset=utf-8",
+        "xml": "application/xml",
+    }.get(ext, "application/octet-stream")
     return FileResponse(target, media_type=media, filename=filename)
+
+
+@router.get("/cardback")
+async def get_default_cardback() -> FileResponse:
+    """Sirve el cardback estándar para que el preview del PDF Studio pueda
+    pintarlo en las páginas de reversos cuando el modo es 'all_cards'."""
+    path = default_cardback_path()
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sin cardback configurado")
+    ext = path.suffix.lower().lstrip(".")
+    media = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, "image/png")
+    return FileResponse(path, media_type=media)
 
 
 # ---- PDF imprimible ----------------------------------------------------
 
 class BuildPDFRequest(BaseModel):
-    page_size: str = "a4"           # "a4" | "letter"
-    include_backs: bool = False     # incluir reversos DFC al final
-    cut_marks: bool = True
-    gap_mm: float = 0.0
+    """Payload del PDF Studio v2. Todos los campos son opcionales — si no
+    vienen, caen a los defaults del dataclass ``PDFOptions``.
+
+    Legacy: los campos ``cut_marks``, ``gap_mm``, ``guides_enabled``,
+    ``guides_style``, ``guides_stroke``, ``guides_placement``,
+    ``guides_length_mm``, ``guides_color``, ``guides_width_pt`` se aceptan
+    para no romper integraciones anteriores; se traducen internamente al
+    modelo nuevo (``card_guides_*``).
+    """
+    # Página
+    page_size: str = "a4"                 # "a4" | "letter" | "a3"
+    orientation: str = "portrait"         # "portrait" | "landscape"
+    cols: int = 3
+    rows: int = 3
+
+    # Espaciado
+    gap_x_mm: float = 0.0
+    gap_y_mm: float = 0.0
+
+    # Offsets
+    offset_x_mm: float = 0.0
+    offset_y_mm: float = 0.0
+    back_offset_x_mm: float = 0.0
+    back_offset_y_mm: float = 0.0
+
+    # Bleed
+    bleed_enabled: bool = False
+    bleed_mm: float = 0.0
+
+    # Card guides
+    card_guides_enabled: bool = True
+    card_guides_style: str = "corners"     # "corners" | "full"
+    card_guides_shape: str = "square"      # "square"  | "round"
+    card_guides_pattern: str = "solid"     # "solid"   | "dashed" | "dotted"
+    card_guides_placement: str = "outside" # "outside" | "middle" | "inside"
+    card_guides_length_mm: float = 4.0
+    card_guides_color: str = "#606060"
+    card_guides_width_pt: float = 0.4
+
+    # Page guides
+    page_guides: str = "none"              # "none" | "full_lines" | "corners_only"
+
+    # Duplex hide flags
+    hide_card_guides_front: bool = False
+    hide_card_guides_back: bool = False
+    hide_page_guides_front: bool = False
+    hide_page_guides_back: bool = False
+
+    # Marcas de registro (Silhouette / Cricut)
+    reg_marks_enabled: bool = False
+    reg_marks_inset_mm: float = 10.0
+    reg_marks_size_mm: float = 5.0
+
+    # Contenido
+    include_backs: bool = False
+    backs_layout: str = "append"           # "append" | "duplex"
+    backs_content: str = "all_cards"       # "all_cards" | "dfc_only"
+
+    # Rango de páginas
+    page_range: str = ""
+
+    # Pie
+    show_footer: bool = True
+
+    # ---- Legacy (traducidos si vienen) ----
+    cut_marks: bool | None = None          # → card_guides_enabled
+    gap_mm: float | None = None            # → gap_x_mm & gap_y_mm
+    guides_enabled: bool | None = None     # → card_guides_enabled
+    guides_style: str | None = None        # → card_guides_style
+    guides_stroke: str | None = None       # → card_guides_pattern
+    guides_placement: str | None = None    # → card_guides_placement
+    guides_length_mm: float | None = None  # → card_guides_length_mm
+    guides_color: str | None = None        # → card_guides_color
+    guides_width_pt: float | None = None   # → card_guides_width_pt
 
 
 class PDFBuildResponse(BaseModel):
     pdf_path: str
+    filename: str
     total_pages: int
     total_slots: int
+    cols: int
+    rows: int
+
+
+class ImagesExportRequest(BaseModel):
+    """Sin campos por ahora — el ZIP incluye siempre las imágenes únicas del
+    mazo + decklist.txt + README.txt. Reservado para el futuro por si
+    queremos permitir escoger formato de decklist, incluir tokens, etc."""
+    decklist_format: str = "with_set"      # "simple" | "with_set" | "arena"
+
+
+class ImagesExportResponse(BaseModel):
+    zip_path: str
+    filename: str
+    total_files: int
+    total_unique_cards: int
+    total_dfc_backs: int
+    missing_images: int
+    size_bytes: int
 
 
 class BuildProgressResponse(BaseModel):
@@ -357,33 +465,184 @@ async def build_pdf_endpoint(
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.pdf"
+
+    # --- Traducción legacy → nuevo modelo ---
+    def _one_of(value: str, allowed: tuple[str, ...], default: str) -> str:
+        v = (value or "").lower().strip()
+        return v if v in allowed else default
+
+    # cut_marks / guides_enabled → card_guides_enabled
+    card_guides_enabled = payload.card_guides_enabled
+    if payload.cut_marks is not None:
+        card_guides_enabled = payload.cut_marks
+    if payload.guides_enabled is not None:
+        card_guides_enabled = payload.guides_enabled
+
+    # gap_mm → gap_x/y
+    if payload.gap_mm is not None:
+        gap_x = gap_y = payload.gap_mm
+    else:
+        gap_x, gap_y = payload.gap_x_mm, payload.gap_y_mm
+
+    # Legacy guides_* → card_guides_*
+    card_style = payload.guides_style if payload.guides_style is not None else payload.card_guides_style
+    card_pattern = payload.guides_stroke if payload.guides_stroke is not None else payload.card_guides_pattern
+    card_placement = payload.guides_placement if payload.guides_placement is not None else payload.card_guides_placement
+    card_length = payload.guides_length_mm if payload.guides_length_mm is not None else payload.card_guides_length_mm
+    card_color = payload.guides_color if payload.guides_color is not None else payload.card_guides_color
+    card_width = payload.guides_width_pt if payload.guides_width_pt is not None else payload.card_guides_width_pt
+
     options = PDFOptions(
-        page_size="letter" if payload.page_size.lower() == "letter" else "a4",
+        page_size=_one_of(payload.page_size, ("a4", "letter", "a3"), "a4"),  # type: ignore[arg-type]
+        orientation=_one_of(payload.orientation, ("portrait", "landscape"), "portrait"),  # type: ignore[arg-type]
+        cols=max(0, min(20, payload.cols)),
+        rows=max(0, min(20, payload.rows)),
+        gap_x_mm=max(0.0, min(50.0, gap_x)),
+        gap_y_mm=max(0.0, min(50.0, gap_y)),
+        offset_x_mm=max(-50.0, min(50.0, payload.offset_x_mm)),
+        offset_y_mm=max(-50.0, min(50.0, payload.offset_y_mm)),
+        back_offset_x_mm=max(-50.0, min(50.0, payload.back_offset_x_mm)),
+        back_offset_y_mm=max(-50.0, min(50.0, payload.back_offset_y_mm)),
+        bleed_enabled=payload.bleed_enabled,
+        bleed_mm=max(0.0, min(10.0, payload.bleed_mm)),
+        card_guides_enabled=card_guides_enabled,
+        card_guides_style=_one_of(card_style, ("corners", "full"), "corners"),  # type: ignore[arg-type]
+        card_guides_shape=_one_of(payload.card_guides_shape, ("square", "round"), "square"),  # type: ignore[arg-type]
+        card_guides_pattern=_one_of(card_pattern, ("solid", "dashed", "dotted"), "solid"),  # type: ignore[arg-type]
+        card_guides_placement=_one_of(card_placement, ("outside", "middle", "inside"), "outside"),  # type: ignore[arg-type]
+        card_guides_length_mm=max(0.5, min(30.0, card_length)),
+        card_guides_color=card_color if card_color.startswith("#") else "#606060",
+        card_guides_width_pt=max(0.1, min(3.0, card_width)),
+        page_guides=_one_of(payload.page_guides, ("none", "full_lines", "corners_only"), "none"),  # type: ignore[arg-type]
+        hide_card_guides_front=payload.hide_card_guides_front,
+        hide_card_guides_back=payload.hide_card_guides_back,
+        hide_page_guides_front=payload.hide_page_guides_front,
+        hide_page_guides_back=payload.hide_page_guides_back,
+        reg_marks_enabled=payload.reg_marks_enabled,
+        reg_marks_inset_mm=max(0.0, min(50.0, payload.reg_marks_inset_mm)),
+        reg_marks_size_mm=max(1.0, min(20.0, payload.reg_marks_size_mm)),
         include_backs=payload.include_backs,
-        cut_marks=payload.cut_marks,
-        gap_mm=payload.gap_mm,
+        backs_layout=_one_of(payload.backs_layout, ("append", "duplex"), "append"),  # type: ignore[arg-type]
+        backs_content=_one_of(payload.backs_content, ("dfc_only", "all_cards"), "all_cards"),  # type: ignore[arg-type]
+        page_range=payload.page_range[:200],
+        show_footer=payload.show_footer,
     )
+
     result = build_pdf(resolved, out_path, options)
     build_progress.finish(deck_id)
+    filename = Path(str(result.pdf_path)).name
     await deck_activity.log_event(
         db, deck_id, K.PDF_GENERATED,
         payload={
             "page_size": options.page_size,
-            "cut_marks": options.cut_marks,
+            "orientation": options.orientation,
+            "grid": f"{result.cols}x{result.rows}",
+            "card_guides_enabled": options.card_guides_enabled,
+            "card_guides_style": options.card_guides_style,
+            "card_guides_shape": options.card_guides_shape,
+            "card_guides_pattern": options.card_guides_pattern,
+            "page_guides": options.page_guides,
+            "bleed_enabled": options.bleed_enabled,
+            "bleed_mm": options.bleed_mm,
             "include_backs": options.include_backs,
-            "gap_mm": options.gap_mm,
+            "backs_layout": options.backs_layout,
+            "backs_content": options.backs_content,
+            "back_offset_x_mm": options.back_offset_x_mm,
+            "back_offset_y_mm": options.back_offset_y_mm,
+            "reg_marks_enabled": options.reg_marks_enabled,
+            "gap_x_mm": options.gap_x_mm,
+            "gap_y_mm": options.gap_y_mm,
+            "page_range": options.page_range,
             "total_pages": result.total_pages,
             "total_slots": result.total_slots,
             "pdf_path": str(result.pdf_path),
-            "pdf_filename": Path(str(result.pdf_path)).name,
+            "pdf_filename": filename,
         },
         deck_name=deck.name,
     )
     await db.commit()
     return PDFBuildResponse(
         pdf_path=str(result.pdf_path),
+        filename=filename,
         total_pages=result.total_pages,
         total_slots=result.total_slots,
+        cols=result.cols,
+        rows=result.rows,
+    )
+
+
+@router.post("/decks/{deck_id}/export-images", response_model=ImagesExportResponse)
+async def export_images_endpoint(
+    deck_id: int,
+    payload: ImagesExportRequest,
+    db: DbDep,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    art_cache: Annotated[ArtCache, Depends(_get_art_cache)],
+) -> ImagesExportResponse:
+    """Genera un ZIP con las imágenes de cada carta única + decklist.txt +
+    README.txt. Reutiliza el mismo pipeline de resolución que XML/PDF."""
+    from mpc_forge.services.image_export import build_images_zip
+
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    total_to_resolve = (
+        await db.scalar(
+            select(func.count(DeckCard.id)).where(
+                DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
+            )
+        )
+    ) or 0
+    build_progress.start(deck_id, total_to_resolve, kind="pdf")  # UI ya sabe pintar "pdf"
+
+    try:
+        resolved = await resolve_deck_for_xml(
+            db, scryfall, art_cache, deck,
+            on_progress=lambda name: build_progress.tick(deck_id, name),
+        )
+    except Exception as e:  # noqa: BLE001
+        build_progress.finish(deck_id, error=str(e))
+        raise
+    if not resolved:
+        build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
+
+    # Decklist en el formato que pida el usuario.
+    fmt = payload.decklist_format if payload.decklist_format in {"simple", "with_set", "arena"} else "with_set"
+    decklist_text = await decklist_export.build_decklist_text(
+        db, deck_id, fmt=fmt, include_headers=True,  # type: ignore[arg-type]
+    )
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}-images.zip"
+    result = build_images_zip(resolved, out_path, decklist_text)
+    build_progress.finish(deck_id)
+
+    filename = out_path.name
+    await deck_activity.log_event(
+        db, deck_id, K.IMAGES_EXPORTED,
+        payload={
+            "total_files": result.total_files,
+            "total_unique_cards": result.total_unique_cards,
+            "total_dfc_backs": result.total_dfc_backs,
+            "missing_images": result.missing_images,
+            "size_bytes": result.size_bytes,
+            "decklist_format": fmt,
+            "zip_path": str(result.zip_path),
+            "zip_filename": filename,
+        },
+        deck_name=deck.name,
+    )
+    await db.commit()
+    return ImagesExportResponse(
+        zip_path=str(result.zip_path),
+        filename=filename,
+        total_files=result.total_files,
+        total_unique_cards=result.total_unique_cards,
+        total_dfc_backs=result.total_dfc_backs,
+        missing_images=result.missing_images,
+        size_bytes=result.size_bytes,
     )
 
 

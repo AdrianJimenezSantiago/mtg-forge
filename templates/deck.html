@@ -293,43 +293,29 @@
       </div>
     </div>
 
-    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
-      <button @click="open = !open" :disabled="buildingPdf"
-              class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-4 py-2 rounded-md
-                     disabled:opacity-50 transition flex items-center gap-1.5">
+    {# El dropdown antiguo se ha sustituido por el PDF Studio (/decks/{id}/pdf).
+       Dejamos aquí un botón principal que abre el Studio y un icono secundario
+       para "generar rápido" con los últimos ajustes guardados en localStorage,
+       para los usuarios que ya tienen su preset y solo quieren re-descargar. #}
+    <div class="flex items-stretch">
+      <a :href="`/decks/${deckId}/pdf`"
+         class="bg-accent/10 hover:bg-accent/20 border border-accent/50 text-accent-glow text-sm font-medium
+                px-4 py-2 rounded-l-md transition flex items-center gap-1.5">
         <i data-lucide="file-text" class="w-4 h-4"></i>
-        <span x-show="!buildingPdf">PDF ▾</span>
-        <span x-show="buildingPdf">Generando PDF…</span>
+        <span>PDF Studio</span>
+        <i data-lucide="arrow-right" class="w-3.5 h-3.5 opacity-60"></i>
+      </a>
+      <button @click="buildPdf()" :disabled="buildingPdf"
+              class="bg-bg-subtle hover:bg-border-subtle border border-l-0 border-border-strong text-fg-muted hover:text-fg
+                     text-sm px-2.5 py-2 rounded-r-md disabled:opacity-50 transition flex items-center"
+              title="Generar PDF rápido con los últimos ajustes del Studio">
+        <template x-if="!buildingPdf">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+        </template>
+        <template x-if="buildingPdf">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+        </template>
       </button>
-      <div x-show="open" x-transition
-           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-64 space-y-2">
-        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Opciones PDF</div>
-        <label class="flex items-center justify-between text-xs">
-          <span class="text-fg-muted">Tamaño</span>
-          <select x-model="pdfPageSize" class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
-            <option value="a4">A4</option>
-            <option value="letter">Letter</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 text-xs text-fg-muted">
-          <input type="checkbox" x-model="pdfCutMarks" class="accent-accent"> Marcas de corte
-        </label>
-        <label class="flex items-center gap-2 text-xs text-fg-muted">
-          <input type="checkbox" x-model="pdfIncludeBacks" class="accent-accent"> Incluir reversos DFC
-        </label>
-        <label class="flex items-center justify-between text-xs">
-          <span class="text-fg-muted">Separación (mm)</span>
-          <input type="number" min="0" max="20" step="0.5" x-model.number="pdfGapMm"
-                 class="w-16 bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs text-right">
-        </label>
-        <button @click="buildPdf(); open = false"
-                class="w-full bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition mt-1">
-          Generar y descargar
-        </button>
-        <div class="text-[10px] text-fg-faint text-center">
-          9 cartas por página · tamaño real 63×88 mm
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1277,12 +1263,10 @@ function deckEditor(deckId) {
     cardstock: '(S30) Standard Smooth',
     foil: false,
 
-    // PDF options
+    // PDF: los ajustes viven en el PDF Studio (localStorage por-mazo). Aquí
+    // solo mantenemos el flag "estoy generando" para el quick-build del botón
+    // secundario y para pintar la barra de progreso.
     buildingPdf: false,
-    pdfPageSize: 'a4',
-    pdfCutMarks: true,
-    pdfIncludeBacks: false,
-    pdfGapMm: 0,
 
     // Decklist export options
     exportingDecklist: false,
@@ -2976,24 +2960,28 @@ function deckEditor(deckId) {
     },
 
     async buildPdf() {
+      // Quick-build: usa los últimos ajustes del PDF Studio (guardados por-mazo
+      // en localStorage) si existen. Si el usuario nunca abrió el Studio,
+      // envía payload vacío y el backend aplica los defaults del dataclass
+      // (A4 3×3 con guías de esquina, sin bleed) — el equivalente al viejo
+      // "1-click PDF" pero ya con el modelo nuevo. Para ajustes finos: PDF Studio.
       this.buildingPdf = true;
       this.buildProgress = null;
       this._startBuildPolling();
+      let opts = {};
+      try {
+        const raw = localStorage.getItem(`pdfStudio.opts.${this.deckId}`);
+        if (raw) opts = JSON.parse(raw);
+      } catch (e) { /* fallback a defaults del backend */ }
       try {
         const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            page_size: this.pdfPageSize,
-            cut_marks: this.pdfCutMarks,
-            include_backs: this.pdfIncludeBacks,
-            gap_mm: this.pdfGapMm,
-          })
+          body: JSON.stringify(opts),
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
-        const filename = data.pdf_path.split(/[\\/]/).pop();
         window.toast('PDF generado', `${data.total_slots} cartas en ${data.total_pages} páginas`);
-        window.location.href = `/api/exports/${filename}`;
+        window.location.href = `/api/exports/${data.filename}`;
       } catch (e) {
         window.toast('Error generando PDF', e.message);
       } finally {

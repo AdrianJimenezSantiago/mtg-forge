@@ -57,6 +57,7 @@ class DeckActivityKind:
 
     XML_GENERATED = "xml_generated"      # payload: {cardstock, foil, total_cards, tier_size, xml_path}
     PDF_GENERATED = "pdf_generated"      # payload: {page_size, cut_marks, include_backs, total_slots, total_pages, pdf_path}
+    IMAGES_EXPORTED = "images_exported"  # payload: {total_files, total_unique_cards, total_dfc_backs, zip_path, zip_filename}
 
 
 # Etiquetas legibles usadas si el caller no pasa summary a mano.
@@ -74,6 +75,7 @@ _DEFAULT_SUMMARY: dict[str, str] = {
     DeckActivityKind.RELATED_ADDED: "Cartas relacionadas añadidas",
     DeckActivityKind.XML_GENERATED: "XML generado",
     DeckActivityKind.PDF_GENERATED: "PDF generado",
+    DeckActivityKind.IMAGES_EXPORTED: "Imágenes exportadas",
 }
 
 
