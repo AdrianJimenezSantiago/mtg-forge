@@ -137,18 +137,36 @@ window.fmt = {
 };
 
 // -----------------------------------------------------------------------
-// Preview grande al hacer hover sobre cualquier <img data-preview>
+// Preview grande al hacer hover sobre cualquier elemento con [data-preview]
 // -----------------------------------------------------------------------
 // Comportamiento tipo Moxfield: preview aparece automáticamente tras un
-// pequeño delay (evita spam cuando el usuario está solo pasando por encima
-// de la lista). Ctrl+hover se mantiene como shortcut de "mostrar ya" sin
-// delay para usuarios avanzados.
+// pequeño delay. Ctrl+hover se mantiene como shortcut de "mostrar ya".
+//
+// Puntos importantes de la implementación (fueron fuentes de bugs):
+//
+// 1. Trackeamos SIEMPRE la última posición del ratón en `lastMouseEvent` — el
+//    evento capturado en el closure del setTimeout puede quedar desfasado si
+//    el usuario mueve el ratón durante el delay. Al mostrar, usamos la
+//    posición más reciente.
+//
+// 2. `mouseout` se dispara cada vez que el ratón entra en un hijo del target
+//    (bubbling raro de la spec). Usamos `relatedTarget` para saber si es una
+//    salida real (fuera del elemento) o solo un movimiento interno.
+//
+// 3. `mouseover` sobre el mismo elemento se ignora (comparamos con currentImg).
+//    Sin esto, movimientos internos cancelarían y re-crearían el timer sin
+//    parar, y el preview no llegaba a aparecer.
+//
+// 4. `scroll` solo esconde el preview VISIBLE, no cancela el timer en curso —
+//    si el timer estaba a mitad, dejamos que termine (el scroll no invalida la
+//    intención de ver la carta).
 (function() {
-  const HOVER_DELAY_MS = 180;      // delay para preview automático
+  const HOVER_DELAY_MS = 180;
   let ctrlHeld = false;
-  let currentTarget = null;
+  let currentImg = null;
   let previewEl = null;
   let hoverTimer = null;
+  let lastMouseEvent = null;
 
   function ensurePreview() {
     if (previewEl) return previewEl;
@@ -158,7 +176,7 @@ window.fmt = {
       position: fixed; pointer-events: none; z-index: 9999; display: none;
       width: 340px; height: 475px; border-radius: 14px; overflow: hidden;
       box-shadow: 0 10px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.15);
-      background: #0b0d10; transition: opacity 0.08s ease-out;
+      background: #0b0d10;
     `;
     const img = document.createElement('img');
     img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; object-position: center;';
@@ -170,75 +188,118 @@ window.fmt = {
   function positionPreview(e) {
     if (!previewEl) return;
     const pad = 20;
-    const w = previewEl.offsetWidth;
-    const h = previewEl.offsetHeight;
+    const w = previewEl.offsetWidth || 340;
+    const h = previewEl.offsetHeight || 475;
     let x = e.clientX + pad;
     let y = e.clientY + pad;
     if (x + w > window.innerWidth) x = e.clientX - w - pad;
     if (y + h > window.innerHeight) y = e.clientY - h - pad;
     if (y < 0) y = pad;
+    if (x < 0) x = pad;
     previewEl.style.left = x + 'px';
     previewEl.style.top = y + 'px';
   }
 
-  function show(target, e) {
-    const src = target.getAttribute('data-preview') || target.src;
-    if (!src) return;
-    const el = ensurePreview();
-    el.querySelector('img').src = src;
-    el.style.display = 'block';
-    positionPreview(e);
+  // Encuentra la URL del preview en el elemento o sus ancestros/descendientes
+  // directos. Soportamos varios patrones:
+  //   <img data-preview="url">              (patrón canónico)
+  //   <button><img data-preview="url"></button>  (data-preview en el img hijo)
+  //   <div data-preview="url">              (data-preview en un contenedor sin img)
+  function findPreviewSrc(el) {
+    if (!el) return null;
+    // 1. El propio elemento
+    if (el.dataset && el.dataset.preview) return el.dataset.preview;
+    // 2. Un img descendiente con data-preview
+    const inner = el.querySelector && el.querySelector('img[data-preview]');
+    if (inner) return inner.dataset.preview;
+    // 3. Fallback: el src del propio img si es <img>
+    if (el.tagName === 'IMG' && el.src) return el.src;
+    return null;
   }
 
-  function hide() {
-    clearTimeout(hoverTimer);
-    hoverTimer = null;
+  function show(target, e) {
+    const src = findPreviewSrc(target);
+    if (!src) return;
+    const el = ensurePreview();
+    const img = el.querySelector('img');
+    if (img.src !== src) img.src = src;
+    el.style.display = 'block';
+    positionPreview(e || lastMouseEvent || {clientX: 0, clientY: 0});
+  }
+
+  function hidePreview() {
     if (previewEl) previewEl.style.display = 'none';
   }
 
-  // Ctrl acelera: si ya estás sobre una carta y pulsas Ctrl, aparece
-  // instantáneamente sin esperar al delay.
+  function cancelAndHide() {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hidePreview();
+  }
+
+  // Trackeo continuo de la posición del ratón (barato, con passive).
+  // Sirve para (a) reposicionar el preview visible siguiendo al cursor,
+  // (b) usar la posición fresca en el setTimeout cuando expira el delay.
+  document.addEventListener('mousemove', (e) => {
+    lastMouseEvent = e;
+    if (previewEl && previewEl.style.display === 'block') {
+      positionPreview(e);
+    }
+  }, {passive: true});
+
+  document.addEventListener('mouseover', (e) => {
+    // closest sube por el árbol; hace match si el elemento o algún ancestro
+    // tiene [data-preview]. Cubre tanto <img data-preview> como wrappers.
+    const el = e.target.closest('[data-preview]');
+    if (el === currentImg) return;  // mismo elemento, sin cambios
+    // Cambio de elemento: cancelar cualquier timer/preview anterior
+    cancelAndHide();
+    currentImg = el;
+    if (!el) return;
+    if (ctrlHeld) {
+      show(el, e);
+    } else {
+      hoverTimer = setTimeout(() => {
+        // Al expirar el delay: usar posición fresca del ratón, no la
+        // capturada al inicio del hover.
+        if (currentImg === el) show(el, lastMouseEvent);
+      }, HOVER_DELAY_MS);
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (!currentImg) return;
+    // mouseout se dispara al pasar a un hijo — comprobamos relatedTarget
+    // para saber si es una salida real fuera del elemento actual.
+    const to = e.relatedTarget;
+    if (to && currentImg.contains(to)) return;  // sigue dentro
+    cancelAndHide();
+    currentImg = null;
+  });
+
+  // Ctrl para mostrar instantáneamente (sin esperar delay).
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Control') {
+    if (e.key === 'Control' && !ctrlHeld) {
       ctrlHeld = true;
-      if (currentTarget) {
+      if (currentImg && hoverTimer !== null) {
         clearTimeout(hoverTimer);
-        const rect = currentTarget.getBoundingClientRect();
-        show(currentTarget, {clientX: rect.right, clientY: rect.top});
+        hoverTimer = null;
+        show(currentImg, lastMouseEvent);
       }
     }
   });
   document.addEventListener('keyup', (e) => {
-    if (e.key === 'Control') { ctrlHeld = false; }
+    if (e.key === 'Control') ctrlHeld = false;
   });
-  window.addEventListener('blur', () => { ctrlHeld = false; hide(); });
+  window.addEventListener('blur', () => {
+    ctrlHeld = false;
+    cancelAndHide();
+    currentImg = null;
+  });
 
-  document.addEventListener('mouseover', (e) => {
-    const img = e.target.closest('img[data-preview], .card-hover-preview img, [data-preview] img');
-    if (!img) return;
-    currentTarget = img;
-    clearTimeout(hoverTimer);
-    if (ctrlHeld) {
-      show(img, e);
-    } else {
-      // Delay corto — evita que el preview parpadee cuando el usuario
-      // simplemente pasa el ratón por encima sin querer ver la carta.
-      hoverTimer = setTimeout(() => {
-        if (currentTarget === img) show(img, e);
-      }, HOVER_DELAY_MS);
-    }
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (previewEl && previewEl.style.display === 'block') {
-      positionPreview(e);
-    }
-  });
-  document.addEventListener('mouseout', (e) => {
-    const img = e.target.closest('img[data-preview], .card-hover-preview img, [data-preview] img');
-    if (img && img === currentTarget) { currentTarget = null; hide(); }
-  });
-  // Al scrollear o hacer click, ocultamos el preview (se despega de la
-  // posición esperada del ratón y molesta más que ayuda).
-  document.addEventListener('scroll', hide, true);
-  document.addEventListener('click', hide);
+  // Scroll y click: SOLO ocultar el preview visible, no cancelar el timer
+  // en curso. Con timer en curso, el usuario probablemente sigue interesado
+  // en la carta bajo el cursor — que aparezca cuando toque.
+  document.addEventListener('scroll', hidePreview, {capture: true, passive: true});
+  document.addEventListener('click', hidePreview);
 })();

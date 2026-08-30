@@ -8,7 +8,12 @@ class TestSettingsRedesign:
         assert r.status_code == 200
         data = r.json()
         groups = sorted({d["group"] for d in data["definitions"]})
-        assert groups == ["General", "MPC Autofill", "Precios y envío", "Red y conexión"]
+        # 5 grupos ahora: los 4 originales + "Ubicación de datos" (nuevo, para
+        # los overrides de paths.*).
+        assert groups == [
+            "General", "MPC Autofill", "Precios y envío",
+            "Red y conexión", "Ubicación de datos",
+        ]
 
     async def test_ssl_insecure_setting_exists(self, client):
         r = await client.get("/api/settings/")

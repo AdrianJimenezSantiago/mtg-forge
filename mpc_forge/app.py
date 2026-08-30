@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,9 +10,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
+from mpc_forge import config as cfg
 from mpc_forge.clients.moxfield import MoxfieldClient
 from mpc_forge.clients.scryfall import ScryfallClient
-from mpc_forge.config import PATHS
 from mpc_forge.db import init_db, session_scope
 from mpc_forge.paths import diagnose as paths_diagnose, is_frozen, static_dir
 from mpc_forge.routes import custom_art as custom_art_routes
@@ -37,11 +38,53 @@ _SSL_MODE = configure_ssl()
 STATIC_DIR = static_dir()
 
 
+def _preload_path_overrides() -> None:
+    """Aplica los overrides de paths.* ANTES de que create_app() haga los mounts.
+
+    Sin este preload, los mounts ``/art`` y ``/custom_art`` usarían los paths
+    default aunque el usuario tenga custom guardados en BD — porque el lifespan
+    de FastAPI corre DESPUÉS del mount de StaticFiles.
+
+    Leemos la BD con sqlite3 síncrono (no aiosqlite) — está bien porque solo
+    hacemos una SELECT rápida antes de que el event loop arranque. Si la BD no
+    existe (primera ejecución) o la tabla kv_store aún no está creada,
+    simplemente no hay overrides que aplicar.
+    """
+    if not cfg.PATHS.db_path.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(cfg.PATHS.db_path))
+        try:
+            rows = conn.execute(
+                "SELECT key, value FROM kv_store WHERE key LIKE 'settings.paths.%'"
+            ).fetchall()
+        finally:
+            conn.close()
+        overrides = {}
+        for key, value in rows:
+            # 'settings.paths.art_dir' → 'art_dir'
+            short = key[len("settings.paths."):]
+            if value and value.strip():
+                overrides[short] = value.strip()
+        if overrides:
+            cfg.PATHS = cfg.Paths.default().with_overrides(**overrides)
+            logging.info("Aplicados %d overrides de paths desde BD", len(overrides))
+    except sqlite3.OperationalError:
+        # Tabla kv_store aún no existe (primera ejecución sin init_db previo).
+        pass
+    except Exception as e:  # noqa: BLE001
+        logging.warning("Preload de path overrides falló: %s", e)
+
+
+# Se ejecuta al importar el módulo — antes de create_app() se ejecute abajo.
+_preload_path_overrides()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # File logging PRIMERO: así capturamos también los errores de init_db,
     # settings, etc. La ruta es %APPDATA%/MPC-Forge/logs/mpc-forge.log
-    logs_dir = PATHS.data_dir / "logs"
+    logs_dir = cfg.PATHS.data_dir / "logs"
     try:
         log_path = logging_setup.setup_file_logging(logs_dir)
         logging.info("Logging a archivo activo: %s", log_path)
@@ -86,7 +129,7 @@ async def lifespan(app: FastAPI):
             logging.info("Sembrados %d art sources iniciales", seeded)
     except Exception as e:  # noqa: BLE001
         logging.warning("Seed de art sources falló: %s", e)
-    logging.info("MPC Forge listo. Datos en: %s", PATHS.data_dir)
+    logging.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
     logging.info("SSL: %s", _SSL_MODE)
     try:
         yield
@@ -139,8 +182,8 @@ def create_app() -> FastAPI:
     # cambiar entre versiones), un mes para /art y /custom_art (nombres con
     # hash → contenido inmutable).
     app.mount("/static", CachedStaticFiles(directory=str(STATIC_DIR), max_age=86400), name="static")
-    app.mount("/art", CachedStaticFiles(directory=str(PATHS.art_dir), max_age=2592000), name="art")
-    app.mount("/custom_art", CachedStaticFiles(directory=str(PATHS.custom_art_dir), max_age=2592000), name="custom_art")
+    app.mount("/art", CachedStaticFiles(directory=str(cfg.PATHS.art_dir), max_age=2592000), name="art")
+    app.mount("/custom_art", CachedStaticFiles(directory=str(cfg.PATHS.custom_art_dir), max_age=2592000), name="custom_art")
 
     app.include_router(ui.router)
     app.include_router(decks.router)

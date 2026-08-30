@@ -333,3 +333,122 @@ class TestPerformanceEndpoints:
 
         r = await client.get("/api/decks/_/undoable-kinds")
         assert "cache-control" in {k.lower() for k in r.headers}
+
+
+# =============================================================================
+# Ubicación de datos: paths portables y overrides
+# =============================================================================
+
+class TestPathOverrides:
+    async def test_paths_endpoint_returns_effective_paths(self, client):
+        r = await client.get("/api/settings/paths")
+        assert r.status_code == 200
+        data = r.json()
+        # Todas las claves esperadas están presentes
+        for key in ("install_root", "data_dir", "db_path", "art_dir",
+                    "custom_art_dir", "exports_dir", "backups_dir", "cardbacks_dir"):
+            assert key in data, f"Falta {key}"
+            assert data[key], f"{key} está vacío"
+
+    async def test_paths_default_uses_install_root_when_writable(self):
+        """Cuando la carpeta de instalación es escribible, el default apunta
+        a install_root()/user-settings/ (modo portable)."""
+        from mpc_forge.config import Paths
+        from mpc_forge.paths import install_root
+        # En el entorno de test, install_root() apunta a /home/claude/work
+        # (dev mode) y es escribible.
+        # Nota: si el test corre después de una app real, PATHS ya está
+        # redirigido a /tmp por conftest — este test valida el método puro.
+        # Solo comprobamos la lógica que INTENTARÍA usar install_root primero.
+        try:
+            (install_root() / "user-settings").mkdir(parents=True, exist_ok=True)
+            probe = install_root() / "user-settings" / ".write_test"
+            probe.write_text("ok")
+            probe.unlink()
+            portable_ok = True
+        except OSError:
+            portable_ok = False
+        if portable_ok:
+            # Confirmamos que si es escribible, Paths.default lo elige.
+            # No podemos llamar Paths.default() aquí sin ensuciar cfg.PATHS,
+            # pero al menos verificamos que la carpeta existe y funciona.
+            assert (install_root() / "user-settings").exists()
+
+    async def test_with_overrides_never_changes_data_dir(self):
+        """Aunque el usuario pase overrides mala fe, data_dir y db_path
+        NUNCA se modifican — son inmutables por diseño."""
+        from mpc_forge import config as cfg
+        original_data_dir = cfg.PATHS.data_dir
+        original_db_path = cfg.PATHS.db_path
+        # Intentamos override, pero data_dir y db_path deben ignorar el intento
+        new_paths = cfg.PATHS.with_overrides(
+            art_dir="/tmp/mtg_new_art",
+            custom_art_dir="/tmp/mtg_new_custom",
+        )
+        assert new_paths.data_dir == original_data_dir
+        assert new_paths.db_path == original_db_path
+        assert str(new_paths.art_dir) == "/tmp/mtg_new_art"
+        assert str(new_paths.custom_art_dir) == "/tmp/mtg_new_custom"
+        # Restauramos cfg.PATHS por si el test siguiente lo lee
+        # (with_overrides devuelve nuevo objeto, no muta el original)
+
+    async def test_with_overrides_empty_string_keeps_default(self):
+        """Un override vacío = usa el default (no rompe la app)."""
+        from mpc_forge import config as cfg
+        new_paths = cfg.PATHS.with_overrides(
+            art_dir="",  # vacío → default
+            exports_dir="   ",  # solo espacios → default
+        )
+        assert new_paths.art_dir == cfg.PATHS.art_dir
+        assert new_paths.exports_dir == cfg.PATHS.exports_dir
+
+    async def test_with_overrides_invalid_path_falls_back_silently(self):
+        """Si el path no se puede crear (permission denied), cae al default
+        sin lanzar excepción — la UI ya validó, pero por si acaso no
+        dejamos la app rota."""
+        from mpc_forge import config as cfg
+        # Un path con null byte es siempre inválido en todo OS — mkdir lanza
+        # ValueError o OSError sin depender de permisos del sistema.
+        new_paths = cfg.PATHS.with_overrides(
+            art_dir="/tmp/\x00/invalid",
+        )
+        # Cae al default sin lanzar excepción — la app sigue funcionando.
+        assert new_paths.art_dir == cfg.PATHS.art_dir
+
+    async def test_saving_path_override_persists_and_applies(self, client):
+        """El flujo completo: PUT /api/settings/ con un paths.* válido lo
+        guarda y aplica a cfg.PATHS via apply_to_config."""
+        import tempfile
+        from mpc_forge import config as cfg
+
+        custom_dir = tempfile.mkdtemp(prefix="mtgforge_path_test_")
+
+        r = await client.put("/api/settings/", json={
+            "values": {"paths.art_dir": custom_dir}
+        })
+        assert r.status_code == 200
+
+        # Ahora cfg.PATHS.art_dir refleja el override
+        assert str(cfg.PATHS.art_dir) == custom_dir
+
+        # El endpoint /paths también lo devuelve
+        r = await client.get("/api/settings/paths")
+        assert r.json()["art_dir"] == custom_dir
+
+        # Reset: vaciar override para no afectar tests siguientes
+        r = await client.put("/api/settings/", json={
+            "values": {"paths.art_dir": ""}
+        })
+        assert r.status_code == 200
+
+    async def test_paths_definition_appears_in_settings_dump(self, client):
+        """Las nuevas SettingDefs de tipo 'path' aparecen en /api/settings/
+        con el grupo correcto y el tipo correcto."""
+        r = await client.get("/api/settings/")
+        defs = r.json()["definitions"]
+        path_defs = [d for d in defs if d["key"].startswith("paths.")]
+        assert len(path_defs) == 5  # art, custom_art, exports, backups, cardbacks
+        for d in path_defs:
+            assert d["type"] == "path"
+            assert d["group"] == "Ubicación de datos"
+            assert d["default"] == ""

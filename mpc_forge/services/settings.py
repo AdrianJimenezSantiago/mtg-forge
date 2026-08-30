@@ -28,7 +28,7 @@ from mpc_forge.models import KeyValue
 
 log = logging.getLogger(__name__)
 
-SettingType = Literal["str", "float", "int", "bool", "json"]
+SettingType = Literal["str", "float", "int", "bool", "json", "path"]
 
 
 @dataclass
@@ -180,6 +180,70 @@ DEFINITIONS: list[SettingDef] = [
             "Descárgalo de github.com/chilli-axe/mpc-autofill/releases."
         ),
     ),
+
+    # --- Ubicación de datos ---
+    # Todos son opcionales. Si están vacíos (default), se usa la ruta bajo
+    # ``<install>/user-settings/<nombre>/``. Solo directorios de contenido —
+    # la BD siempre queda en ``<install>/user-settings/`` para evitar mover
+    # una BD con handles abiertos.
+    SettingDef(
+        key="paths.art_dir",
+        label="Cache de artes (Scryfall)",
+        type="path",
+        group="Ubicación de datos",
+        default="",
+        description=(
+            "Miniaturas y arte descargados de Scryfall. Puede crecer varios GB con "
+            "uso intensivo — mover a un disco distinto si va justo de espacio. "
+            "Vacío = usa el default junto al ejecutable."
+        ),
+    ),
+    SettingDef(
+        key="paths.custom_art_dir",
+        label="Arte custom del usuario",
+        type="path",
+        group="Ubicación de datos",
+        default="",
+        description=(
+            "Imágenes locales que sustituyen al arte oficial de cada carta. "
+            "Vacío = usa el default junto al ejecutable."
+        ),
+    ),
+    SettingDef(
+        key="paths.exports_dir",
+        label="XMLs y PDFs generados",
+        type="path",
+        group="Ubicación de datos",
+        default="",
+        description=(
+            "Aquí se guardan los ficheros de salida (XML para MPC Autofill, PDFs de "
+            "proxies). Útil apuntar a una carpeta compartida si trabajas en varios PCs. "
+            "Vacío = usa el default junto al ejecutable."
+        ),
+    ),
+    SettingDef(
+        key="paths.backups_dir",
+        label="Backups (.zip)",
+        type="path",
+        group="Ubicación de datos",
+        default="",
+        description=(
+            "Los backups manuales se comprimen aquí. Recomendable apuntar a un disco "
+            "distinto o carpeta sincronizada con la nube (Dropbox, OneDrive). "
+            "Vacío = usa el default junto al ejecutable."
+        ),
+    ),
+    SettingDef(
+        key="paths.cardbacks_dir",
+        label="Cardbacks (reversos)",
+        type="path",
+        group="Ubicación de datos",
+        default="",
+        description=(
+            "Imágenes de reverso disponibles para el picker. Se referencian por nombre "
+            "de fichero desde el editor. Vacío = usa el default junto al ejecutable."
+        ),
+    ),
 ]
 
 _DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in DEFINITIONS}
@@ -194,6 +258,11 @@ def _coerce(sd: SettingDef, raw: str) -> Any:
         return raw.lower() in {"1", "true", "yes", "on"}
     if sd.type == "json":
         return json.loads(raw)
+    if sd.type == "path":
+        # Guardamos el path como string tal cual — la validación real (existencia
+        # del padre, permisos de escritura) la hace Paths.with_overrides() al
+        # aplicarlo. Aquí solo aseguramos que sea un string sin espacios laterales.
+        return raw.strip()
     return raw
 
 
@@ -202,6 +271,11 @@ def _serialize(sd: SettingDef, value: Any) -> str:
         return "true" if value else "false"
     if sd.type == "json":
         return json.dumps(value, ensure_ascii=False)
+    if sd.type == "path":
+        # Normalizamos: strip + collapse de espacios. NO resolvemos absolute path
+        # aquí para respetar exactamente lo que el usuario escribió (útil para
+        # ver "vacío" vs "ruta explícita").
+        return str(value).strip()
     return str(value)
 
 
@@ -278,7 +352,10 @@ def apply_to_config(values: dict[str, Any]) -> None:
     """Propaga los settings a las variables globales de mpc_forge.config.
 
     Con esto, cualquier módulo que lea `cfg.USD_TO_EUR` verá el valor actual sin
-    tener que reiniciar la app.
+    tener que reiniciar la app. Para los ``paths.*`` recomponemos ``cfg.PATHS``
+    aplicando los overrides sobre el default — los servicios que leen
+    ``cfg.PATHS.art_dir`` etc dinámicamente ven la nueva ruta en la siguiente
+    llamada.
     """
     for key, value in values.items():
         if key == "usd_to_eur":
@@ -305,6 +382,25 @@ def apply_to_config(values: dict[str, Any]) -> None:
             from mpc_forge import ssl_config as _ssl
             _ssl.set_runtime_insecure(bool(value))
         # foil_default, prefer_*, preferred_language los consume solo el frontend.
+
+    # --- Paths personalizables ---
+    # Se procesan aparte porque cambiar cualquiera implica recomponer cfg.PATHS
+    # entero con with_overrides(). Solo lo hacemos si hay al menos un path.* en
+    # los updates (evita rebuild innecesario cuando el usuario solo tocó, por
+    # ejemplo, el tipo de cambio USD→EUR).
+    path_keys = {"paths.art_dir", "paths.custom_art_dir", "paths.exports_dir",
+                 "paths.backups_dir", "paths.cardbacks_dir"}
+    if path_keys & values.keys():
+        # Partimos SIEMPRE de los defaults (no del cfg.PATHS actual). Así, si el
+        # usuario acaba de vaciar un override, restauramos su default correctamente.
+        base = cfg.Paths.default()
+        cfg.PATHS = base.with_overrides(
+            art_dir=values.get("paths.art_dir") or None,
+            custom_art_dir=values.get("paths.custom_art_dir") or None,
+            exports_dir=values.get("paths.exports_dir") or None,
+            backups_dir=values.get("paths.backups_dir") or None,
+            cardbacks_dir=values.get("paths.cardbacks_dir") or None,
+        )
 
 
 def definitions_dump() -> list[dict[str, Any]]:

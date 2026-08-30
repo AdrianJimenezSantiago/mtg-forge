@@ -85,7 +85,36 @@ class Paths:
 
     @classmethod
     def default(cls) -> "Paths":
-        root = Path(user_data_dir(APP_NAME, APP_AUTHOR))
+        """Rutas por defecto: modo portable (junto al .exe) con fallback.
+
+        Prioridad:
+          1. ``<carpeta del .exe|proyecto>/user-settings/`` — modo portable.
+             Se usa si podemos escribir en la carpeta de instalación.
+          2. ``platformdirs.user_data_dir("MPC-Forge")`` — fallback típico
+             cuando el .exe está en ``Program Files\\`` (read-only para
+             usuarios normales) o en un pendrive protegido contra escritura.
+
+        La comprobación se hace intentando crear el directorio y escribir un
+        archivo minúsculo. Si falla, cae al AppData del usuario.
+        """
+        # Evitamos importar mpc_forge.paths a nivel de módulo (crearía ciclo
+        # config↔paths). Import diferido dentro del método.
+        from mpc_forge.paths import install_root
+
+        portable = install_root() / "user-settings"
+        root: Path
+        try:
+            portable.mkdir(parents=True, exist_ok=True)
+            probe = portable / ".write_test"
+            probe.write_text("ok")
+            probe.unlink()
+            root = portable
+        except OSError:
+            # Sin permisos de escritura en la carpeta de instalación (típico si
+            # el .exe está en Program Files, o en un pendrive read-only).
+            # Fallback: AppData estándar del usuario.
+            root = Path(user_data_dir(APP_NAME, APP_AUTHOR))
+
         art = root / "art"
         custom_art = root / "custom_art"
         exports = root / "exports"
@@ -101,6 +130,48 @@ class Paths:
             exports_dir=exports,
             backups_dir=backups,
             cardbacks_dir=cardbacks,
+        )
+
+    def with_overrides(
+        self,
+        art_dir: str | Path | None = None,
+        custom_art_dir: str | Path | None = None,
+        exports_dir: str | Path | None = None,
+        backups_dir: str | Path | None = None,
+        cardbacks_dir: str | Path | None = None,
+    ) -> "Paths":
+        """Devuelve una nueva Paths con los overrides aplicados.
+
+        Los overrides son las rutas que el usuario ha personalizado desde la UI
+        de Ajustes. Solo los directorios de contenido son personalizables — la
+        BD y ``data_dir`` NUNCA se cambian aquí (mover una BD abierta es
+        peligroso, y hay handles de logging apuntando ahí).
+
+        Un override vacío/None mantiene el path por defecto. Si un override es
+        un path válido, se crea el directorio si no existe.
+        """
+        def _pick(override, default):
+            if override is None or str(override).strip() == "":
+                return default
+            try:
+                p = Path(str(override)).expanduser().resolve()
+                p.mkdir(parents=True, exist_ok=True)
+            except (OSError, ValueError):
+                # ValueError: paths con null bytes (Path constructor rechaza).
+                # OSError: permisos, disco lleno, path inválido para el OS.
+                # En ambos casos: fallback silencioso al default para no romper
+                # la app. El caller ya validó desde la UI.
+                return default
+            return p
+
+        return Paths(
+            data_dir=self.data_dir,        # no personalizable — BD fija
+            db_path=self.db_path,          # idem
+            art_dir=_pick(art_dir, self.art_dir),
+            custom_art_dir=_pick(custom_art_dir, self.custom_art_dir),
+            exports_dir=_pick(exports_dir, self.exports_dir),
+            backups_dir=_pick(backups_dir, self.backups_dir),
+            cardbacks_dir=_pick(cardbacks_dir, self.cardbacks_dir),
         )
 
 

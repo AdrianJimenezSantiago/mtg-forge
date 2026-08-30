@@ -444,34 +444,101 @@
             </div>
           </template>
 
-          {# Rutas de la carpeta de datos — útiles para debug y ubicar ficheros manualmente #}
-          <div class="pt-4 border-t border-border-subtle space-y-2">
-            <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">Rutas de datos</div>
-            <div class="grid grid-cols-1 gap-1.5 text-xs font-mono">
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">BD:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\mpc_forge.sqlite3</span>
+          {# ==============================================================
+             Rutas de datos — dinámicas (leídas de /api/settings/paths) y
+             editables. Los directorios de contenido admiten override; la BD
+             es fija en el arranque por seguridad.
+             ============================================================== #}
+          <div class="pt-4 border-t border-border-subtle space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">
+                Ubicación de datos
               </div>
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">Artes cache:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\art\</span>
+              <button @click="loadPaths()"
+                      class="text-[11px] text-fg-faint hover:text-fg flex items-center gap-1"
+                      title="Recargar rutas efectivas">
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                Refrescar
+              </button>
+            </div>
+
+            {# Explicación general #}
+            <p class="text-xs text-fg-muted">
+              Por defecto todo vive en
+              <code class="text-fg font-mono" x-text="paths.install_root + '/user-settings/'"></code>
+              (portable — la app usa la carpeta donde está instalada).
+              Puedes redirigir los directorios de contenido a otro sitio si
+              quieres separar cache, exports o backups.
+            </p>
+
+            {# Warning importante: el cambio no mueve ficheros ni actualiza mounts HTTP #}
+            <div class="bg-warning-bg border border-warning-border rounded-lg p-3 text-xs space-y-1">
+              <div class="flex items-center gap-1.5 text-warning font-medium">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                Antes de cambiar una ruta
               </div>
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">Arte custom:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\custom_art\</span>
+              <ul class="text-fg-muted space-y-0.5 list-disc list-inside">
+                <li>Los ficheros ya existentes <strong class="text-fg">no se mueven</strong>. Muévelos manualmente si quieres conservarlos.</li>
+                <li>Es recomendable <strong class="text-fg">reiniciar la app</strong> tras el cambio para que las URLs de imágenes servidas por HTTP se refresquen.</li>
+              </ul>
+            </div>
+
+            {# BD fija — solo lectura, muestra la ruta actual #}
+            <div class="flex items-start gap-2 text-xs font-mono py-1">
+              <span class="text-fg-faint shrink-0 w-28">BD:</span>
+              <span class="text-fg-muted break-all" x-text="paths.db_path || '…'"></span>
+              <span class="ml-auto shrink-0 text-[10px] text-fg-faint bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5">fija</span>
+            </div>
+
+            {# Directorios personalizables — un bloque por cada uno.
+               El template comparte estructura: label + descripción + input
+               editable + botón restaurar. #}
+            <template x-for="pathConfig in customPathsConfig" :key="pathConfig.key">
+              <div class="space-y-1.5 py-2 border-t border-border-subtle/40">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs text-fg font-medium" x-text="pathConfig.label"></div>
+                  <div class="text-[10px] text-fg-faint" x-text="pathConfig.hint"></div>
+                </div>
+                <p class="text-[11px] text-fg-muted" x-text="pathConfig.description"></p>
+                <div class="flex items-center gap-2">
+                  <input type="text"
+                         :placeholder="pathConfig.effectivePath || 'Ruta por defecto'"
+                         x-model="pathOverrides[pathConfig.key]"
+                         @change="markPathDirty(pathConfig.key)"
+                         class="flex-1 bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5
+                                text-xs font-mono focus:outline-none focus:border-accent">
+                  <button @click="resetPath(pathConfig.key)"
+                          class="text-[11px] text-fg-faint hover:text-fg px-2 py-1.5 rounded
+                                 hover:bg-bg-subtle border border-border-subtle transition
+                                 flex items-center gap-1 shrink-0"
+                          :disabled="!pathOverrides[pathConfig.key]"
+                          :class="!pathOverrides[pathConfig.key] ? 'opacity-40 cursor-not-allowed' : ''"
+                          title="Vaciar el override y volver al default">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                    Restaurar
+                  </button>
+                </div>
+                {# Ruta efectiva en uso — la que la app está usando ahora #}
+                <div class="text-[10px] text-fg-faint font-mono break-all pl-1">
+                  En uso: <span class="text-fg-muted" x-text="pathConfig.effectivePath"></span>
+                </div>
               </div>
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">Cardbacks:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\cardbacks\</span>
-              </div>
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">Exports:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\exports\</span>
-              </div>
-              <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-24">Backups:</span>
-                <span class="text-fg-muted break-all">%APPDATA%\MPC-Forge\backups\</span>
-              </div>
+            </template>
+
+            {# Botón guardar — visible solo si hay cambios pendientes #}
+            <div class="pt-2 flex items-center justify-end gap-2" x-show="pathsDirty">
+              <button @click="discardPathChanges()"
+                      class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded transition">
+                Descartar
+              </button>
+              <button @click="savePathOverrides()"
+                      :disabled="savingPaths"
+                      class="text-xs bg-accent hover:bg-accent-soft text-black font-medium px-3 py-1.5 rounded
+                             disabled:opacity-50 transition flex items-center gap-1.5">
+                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="savingPaths"></i>
+                <i data-lucide="save" class="w-3.5 h-3.5" x-show="!savingPaths"></i>
+                <span x-text="savingPaths ? 'Guardando…' : 'Guardar cambios'"></span>
+              </button>
             </div>
           </div>
         </div>
@@ -843,6 +910,71 @@ function settingsShell() {
     backingUp: false,
     lastBackup: null,
 
+    // --- Ubicación de datos (rutas personalizables) ---
+    // paths: dict con rutas efectivas en uso, viene de GET /api/settings/paths.
+    // pathOverrides: valores editados por el usuario en los inputs (posiblemente
+    //   distintos de lo que hay en BD hasta que se guarda). Empieza con lo
+    //   guardado en values (values['paths.art_dir'] etc).
+    // pathsDirty: true si algún input cambió respecto a lo guardado.
+    paths: {
+      install_root: '', data_dir: '', db_path: '',
+      art_dir: '', custom_art_dir: '', exports_dir: '',
+      backups_dir: '', cardbacks_dir: '',
+    },
+    pathOverrides: {
+      'paths.art_dir': '', 'paths.custom_art_dir': '',
+      'paths.exports_dir': '', 'paths.backups_dir': '', 'paths.cardbacks_dir': '',
+    },
+    savingPaths: false,
+    pathsDirty: false,
+
+    // Configuración estática de los inputs. La label/description también
+    // vive en DEFINITIONS del backend, pero aquí duplicamos las mínimas para
+    // no depender de el JOIN + orden. Estable y auto-documentada.
+    get customPathsConfig() {
+      const map = [
+        {
+          key: 'paths.art_dir',
+          label: 'Cache de artes (Scryfall)',
+          description: 'Miniaturas descargadas. Puede crecer varios GB — moverlo a otro disco libera espacio en el principal.',
+          effectiveKey: 'art_dir',
+          hint: 'ej: D:\\mtg\\art',
+        },
+        {
+          key: 'paths.custom_art_dir',
+          label: 'Arte custom del usuario',
+          description: 'Imágenes locales que sustituyen al arte oficial.',
+          effectiveKey: 'custom_art_dir',
+          hint: '',
+        },
+        {
+          key: 'paths.exports_dir',
+          label: 'XMLs y PDFs generados',
+          description: 'Salida final del pipeline. Útil apuntar a una carpeta sincronizada con la nube.',
+          effectiveKey: 'exports_dir',
+          hint: '',
+        },
+        {
+          key: 'paths.backups_dir',
+          label: 'Backups (.zip)',
+          description: 'Recomendable apuntar a un disco distinto o carpeta en la nube.',
+          effectiveKey: 'backups_dir',
+          hint: '',
+        },
+        {
+          key: 'paths.cardbacks_dir',
+          label: 'Cardbacks (reversos)',
+          description: 'Imágenes de reverso disponibles en el picker.',
+          effectiveKey: 'cardbacks_dir',
+          hint: '',
+        },
+      ];
+      return map.map(m => ({
+        ...m,
+        effectivePath: this.paths[m.effectiveKey] || '',
+      }));
+    },
+
     // Navegación entre secciones
     activeSection: 'general',
     searchQuery: '',
@@ -887,6 +1019,10 @@ function settingsShell() {
         const data = await r.json();
         this.definitions = data.definitions;
         this.values = data.values;
+        // Rutas efectivas + overrides — se pintan en la sección Backup y datos.
+        // Fire-and-forget: si falla, la sección muestra "..." pero no rompe
+        // el resto de settings.
+        this.loadPaths();
       } catch (e) {
         window.toast('Error cargando ajustes', e.message);
       } finally {
@@ -934,11 +1070,15 @@ function settingsShell() {
     },
 
     sectionKeyForGroup(groupName) {
+      // Mapeo especial: los settings del grupo "Ubicación de datos" viven
+      // dentro de la sección "Backup y datos" (no tienen sección propia).
+      if (groupName === 'Ubicación de datos') return 'backup';
       const s = this.sections.find(x => x.group === groupName);
       return s ? s.key : 'general';
     },
 
     iconForGroup(groupName) {
+      if (groupName === 'Ubicación de datos') return 'archive';
       const s = this.sections.find(x => x.group === groupName);
       return s ? s.icon : 'settings';
     },
@@ -1014,6 +1154,76 @@ function settingsShell() {
       }
     },
 
+    // --- Métodos de paths ---
+    // Se llama desde load() principal (al arrancar la vista) y desde el botón
+    // Refrescar. Actualiza tanto `paths` (rutas efectivas) como los inputs
+    // (pathOverrides) desde el valor guardado en `values`.
+    async loadPaths() {
+      try {
+        const r = await fetch('/api/settings/paths');
+        if (!r.ok) throw new Error('No se pudieron cargar las rutas');
+        this.paths = await r.json();
+        // Poblamos los inputs con los overrides guardados. Si values[key] no
+        // existe (primera vez), queda vacío = usa default.
+        for (const k of Object.keys(this.pathOverrides)) {
+          this.pathOverrides[k] = String(this.values[k] || '');
+        }
+        this.pathsDirty = false;
+      } catch (e) {
+        window.toast('Error', e.message);
+      }
+    },
+    markPathDirty(_key) {
+      // Detecta si algún override difiere del valor guardado en values.
+      this.pathsDirty = this.customPathsConfig.some(cfg =>
+        (this.pathOverrides[cfg.key] || '') !== String(this.values[cfg.key] || '')
+      );
+    },
+    resetPath(key) {
+      // Vaciar el override — el backend lo interpretará como "usar default".
+      this.pathOverrides[key] = '';
+      this.markPathDirty(key);
+    },
+    discardPathChanges() {
+      // Restaurar los inputs al valor guardado en BD, descartando cambios.
+      for (const k of Object.keys(this.pathOverrides)) {
+        this.pathOverrides[k] = String(this.values[k] || '');
+      }
+      this.pathsDirty = false;
+    },
+    async savePathOverrides() {
+      this.savingPaths = true;
+      try {
+        // Enviamos SOLO las claves de paths.* — no queremos que este PUT sobre-
+        // escriba otros settings modificados en paralelo.
+        const updates = {};
+        for (const k of Object.keys(this.pathOverrides)) {
+          updates[k] = (this.pathOverrides[k] || '').trim();
+        }
+        const r = await fetch('/api/settings/', {
+          method: 'PUT', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({values: updates}),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || 'Error guardando');
+        }
+        const data = await r.json();
+        this.values = data.values;
+        // Recargamos las rutas efectivas para reflejar los cambios aplicados.
+        await this.loadPaths();
+        this.pathsDirty = false;
+        window.toast(
+          'Rutas guardadas',
+          'La app usa las rutas nuevas desde ya. Reinicia para refrescar las URLs de imágenes.',
+        );
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.savingPaths = false;
+      }
+    },
+
     // ------- Renders inline (para vista de búsqueda y filas dentro de sección) -------
     //
     // En lugar de repetir el markup del input para cada tipo en cada sección,
@@ -1051,6 +1261,14 @@ function settingsShell() {
                        @change="update('${def.key}', $event.target.value)"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                               focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
+      }
+      if (def.type === 'path') {
+        // Como str pero con placeholder "por defecto" — comunica claramente
+        // que vacío ≠ desactivado, sino "usar la ruta calculada por la app".
+        return `<input type="text" value="${escLabel}" placeholder="por defecto"
+                       @change="update('${def.key}', $event.target.value)"
+                       class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                              font-mono focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
       }
       if (def.type === 'float' || def.type === 'int') {
         const step = def.type === 'int' ? '1' : '0.01';

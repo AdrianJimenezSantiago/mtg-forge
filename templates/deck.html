@@ -2942,7 +2942,7 @@ function deckEditor(deckId) {
         const data = await r.json();
         const filename = data.xml_path.split(/[\\/]/).pop();
         this.lastXmlFilename = filename;
-        window.toast('XML generado', `${data.total_cards} cartas · ${data.estimated_cost_usd.toFixed(2)} €`);
+        window.toast('XML generado', `${data.total_cards} cartas · ${data.estimated_cost_eur.toFixed(2)} €`);
       } catch (e) {
         window.toast('Error generando XML', e.message);
       } finally {

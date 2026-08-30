@@ -34,6 +34,25 @@ def resource_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def install_root() -> Path:
+    """Carpeta donde vive físicamente la aplicación (raíz portable).
+
+    Diferencia clave con ``resource_root()``:
+    - En frozen --onefile: ``resource_root()`` es la carpeta temporal de
+      extracción (que se borra al cerrar), ``install_root()`` es la carpeta
+      donde está el .exe (persistente).
+    - En dev y frozen --onedir coinciden.
+
+    Se usa como raíz de ``user-settings/`` para tener modo portable: los datos
+    del usuario viven junto al ejecutable, no en ``%APPDATA%``.
+    """
+    if is_frozen():
+        # SIEMPRE junto al .exe (persistente), aunque _MEIPASS exista.
+        return Path(sys.executable).resolve().parent
+    # Dev: raíz del proyecto (misma que resource_root).
+    return Path(__file__).resolve().parent.parent
+
+
 def template_dir() -> Path:
     return resource_root() / "templates"
 
@@ -48,6 +67,7 @@ def diagnose() -> str:
     """
     lines = [
         f"paths.is_frozen     = {is_frozen()}",
+        f"paths.install_root  = {install_root()}",
         f"paths.resource_root = {resource_root()}",
         f"paths.template_dir  = {template_dir()}",
         f"paths.static_dir    = {static_dir()}",
