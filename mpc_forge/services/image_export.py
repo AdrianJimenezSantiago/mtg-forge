@@ -68,6 +68,7 @@ class ImageExportResult:
     total_files: int          # cuántos ficheros hay dentro del zip
     total_unique_cards: int   # cuántas cartas únicas (fronts)
     total_dfc_backs: int      # cuántos reversos DFC se incluyeron
+    included_cardback: bool   # si se metió el cardback del mazo en el zip
     missing_images: int       # cuántas imágenes no se pudieron leer
     size_bytes: int
 
@@ -76,15 +77,23 @@ def build_images_zip(
     cards: list[DeckCardResolved],
     output_path: Path,
     decklist_text: str,
+    cardback_path: Path | None = None,
 ) -> ImageExportResult:
     """Construye el ZIP en ``output_path``. No baja imágenes; asume que las
     rutas de ``cards`` ya apuntan a ficheros existentes (mismo pipeline que
-    ``build_pdf``: el caller llama antes a ``resolve_deck_for_xml``)."""
+    ``build_pdf``: el caller llama antes a ``resolve_deck_for_xml``).
+
+    ``cardback_path`` — si el mazo tiene un cardback específico configurado
+    (Deck.custom_cardback_art_id) o hay un cardback global, se incluye en el
+    ZIP como ``_cardback.<ext>``. El guion bajo hace que quede al principio
+    en la ordenación alfabética, y deja claro que es un fichero especial.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     seen_files: dict[str, str] = {}  # arcname → source path (dedupe)
     missing = 0
     total_backs = 0
+    included_cardback = False
 
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
         # --- Imágenes ---
@@ -127,12 +136,27 @@ def build_images_zip(
                         log.warning("Imagen de reverso no encontrada: %s", back_src)
                         missing += 1
 
+        # --- Cardback específico (o global) ---
+        if cardback_path is not None and cardback_path.exists():
+            cb_ext = cardback_path.suffix or ".png"
+            cb_arc = f"_cardback{cb_ext}"
+            try:
+                zf.write(cardback_path, arcname=cb_arc)
+                seen_files[cb_arc] = str(cardback_path)
+                included_cardback = True
+            except FileNotFoundError:
+                log.warning("Cardback no encontrado: %s", cardback_path)
+
         # --- Decklist ---
         # UTF-8 sin BOM. Moxfield acepta ambos pero sin BOM es más portable.
         zf.writestr('decklist.txt', decklist_text)
 
         # --- README ---
-        readme = _build_readme(len(cards), len([c for c in cards if c.back_path]))
+        readme = _build_readme(
+            len(cards),
+            len([c for c in cards if c.back_path]),
+            included_cardback,
+        )
         zf.writestr('README.txt', readme)
 
     total_files = len(seen_files) + 2  # + decklist.txt + README.txt
@@ -141,22 +165,35 @@ def build_images_zip(
         total_files=total_files,
         total_unique_cards=len(cards),
         total_dfc_backs=total_backs,
+        included_cardback=included_cardback,
         missing_images=missing,
         size_bytes=output_path.stat().st_size,
     )
 
 
-def _build_readme(total_cards: int, total_dfc: int) -> str:
-    return (
-        "Export de MPC Forge\n"
-        "===================\n\n"
-        f"- {total_cards} carta{'s' if total_cards != 1 else ''} única{'s' if total_cards != 1 else ''} (una imagen por carta).\n"
-        f"- {total_dfc} carta{'s' if total_dfc != 1 else ''} DFC con reverso incluido.\n"
-        "- Cada imagen se llama como la carta oficial (según Scryfall).\n"
-        "- Los reversos de DFC están nombrados por la cara-B (\"Insectile Aberration.png\"),\n"
-        "  no por la cara-A. Si tu herramienta espera '<frente>__back.<ext>' renombra a mano.\n\n"
-        "decklist.txt: lista serializada del mazo. Se puede importar en Moxfield,\n"
-        "Archidekt, MTGGoldfish y prácticamente cualquier editor que acepte texto plano.\n\n"
-        "Las cantidades del mazo NO están reflejadas en los ficheros de imagen\n"
-        "(una imagen por carta única). Cuenta las copias desde decklist.txt.\n"
-    )
+def _build_readme(total_cards: int, total_dfc: int, included_cardback: bool) -> str:
+    lines = [
+        "Export de MPC Forge",
+        "===================",
+        "",
+        f"- {total_cards} carta{'s' if total_cards != 1 else ''} única{'s' if total_cards != 1 else ''} (una imagen por carta).",
+        f"- {total_dfc} carta{'s' if total_dfc != 1 else ''} DFC con reverso incluido.",
+        "- Cada imagen se llama como la carta oficial (según Scryfall).",
+        "- Los reversos de DFC están nombrados por la cara-B (\"Insectile Aberration.png\"),",
+        "  no por la cara-A. Si tu herramienta espera '<frente>__back.<ext>' renombra a mano.",
+    ]
+    if included_cardback:
+        lines += [
+            "- _cardback.<ext>: reverso genérico del mazo. Úsalo como back de todas las",
+            "  cartas que no sean DFC/MDFC/meld (esas ya llevan su propio reverso).",
+        ]
+    lines += [
+        "",
+        "decklist.txt: lista serializada del mazo. Se puede importar en Moxfield,",
+        "Archidekt, MTGGoldfish y prácticamente cualquier editor que acepte texto plano.",
+        "",
+        "Las cantidades del mazo NO están reflejadas en los ficheros de imagen",
+        "(una imagen por carta única). Cuenta las copias desde decklist.txt.",
+        "",
+    ]
+    return "\n".join(lines)

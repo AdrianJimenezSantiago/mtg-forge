@@ -87,6 +87,23 @@ async def init_db() -> None:
 
         await conn.run_sync(Base.metadata.create_all)
 
+        # --- Migraciones ligeras (ADD COLUMN idempotente) ---
+        # SQLite no soporta "ADD COLUMN IF NOT EXISTS", así que primero
+        # consultamos PRAGMA. Estas migraciones ocurren cuando SCHEMA_VERSION
+        # NO ha cambiado (columnas nuevas retrocompatibles). Si un cambio
+        # es incompatible, bumpea SCHEMA_VERSION y toca recrear.
+        _add_column_if_missing = [
+            # v2 PDF Studio: cardback específico del mazo (feature "cardback global").
+            ("decks", "custom_cardback_art_id",
+             "INTEGER REFERENCES custom_arts(id) ON DELETE SET NULL"),
+        ]
+        for table, column, ddl in _add_column_if_missing:
+            info = await conn.execute(text(f"PRAGMA table_info({table})"))
+            existing_cols = {row[1] for row in info}
+            if column not in existing_cols:
+                log.info("Migración: ADD COLUMN %s.%s", table, column)
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+
         # Registramos versión actual.
         await conn.execute(
             text(

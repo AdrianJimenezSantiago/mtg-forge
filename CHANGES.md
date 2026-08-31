@@ -4,142 +4,143 @@ Reemplaza el flujo antiguo de PDF por un **PDF Studio** inspirado en
 proxxied.com/app. Diseño de 3 columnas con preview SVG en vivo con scroll
 vertical y controles de guías granulares.
 
-Iteraciones: **v1** (primera entrega) → **v2** (paridad completa con
-proxxied + petición de Noel + export ZIP de imágenes).
+Iteraciones: **v1** → **v2** (paridad proxxied + Noel) → **v3** (cardback
+por mazo + fix HEAD 405).
 
 ---
 
-## Cambios v2
+## Cambios v3
 
-### 1. Export ZIP de imágenes individuales
-Botón "Export ZIP de imágenes" en el panel izquierdo. Endpoint nuevo
-`POST /api/decks/{id}/export-images` que produce un ZIP con:
-- Una imagen por carta única, nombrada como el nombre oficial de Scryfall,
-  saneada para el sistema de archivos (Windows/macOS/Linux). DFC:
-  `<cara_frontal>.png` + `<cara_trasera>.png`.
-- `decklist.txt` en formato Moxfield-compatible (importable en Moxfield,
-  Archidekt, MTGGoldfish).
-- `README.txt` explicando el contenido.
+### 1. Fix: `HEAD /api/cardback` devolvía 405
+FastAPI por defecto solo acepta el verbo del decorador. Se cambió `@router.get`
+por `@router.api_route(..., methods=["GET", "HEAD"])`. El frontend hace un
+HEAD para detectar si hay cardback global disponible sin descargar el binario.
 
-Comparte el mismo pipeline de `resolve_deck_for_xml`
-(caché de arte reutilizada, progreso vía polling).
+### 2. Cardback global por mazo (feature "Sefirot")
+Se puede definir un **cardback específico de este mazo** que sustituye al
+`default-back` en todas las cartas EXCEPTO en las que ya tienen su propio
+reverso (DFC / MDFC / meld — esas siguen usando su cara-B).
 
-### 2. Página independiente fronts vs backs — con offsets propios
-Dos campos nuevos en Posicionamiento avanzado:
-- `back_offset_x_mm` / `back_offset_y_mm` — se suman **solo** a las páginas
-  de reversos, para compensar la deriva de la impresora al voltear el
-  papel en duplex.
+**UI**: en el panel "Reversos" del PDF Studio aparece una sección nueva
+"Cardback global del mazo" con:
+- Thumbnail del cardback actual
+- Botón "Cambiar cardback…" que abre un modal
+- Botón "Volver al cardback global" si el mazo ya tiene uno custom
 
-### 3. Nuevo `backs_content: "all_cards"` (feedback de Noel)
+**Modal**: reutiliza los tres flujos de arte alternativo:
+- **Añadir imagen desde URL** — pega un enlace de Google Drive o cualquier
+  URL de imagen. Llama a `POST /api/custom-art/from-url` (el mismo endpoint
+  que ya usaba el picker de arte de cartas).
+- **Buscar en Google Drives indexados** — search-box con debounce, mismo
+  endpoint `GET /api/drives/search` que usa el picker de arte de cartas.
+- **Tu librería de artes custom** — grid con todos los custom arts locales
+  (`GET /api/custom-art/`).
+
+Al seleccionar cualquiera, se descarga a la librería local (si aún no está)
+y se asigna al mazo vía `PUT /api/decks/{id}/cardback-settings`.
+
+**Backend nuevo**:
+- Columna `Deck.custom_cardback_art_id` (FK → CustomArt, `SET NULL` on delete)
+- Migración SQLite idempotente en `init_db()` que hace `ALTER TABLE ADD COLUMN`
+  solo si no existe — **NO destruye mazos existentes** al actualizar
+- 3 endpoints REST:
+  - `GET  /api/decks/{id}/cardback-settings` — estado actual
+  - `PUT  /api/decks/{id}/cardback-settings` — asignar CustomArt.id (o null)
+  - `DELETE /api/decks/{id}/cardback-settings` — resetear al global
+- `build_pdf(..., cardback_path_override=...)` acepta la ruta del cardback
+  específico. Si el CustomArt referenciado se ha borrado del disco, cae
+  automáticamente al `default_cardback_path()` global.
+- `build_images_zip(..., cardback_path=...)` incluye el cardback en el ZIP
+  como `_cardback.<ext>` (guion bajo para que quede al principio del
+  listado ordenado).
+
+**Comportamiento con DFC/MDFC/meld**: sin cambios. La lógica existente en
+`_expand_slots` respeta `c.back_path` — solo se aplica el cardback custom
+en slots donde `back_path` es `None`. Meld cards resueltas con back_path
+poblado (via `meld_result` de Scryfall) mantienen su cara-B propia.
+
+---
+
+## Cambios v2 (previos)
+
+### Export ZIP de imágenes individuales
+Botón "Export ZIP de imágenes" que produce un ZIP con una imagen por
+carta única (nombrada por Scryfall, saneada FS), reversos DFC por su
+cara-B, `decklist.txt` Moxfield-compatible y `README.txt`. Endpoint
+`POST /api/decks/{id}/export-images`.
+
+### Página independiente fronts vs backs con offsets propios
+`back_offset_x_mm` / `back_offset_y_mm` — se suman solo a páginas de reversos.
+
+### `backs_content: "all_cards"` (feedback de Noel)
 > "Si le pones el dorsal en las páginas intercaladas y le añades reborde
 > de 1mm a todas las cartas y traseras, sin problema."
 
-Antes, la modalidad Duplex solo ponía reversos de DFC (dejaba huecos en
-el resto). Ahora hay un selector explícito:
-- **Todas las cartas** (nuevo, default): DFC → cara B, resto → cardback
-  estándar de MTG. Es lo que quiere Noel para proxy real.
-- **Solo DFC**: comportamiento v1 (deja hueco en cartas sin reverso).
+Modo (default) que rellena TODOS los slots de reversos con el cardback
+(DFC → cara B, resto → cardback estándar o el del mazo si se ha configurado).
 
-El bleed (por ejemplo 1 mm que pedía Noel) ya se aplicaba a ambas caras.
+### Guías 100% correctas — paridad con proxxied
+Refactor en dos ejes independientes:
+- **Card guides**: Estilo (Esquinas/Rectángulo) + Forma (Cuadrado/Redondeado, arcos bezier) + Trazo (Sólido/Discontinuo/Puntos) + Colocación + Largo/Color/Grosor
+- **Page guides**: Ninguna / Líneas completas / Solo en márgenes
+- **Hide-flags de duplex**: 4 checkboxes para ocultar cada eje en cada cara
 
-Preset nuevo "Duplex all-backs" que activa esta modalidad + bleed 1mm.
+### Scroll vertical en vez de paginación
+Todas las hojas apiladas verticalmente en la zona central.
 
-### 4. Guías 100% correctas — paridad con proxxied
-Refactor completo separando en **dos ejes independientes**:
-
-**Guías por carta** (marcas alrededor de cada carta)
-- Estilo: `Esquinas` o `Rectángulo`
-- **Forma: `Cuadrado` o `Redondeado`** (nuevo — arcos bezier)
-- **Trazo: `Sólido` / `Discontinuo` / `Puntos`** (era binario)
-- Colocación: `Fuera` / `Medio` / `Dentro`
-- Largo, color, grosor
-
-**Guías de página** (líneas que atraviesan la página — panel nuevo):
-- `Ninguna`
-- `Líneas completas` — atraviesan la página en cada corte
-- `Solo en márgenes` — solo tramos fuera del grid (limpio, para
-  guillotina sin ensuciar el interior)
-
-**Hide-flags de duplex** (panel nuevo, 4 checkboxes):
-- Ocultar guías por carta en frentes
-- Ocultar guías de página en frentes
-- Ocultar guías por carta en reversos
-- Ocultar guías de página en reversos
-
-Útil si vas a cortar por una sola cara y no quieres que las marcas se
-transparenten al otro lado.
-
-### 5. Scroll vertical en vez de paginación
-Antes: botones `<` / `>` para pasar página, se veía una hoja a la vez.
-Ahora: todas las hojas apiladas verticalmente, se scrollean con el ratón.
-Cada hoja lleva encima su label (`HOJA 3 · REVERSOS (espejado)`).
-Se ha eliminado la barra de paginación; queda solo el zoom y el toggle
-de márgenes.
-
-### 6. Endpoint auxiliar `/api/cardback`
-Sirve la imagen del cardback estándar para que el preview del studio pueda
-pintarlo en las páginas de reversos cuando el modo es `all_cards`. El PDF
-real siempre carga el fichero desde disco directamente (no toca este
-endpoint), así que si no hay cardback configurado el preview queda con
-huecos pero el PDF se genera igual con lo que haya.
+### Endpoint auxiliar `/api/cardback`
+Sirve la imagen del cardback estándar para el preview.
 
 ---
 
-## Correcciones de v1 (para referencia)
+## Correcciones de v1 (previas)
 
-- **Alpine no puede usar `<template x-if>` / `<template x-for>` dentro de
-  `<svg>`.** El parser HTML crea un `SVGElement` (no un
-  `HTMLTemplateElement`) y Alpine peta con *"e.content is undefined"* /
-  *"Document.importNode: Argument 1 is not an object"*. Solución: el
-  preview genera todo el SVG como string en JS (getter `svgMarkupForPage`)
-  y se inyecta con `x-html`.
-- Guards `x-show` + optional-chain en las expresiones que leen
-  `currentPage.kind` durante el race de init.
+- **Alpine `<template>` dentro de `<svg>`**: reemplazado por generación de
+  SVG como string + `x-html`.
+- Guard `x-show` + optional-chain en el race de init de `currentPage.kind`.
 
 ---
 
 ## Compatibilidad y ficheros modificados
 
-**Ficheros modificados:**
-- `mpc_forge/services/pdf_generator.py` — reescrito con extended PDFOptions
-- `mpc_forge/services/deck_activity.py` — `IMAGES_EXPORTED` kind añadida
-- `mpc_forge/routes/export.py` — nuevo BuildPDFRequest, endpoint
-  `/export-images`, endpoint `/cardback`, media type ZIP
-- `mpc_forge/routes/ui.py` — ruta `/decks/{id}/pdf` (v1)
-- `templates/pdf_studio.html` — full rewrite
-- `templates/deck.html` — botón PDF Studio + quick-build (v1)
+**Modificados en v3:**
+- `mpc_forge/models.py` — columna `Deck.custom_cardback_art_id` (FK)
+- `mpc_forge/db.py` — migración idempotente ADD COLUMN
+- `mpc_forge/routes/export.py` — endpoints cardback-settings, fix HEAD 405,
+  helper `_resolve_deck_cardback`, cardback pasado a build_pdf y ZIP
+- `mpc_forge/services/pdf_generator.py` — nuevo param `cardback_path_override`
+- `mpc_forge/services/image_export.py` — nuevo param `cardback_path`, incluye `_cardback.<ext>` en el ZIP
+- `templates/pdf_studio.html` — sección cardback en panel Reversos + modal picker
 
-**Ficheros nuevos:**
-- `mpc_forge/services/image_export.py`
+**Sin cambios respecto a v2:**
+- `mpc_forge/services/deck_activity.py`
+- `mpc_forge/routes/ui.py`
+- `templates/deck.html`
 
-**Compatibilidad legacy:** El endpoint `POST /decks/{id}/build-pdf` sigue
-aceptando los nombres antiguos (`cut_marks`, `gap_mm`, `guides_enabled`,
-`guides_style`, `guides_stroke`, `guides_placement`, `guides_length_mm`,
-`guides_color`, `guides_width_pt`) y los traduce internamente al modelo
-nuevo. Scripts externos que llamen a la API no se rompen.
+**Migración de BD**: no destructiva. Al arrancar, `init_db()` detecta que
+falta la columna `custom_cardback_art_id` y la añade con `ALTER TABLE ADD
+COLUMN`. Los mazos existentes se conservan. Verificado empíricamente.
 
-**localStorage:** las opciones se persisten bajo la clave
-`pdfStudio.opts.v2.<deck_id>` (nueva clave "v2" para no re-cargar presets
-antiguos con campos obsoletos). Al abrir el studio por primera vez tras
-actualizar, sales con los defaults limpios.
+**Compatibilidad legacy API**: el endpoint `POST /decks/{id}/build-pdf` sigue
+aceptando los nombres antiguos (`cut_marks`, `gap_mm`, `guides_*`) y los
+traduce internamente.
 
-**Tests:** 59/59 pasan sin cambios.
+**localStorage**: `pdfStudio.opts.v2.<deck_id>` (v3 no cambia el shape).
+
+**Tests**: 59/59 pasan sin cambios.
 
 ---
 
 ## Cómo aplicarlo
 
-Descomprimir sobre la raíz del proyecto:
-
 ```bash
 unzip -o mtg-forge-pdf-studio.zip -d /ruta/a/mtg-forge/
-```
-
-No hay migraciones de BD, no hay dependencias nuevas. Solo restart del
-servidor:
-
-```bash
 python -m mpc_forge.app
 ```
 
-Abre cualquier mazo → clic en **PDF Studio** en el header → probar.
+No hay migraciones manuales (se aplica sola). No hay dependencias nuevas.
+
+Abre cualquier mazo → clic en **PDF Studio** en el header → activa
+"Reversos" → aparece la sección del cardback. Clic en "Cambiar cardback…"
+para abrir el picker.
+

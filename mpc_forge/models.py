@@ -147,6 +147,13 @@ class Deck(Base):
     format: Mapped[str] = mapped_column(String(32), default="commander")
     commander_scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cardback específico del mazo. Si != NULL, sustituye al cardback global
+    # (`default_cardback_path()`) al generar reversos en modo backs_content='all_cards'.
+    # Las cartas DFC / MDFC / meld siguen usando su propio reverso — este cardback
+    # SOLO se aplica a los slots que no tienen back_path propio.
+    custom_cardback_art_id: Mapped[int | None] = mapped_column(
+        ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
+    )
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow

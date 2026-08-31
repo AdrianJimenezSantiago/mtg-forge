@@ -603,6 +603,56 @@
                 </span>
               </p>
             </label>
+
+            {# ---- Cardback específico del mazo (v2, feature Sefirot) ---- #}
+            <div class="border-t border-border-subtle pt-3"
+                 x-show="opts.backs_content === 'all_cards'">
+              <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">
+                Cardback global del mazo
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="w-14 h-20 rounded border border-border-subtle bg-bg-subtle
+                            overflow-hidden flex items-center justify-center flex-shrink-0">
+                  <template x-if="cardbackSettings && cardbackSettings.image_url">
+                    <img :src="cardbackSettings.image_url" class="w-full h-full object-cover" alt="Cardback">
+                  </template>
+                  <template x-if="cardbackSettings && !cardbackSettings.image_url && cardbackSettings.default_image_url">
+                    <img :src="cardbackSettings.default_image_url" class="w-full h-full object-cover" alt="Default cardback">
+                  </template>
+                  <template x-if="!cardbackSettings || (!cardbackSettings.image_url && !cardbackSettings.default_image_url)">
+                    <i data-lucide="image-off" class="w-6 h-6 text-fg-faint"></i>
+                  </template>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[11px] font-medium truncate"
+                       x-text="cardbackSettings?.using_custom
+                         ? (cardbackSettings.filename || 'Personalizado')
+                         : 'Cardback global'"></div>
+                  <div class="text-[10px] text-fg-faint truncate"
+                       x-text="cardbackSettings?.using_custom
+                         ? (cardbackSettings.variant_label || 'específico de este mazo')
+                         : 'default-back del sistema'"></div>
+                </div>
+              </div>
+              <button @click="openCardbackPicker()"
+                      class="w-full mt-2 h-8 rounded border border-border-subtle
+                             hover:bg-bg-subtle hover:border-accent transition
+                             text-[11px] font-medium inline-flex items-center justify-center gap-1.5">
+                <i data-lucide="images" class="w-3.5 h-3.5"></i>
+                Cambiar cardback…
+              </button>
+              <button x-show="cardbackSettings?.using_custom"
+                      @click="resetCardback()"
+                      class="w-full mt-1 h-7 rounded text-fg-faint hover:text-fg-muted
+                             transition text-[10px] inline-flex items-center justify-center gap-1">
+                <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                Volver al cardback global
+              </button>
+              <p class="text-[10px] text-fg-faint mt-2">
+                Se aplica a todas las cartas excepto DFC / MDFC / meld (esas usan
+                su propio reverso).
+              </p>
+            </div>
           </div>
         </div>
 
@@ -630,6 +680,198 @@
       </div>
     </aside>
   </div>
+
+  {# ============================================================
+     MODAL: Cardback picker
+     Reutiliza los endpoints existentes:
+       - GET  /api/custom-art/                    (lista de custom arts locales)
+       - GET  /api/drives/search?q=...            (búsqueda en Google Drives)
+       - POST /api/custom-art/from-url            (importar de URL / GDrive)
+       - PUT  /api/decks/{id}/cardback-settings   (guardar selección)
+     ============================================================ #}
+  <div x-show="cardbackModalOpen" x-transition x-cloak
+       class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="closeCardbackPicker()">
+    <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
+                w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+
+      {# --- Modal header --- #}
+      <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="images" class="w-4 h-4 text-accent"></i>
+          <h2 class="font-semibold text-fg">Cardback del mazo</h2>
+          <span class="text-fg-faint text-xs" x-text="deck?.name || ''"></span>
+        </div>
+        <button @click="closeCardbackPicker()" class="text-fg-faint hover:text-fg transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      {# --- Modal body --- #}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+
+        {# Estado actual + acciones rápidas #}
+        <div class="flex items-center gap-4 p-3 bg-bg-subtle rounded">
+          <div class="w-16 h-24 rounded border border-border-subtle bg-bg-base
+                      overflow-hidden flex items-center justify-center flex-shrink-0">
+            <template x-if="cardbackSettings?.image_url">
+              <img :src="cardbackSettings.image_url" class="w-full h-full object-cover">
+            </template>
+            <template x-if="!cardbackSettings?.image_url && cardbackSettings?.default_image_url">
+              <img :src="cardbackSettings.default_image_url" class="w-full h-full object-cover">
+            </template>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-fg-muted">Cardback actual</div>
+            <div class="font-medium truncate"
+                 x-text="cardbackSettings?.using_custom
+                   ? (cardbackSettings.filename || 'Personalizado')
+                   : 'Cardback global (default-back)'"></div>
+            <div class="text-[11px] text-fg-faint mt-0.5"
+                 x-text="cardbackSettings?.using_custom
+                   ? (cardbackSettings.variant_label || 'específico de este mazo')
+                   : 'compartido entre todos los mazos'"></div>
+          </div>
+          <button x-show="cardbackSettings?.using_custom"
+                  @click="resetCardback()"
+                  class="px-3 py-1.5 rounded text-[11px] border border-border-subtle
+                         hover:bg-bg-base hover:border-accent transition
+                         inline-flex items-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            Restablecer
+          </button>
+        </div>
+
+        {# --- Añadir desde URL / Google Drive --- #}
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">
+            Añadir imagen desde URL
+          </div>
+          <div class="flex gap-2">
+            <input type="url" x-model="cbUrlInput"
+                   @keydown.enter="addCardbackFromUrl()"
+                   placeholder="https://drive.google.com/... o cualquier URL de imagen"
+                   class="flex-1 bg-bg-subtle border border-border-subtle rounded
+                          px-3 py-2 text-sm focus:outline-none focus:border-accent">
+            <button @click="addCardbackFromUrl()"
+                    :disabled="!cbUrlInput.trim() || cbAddingUrl"
+                    class="px-4 py-2 rounded bg-accent hover:bg-accent-hover text-bg-base
+                           font-medium text-sm transition disabled:opacity-40
+                           disabled:cursor-not-allowed inline-flex items-center gap-2">
+              <i data-lucide="download" x-show="!cbAddingUrl" class="w-4 h-4"></i>
+              <i data-lucide="loader-2" x-show="cbAddingUrl" class="w-4 h-4 animate-spin"></i>
+              <span x-text="cbAddingUrl ? 'Descargando…' : 'Añadir'"></span>
+            </button>
+          </div>
+          <p class="text-[10px] text-fg-faint mt-1">
+            Pega un enlace de Google Drive o cualquier imagen web. Se descarga a
+            tu librería local de artes y queda asignada.
+          </p>
+        </div>
+
+        {# --- Búsqueda en Google Drives --- #}
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[10px] uppercase tracking-wider text-fg-faint">
+              Buscar en Google Drives indexados
+            </div>
+            <button @click="searchDrives(cbDriveQuery)" x-show="cbDriveQuery.trim()"
+                    class="text-[10px] text-accent hover:text-accent-glow">
+              Actualizar
+            </button>
+          </div>
+          <input type="text" x-model="cbDriveQuery"
+                 @input.debounce.400ms="searchDrives(cbDriveQuery)"
+                 placeholder="ej: mtg cardback, retro back, japanese…"
+                 class="w-full bg-bg-subtle border border-border-subtle rounded
+                        px-3 py-2 text-sm focus:outline-none focus:border-accent">
+
+          <div x-show="cbDriveSearching" class="text-center py-4 text-fg-faint text-xs">
+            Buscando…
+          </div>
+          <div x-show="!cbDriveSearching && cbDriveHits.length > 0"
+               class="grid grid-cols-4 gap-2 mt-3">
+            <template x-for="hit in cbDriveHits" :key="hit.file_id">
+              <button @click="pickDriveHit(hit)"
+                      :disabled="cbPickingId === hit.file_id"
+                      class="group flex flex-col rounded overflow-hidden border border-border-subtle
+                             hover:border-accent transition disabled:opacity-50">
+                <div class="aspect-[63/88] bg-bg-subtle overflow-hidden relative">
+                  <img :src="hit.thumb_url" :alt="hit.filename"
+                       class="w-full h-full object-cover group-hover:scale-105 transition"
+                       loading="lazy" referrerpolicy="no-referrer">
+                  <div x-show="cbPickingId === hit.file_id"
+                       class="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-white animate-spin"></i>
+                  </div>
+                </div>
+                <div class="p-1.5 text-left">
+                  <div class="text-[10px] font-medium truncate" x-text="hit.filename"></div>
+                  <div class="text-[9px] text-fg-faint truncate" x-text="hit.source_name"></div>
+                </div>
+              </button>
+            </template>
+          </div>
+          <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length === 0"
+               class="text-center py-4 text-fg-faint text-xs">
+            Sin resultados. Prueba con otra palabra clave, o comprueba en
+            <a href="/settings" class="text-accent hover:underline">Ajustes</a>
+            que hay drives indexados.
+          </div>
+        </div>
+
+        {# --- Custom arts locales --- #}
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[10px] uppercase tracking-wider text-fg-faint">
+              Tu librería de artes custom
+            </div>
+            <span class="text-[10px] text-fg-faint" x-text="`${cbLocalArts.length} disponibles`"></span>
+          </div>
+          <div x-show="cbLocalArts.length > 0" class="grid grid-cols-4 gap-2">
+            <template x-for="art in cbLocalArts" :key="art.id">
+              <button @click="pickLocalArt(art)"
+                      :disabled="cbPickingId === 'local-' + art.id"
+                      class="group flex flex-col rounded overflow-hidden border border-border-subtle
+                             hover:border-accent transition disabled:opacity-50">
+                <div class="aspect-[63/88] bg-bg-subtle overflow-hidden relative">
+                  <img :src="art.image_url" :alt="art.filename"
+                       class="w-full h-full object-cover group-hover:scale-105 transition"
+                       loading="lazy">
+                  <div x-show="cbPickingId === 'local-' + art.id"
+                       class="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-white animate-spin"></i>
+                  </div>
+                </div>
+                <div class="p-1.5 text-left">
+                  <div class="text-[10px] font-medium truncate" x-text="art.filename"></div>
+                  <div class="text-[9px] text-fg-faint truncate"
+                       x-text="art.variant_label || art.card_name_normalized"></div>
+                </div>
+              </button>
+            </template>
+          </div>
+          <div x-show="cbLocalArts.length === 0"
+               class="text-center py-6 text-fg-faint text-xs">
+            No tienes arte custom local. Añade uno con el formulario de arriba
+            o arrastra un fichero a
+            <code class="text-fg-muted">%APPDATA%\MPC-Forge\custom_art\</code>.
+          </div>
+        </div>
+
+      </div>
+
+      {# --- Modal footer --- #}
+      <div class="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3
+                  bg-bg-inset/50">
+        <button @click="closeCardbackPicker()"
+                class="px-4 py-1.5 rounded text-sm border border-border-subtle
+                       hover:bg-bg-subtle transition">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -640,13 +882,26 @@ const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
 function pdfStudio(deckId) { return {
   deckId,
   deck: null,
-  cardbackUrl: null,       // URL del cardback estándar, para el preview all_cards
+  // cardbackSettings.default_image_url = URL del cardback global (si existe)
+  // cardbackSettings.image_url         = URL del cardback específico del mazo (si el user lo configuró)
+  // El fallback en el preview: image_url → default_image_url → null (slot vacío).
+  cardbackSettings: null,
   buildProgress: null,
   buildingPdf: false,
   exportingImages: false,
   autoOpen: true,
   zoom: 60,
   showPageMargins: false,
+
+  // --- Cardback picker modal ---
+  cardbackModalOpen: false,
+  cbUrlInput: '',
+  cbAddingUrl: false,
+  cbDriveQuery: '',
+  cbDriveHits: [],
+  cbDriveSearching: false,
+  cbLocalArts: [],
+  cbPickingId: null,          // id que está siendo aplicado (spinner)
 
   // Opciones — mismo shape que el dataclass PDFOptions del backend.
   opts: {
@@ -694,12 +949,14 @@ function pdfStudio(deckId) { return {
     } catch (e) {
       console.error('deck fetch:', e);
     }
-    // 3b) URL del cardback estándar — best-effort, no bloqueante.
-    // Si el endpoint no existe (404) usamos null y el preview lo pinta como
-    // slot vacío. El PDF real siempre lo carga desde disco directamente.
+    // 3b) Cardback settings del mazo. La respuesta incluye tanto el cardback
+    // específico (si lo hay) como el default_image_url del cardback global,
+    // así que con una sola llamada cubrimos ambos casos y evitamos meter una
+    // petición HEAD extra a /api/cardback que ensuciaría la consola con 404
+    // en instalaciones sin default-back.
     try {
-      const cb = await fetch(`/api/cardback`, { method: 'HEAD' });
-      if (cb.ok) this.cardbackUrl = `/api/cardback`;
+      const rs = await fetch(`/api/decks/${this.deckId}/cardback-settings`);
+      if (rs.ok) this.cardbackSettings = await rs.json();
     } catch (e) { /* silent */ }
     // 4) icons
     if (window.lucide) window.lucide.createIcons();
@@ -783,7 +1040,10 @@ function pdfStudio(deckId) { return {
     if (!this.deck) return { fronts: [], backs: [] };
     const includeBacks = this.opts.include_backs;
     const fillAllBacks = this.opts.backs_content === 'all_cards';
-    const cardback = this.cardbackUrl;
+    // Prioridad: cardback específico del mazo → cardback global → null (slot vacío)
+    const cardback = (this.cardbackSettings && this.cardbackSettings.image_url)
+                  || (this.cardbackSettings && this.cardbackSettings.default_image_url)
+                  || null;
     const fronts = [], backs = [];
     for (const c of (this.deck.cards || [])) {
       if (!c.include) continue;
@@ -1237,6 +1497,151 @@ function pdfStudio(deckId) { return {
     this.opts = { ...this.$data.opts };  // hack: re-evaluar defaults
     // Cleaner: reload
     location.reload();
+  },
+
+  // =====================================================================
+  // Cardback picker — reutiliza custom-art + drives + from-url
+  // =====================================================================
+  async openCardbackPicker() {
+    this.cardbackModalOpen = true;
+    this.cbDriveQuery = '';
+    this.cbDriveHits = [];
+    this.cbUrlInput = '';
+    // Refresca estado por si algo cambió detrás
+    await this._refreshCardbackSettings();
+    await this._loadLocalArts();
+    // Re-render iconos del modal
+    this.$nextTick(() => window.lucide && window.lucide.createIcons());
+  },
+
+  closeCardbackPicker() {
+    this.cardbackModalOpen = false;
+  },
+
+  async _refreshCardbackSettings() {
+    try {
+      const r = await fetch(`/api/decks/${this.deckId}/cardback-settings`);
+      if (r.ok) this.cardbackSettings = await r.json();
+    } catch (e) { console.error('refreshCardback:', e); }
+  },
+
+  async _loadLocalArts() {
+    try {
+      const r = await fetch(`/api/custom-art/`);
+      if (r.ok) this.cbLocalArts = await r.json();
+    } catch (e) {
+      this.cbLocalArts = [];
+      console.error('loadLocalArts:', e);
+    }
+  },
+
+  async searchDrives(query) {
+    const q = (query || '').trim();
+    if (!q) { this.cbDriveHits = []; return; }
+    this.cbDriveSearching = true;
+    try {
+      const r = await fetch(`/api/drives/search?q=${encodeURIComponent(q)}&limit=20`);
+      if (r.ok) this.cbDriveHits = await r.json();
+      else this.cbDriveHits = [];
+    } catch (e) {
+      this.cbDriveHits = [];
+      console.error('searchDrives:', e);
+    } finally {
+      this.cbDriveSearching = false;
+    }
+  },
+
+  async addCardbackFromUrl() {
+    const url = this.cbUrlInput.trim();
+    if (!url) return;
+    this.cbAddingUrl = true;
+    try {
+      // 1) Descargar la URL a la librería local de custom art.
+      const r = await fetch('/api/custom-art/from-url', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          url,
+          // Nombre "sintético" para que quede indexado por mazo.
+          card_name: `_cardback_${this.deck?.name || 'deck'}`,
+          face: 'back',
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      const art = await r.json();
+      // 2) Asignarlo como cardback del mazo.
+      await this._setCardback(art.id);
+      this.cbUrlInput = '';
+      // 3) Refrescar librería local para que aparezca inmediatamente.
+      await this._loadLocalArts();
+      if (window.toast) window.toast(`Cardback añadido: ${art.filename}`, 'success');
+    } catch (e) {
+      console.error('addCardbackFromUrl:', e);
+      if (window.toast) window.toast(`Error: ${e.message}`, 'error');
+    } finally {
+      this.cbAddingUrl = false;
+    }
+  },
+
+  async pickDriveHit(hit) {
+    this.cbPickingId = hit.file_id;
+    try {
+      // Descarga a la librería local y luego asigna.
+      const r = await fetch('/api/custom-art/from-url', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          url: hit.download_url,
+          card_name: `_cardback_${this.deck?.name || 'deck'}`,
+          face: 'back',
+          variant: hit.source_name,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      const art = await r.json();
+      await this._setCardback(art.id);
+      await this._loadLocalArts();
+      if (window.toast) window.toast(`Cardback desde ${hit.source_name}`, 'success');
+    } catch (e) {
+      console.error('pickDriveHit:', e);
+      if (window.toast) window.toast(`Error: ${e.message}`, 'error');
+    } finally {
+      this.cbPickingId = null;
+    }
+  },
+
+  async pickLocalArt(art) {
+    this.cbPickingId = 'local-' + art.id;
+    try {
+      await this._setCardback(art.id);
+      if (window.toast) window.toast(`Cardback: ${art.filename}`, 'success');
+    } catch (e) {
+      console.error('pickLocalArt:', e);
+      if (window.toast) window.toast(`Error: ${e.message}`, 'error');
+    } finally {
+      this.cbPickingId = null;
+    }
+  },
+
+  async _setCardback(customArtId) {
+    const r = await fetch(`/api/decks/${this.deckId}/cardback-settings`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ custom_art_id: customArtId }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+    this.cardbackSettings = await r.json();
+  },
+
+  async resetCardback() {
+    try {
+      const r = await fetch(`/api/decks/${this.deckId}/cardback-settings`, {
+        method: 'DELETE',
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      this.cardbackSettings = await r.json();
+      if (window.toast) window.toast('Cardback restablecido al global', 'info');
+    } catch (e) {
+      console.error('resetCardback:', e);
+      if (window.toast) window.toast(`Error: ${e.message}`, 'error');
+    }
   },
 }}
 </script>

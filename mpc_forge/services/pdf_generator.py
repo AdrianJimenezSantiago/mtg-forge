@@ -275,13 +275,22 @@ def build_pdf(
     cards: list[DeckCardResolved],
     output_path: Path,
     options: PDFOptions | None = None,
+    cardback_path_override: Path | None = None,
 ) -> PDFBuildResult:
+    """Genera el PDF.
+
+    ``cardback_path_override`` — si viene, sustituye al ``default_cardback_path()``
+    para todas las cartas sin back propio. Lo usa el endpoint para inyectar
+    el cardback específico del mazo (Deck.custom_cardback_art_id). Las cartas
+    DFC/MDFC/meld siguen usando su propio back — el override SOLO aplica a
+    slots que caen en el fallback.
+    """
     opts = options or PDFOptions()
 
-    # Cardback estándar solo si hace falta (all_cards + include_backs).
+    # Cardback: prioridad al override del mazo, si no fallback al global.
     cardback: Path | None = None
     if opts.include_backs and opts.backs_content == "all_cards":
-        cardback = default_cardback_path()
+        cardback = cardback_path_override or default_cardback_path()
         if cardback is None:
             log.warning(
                 "backs_content='all_cards' pero no hay cardback disponible — "

@@ -38,6 +38,21 @@ def _get_scryfall(request: Request) -> ScryfallClient:
     return request.app.state.scryfall
 
 
+async def _resolve_deck_cardback(db: AsyncSession, deck: Deck) -> Path | None:
+    """Devuelve la ruta al cardback que debe usarse para este mazo.
+    Prioridad: deck.custom_cardback_art_id → default_cardback_path() global.
+    Si el CustomArt referenciado no existe en disco, cae al global."""
+    from mpc_forge.models import CustomArt
+
+    if deck.custom_cardback_art_id is not None:
+        art = await db.get(CustomArt, deck.custom_cardback_art_id)
+        if art is not None:
+            candidate = PATHS.custom_art_dir / art.relative_path
+            if candidate.exists():
+                return candidate
+    return default_cardback_path()
+
+
 def _get_art_cache(request: Request) -> ArtCache:
     return request.app.state.art_cache
 
@@ -270,7 +285,7 @@ async def download_export(filename: str) -> FileResponse:
     return FileResponse(target, media_type=media, filename=filename)
 
 
-@router.get("/cardback")
+@router.api_route("/cardback", methods=["GET", "HEAD"])
 async def get_default_cardback() -> FileResponse:
     """Sirve el cardback estándar para que el preview del PDF Studio pueda
     pintarlo en las páginas de reversos cuando el modo es 'all_cards'."""
@@ -280,6 +295,101 @@ async def get_default_cardback() -> FileResponse:
     ext = path.suffix.lower().lstrip(".")
     media = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, "image/png")
     return FileResponse(path, media_type=media)
+
+
+# ---- Cardback específico por mazo (v2 PDF Studio) --------------------------
+
+class DeckCardbackSettings(BaseModel):
+    """Estado actual del cardback del mazo. Cuando `custom_art_id` es None,
+    se usa el `default_cardback_path()` global."""
+    deck_id: int
+    using_custom: bool
+    custom_art_id: int | None = None
+    filename: str | None = None
+    variant_label: str | None = None
+    image_url: str | None = None
+    default_image_url: str | None = None  # URL del cardback global (si existe)
+
+
+class SetDeckCardbackRequest(BaseModel):
+    # None → revertir al default global. Un id válido → usar ese CustomArt.
+    custom_art_id: int | None = None
+
+
+async def _load_deck_cardback_settings(
+    db: AsyncSession, deck_id: int,
+) -> DeckCardbackSettings:
+    from mpc_forge.models import CustomArt
+    from mpc_forge.services import custom_art as custom_art_service
+
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    default_url = "/api/cardback" if default_cardback_path() is not None else None
+
+    if deck.custom_cardback_art_id is None:
+        return DeckCardbackSettings(
+            deck_id=deck_id, using_custom=False,
+            default_image_url=default_url,
+        )
+
+    art = await db.get(CustomArt, deck.custom_cardback_art_id)
+    if art is None:
+        # FK huérfana (el CustomArt fue borrado). Auto-corregimos.
+        deck.custom_cardback_art_id = None
+        await db.commit()
+        return DeckCardbackSettings(
+            deck_id=deck_id, using_custom=False,
+            default_image_url=default_url,
+        )
+
+    return DeckCardbackSettings(
+        deck_id=deck_id,
+        using_custom=True,
+        custom_art_id=art.id,
+        filename=art.filename,
+        variant_label=art.variant_label,
+        image_url=custom_art_service.custom_art_url(art.relative_path),
+        default_image_url=default_url,
+    )
+
+
+@router.get("/decks/{deck_id}/cardback-settings", response_model=DeckCardbackSettings)
+async def get_deck_cardback(deck_id: int, db: DbDep) -> DeckCardbackSettings:
+    return await _load_deck_cardback_settings(db, deck_id)
+
+
+@router.put("/decks/{deck_id}/cardback-settings", response_model=DeckCardbackSettings)
+async def set_deck_cardback(
+    deck_id: int, payload: SetDeckCardbackRequest, db: DbDep,
+) -> DeckCardbackSettings:
+    from mpc_forge.models import CustomArt
+
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    if payload.custom_art_id is not None:
+        art = await db.get(CustomArt, payload.custom_art_id)
+        if art is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "CustomArt no encontrado")
+        deck.custom_cardback_art_id = art.id
+    else:
+        deck.custom_cardback_art_id = None
+
+    await db.commit()
+    return await _load_deck_cardback_settings(db, deck_id)
+
+
+@router.delete("/decks/{deck_id}/cardback-settings", response_model=DeckCardbackSettings)
+async def clear_deck_cardback(deck_id: int, db: DbDep) -> DeckCardbackSettings:
+    deck = await db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+    deck.custom_cardback_art_id = None
+    await db.commit()
+    return await _load_deck_cardback_settings(db, deck_id)
 
 
 # ---- PDF imprimible ----------------------------------------------------
@@ -383,6 +493,7 @@ class ImagesExportResponse(BaseModel):
     total_files: int
     total_unique_cards: int
     total_dfc_backs: int
+    included_cardback: bool
     missing_images: int
     size_bytes: int
 
@@ -528,7 +639,10 @@ async def build_pdf_endpoint(
         show_footer=payload.show_footer,
     )
 
-    result = build_pdf(resolved, out_path, options)
+    # Cardback específico del mazo (v2). El generador solo lo usa cuando
+    # backs_content='all_cards'; para el resto no consulta el disco.
+    cardback = await _resolve_deck_cardback(db, deck)
+    result = build_pdf(resolved, out_path, options, cardback_path_override=cardback)
     build_progress.finish(deck_id)
     filename = Path(str(result.pdf_path)).name
     await deck_activity.log_event(
@@ -616,7 +730,8 @@ async def export_images_endpoint(
 
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}-images.zip"
-    result = build_images_zip(resolved, out_path, decklist_text)
+    cardback = await _resolve_deck_cardback(db, deck)
+    result = build_images_zip(resolved, out_path, decklist_text, cardback_path=cardback)
     build_progress.finish(deck_id)
 
     filename = out_path.name
@@ -641,6 +756,7 @@ async def export_images_endpoint(
         total_files=result.total_files,
         total_unique_cards=result.total_unique_cards,
         total_dfc_backs=result.total_dfc_backs,
+        included_cardback=result.included_cardback,
         missing_images=result.missing_images,
         size_bytes=result.size_bytes,
     )
