@@ -10,34 +10,36 @@
         <i data-lucide="layers" class="w-6 h-6 text-accent"></i>
         Mazos
       </h1>
-      <p class="text-sm text-fg-muted mt-1.5">Importa desde Moxfield o pega una lista para empezar.</p>
+      <p class="text-sm text-fg-muted mt-1.5">Importa desde una URL soportada o pega una lista para empezar.</p>
     </div>
   </div>
 
   {# ============= IMPORT PANELS ============= #}
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-data="importPanel()">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-data="importPanel()" x-init="loadSites()">
 
-    {# Moxfield #}
+    {# URL (Moxfield, Archidekt, TappedOut, MTGGoldfish, Scryfall, CubeCobra) #}
     <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
                 hover:border-accent/30 transition">
       <div class="flex items-center gap-2 mb-3">
         <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
           <i data-lucide="download" class="w-4 h-4"></i>
         </div>
-        <h2 class="font-medium">Desde Moxfield</h2>
+        <h2 class="font-medium">Desde URL</h2>
       </div>
-      <p class="text-xs text-fg-muted mb-3">Pega una URL o el ID del mazo. Debe ser público.</p>
-      <form @submit.prevent="importMoxfield">
+      <p class="text-xs text-fg-muted mb-3">
+        Pega una URL de un sitio soportado. El mazo debe ser público.
+      </p>
+      <form @submit.prevent="importUrl">
         <div class="flex gap-2">
           <div class="flex-1 relative">
             <i data-lucide="link" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint"></i>
-            <input type="text" x-model="moxUrl"
-                   placeholder="https://www.moxfield.com/decks/XXXXXXXXXX"
+            <input type="url" x-model="urlInput"
+                   :placeholder="urlPlaceholder"
                    class="w-full bg-bg-subtle border border-border-subtle rounded-md pl-9 pr-3 py-2 text-sm
                           focus:outline-none focus:border-accent transition">
           </div>
           <button type="submit"
-                  :disabled="loading"
+                  :disabled="loading || !urlInput.trim()"
                   class="bg-accent hover:bg-accent-glow text-bg-base text-sm font-medium px-4 py-2 rounded-md
                          disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5">
             <i data-lucide="download" class="w-3.5 h-3.5" x-show="!loading"></i>
@@ -45,8 +47,30 @@
             <span x-text="loading ? 'Importando…' : 'Importar'"></span>
           </button>
         </div>
+        {# Chips con los sitios soportados. Se rellena tras loadSites(). #}
+        <div class="flex flex-wrap gap-1.5 mt-2.5" x-show="supportedSites.length > 0">
+          <template x-for="site in supportedSites" :key="site.key">
+            <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-bg-subtle border border-border-subtle
+                         text-fg-muted"
+                  :title="site.example_url"
+                  x-text="site.name"></span>
+          </template>
+        </div>
+        {# Aviso si la URL no matchea ningún sitio soportado (validación local). #}
+        <template x-if="urlInput.trim() && !urlSiteHint">
+          <p class="text-[11px] text-amber-400 mt-2 flex items-center gap-1">
+            <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+            Este hostname no coincide con ningún sitio soportado.
+          </p>
+        </template>
+        <template x-if="urlSiteHint">
+          <p class="text-[11px] text-emerald-400 mt-2 flex items-center gap-1">
+            <i data-lucide="check-circle-2" class="w-3 h-3"></i>
+            Detectado: <span x-text="urlSiteHint" class="font-medium"></span>
+          </p>
+        </template>
         <label class="flex items-start gap-2 mt-3 text-xs text-fg-muted cursor-pointer group">
-          <input type="checkbox" x-model="includeExtrasMox"
+          <input type="checkbox" x-model="includeExtrasUrl"
                  class="mt-0.5 w-3.5 h-3.5 rounded border-border-strong bg-bg-subtle text-accent focus:ring-accent/50">
           <span class="group-hover:text-fg transition">
             Incluir también sideboard, tokens, maybeboard, companion
@@ -284,11 +308,17 @@
 <script>
 function importPanel() {
   return {
-    moxUrl: '',
+    // ---- URL import unificado (Moxfield, Archidekt, TappedOut, MTGGoldfish, Scryfall, CubeCobra) ----
+    urlInput: '',
+    includeExtrasUrl: false,
+    supportedSites: [],           // [{key, name, example_url, host_names}]
+    urlPlaceholder: 'https://www.moxfield.com/decks/XXXXXXXXXX',
+
+    // ---- Plain text ----
     deckName: '',
     deckText: '',
-    includeExtrasMox: false,
     includeExtrasText: false,
+
     loading: false,
 
     // Reporte de cartas no importadas — se muestra en un modal tras el import
@@ -300,6 +330,40 @@ function importPanel() {
       unresolved: [],  // [{name, quantity, raw_line, set, number, reason}]
       resolvedCount: 0,
       totalEntries: 0,
+    },
+
+    async loadSites() {
+      try {
+        const r = await fetch('/api/decks/import/supported-sites');
+        if (!r.ok) return;
+        this.supportedSites = await r.json();
+        // Rotamos el placeholder entre ejemplos cada vez que se carga la home.
+        if (this.supportedSites.length > 0) {
+          const pick = this.supportedSites[Math.floor(Math.random() * this.supportedSites.length)];
+          if (pick.example_url) this.urlPlaceholder = pick.example_url;
+        }
+      } catch (e) { /* silent — el import sigue funcionando aunque no pintemos chips */ }
+    },
+
+    // Getter: nombre del sitio detectado en el input, o null si no matchea.
+    // Detección puramente local (mismo criterio que resolve_site en backend),
+    // sirve solo para dar feedback visual antes del submit.
+    get urlSiteHint() {
+      const raw = (this.urlInput || '').trim();
+      if (!raw) return null;
+      let host;
+      try {
+        host = new URL(raw).hostname.toLowerCase();
+      } catch (_) { return null; }
+      const stripped = host.startsWith('www.') ? host.slice(4) : host;
+      for (const site of this.supportedSites) {
+        for (const h of (site.host_names || [])) {
+          const hh = h.toLowerCase();
+          const hStripped = hh.startsWith('www.') ? hh.slice(4) : hh;
+          if (host === hh || stripped === hStripped) return site.name;
+        }
+      }
+      return null;
     },
 
     async _handleImportResult(data) {
@@ -321,14 +385,17 @@ function importPanel() {
       }
     },
 
-    async importMoxfield() {
-      if (!this.moxUrl.trim()) return;
+    async importUrl() {
+      if (!this.urlInput.trim()) return;
       this.loading = true;
       try {
-        const r = await fetch('/api/decks/import/moxfield', {
+        const r = await fetch('/api/decks/import/url', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url_or_id: this.moxUrl, include_extras: this.includeExtrasMox})
+          body: JSON.stringify({
+            url: this.urlInput.trim(),
+            include_extras: this.includeExtrasUrl,
+          })
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
@@ -360,7 +427,8 @@ function importPanel() {
 
     _unresolvedAsText() {
       // Reconstruye una lista pegable con la línea original si la teníamos
-      // (import de texto), o "N Nombre" si venía de Moxfield.
+      // (import de texto), o "N Nombre" si venía de una URL (Moxfield,
+      // Archidekt, etc.).
       return this.unresolvedModal.unresolved.map(u => {
         if (u.raw_line) return u.raw_line;
         return `${u.quantity} ${u.name}`;

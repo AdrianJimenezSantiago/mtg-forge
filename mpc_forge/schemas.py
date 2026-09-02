@@ -16,6 +16,29 @@ class ImportFromMoxfieldRequest(BaseModel):
     de coste solo cuenta commander + mainboard."""
 
 
+class ImportFromUrlRequest(BaseModel):
+    """Import unificado desde cualquier sitio soportado (Moxfield, Archidekt,
+    TappedOut, MTGGoldfish, Scryfall, CubeCobra).
+
+    El sitio se detecta automáticamente por el hostname de la URL. Si el sitio
+    no está soportado, la respuesta incluye la lista de hostnames aceptados.
+    """
+    url: str = Field(..., min_length=8)
+    name: str | None = Field(default=None, max_length=256)
+    """Si es None, se genera automáticamente a partir del nombre del sitio y
+    del ID del mazo (ej. "Moxfield · abc123")."""
+    format: str = "commander"
+    include_extras: bool = False
+
+
+class SupportedSite(BaseModel):
+    """Metadata de un sitio soportado, expuesta al frontend."""
+    key: str
+    name: str
+    example_url: str
+    host_names: list[str]
+
+
 class ImportFromTextRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
     text: str = Field(..., min_length=1)

@@ -96,6 +96,21 @@ async def init_db() -> None:
             # v2 PDF Studio: cardback específico del mazo (feature "cardback global").
             ("decks", "custom_cardback_art_id",
              "INTEGER REFERENCES custom_arts(id) ON DELETE SET NULL"),
+            # Fase 1 · Tarea 4: tags extraídos del filename/folder de cada arte
+            # indexado en un drive. `tags` es un CSV con los canonical tags
+            # ("full_art,retro"); los booleanos derivados permiten filtrado
+            # rápido con índice sin parsear el CSV en cada query.
+            # `backfill_normalized_names()` los rellena para filas ya
+            # existentes al arrancar. Ver `gdrive_indexer.extract_tags()`.
+            ("indexed_art", "tags",          "VARCHAR(512) DEFAULT ''"),
+            ("indexed_art", "is_full_art",   "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_borderless", "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_extended",   "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_showcase",   "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_retro",      "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_textless",   "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_promo",      "BOOLEAN DEFAULT 0"),
+            ("indexed_art", "is_alt_art",    "BOOLEAN DEFAULT 0"),
         ]
         for table, column, ddl in _add_column_if_missing:
             info = await conn.execute(text(f"PRAGMA table_info({table})"))
@@ -145,6 +160,35 @@ async def init_db() -> None:
             # KeyValue.key ya es PK (no hace falta index extra), pero para
             # settings hacemos SELECT ... IN (?) — ver settings.get_all() /
             # set_many(). El PK ya cubre esto por scan de índice.
+            # Fase 1 · Tarea 4: composite index sobre (name_normalized, is_*)
+            # NO es óptimo porque los flags cambian mucho el plan de query.
+            # Preferimos partial indexes: uno por flag, solo sobre filas donde
+            # el flag es true (la mayoría son false, así los índices son
+            # pequeños y las queries "is_full_art=1 AND name_normalized LIKE ?"
+            # atacan primero al índice pequeño).
+            # PARTIAL INDEX es soportado en SQLite desde 3.8.0.
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_full_art "
+            "ON indexed_art(name_normalized) WHERE is_full_art=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_borderless "
+            "ON indexed_art(name_normalized) WHERE is_borderless=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_extended "
+            "ON indexed_art(name_normalized) WHERE is_extended=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_showcase "
+            "ON indexed_art(name_normalized) WHERE is_showcase=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_retro "
+            "ON indexed_art(name_normalized) WHERE is_retro=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_textless "
+            "ON indexed_art(name_normalized) WHERE is_textless=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_promo "
+            "ON indexed_art(name_normalized) WHERE is_promo=1",
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_alt_art "
+            "ON indexed_art(name_normalized) WHERE is_alt_art=1",
+            # Fase 1 · Tarea 2: la tabla dfc_pairs se consulta principalmente
+            # con LOWER(front_name)=?. El UNIQUE en front_name ya da un índice
+            # case-sensitive; añadimos uno lower para acelerar los lookups
+            # sin depender de la comparación case-insensitive.
+            "CREATE INDEX IF NOT EXISTS ix_dfc_pairs_front_lower "
+            "ON dfc_pairs(lower(front_name))",
         ]
         for stmt in extra_indexes:
             await conn.execute(text(stmt))

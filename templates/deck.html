@@ -779,6 +779,61 @@
               </div>
             </div>
 
+            {# Etiquetas en drives — se aplican solo a resultados de drives #}
+            {# Visible cuando estamos viendo drives (fuente 'drives' o 'all'). #}
+            <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">
+                Etiquetas en drives
+                <span class="text-fg-faint/70 font-normal normal-case tracking-normal ml-1">(según nombre)</span>
+              </label>
+              {# Includes — art DEBE tener todos los seleccionados #}
+              <div class="space-y-1">
+                <template x-for="opt in [
+                  {v:'full_art',   l:'Full art'},
+                  {v:'borderless', l:'Borderless'},
+                  {v:'extended',   l:'Extended art'},
+                  {v:'showcase',   l:'Showcase'},
+                  {v:'retro',      l:'Retro frame'},
+                  {v:'textless',   l:'Textless'},
+                  {v:'promo',      l:'Promo'},
+                  {v:'alt_art',    l:'Alt art'},
+                ]" :key="opt.v">
+                  <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                    <input type="checkbox" :value="opt.v"
+                           x-model="pickerFilters.driveTagsInclude"
+                           @change="onDriveFiltersChanged()"
+                           class="accent-accent w-3 h-3">
+                    <span x-text="opt.l"></span>
+                  </label>
+                </template>
+              </div>
+              {# Excludes — colapsables, para no saturar visualmente #}
+              <div x-data="{open: false}" class="mt-2">
+                <button type="button" @click="open = !open"
+                        class="text-[10px] text-fg-faint hover:text-fg-muted underline underline-offset-2">
+                  <span x-show="!open">Excluir etiquetas…</span>
+                  <span x-show="open">Ocultar excluidos</span>
+                </button>
+                <div x-show="open" x-transition class="space-y-1 mt-1.5">
+                  <template x-for="opt in [
+                    {v:'full_art',   l:'Sin full art'},
+                    {v:'borderless', l:'Sin borderless'},
+                    {v:'retro',      l:'Sin retro'},
+                    {v:'promo',      l:'Sin promo'},
+                    {v:'alt_art',    l:'Sin alt art'},
+                  ]" :key="'ex-'+opt.v">
+                    <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                      <input type="checkbox" :value="opt.v"
+                             x-model="pickerFilters.driveTagsExclude"
+                             @change="onDriveFiltersChanged()"
+                             class="accent-red-400 w-3 h-3">
+                      <span x-text="opt.l"></span>
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </div>
+
             {# Ordenar #}
             <div>
               <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Ordenar</label>
@@ -1348,7 +1403,16 @@ function deckEditor(deckId) {
       artTypes: [],               // ['borderless', 'full_art', 'textless', 'retro', 'promo']
       rarities: [],               // ['mythic', 'rare', 'uncommon', 'common', 'special']
       sort: 'recent',             // 'recent' | 'old' | 'set' | 'artist'
+      // Filtros específicos de drives (tags extraídos por gdrive_indexer.extract_tags).
+      // Se envían al backend como query strings ?tags_include=…&tags_exclude=…
+      // y se aplican en SQL usando índices sobre columnas is_full_art, etc.
+      driveTagsInclude: [],       // el arte DEBE tener todos los seleccionados
+      driveTagsExclude: [],       // el arte NO DEBE tener ninguno
     },
+    // Debounce para re-cargar drives cuando el usuario toca los filtros.
+    // Sin esto, cada click dispararía un fetch inmediato → lag y requests
+    // redundantes. Ver onDriveFiltersChanged() más abajo.
+    _driveFiltersDebounce: null,
     // Cache in-memory de resultados del picker por card_id → {arts, ts}
     // Al elegir un arte (chooseArt/chooseCustom) se invalida esa entrada.
     // Se resetea al cambiar de mazo (la instancia Alpine es por-vista de mazo).
@@ -1726,11 +1790,24 @@ function deckEditor(deckId) {
 
     async _loadDrivesForPicker(cardName) {
       try {
-        const r = await fetch(`/api/drives/search?q=${encodeURIComponent(cardName)}&limit=100`);
+        // Construir query string con los filtros de tag activos.
+        const params = new URLSearchParams({
+          q: cardName,
+          limit: '100',
+        });
+        const inc = this.pickerFilters.driveTagsInclude || [];
+        const exc = this.pickerFilters.driveTagsExclude || [];
+        if (inc.length) params.set('tags_include', inc.join(','));
+        if (exc.length) params.set('tags_exclude', exc.join(','));
+
+        const r = await fetch(`/api/drives/search?${params.toString()}`);
         if (!r.ok) return;
         const hits = await r.json();
         this.driveHits = hits;
-        // Añadir cada hit al pickerAllArts como si fuera un "arte" más
+        // Añadir cada hit al pickerAllArts como si fuera un "arte" más.
+        // Pasamos los flags is_* y tags para que _preprocessArt los pueda
+        // enseñar como badges en el thumbnail (junto a los ya existentes de
+        // Scryfall).
         const driveArts = hits.map((h, i) => this._preprocessArt({
           kind: 'drive',
           image_small: h.thumb_url,
@@ -1741,7 +1818,17 @@ function deckEditor(deckId) {
           artist: null,
           released_at: null,
           rarity: '',
-          full_art: false, textless: false, promo: false, border_color: '', frame: '',
+          // Los flags aquí replican los Scryfall que ya consumen los badges,
+          // más los propios de drives que añadimos en preprocess.
+          full_art:   !!h.is_full_art,
+          textless:   !!h.is_textless,
+          promo:      !!h.is_promo,
+          border_color: h.is_borderless ? 'borderless' : '',
+          frame:      h.is_retro ? '1997' : '',
+          is_extended:  !!h.is_extended,
+          is_showcase:  !!h.is_showcase,
+          is_alt_art:   !!h.is_alt_art,
+          drive_tags:   h.tags || [],
           face: 'front',
           score: h.score,
           _drive_hit: h,
@@ -1754,6 +1841,26 @@ function deckEditor(deckId) {
           this._pickerCache[this.pickerCard.id] = this.pickerAllArts;
         }
       } catch (e) { /* silent */ }
+    },
+
+    // Handler cuando el usuario cambia checkboxes de tags de drive.
+    // Aplicamos un debounce corto (250ms) para agrupar clicks rápidos, e
+    // invalidamos la cache del picker para que el próximo openArtPicker
+    // no reuse los drives antiguos.
+    onDriveFiltersChanged() {
+      if (!this.pickerCard) return;
+      clearTimeout(this._driveFiltersDebounce);
+      this._driveFiltersDebounce = setTimeout(() => {
+        // Invalidar cache antes de refetch para no dejar residuos con los
+        // filtros anteriores en la vista.
+        if (this.pickerCard && this._pickerCache[this.pickerCard.id]) {
+          // Preservar los no-drives (custom + scryfall) en la cache; solo
+          // quitamos los drives, que van a re-cargarse con los filtros nuevos.
+          this._pickerCache[this.pickerCard.id] =
+            this._pickerCache[this.pickerCard.id].filter(a => a.__source !== 'drives');
+        }
+        this._loadDrivesForPicker(this.pickerCard.name);
+      }, 250);
     },
 
     // ---- Precarga en background (Plan A) ----
@@ -1812,7 +1919,10 @@ function deckEditor(deckId) {
         tooltip = `${art.set_name || art.set_code} #${art.collector_number} · ${art.artist || 'artist unknown'}${year ? ' (' + year + ')' : ''}`;
       }
 
-      // Badges de tipo especial (solo para scryfall)
+      // Badges de tipo especial. Scryfall usa border_color/full_art/frame;
+      // drives ahora también reflejan sus tags con las mismas etiquetas
+      // (BRDLESS, FULL, RETRO, PROMO…) más las que solo aplican a drives
+      // (EXT, SHOWCASE, ALT).
       const badges = [];
       if (source === 'scryfall') {
         if (art.border_color === 'borderless') badges.push('BRDLESS');
@@ -1820,6 +1930,17 @@ function deckEditor(deckId) {
         if (art.textless)                      badges.push('TEXT-');
         if (art.frame === '1997')              badges.push('RETRO');
         if (art.promo)                         badges.push('PROMO');
+      } else if (source === 'drives') {
+        // En drives, los flags vienen del extract_tags del backend, no de
+        // Scryfall — pero los reutilizamos para consistencia visual.
+        if (art.border_color === 'borderless') badges.push('BRDLESS');
+        if (art.full_art)                      badges.push('FULL');
+        if (art.textless)                      badges.push('TEXT-');
+        if (art.frame === '1997')              badges.push('RETRO');
+        if (art.promo)                         badges.push('PROMO');
+        if (art.is_extended)                   badges.push('EXT');
+        if (art.is_showcase)                   badges.push('SHOW');
+        if (art.is_alt_art)                    badges.push('ALT');
       }
 
       return {
@@ -1842,10 +1963,21 @@ function deckEditor(deckId) {
     },
 
     resetPickerFilters() {
+      const hadDriveFilters =
+        (this.pickerFilters.driveTagsInclude || []).length > 0 ||
+        (this.pickerFilters.driveTagsExclude || []).length > 0;
       this.pickerFilters = {
         q: '', source: 'all', set: '', artTypes: [], rarities: [], sort: 'recent',
+        driveTagsInclude: [], driveTagsExclude: [],
       };
       this.pickerVisibleCount = 60;
+      // Si los filtros de drive habían cambiado los resultados servidos,
+      // hay que refetch: los que la query trajo bajo esos filtros ya no
+      // representan el conjunto completo. Si no había filtros activos, no
+      // gastamos una round-trip.
+      if (hadDriveFilters && this.pickerCard) {
+        this.onDriveFiltersChanged();
+      }
     },
 
     // Cuando cambian filtros, resetear el contador incremental

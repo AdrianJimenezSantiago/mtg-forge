@@ -8,6 +8,12 @@ Filosofía:
 - Aceptamos algo de tolerancia por typos con rapidfuzz solo cuando el match
   exacto no da suficientes resultados.
 
+Query pipeline:
+- El query del usuario pasa por ``normalize_filename()`` (misma función usada
+  al indexar). Esto garantiza que "Jaya", "jaya" y "Jayā" matchean todos a
+  la misma canonical form. Ver `gdrive_indexer.normalize_filename` para la
+  pipeline completa (asciifolding + lowercase + strip de variante/paréntesis).
+
 Rendimiento:
 - Prefijo primero (`LIKE 'query%'`) — SQLite usa el índice sobre name_normalized,
   es prácticamente instantáneo aunque tengamos 500k filas.
@@ -39,6 +45,15 @@ class SearchResult:
     thumb_url: str
     download_url: str
     score: int  # 0-100
+    tags: list[str]  # canonical tags extraídos del filename/folder ("full_art", …)
+    is_full_art: bool = False
+    is_borderless: bool = False
+    is_extended: bool = False
+    is_showcase: bool = False
+    is_retro: bool = False
+    is_textless: bool = False
+    is_promo: bool = False
+    is_alt_art: bool = False
 
 
 def _thumb_url(file_id: str, size: int = 300) -> str:
@@ -127,6 +142,8 @@ async def search(
     query: str,
     limit: int = 20,
     source_ids: list[int] | None = None,
+    tags_include: list[str] | None = None,
+    tags_exclude: list[str] | None = None,
 ) -> list[SearchResult]:
     """Busca `query` en el índice y devuelve top-N por relevancia.
 
@@ -135,6 +152,18 @@ async def search(
       2. Prefix (LIKE 'query%') sobre name_normalized (usa índice)
       3. LIKE '%query%' como fallback (más lento pero necesario cuando el nombre
          tiene tokens delante, ej. "sol ring" busca en "cursed sol ring")
+
+    Filtros:
+      - ``tags_include``: si se pasa, solo se devuelven artes que TIENEN todos
+        los tags indicados. Cada tag se traduce a su flag booleano
+        correspondiente (``is_full_art``, ``is_borderless``, …). Tags
+        desconocidos se ignoran silenciosamente para no colgar la UI si el
+        cliente pide algo no soportado.
+      - ``tags_exclude``: descarta artes que tengan CUALQUIERA de estos tags.
+        Útil para "no quiero borderless": pasar ["borderless"].
+
+    Los filtros se aplican en SQL (via los índices sobre las columnas
+    booleanas), no post-scoring, así que reducen el trabajo del scorer.
     """
     q_norm = normalize_filename(query)
     if not q_norm:
@@ -145,6 +174,29 @@ async def search(
     )
     if source_ids:
         base = base.where(IndexedArt.source_id.in_(source_ids))
+
+    # Traducción tag → columna. Si el cliente pasa un tag desconocido, lo
+    # ignoramos (no forzamos error para tolerar clientes desactualizados).
+    _TAG_TO_COLUMN = {
+        "full_art":   IndexedArt.is_full_art,
+        "borderless": IndexedArt.is_borderless,
+        "extended":   IndexedArt.is_extended,
+        "showcase":   IndexedArt.is_showcase,
+        "retro":      IndexedArt.is_retro,
+        "textless":   IndexedArt.is_textless,
+        "promo":      IndexedArt.is_promo,
+        "alt_art":    IndexedArt.is_alt_art,
+    }
+    if tags_include:
+        for t in tags_include:
+            col = _TAG_TO_COLUMN.get(t)
+            if col is not None:
+                base = base.where(col.is_(True))
+    if tags_exclude:
+        for t in tags_exclude:
+            col = _TAG_TO_COLUMN.get(t)
+            if col is not None:
+                base = base.where(col.is_(False))
 
     # --- Fase 1: match exacto (súper rápido, índice B-tree) ---
     stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_SQL_PREFETCH)
@@ -180,6 +232,7 @@ async def search(
         s = _score_match(q_norm, art.name_normalized)
         if s < _MIN_SCORE:
             continue
+        tag_list = [t for t in (art.tags or "").split(",") if t]
         scored.append((s, SearchResult(
             file_id=art.file_id,
             filename=art.filename,
@@ -189,6 +242,15 @@ async def search(
             thumb_url=_thumb_url(art.file_id),
             download_url=_download_url(art.file_id),
             score=s,
+            tags=tag_list,
+            is_full_art=bool(art.is_full_art),
+            is_borderless=bool(art.is_borderless),
+            is_extended=bool(art.is_extended),
+            is_showcase=bool(art.is_showcase),
+            is_retro=bool(art.is_retro),
+            is_textless=bool(art.is_textless),
+            is_promo=bool(art.is_promo),
+            is_alt_art=bool(art.is_alt_art),
         )))
 
     scored.sort(key=lambda x: (-x[0], x[1].filename))

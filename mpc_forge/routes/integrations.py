@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
+from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import get_session, session_scope
-from mpc_forge.services import art_sources, gdrive_indexer, gdrive_search, mpc_autofill
+from mpc_forge.services import art_sources, dfc_pairs, gdrive_indexer, gdrive_search, mpc_autofill
 
 log = logging.getLogger(__name__)
 
@@ -268,6 +269,23 @@ class SearchHit(BaseModel):
     thumb_url: str
     download_url: str
     score: int
+    tags: list[str] = []
+    is_full_art: bool = False
+    is_borderless: bool = False
+    is_extended: bool = False
+    is_showcase: bool = False
+    is_retro: bool = False
+    is_textless: bool = False
+    is_promo: bool = False
+    is_alt_art: bool = False
+
+
+def _parse_csv_list(raw: str | None) -> list[str] | None:
+    """Convierte 'a,b, c' → ['a', 'b', 'c']. Devuelve None si vacío o None."""
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts or None
 
 
 @router.get("/drives/search", response_model=list[SearchHit])
@@ -276,15 +294,26 @@ async def drives_search(
     db: DbDep,
     limit: int = 20,
     source_id: int | None = None,
+    tags_include: str | None = None,
+    tags_exclude: str | None = None,
 ) -> list[SearchHit]:
     """Busca `q` (nombre de carta) en el índice de todos los drives.
+
+    Filtros opcionales:
+      - ``tags_include=full_art,borderless``: solo artes que TENGAN todos.
+      - ``tags_exclude=promo``: descarta artes con cualquiera de los indicados.
 
     Devuelve top-N resultados con thumbnails y URLs de descarga listas.
     """
     if not q.strip():
         return []
     source_ids = [source_id] if source_id else None
-    results = await gdrive_search.search(db, q, limit=limit, source_ids=source_ids)
+    results = await gdrive_search.search(
+        db, q, limit=limit,
+        source_ids=source_ids,
+        tags_include=_parse_csv_list(tags_include),
+        tags_exclude=_parse_csv_list(tags_exclude),
+    )
     return [
         SearchHit(
             file_id=r.file_id, filename=r.filename,
@@ -292,6 +321,15 @@ async def drives_search(
             folder_path=r.folder_path,
             thumb_url=r.thumb_url, download_url=r.download_url,
             score=r.score,
+            tags=r.tags,
+            is_full_art=r.is_full_art,
+            is_borderless=r.is_borderless,
+            is_extended=r.is_extended,
+            is_showcase=r.is_showcase,
+            is_retro=r.is_retro,
+            is_textless=r.is_textless,
+            is_promo=r.is_promo,
+            is_alt_art=r.is_alt_art,
         )
         for r in results
     ]
@@ -306,3 +344,78 @@ class DriveStatsResponse(BaseModel):
 async def drives_stats(db: DbDep) -> DriveStatsResponse:
     s = await gdrive_search.stats(db)
     return DriveStatsResponse(**s)
+
+
+# ============================================================================
+# DFC pairs cache (precomputado desde Scryfall bulk data)
+# ============================================================================
+
+def _get_scryfall(request) -> ScryfallClient:
+    return request.app.state.scryfall
+
+
+class DFCPairsStatsResponse(BaseModel):
+    total_pairs: int
+    last_synced_at: str | None = None
+
+
+class DFCPairsSyncResponse(BaseModel):
+    synced: bool
+    pairs: int
+    reason: str
+
+
+@router.get("/dfc-pairs/stats", response_model=DFCPairsStatsResponse)
+async def dfc_pairs_stats(db: DbDep) -> DFCPairsStatsResponse:
+    """Estado actual del cache: cuántos pares tenemos y cuándo se sincronizó."""
+    return DFCPairsStatsResponse(**await dfc_pairs.stats(db))
+
+
+async def _run_dfc_sync_task(scryfall: ScryfallClient) -> None:
+    """Ejecuta el sync en background con su propia sesión de BD."""
+    try:
+        async with session_scope() as db:
+            await dfc_pairs.sync_if_stale(db, scryfall)
+    except Exception:  # noqa: BLE001
+        log.exception("Sync manual de DFC pairs falló")
+
+
+@router.post("/dfc-pairs/sync", response_model=DFCPairsSyncResponse)
+async def dfc_pairs_sync(
+    db: DbDep,
+    background: BackgroundTasks,
+    request: __import__("fastapi").Request,
+    force: bool = False,
+    wait: bool = True,
+) -> DFCPairsSyncResponse:
+    """Fuerza (o pide) una sincronización con Scryfall.
+
+    - ``force=false`` (default): solo sincroniza si TTL expirado.
+    - ``force=true``: fuerza el refresh aunque acabemos de sincronizar.
+    - ``wait=true`` (default): bloquea hasta que termine y devuelve el resultado.
+    - ``wait=false``: lanza en background y responde inmediatamente.
+    """
+    scryfall = _get_scryfall(request)
+
+    if force:
+        # Truco: marcamos como stale borrando el timestamp, para que
+        # sync_if_stale considere que hay que refrescar.
+        from mpc_forge.models import KeyValue
+        kv = await db.get(KeyValue, "dfc_pairs.last_synced_at")
+        if kv:
+            await db.delete(kv)
+            await db.commit()
+
+    if not wait:
+        background.add_task(_run_dfc_sync_task, scryfall)
+        current = await dfc_pairs.stats(db)
+        return DFCPairsSyncResponse(
+            synced=False, pairs=current["total_pairs"], reason="scheduled",
+        )
+
+    result = await dfc_pairs.sync_if_stale(db, scryfall)
+    return DFCPairsSyncResponse(
+        synced=bool(result.get("synced", False)),
+        pairs=int(result.get("pairs", 0)),
+        reason=str(result.get("reason", "")),
+    )

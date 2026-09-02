@@ -404,6 +404,59 @@ async def import_from_plaintext(
     return deck, unresolved
 
 
+async def import_from_url(
+    db: AsyncSession,
+    scryfall: ScryfallClient,
+    url: str,
+    name: str | None = None,
+    fmt: str = "commander",
+    include_extras: bool = False,
+) -> tuple[Deck, list[dict[str, Any]]]:
+    """Import unificado desde cualquier sitio soportado.
+
+    Detecta el sitio por hostname, descarga el mazo como texto plano vía el
+    endpoint público correspondiente, y lo procesa por la pipeline común
+    (parse_plain_decklist → resolve_cards → create_deck_from_entries).
+
+    - ``name=None`` genera un nombre por defecto tipo "Moxfield · abc123" a
+      partir del sitio detectado y el último segmento de la URL.
+
+    Errores:
+    - ``ValueError`` si el hostname no matchea ningún sitio soportado.
+    - ``ImportSiteError`` si la descarga falla (URL inválida para el sitio,
+      mazo privado, timeout, etc). El caller (route) lo mapea a HTTP 502.
+    """
+    from mpc_forge.clients.import_sites import resolve_site
+    from mpc_forge.clients.import_sites.base import ImportSiteError
+
+    site_cls = resolve_site(url)
+    if site_cls is None:
+        raise ValueError(
+            f"URL no soportada. Hostname no reconocido: {url!r}. "
+            f"Sitios soportados: ver /api/decks/import/supported-sites"
+        )
+
+    text = await site_cls.retrieve_card_list(url)
+    if not text.strip():
+        raise ImportSiteError(f"{site_cls.name} devolvió una lista vacía")
+
+    if not name:
+        # Autogenera nombre razonable a partir del último segmento no-vacío
+        # de la URL. Ej: https://www.moxfield.com/decks/AbCdEf → "Moxfield · AbCdEf"
+        from urllib.parse import urlparse
+        segments = [
+            s for s in (urlparse(url).path or "").split("/") if s and s.lower() != "decks"
+        ]
+        tail = segments[-1] if segments else "imported"
+        name = f"{site_cls.name} · {tail}"[:256]
+
+    return await import_from_plaintext(
+        db, scryfall,
+        name=name, text=text, fmt=fmt,
+        include_extras=include_extras,
+    )
+
+
 async def try_localize_card(
     db: AsyncSession,
     scryfall: ScryfallClient,

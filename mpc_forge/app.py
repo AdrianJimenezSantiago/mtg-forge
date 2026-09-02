@@ -1,6 +1,7 @@
 """Factory de la aplicación FastAPI."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from contextlib import asynccontextmanager
@@ -129,6 +130,35 @@ async def lifespan(app: FastAPI):
             logging.info("Sembrados %d art sources iniciales", seeded)
     except Exception as e:  # noqa: BLE001
         logging.warning("Seed de art sources falló: %s", e)
+
+    # Backfill de nombres normalizados: si hemos actualizado el normalizador
+    # (nueva NORMALIZATION_VERSION en gdrive_indexer), recalcula
+    # `name_normalized` sobre el índice existente. Idempotente y rápido:
+    # una vez completado, marca el flag y no vuelve a ejecutarse.
+    # Corremos en background para no bloquear el arranque en caso de que
+    # tarde varios segundos con índices muy grandes.
+    async def _run_backfill():
+        try:
+            from mpc_forge.services import gdrive_indexer
+            async with session_scope() as db:
+                await gdrive_indexer.backfill_normalized_names(db)
+        except Exception as e:  # noqa: BLE001
+            logging.warning("Backfill de normalización falló: %s", e)
+    asyncio.create_task(_run_backfill())
+
+    # Sync de DFC pairs desde Scryfall (cache semanal). Precomputa la lista
+    # de pares double-faced/meld para que el resolver de decks sepa qué
+    # reversos añadir sin lookups reactivos por carta. Corre en background
+    # y no bloquea el arranque; si falla, no impide usar la app.
+    async def _run_dfc_sync():
+        try:
+            from mpc_forge.services import dfc_pairs
+            async with session_scope() as db:
+                await dfc_pairs.sync_if_stale(db, app.state.scryfall)
+        except Exception as e:  # noqa: BLE001
+            logging.warning("Sync de DFC pairs falló: %s", e)
+    asyncio.create_task(_run_dfc_sync())
+
     logging.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
     logging.info("SSL: %s", _SSL_MODE)
     try:

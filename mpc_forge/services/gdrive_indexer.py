@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -39,6 +40,18 @@ from mpc_forge.models import ArtSource, IndexedArt
 from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
+
+# Versión del normalizador. Cuando cambiamos la lógica de `normalize_filename`,
+# incrementamos este valor y el startup ejecuta un backfill idempotente que
+# recalcula `IndexedArt.name_normalized` sobre todo el índice existente sin
+# perder los file_ids indexados. Ver `backfill_normalized_names()`.
+#
+# Cambios por versión:
+#   1: normalización base (lowercase, sin paréntesis, split por variante)
+#   2: añadido asciifolding para manejar acentos y diacríticos.
+#   3: añadida extracción de tags (`is_full_art`, `is_borderless`, …). El
+#      backfill escribe tags sobre filas ya indexadas sin re-descargar.
+NORMALIZATION_VERSION = 3
 
 
 # Semáforo global: máximo 3 indexados concurrentes.
@@ -67,6 +80,37 @@ _NONALNUM_RE = re.compile(r"[^a-z0-9\s]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 
 
+def _asciifold(text: str) -> str:
+    """Reduce caracteres Unicode con diacríticos a su equivalente ASCII.
+
+    Ejemplos:
+      "Jayā Ballard"  → "Jaya Ballard"
+      "Café"          → "Cafe"
+      "naïve"         → "naive"
+      "Æther Vial"    → "aether Vial"   (ligadura común en MTG)
+
+    Estrategia: NFKD descompone caracteres en base + combining marks
+    (ej. "á" → "a" + U+0301 COMBINING ACUTE ACCENT). Filtramos por
+    ``unicodedata.combining()`` para descartar solo los marks, dejando
+    intactos números, símbolos monetarios, etc.
+
+    Luego traducimos manualmente ligaduras que NFKD no descompone
+    (Æ, æ, Œ, œ, ß) para cubrir cartas como Æther / Aether que aparecen
+    en ambas grafías según la impresión.
+    """
+    if not text:
+        return text
+    # Ligaduras que NFKD deja intactas — las mapeamos a su forma expandida.
+    text = (
+        text.replace("Æ", "AE").replace("æ", "ae")
+        .replace("Œ", "OE").replace("œ", "oe")
+        .replace("ß", "ss")
+    )
+    # NFKD descompone. Filtramos marks combinantes (Mn).
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 def normalize_filename(name: str) -> str:
     """Convierte cualquier variante de filename al nombre canónico de la carta.
 
@@ -79,6 +123,14 @@ def normalize_filename(name: str) -> str:
       "Sol Ring (Daubrez Borderless).png"   → "sol ring"
       "Bruna, the Fading Light (Women's Day).jpg" → "bruna the fading light"
       "Forest Warden.png"                   → "forest warden"  (carta distinta)
+
+    Asciifolding (NORMALIZATION_VERSION >= 2):
+      "Jayā Ballard.png"                    → "jaya ballard"
+      "Æther Vial.png"                      → "aether vial"
+      "Naïve Believer.png"                  → "naive believer"
+
+    La misma pipeline se aplica al query del usuario en `gdrive_search.search()`,
+    de forma que "jaya" matchea a "Jayā" y viceversa.
     """
     if not name:
         return ""
@@ -87,10 +139,139 @@ def normalize_filename(name: str) -> str:
     # Cortar por " - ", " by ", " | ", etc. — nos quedamos solo con la parte previa
     parts = _VARIANT_SPLIT_RE.split(n, maxsplit=1)
     n = parts[0]
+    n = _asciifold(n)              # acentos y ligaduras → ASCII
     n = n.lower()
     n = _NONALNUM_RE.sub(" ", n)   # cualquier no-alfanumérico → espacio
     n = _MULTISPACE_RE.sub(" ", n).strip()
     return n
+
+
+# ---------------------------------------------------------------------------
+# Extracción de tags
+# ---------------------------------------------------------------------------
+# Filosofía: MPC Autofill descarta los `()` y `[]` al normalizar el nombre pero
+# los preserva como tags filtrables. Adoptamos el mismo enfoque: extraemos el
+# contenido de todos los paréntesis/corchetes del filename y del folder_path,
+# los matcheamos contra un vocabulario canónico con aliases, y devolvemos un
+# CSV listo para guardar en `IndexedArt.tags`.
+#
+# El vocabulario está pensado para MTG proxy art:
+#   - "Full art"   → full_art
+#   - "Borderless" → borderless
+#   - "Retro"      → retro
+#   - "Textless"   → textless
+#   - etc.
+#
+# Los flags booleanos derivados (is_full_art, is_borderless…) se calculan aquí
+# también, para que el indexer los pueda escribir sin lógica duplicada.
+
+# vocabulario canónico: canonical_tag → set de aliases lowercase (sin espacios finales).
+# Los aliases se comparan contra el contenido bruto de los brackets, permitiendo
+# múltiples formas de nombrar el mismo concepto ("FA" = "full art").
+_TAG_VOCABULARY: dict[str, frozenset[str]] = {
+    "full_art": frozenset({
+        "full art", "fullart", "full-art", "fa",
+    }),
+    "borderless": frozenset({
+        "borderless", "no border", "no-border", "bl",
+    }),
+    "extended": frozenset({
+        "extended", "extended art", "extended-art", "ea",
+    }),
+    "showcase": frozenset({
+        "showcase", "sc",
+    }),
+    "retro": frozenset({
+        "retro", "retro frame", "old border", "old frame", "1993 frame", "old-frame",
+    }),
+    "textless": frozenset({
+        "textless", "no text", "no-text",
+    }),
+    "promo": frozenset({
+        "promo", "pre-release", "prerelease", "pre release", "release",
+    }),
+    "alt_art": frozenset({
+        "alt art", "alt-art", "alternate art", "alternate", "alt",
+        "alternative art",
+    }),
+    "anime": frozenset({
+        "anime", "manga",
+    }),
+    "japanese": frozenset({
+        "japanese", "jp", "jpn",
+    }),
+    "foil": frozenset({
+        "foil", "etched", "gilded",
+    }),
+    "back": frozenset({
+        "back", "b",
+    }),
+}
+
+# Lookup inverso: alias → canonical_tag. Compuesto una vez al import.
+_ALIAS_TO_CANONICAL: dict[str, str] = {
+    alias: canon
+    for canon, aliases in _TAG_VOCABULARY.items()
+    for alias in aliases
+}
+
+# Regex para extraer contenido de () y []. No queremos ni matchear
+# recursivamente ni cruzar entre paréntesis — grupo simple con contenido no-anidado.
+_BRACKET_CONTENTS_RE = re.compile(r"[\(\[]([^\(\)\[\]]+)[\)\]]")
+
+
+def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, bool]]:
+    """Extrae tags canónicos del filename y del folder_path.
+
+    Recorre todos los ``()`` y ``[]`` en ambos, saca el contenido, y lo
+    matchea contra el vocabulario canónico. Un mismo tag detectado múltiples
+    veces aparece una sola vez en el CSV.
+
+    Devuelve una tupla ``(tags_csv, flags)``:
+      - ``tags_csv``: string CSV ordenado alfabéticamente (ej. "borderless,full_art").
+      - ``flags``: dict con las claves booleanas is_full_art, is_borderless, etc.
+        que se escriben directamente en las columnas de ``IndexedArt``.
+
+    Ejemplos:
+      extract_tags("Sol Ring (Full Art).png")
+        → ("full_art", {"is_full_art": True, ...})
+      extract_tags("Forest (BL) [Retro].png")
+        → ("borderless,retro", {"is_borderless": True, "is_retro": True, ...})
+      extract_tags("Opt.png", "Anime folder/")
+        → ("anime", {"is_anime": True, ...})
+
+    Tag `back` NO se refleja como flag booleano — el indicador de reverso ya
+    se maneja en `parse_filename` de custom_art (marker [BACK]). Aquí lo
+    detectamos por si un archivo en drive lo lleva, para poder filtrarlo si
+    procede, pero no genera un `is_back` (ese contexto pertenece a la lógica
+    de front/back de la carta, no al indexado de arte).
+    """
+    seen: set[str] = set()
+    for text in (filename or "", folder_path or ""):
+        for content in _BRACKET_CONTENTS_RE.findall(text):
+            # Un mismo bracket puede contener varios tags separados por coma:
+            # "(FA, Retro)" → ["FA", "Retro"].
+            for raw in content.split(","):
+                key = _asciifold(raw).lower().strip()
+                if not key:
+                    continue
+                canon = _ALIAS_TO_CANONICAL.get(key)
+                if canon:
+                    seen.add(canon)
+
+    csv = ",".join(sorted(seen))
+    # Flags derivados. Solo los que existen como columna en IndexedArt.
+    flags = {
+        "is_full_art":   "full_art"   in seen,
+        "is_borderless": "borderless" in seen,
+        "is_extended":   "extended"   in seen,
+        "is_showcase":   "showcase"   in seen,
+        "is_retro":      "retro"      in seen,
+        "is_textless":   "textless"   in seen,
+        "is_promo":      "promo"      in seen,
+        "is_alt_art":    "alt_art"    in seen,
+    }
+    return csv, flags
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +442,7 @@ async def _index_via_api(
                 )).scalar_one_or_none()
 
                 size = int(item.get("size", 0) or 0)
+                tags_csv, tag_flags = extract_tags(name, current_path)
                 if existing:
                     existing.filename = name
                     existing.name_normalized = normalize_filename(name)
@@ -268,6 +450,9 @@ async def _index_via_api(
                     existing.size_bytes = size
                     existing.mime_type = mime
                     existing.indexed_at = datetime.now(timezone.utc)
+                    existing.tags = tags_csv
+                    for flag, value in tag_flags.items():
+                        setattr(existing, flag, value)
                     files_updated += 1
                 else:
                     db.add(IndexedArt(
@@ -278,6 +463,8 @@ async def _index_via_api(
                         folder_path=current_path,
                         size_bytes=size,
                         mime_type=mime,
+                        tags=tags_csv,
+                        **tag_flags,
                     ))
                     files_added += 1
                 since_last_commit += 1
@@ -344,6 +531,7 @@ async def _index_via_scraping(
         if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
             continue
         mime = f"image/{mime_frag.split('/')[-1]}"
+        tags_csv, tag_flags = extract_tags(name, "")
         existing = (await db.execute(
             select(IndexedArt).where(
                 IndexedArt.source_id == source.id,
@@ -355,12 +543,17 @@ async def _index_via_scraping(
             existing.name_normalized = normalize_filename(name)
             existing.mime_type = mime
             existing.indexed_at = datetime.now(timezone.utc)
+            existing.tags = tags_csv
+            for flag, value in tag_flags.items():
+                setattr(existing, flag, value)
             files_updated += 1
         else:
             db.add(IndexedArt(
                 source_id=source.id, file_id=file_id, filename=name,
                 name_normalized=normalize_filename(name),
                 folder_path="", size_bytes=0, mime_type=mime,
+                tags=tags_csv,
+                **tag_flags,
             ))
             files_added += 1
 
@@ -457,3 +650,102 @@ async def clear_index(db: AsyncSession, source_id: int) -> int:
         source.index_error = ""
     await db.commit()
     return n
+
+
+# ---------------------------------------------------------------------------
+# Backfill de nombres normalizados
+# ---------------------------------------------------------------------------
+
+_NORMALIZATION_VERSION_KEY = "gdrive.normalization_version"
+
+
+async def backfill_normalized_names(db: AsyncSession) -> int:
+    """Recalcula ``name_normalized`` y ``tags``/flags si la versión cambió.
+
+    Se ejecuta al arrancar (desde ``lifespan`` en ``app.py``). Compara la
+    versión guardada en ``KeyValue`` con ``NORMALIZATION_VERSION``. Si difieren
+    (o si nunca se ejecutó), reprocesa TODAS las filas en batches de 1000 y
+    actualiza en su sitio, sin borrar el índice ni exigir al usuario reindexar.
+
+    Idempotente: ejecutarlo dos veces no cambia nada si la versión está al día.
+
+    Qué se actualiza:
+      - ``name_normalized``: aplica la pipeline actual (con asciifolding
+        desde v2).
+      - ``tags`` y flags booleanos (``is_full_art``, ``is_borderless``, …):
+        extraídos del filename y del folder_path (desde v3).
+
+    Rendimiento: para 500k filas, ~5 segundos. Corremos en background dentro
+    del lifespan para no bloquear el arranque de la UI.
+
+    Devuelve el número de filas actualizadas (0 si no había cambio o índice
+    vacío).
+    """
+    from mpc_forge.models import KeyValue
+
+    # ¿Ya está en la versión actual?
+    kv = await db.get(KeyValue, _NORMALIZATION_VERSION_KEY)
+    try:
+        current = int(kv.value) if kv else 0
+    except (ValueError, AttributeError):
+        current = 0
+    if current >= NORMALIZATION_VERSION:
+        return 0
+
+    total = int(await db.scalar(
+        select(__import__("sqlalchemy").func.count(IndexedArt.id))
+    ) or 0)
+    if total == 0:
+        # Índice vacío — marcamos la versión y salimos.
+        if kv:
+            kv.value = str(NORMALIZATION_VERSION)
+        else:
+            db.add(KeyValue(key=_NORMALIZATION_VERSION_KEY, value=str(NORMALIZATION_VERSION)))
+        await db.commit()
+        return 0
+
+    log.info(
+        "Backfill de normalización: reprocesando %d filas (v%d → v%d)…",
+        total, current, NORMALIZATION_VERSION,
+    )
+    updated = 0
+    batch_size = 1000
+    offset = 0
+    while offset < total:
+        rows = (await db.scalars(
+            select(IndexedArt)
+            .order_by(IndexedArt.id)
+            .offset(offset)
+            .limit(batch_size)
+        )).all()
+        if not rows:
+            break
+        for art in rows:
+            new_norm = normalize_filename(art.filename)
+            new_tags_csv, new_flags = extract_tags(art.filename, art.folder_path)
+            row_changed = False
+            if new_norm != art.name_normalized:
+                art.name_normalized = new_norm
+                row_changed = True
+            if new_tags_csv != (art.tags or ""):
+                art.tags = new_tags_csv
+                row_changed = True
+            for flag, value in new_flags.items():
+                if getattr(art, flag, False) != value:
+                    setattr(art, flag, value)
+                    row_changed = True
+            if row_changed:
+                updated += 1
+        await db.commit()
+        offset += batch_size
+
+    # Registramos la versión completada.
+    kv = await db.get(KeyValue, _NORMALIZATION_VERSION_KEY)
+    if kv:
+        kv.value = str(NORMALIZATION_VERSION)
+    else:
+        db.add(KeyValue(key=_NORMALIZATION_VERSION_KEY, value=str(NORMALIZATION_VERSION)))
+    await db.commit()
+    log.info("Backfill de normalización completado: %d filas actualizadas de %d totales",
+             updated, total)
+    return updated

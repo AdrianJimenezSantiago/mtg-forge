@@ -338,4 +338,49 @@ class IndexedArt(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     mime_type: Mapped[str] = mapped_column(String(64), default="")
     indexed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Tags extraídos del filename y de la ruta de carpeta (CSV, sin espacios en
+    # los tags individuales). Ejemplo: "full_art,retro,anime" para un archivo
+    # llamado "Forest (Full Art) (Retro) [Anime].png".
+    # Los booleanos derivados están en columnas separadas para permitir queries
+    # SQL eficientes con índices simples, sin tener que parsear el CSV en cada
+    # búsqueda. Ver `gdrive_indexer.extract_tags()`.
+    tags: Mapped[str] = mapped_column(String(512), default="")
+    # Flags derivados de tags — indexados para filtrado rápido en el picker.
+    is_full_art: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_borderless: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_extended: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_showcase: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_retro: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_textless: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_promo: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_alt_art: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DFCPair(Base):
+    """Par de nombres front → back de una carta doble-cara.
+
+    Se rellena una vez a la semana desde el bulk data de Scryfall (queries
+    ``is:dfc`` e ``is:meld``). El sync es idempotente: recrear la tabla no
+    duplica filas gracias al UNIQUE en ``front_name``.
+
+    Uso: cuando el usuario importa un mazo por texto plano, si aparece una
+    carta cuyo nombre está en ``front_name``, sabemos automáticamente qué
+    reverso mostrar sin tener que consultar Scryfall carta a carta. Esto
+    acelera imports grandes (100+ cartas) y funciona offline una vez
+    sembrado.
+
+    ``kind``:
+      - "transform"   : DFC clásicos (Delver of Secrets, etc)
+      - "modal_dfc"   : MDFCs de Zendikar Rising en adelante
+      - "meld_top"    : la carta se combina con otra para formar un meld_result
+                        y su mitad es la de arriba
+      - "meld_bottom" : igual pero mitad de abajo
+    """
+    __tablename__ = "dfc_pairs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    front_name: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    back_name: Mapped[str] = mapped_column(String(256))
+    kind: Mapped[str] = mapped_column(String(24), default="transform")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
