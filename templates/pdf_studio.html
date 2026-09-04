@@ -2,6 +2,19 @@
 {% block title %}PDF Studio · {{ deck.name }} · MPC Forge{% endblock %}
 {% block content %}
 
+<style>
+  /* Feedback visual al pasar el ratón sobre una carta clickable del preview.
+     Los elementos con data-slot-kind son emitidos por svgMarkupForPage(). */
+  .preview-page [data-slot-kind] { transition: opacity 120ms ease; }
+  .preview-page:hover [data-slot-kind][data-slot-kind]:hover { opacity: 0.82; }
+  /* Un halo sutil sobre el rect transparente que hay encima de cada slot. */
+  .preview-page rect[data-slot-kind]:hover {
+    stroke: #d4af37;
+    stroke-width: 0.35;
+    fill: rgba(212, 175, 55, 0.06);
+  }
+</style>
+
 {# ============================================================
    PDF Studio v2 — inspirado en proxxied.com/app
    3 columnas: sumario+acciones · preview scrollable · settings
@@ -211,6 +224,15 @@
 
         <div class="flex-1"></div>
 
+        <button @click="openGuide()"
+                class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px]
+                       text-fg-muted hover:text-accent hover:bg-bg-subtle transition
+                       border border-transparent hover:border-border-subtle"
+                title="Abrir guía de opciones (?)">
+          <i data-lucide="circle-help" class="w-3.5 h-3.5"></i>
+          Guía
+        </button>
+
         <span class="font-mono text-fg-faint text-[11px]" x-show="deck">
           <span x-text="opts.backs_layout === 'duplex' && opts.include_backs ? 'Duplex intercalado' : 'Solo fronts'"></span>
         </span>
@@ -235,9 +257,10 @@
               <span class="text-fg-faint/70">·</span>
               <span x-text="page.kind === 'back' ? 'Reversos' + (page.mirror ? ' (espejado)' : '') : 'Fronts'"></span>
             </div>
-            <div class="shadow-modal rounded-sm bg-white overflow-hidden"
+            <div class="shadow-modal rounded-sm bg-white overflow-hidden preview-page"
                  :style="`width: ${geomForKind(page.kind).page_w_mm * pxPerMm}px;
                           height: ${geomForKind(page.kind).page_h_mm * pxPerMm}px;`"
+                 @click="onPreviewClick($event)"
                  x-html="svgMarkupForPage(page)"></div>
           </div>
         </template>
@@ -604,6 +627,22 @@
               </p>
             </label>
 
+            {# ---- Compact fill (solo en modo append) ---- #}
+            <label class="flex items-start gap-2 cursor-pointer text-[11px] p-2 rounded
+                          border border-border-subtle bg-bg-subtle/50"
+                   x-show="opts.backs_layout === 'append'">
+              <input type="checkbox" x-model="opts.backs_compact_fill"
+                     class="accent-accent mt-0.5 flex-shrink-0">
+              <span>
+                <span class="font-medium">Rellenar huecos de la última hoja</span>
+                <span class="block text-[10px] text-fg-faint mt-0.5 leading-snug">
+                  Aprovecha slots libres de la última hoja de fronts con los primeros
+                  reversos antes de empezar hoja nueva. Ideal si vas a cortar cada
+                  carta con guillotina y quieres ahorrar papel.
+                </span>
+              </span>
+            </label>
+
             {# ---- Cardback específico del mazo (v2, feature Sefirot) ---- #}
             <div class="border-t border-border-subtle pt-3"
                  x-show="opts.backs_content === 'all_cards'">
@@ -872,6 +911,476 @@
       </div>
     </div>
   </div>
+
+  {# ============================================================
+     MODAL: Mini art picker (click sobre una carta del preview)
+     Solo lista impresiones existentes; para búsqueda avanzada
+     ofrece un botón "Abrir en el editor completo".
+     ============================================================ #}
+  <div x-show="miniPickerOpen" x-transition x-cloak
+       class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="closeMiniArtPicker()"
+       @keydown.escape.window="closeMiniArtPicker()">
+    <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
+                w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+
+      {# Header #}
+      <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <template x-if="miniPickerCard?.thumbnail_url && miniPickerFace === 'front'">
+            <img :src="miniPickerCard.thumbnail_url"
+                 class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
+          </template>
+          <template x-if="miniPickerCard?.back_thumbnail_url && miniPickerFace === 'back'">
+            <img :src="miniPickerCard.back_thumbnail_url"
+                 class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
+          </template>
+          <div class="min-w-0">
+            <div class="text-[10px] uppercase tracking-wider text-fg-faint">Cambiar arte</div>
+            <div class="font-semibold text-fg truncate"
+                 x-text="(miniPickerFace === 'back' && miniPickerCard?.back_name)
+                   ? miniPickerCard.back_name
+                   : (miniPickerCard?.name || '')"></div>
+            <div class="text-[11px] text-fg-faint"
+                 x-show="miniPickerCard?.is_dfc"
+                 x-text="`Cara ${miniPickerFace === 'back' ? 'B (reverso)' : 'A (frontal)'}`"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button @click="openFullEditor()"
+                  class="text-[11px] text-fg-muted hover:text-accent transition
+                         inline-flex items-center gap-1.5 px-2 py-1 rounded
+                         hover:bg-bg-subtle"
+                  title="Búsqueda avanzada (drives, URLs, filtros)">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            Editor completo
+          </button>
+          <button @click="closeMiniArtPicker()" class="text-fg-faint hover:text-fg transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      {# Body #}
+      <div class="flex-1 overflow-y-auto p-4">
+        <div x-show="miniPickerLoading" class="text-center py-12 text-fg-faint text-sm">
+          <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i>
+          Cargando impresiones…
+        </div>
+        <div x-show="!miniPickerLoading && miniPickerArts.length === 0"
+             class="text-center py-12 text-fg-faint">
+          <i data-lucide="image-off" class="w-8 h-8 mx-auto mb-2 opacity-60"></i>
+          <p class="text-sm">No hay artes disponibles para esta cara.</p>
+          <button @click="openFullEditor()"
+                  class="mt-3 text-xs text-accent hover:text-accent-glow underline">
+            Abrir en el editor completo →
+          </button>
+        </div>
+
+        <div x-show="!miniPickerLoading && miniPickerArts.length > 0"
+             class="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2.5">
+          <template x-for="art in miniPickerArts" :key="miniArtKey(art)">
+            <button @click="pickMiniArt(art, false)"
+                    @dblclick="art.kind === 'scryfall' && pickMiniArt(art, true)"
+                    :disabled="miniPickerBusy"
+                    :class="art.is_chosen
+                      ? 'ring-2 ring-accent border-accent'
+                      : 'border-border-subtle hover:border-accent'"
+                    class="relative bg-bg-subtle rounded border overflow-hidden
+                           text-left transition group
+                           disabled:opacity-60 disabled:cursor-wait
+                           focus:outline-none focus:ring-2 focus:ring-accent">
+              <div class="aspect-[63/88] bg-bg-base overflow-hidden">
+                <img x-show="art.image_small"
+                     :src="art.image_small"
+                     class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                     loading="lazy">
+                <div x-show="!art.image_small"
+                     class="w-full h-full flex items-center justify-center text-fg-faint">
+                  <i data-lucide="image-off" class="w-6 h-6"></i>
+                </div>
+              </div>
+              <div class="px-2 py-1.5 text-[10px] leading-tight">
+                <template x-if="art.kind === 'scryfall'">
+                  <div>
+                    <div class="font-medium text-fg truncate"
+                         x-text="`${(art.set_code || '').toUpperCase()} · #${art.collector_number || '?'}`"></div>
+                    <div class="text-fg-faint truncate" x-text="art.artist || '—'"></div>
+                  </div>
+                </template>
+                <template x-if="art.kind === 'custom'">
+                  <div>
+                    <div class="font-medium text-fg truncate"
+                         x-text="art.filename || 'Custom'"></div>
+                    <div class="text-fg-faint truncate"
+                         x-text="art.variant_label || 'local'"></div>
+                  </div>
+                </template>
+              </div>
+              {# Badges #}
+              <div class="absolute top-1 left-1 flex flex-wrap gap-0.5 max-w-[70%]">
+                <span x-show="art.is_chosen"
+                      class="text-[9px] px-1.5 py-0.5 rounded bg-accent text-bg-base font-bold">
+                  Actual
+                </span>
+                <span x-show="art.is_preferred"
+                      class="text-[9px] px-1.5 py-0.5 rounded bg-accent/80 text-bg-base"
+                      title="Preferida globalmente">★</span>
+              </div>
+              {# Spinner mientras se aplica #}
+              <div x-show="miniPickerBusyKey === miniArtKey(art)"
+                   class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin text-accent"></i>
+              </div>
+            </button>
+          </template>
+        </div>
+
+        <p x-show="!miniPickerLoading && miniPickerArts.length > 0"
+           class="text-[10px] text-fg-faint mt-3 text-center">
+          Click para aplicar solo a este mazo · doble click en un arte oficial para
+          <span class="text-fg-muted">recordarlo globalmente</span>.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# ============================================================
+     MODAL: Guía de opciones
+     ============================================================ #}
+  <div x-show="guideOpen" x-transition x-cloak
+       class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="closeGuide()"
+       @keydown.escape.window="closeGuide()">
+    <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
+                w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+
+      {# Header #}
+      <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="circle-help" class="w-4 h-4 text-accent"></i>
+          <h2 class="font-semibold text-fg">Guía del PDF Studio</h2>
+          <span class="text-fg-faint text-xs">— qué hace cada opción</span>
+        </div>
+        <button @click="closeGuide()" class="text-fg-faint hover:text-fg transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      {# Body — 2 columnas: TOC + contenido #}
+      <div class="flex-1 overflow-hidden grid grid-cols-[200px_1fr] min-h-0">
+        <nav class="border-r border-border-subtle bg-bg-subtle/40 overflow-y-auto p-3">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2 px-2">Secciones</div>
+          <ul class="space-y-0.5 text-[11px]">
+            {% set _toc = [
+              ('flujo',   'workflow',      'Flujo típico'),
+              ('page',    'layout-grid',   'Página & grid'),
+              ('pos',     'move',          'Posicionamiento'),
+              ('bleed',   'square-dashed', 'Bleed'),
+              ('cguides', 'scissors',      'Guías por carta'),
+              ('pguides', 'grid-3x3',      'Guías de página'),
+              ('duplex',  'eye-off',       'Ocultar en duplex'),
+              ('regmarks','crosshair',     'Marcas de registro'),
+              ('backs',   'rotate-3d',     'Reversos'),
+              ('range',   'list-ordered',  'Rango & pie'),
+              ('click',   'mouse-pointer-click', 'Click en el preview'),
+              ('presets', 'sparkles',      'Presets'),
+            ] %}
+            {% for sid, icon, label in _toc %}
+              <li>
+                <button @click="openGuide('{{ sid }}')"
+                        class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded
+                               text-fg-muted hover:text-fg hover:bg-bg-subtle transition">
+                  <i data-lucide="{{ icon }}" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                  <span>{{ label }}</span>
+                </button>
+              </li>
+            {% endfor %}
+          </ul>
+        </nav>
+
+        <div class="overflow-y-auto p-5 space-y-6 text-sm leading-relaxed">
+
+          <section id="guide-section-flujo">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="workflow" class="w-4 h-4 text-accent"></i>Flujo típico
+            </h3>
+            <ol class="list-decimal list-inside space-y-1.5 text-fg-muted text-[13px]">
+              <li>Elige un <b class="text-fg">preset</b> parecido a lo que quieres imprimir
+                  (MPC clásico, con bleed, duplex…). Ajusta encima si hace falta.</li>
+              <li>Revisa el <b class="text-fg">preview</b> con scroll — cada hoja se pinta
+                  como saldrá impresa. Los márgenes azules se pueden activar en la barra superior.</li>
+              <li>Si algo se sale de la hoja, retoca <b class="text-fg">Posicionamiento avanzado</b>
+                  (offset X/Y) hasta cuadrar con tu impresora.</li>
+              <li>Pulsa <b class="text-fg">Generar PDF</b>. El fichero queda listo para descargar
+                  y para enviar a la imprenta (MPC / MakePlayingCards, Silhouette, etc.) o a tu propia impresora.</li>
+              <li>Si quieres las imágenes sueltas (para MPC-Autofill p.ej.), usa <b class="text-fg">Export ZIP</b>.</li>
+            </ol>
+          </section>
+
+          <section id="guide-section-page">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="layout-grid" class="w-4 h-4 text-accent"></i>Página & grid
+            </h3>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">Tamaño</dt>
+                <dd class="text-fg-muted">A4 (210×297 mm) es el estándar europeo. Letter (216×279 mm) para EE. UU. A3 permite 4×3 = 12 cartas por hoja.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Orientación</dt>
+                <dd class="text-fg-muted">Portrait cabe 3×3 cartas MTG en A4 (default MPC). Landscape solo interesa en A3 o para layouts irregulares.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Columnas / Filas</dt>
+                <dd class="text-fg-muted">Cartas por hoja. Pon <code>0</code> para que se autocalcule según el tamaño de la página. El default 3×3 es el layout clásico MPC.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-pos">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="move" class="w-4 h-4 text-accent"></i>Posicionamiento avanzado
+            </h3>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">Gap X / Gap Y (mm)</dt>
+                <dd class="text-fg-muted">Separación entre cartas. Útil para <b>Silhouette / Cricut</b> (necesita hueco para el sensor de corte) o para dejar mordida a la guillotina.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Offset X / Y (mm)</dt>
+                <dd class="text-fg-muted">Mueve TODA la rejilla. Positivo Y = arriba, positivo X = derecha. Sirve para compensar impresoras que sesgan el papel.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Back offset X / Y</dt>
+                <dd class="text-fg-muted">Delta EXTRA que se suma solo a las hojas de reversos. En duplex, muchas impresoras desvían 1–2 mm al voltear el papel — se corrige aquí.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-bleed">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="square-dashed" class="w-4 h-4 text-accent"></i>Bleed
+            </h3>
+            <p class="text-fg-muted text-[13px]">
+              Amplía la imagen fuera del área visible para que la guillotina no deje
+              margen blanco si se desvía. <b>MPC pide 1.875 mm</b>. Para impresión
+              casera con corte manual normalmente <b>no</b> hace falta activarlo.
+            </p>
+          </section>
+
+          <section id="guide-section-cguides">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="scissors" class="w-4 h-4 text-accent"></i>Guías por carta
+            </h3>
+            <p class="text-fg-muted text-[13px] mb-2">
+              Marcas que aparecen alrededor de <b>cada</b> carta para saber dónde cortar.
+            </p>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">Estilo: corners / full</dt>
+                <dd class="text-fg-muted"><b>Corners</b> = 4 marquitas en cada esquina (menos tinta, más limpio). <b>Full</b> = rectángulo completo alrededor de la carta.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Shape: square / round</dt>
+                <dd class="text-fg-muted"><b>Square</b> = líneas rectas. <b>Round</b> = arcos siguiendo el redondeo natural de una carta MTG (~3 mm de radio).</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Pattern: solid / dashed / dotted</dt>
+                <dd class="text-fg-muted">Estilo del trazo. Dashed y dotted gastan menos tinta y a veces cortan más fino con guillotina.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Placement: outside / middle / inside</dt>
+                <dd class="text-fg-muted">
+                  <b>Outside</b>: la marca queda FUERA del área visible — no ensucia el arte.
+                  <b>Middle</b>: centrada en el borde.
+                  <b>Inside</b>: dentro del área — se ve en la carta cortada, así que solo tiene sentido en pruebas de tinta.
+                </dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Largo / color / grosor</dt>
+                <dd class="text-fg-muted">Ajustes visuales. Gris #606060 y 0.4 pt es lo estándar — invisible tras cortar, visible mientras cortas.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-pguides">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="grid-3x3" class="w-4 h-4 text-accent"></i>Guías de página
+            </h3>
+            <p class="text-fg-muted text-[13px]">
+              Líneas que <b>atraviesan toda la hoja</b> (no solo alrededor de cada carta). Útiles para guillotina larga.
+            </p>
+            <dl class="space-y-2 mt-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">None</dt>
+                <dd class="text-fg-muted">Ninguna línea de página (default).</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Full lines</dt>
+                <dd class="text-fg-muted">Líneas continuas de borde a borde. Máxima ayuda para alinear la guillotina, pero atraviesan las cartas.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Corners only</dt>
+                <dd class="text-fg-muted">Solo tramos cortos en los márgenes de la página (fuera de la rejilla). Guía para la guillotina sin ensuciar el interior.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-duplex">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="eye-off" class="w-4 h-4 text-accent"></i>Ocultar en duplex
+            </h3>
+            <p class="text-fg-muted text-[13px]">
+              Para impresión a doble cara, a veces conviene que las guías salgan solo
+              en el frente (para cortar) y NO en el reverso (para no verlas si el
+              papel es fino). Los toggles ocultan cada tipo de guía por cara.
+            </p>
+          </section>
+
+          <section id="guide-section-regmarks">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="crosshair" class="w-4 h-4 text-accent"></i>Marcas de registro
+            </h3>
+            <p class="text-fg-muted text-[13px]">
+              Cuadrados negros en 3 esquinas (TL, TR, BL) que las cortadoras
+              <b>Silhouette Cameo</b>, <b>Cricut</b> y similares leen con su sensor
+              óptico para hacer corte por contorno. <b>Inset</b> = distancia al borde
+              de la hoja; <b>size</b> = tamaño del cuadrado. Solo activar si tienes
+              una cortadora automática — para guillotina no sirve de nada.
+            </p>
+          </section>
+
+          <section id="guide-section-backs">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="rotate-3d" class="w-4 h-4 text-accent"></i>Reversos
+            </h3>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">Contenido: Todas las cartas / Solo DFC</dt>
+                <dd class="text-fg-muted">
+                  <b>Todas</b>: cada slot lleva reverso — las DFC/MDFC usan su cara B,
+                  el resto usan el cardback estándar (o el que hayas puesto en este mazo).
+                  <b>Solo DFC</b>: solo lleva reverso las transform / MDFC / meld; el
+                  resto se queda con hueco.
+                </dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Layout: Al final (append) / Duplex</dt>
+                <dd class="text-fg-muted">
+                  <b>Al final</b>: todas las hojas de fronts primero, luego las de reversos.
+                  Ideal para impresión a UNA cara + guillotina.
+                  <b>Duplex</b>: intercalado front/back con espejo horizontal para imprimir a doble cara con flip por lado largo.
+                </dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Rellenar huecos de la última hoja</dt>
+                <dd class="text-fg-muted">
+                  Solo en modo <i>Al final</i>. Si la última hoja de fronts tiene slots
+                  libres (p.ej. 60 cartas ÷ 9 por hoja = 6 sobra 6, y la última hoja
+                  tendría 6 cartas y 3 huecos), los rellena con los 3 primeros reversos
+                  antes de abrir hoja nueva. <b>Ahorra papel</b> — actívalo si vas a
+                  cortar carta a carta.
+                </dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Cardback global del mazo</dt>
+                <dd class="text-fg-muted">
+                  Puedes asignar un cardback personalizado a este mazo (independiente
+                  del cardback global del sistema). Se aplica a todas las cartas no-DFC.
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-range">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="list-ordered" class="w-4 h-4 text-accent"></i>Rango & pie
+            </h3>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">Rango de páginas</dt>
+                <dd class="text-fg-muted">
+                  Sintaxis <code>1-3,5,7-9</code>. Vacío = todas.
+                  Útil para reimprimir solo la hoja que se estropeó, sin regenerar todo.
+                </dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Pie con nº de página</dt>
+                <dd class="text-fg-muted">
+                  Añade una línea gris chiquitita al pie con "MPC Forge · Fronts · hoja 1/6 · grid 3×3".
+                  Solo se ve en el margen — no invade las cartas.
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section id="guide-section-click">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="mouse-pointer-click" class="w-4 h-4 text-accent"></i>Click en el preview
+            </h3>
+            <p class="text-fg-muted text-[13px]">
+              Cada carta del preview es <b>clickable</b>: al pulsar sobre una
+              se abre un mini selector con todas sus impresiones para poder
+              cambiar el arte sin salir del Studio. Doble click sobre un arte
+              oficial de Scryfall lo <b>recuerda globalmente</b> (esa carta
+              usará esa impresión en todos tus mazos).
+            </p>
+            <p class="text-fg-muted text-[13px] mt-2">
+              Click sobre un cardback abre el picker del cardback del mazo.
+              Si necesitas búsqueda avanzada (Google Drives, URLs, filtros por
+              artista/rareza), usa el botón <b>Editor completo</b> del mini
+              picker — abre el editor de mazos en una pestaña nueva.
+            </p>
+          </section>
+
+          <section id="guide-section-presets">
+            <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
+              <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i>Presets
+            </h3>
+            <dl class="space-y-2 text-[13px]">
+              <div>
+                <dt class="font-medium text-fg">MPC clásico</dt>
+                <dd class="text-fg-muted">3×3 sin bleed, guías por carta en esquinas. Impresión casera o pre-MPC.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Con bleed MPC</dt>
+                <dd class="text-fg-muted">Mismo layout con 1.875 mm de bleed — es lo que pide MakePlayingCards.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Duplex DFC</dt>
+                <dd class="text-fg-muted">Cada hoja de fronts + su hoja espejo de reversos SOLO para DFC. El resto se imprime sin reverso.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Duplex all-backs</dt>
+                <dd class="text-fg-muted">Igual pero con cardback estándar en las cartas no-DFC. Todo listo para plegar.</dd>
+              </div>
+              <div>
+                <dt class="font-medium text-fg">Silhouette</dt>
+                <dd class="text-fg-muted">Añade gap de 3 mm entre cartas + marcas de registro para corte automático con Silhouette / Cricut.</dd>
+              </div>
+            </dl>
+            <p class="text-fg-faint text-[11px] mt-3">
+              Cambiar un preset <b>sobreescribe</b> tus ajustes actuales de esas opciones.
+              Los que no toca el preset se conservan.
+            </p>
+          </section>
+
+        </div>
+      </div>
+
+      {# Footer #}
+      <div class="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3
+                  bg-bg-inset/50">
+        <button @click="closeGuide()"
+                class="px-4 py-1.5 rounded text-sm border border-border-subtle
+                       hover:bg-bg-subtle transition">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -903,6 +1412,24 @@ function pdfStudio(deckId) { return {
   cbLocalArts: [],
   cbPickingId: null,          // id que está siendo aplicado (spinner)
 
+  // --- Mini art picker (click sobre una carta en el preview) ---
+  // Se abre con onPreviewClick(); reutiliza /cards/{id}/prints y
+  // /cards/change-art. Es intencionadamente minimalista comparado con
+  // el picker completo del editor de mazos: aquí solo mostramos las
+  // impresiones existentes en un grid. Si el usuario necesita búsqueda
+  // en Drives o URLs, se le ofrece el botón "Abrir en el editor completo".
+  miniPickerOpen: false,
+  miniPickerCard: null,       // referencia al DeckCard del deck.cards
+  miniPickerFace: 'front',    // 'front' | 'back' (para DFC)
+  miniPickerArts: [],
+  miniPickerLoading: false,
+  miniPickerBusy: false,      // spinner mientras se aplica el cambio
+  miniPickerBusyKey: null,    // qué opción está aplicándose
+
+  // --- Guía de opciones ---
+  guideOpen: false,
+  guideSection: null,         // sección para scrollear al abrir
+
   // Opciones — mismo shape que el dataclass PDFOptions del backend.
   opts: {
     page_size: 'a4',
@@ -931,6 +1458,7 @@ function pdfStudio(deckId) { return {
     include_backs: false,
     backs_layout: 'append',
     backs_content: 'all_cards',
+    backs_compact_fill: true,
     page_range: '',
     show_footer: true,
   },
@@ -1016,7 +1544,10 @@ function pdfStudio(deckId) { return {
     const backX = kind === 'back' ? o.back_offset_x_mm : 0;
     const backY = kind === 'back' ? o.back_offset_y_mm : 0;
     const originX = (pw - gridW) / 2 + o.offset_x_mm + backX;
-    const originY = (ph - gridH) / 2 + o.offset_y_mm + backY;
+    // SVG y-down: la esquina TOP-LEFT de la rejilla en coordenadas de página.
+    // El semántico de offset_y_mm es "positivo = mover ARRIBA" (heredado del
+    // PDF y-up del backend), así que en SVG lo restamos.
+    const originY = (ph - gridH) / 2 - o.offset_y_mm - backY;
 
     return {
       page_w_mm: pw, page_h_mm: ph,
@@ -1045,13 +1576,21 @@ function pdfStudio(deckId) { return {
       if (!c.include) continue;
       const qty = c.quantity || 1;
       for (let i = 0; i < qty; i++) {
-        fronts.push({ name: c.name, thumbnail: c.thumbnail_url || null });
+        // kind: 'card-front'|'card-back'|'cardback' — usado por onPreviewClick
+        // para decidir si abre el mini art picker o el cardback picker.
+        fronts.push({
+          name: c.name, thumbnail: c.thumbnail_url || null,
+          card_id: c.id, face: 'front', kind: 'card-front',
+        });
         if (c.is_dfc && c.back_thumbnail_url) {
-          backs.push({ name: c.back_name || c.name, thumbnail: c.back_thumbnail_url });
+          backs.push({
+            name: c.back_name || c.name, thumbnail: c.back_thumbnail_url,
+            card_id: c.id, face: 'back', kind: 'card-back',
+          });
         } else if (fillAllBacks && cardback) {
-          backs.push({ name: 'Cardback', thumbnail: cardback });
+          backs.push({ name: 'Cardback', thumbnail: cardback, kind: 'cardback' });
         } else if (fillAllBacks) {
-          backs.push({ name: 'Cardback', thumbnail: null });
+          backs.push({ name: 'Cardback', thumbnail: null, kind: 'cardback' });
         } else {
           backs.push(null);
         }
@@ -1066,13 +1605,18 @@ function pdfStudio(deckId) { return {
     if (per <= 0 || !this.deck) return [];
     const { fronts, backs } = this.allSlots;
     const pages = [];
-    const nFront = Math.ceil(fronts.length / per);
-    for (let i = 0; i < nFront; i++) {
-      const chunk = fronts.slice(i * per, i * per + per);
-      pages.push({
-        key: `f${i}`, kind: 'front', mirror: false, chunk: this._chunkWithPositions(chunk, g),
-      });
-      if (this.opts.include_backs && this.opts.backs_layout === 'duplex') {
+
+    // Trocear fronts en chunks de per_page (el último puede quedar corto).
+    const frontChunks = [];
+    for (let i = 0; i < fronts.length; i += per) frontChunks.push(fronts.slice(i, i + per));
+
+    if (this.opts.include_backs && this.opts.backs_layout === 'duplex') {
+      // Espejo (long-edge flip): cada hoja de fronts + su hoja de reversos.
+      for (let i = 0; i < frontChunks.length; i++) {
+        pages.push({
+          key: `f${i}`, kind: 'front', mirror: false,
+          chunk: this._chunkWithPositions(frontChunks[i], g),
+        });
         const bChunk = backs.slice(i * per, i * per + per);
         if (bChunk.some(b => b !== null)) {
           pages.push({
@@ -1081,15 +1625,39 @@ function pdfStudio(deckId) { return {
           });
         }
       }
-    }
-    if (this.opts.include_backs && this.opts.backs_layout === 'append') {
-      const real = backs.filter(b => b !== null);
-      const nBack = Math.ceil(real.length / per);
-      for (let i = 0; i < nBack; i++) {
-        const chunk = real.slice(i * per, i * per + per);
+    } else if (this.opts.include_backs && this.opts.backs_layout === 'append') {
+      // Append: rellenar huecos libres de la ÚLTIMA hoja de fronts primero
+      // (si compact_fill) y luego seguir con hojas nuevas de reversos.
+      const realBacks = backs.filter(b => b !== null);
+      let bIdx = 0;
+      if (this.opts.backs_compact_fill && frontChunks.length) {
+        const last = frontChunks[frontChunks.length - 1];
+        const free = per - last.length;
+        if (free > 0 && realBacks.length > 0) {
+          const take = Math.min(free, realBacks.length);
+          frontChunks[frontChunks.length - 1] = last.concat(realBacks.slice(0, take));
+          bIdx = take;
+        }
+      }
+      for (let i = 0; i < frontChunks.length; i++) {
         pages.push({
-          key: `ba${i}`, kind: 'back', mirror: false,
-          chunk: this._chunkWithPositions(chunk, this.geomForKind('back')),
+          key: `f${i}`, kind: 'front', mirror: false,
+          chunk: this._chunkWithPositions(frontChunks[i], g),
+        });
+      }
+      const remaining = realBacks.slice(bIdx);
+      const gBack = this.geomForKind('back');
+      for (let i = 0, j = 0; i < remaining.length; i += per, j++) {
+        pages.push({
+          key: `ba${j}`, kind: 'back', mirror: false,
+          chunk: this._chunkWithPositions(remaining.slice(i, i + per), gBack),
+        });
+      }
+    } else {
+      for (let i = 0; i < frontChunks.length; i++) {
+        pages.push({
+          key: `f${i}`, kind: 'front', mirror: false,
+          chunk: this._chunkWithPositions(frontChunks[i], g),
         });
       }
     }
@@ -1097,6 +1665,10 @@ function pdfStudio(deckId) { return {
   },
 
   _chunkWithPositions(chunk, g, mirror = false) {
+    // SVG y-down: la primera fila (row 0) es la fila SUPERIOR de la hoja,
+    // por lo que la carta i=0 cae arriba-izquierda (lectura natural 1-2-3
+    // / 4-5-6 / 7-8-9). El backend usa el mismo mapeo de índices pero en
+    // ReportLab (y-up), y por eso allí la fórmula es (rows-1-row).
     const out = [];
     for (let i = 0; i < chunk.length; i++) {
       const slot = chunk[i];
@@ -1105,7 +1677,7 @@ function pdfStudio(deckId) { return {
       let col = i % g.cols;
       if (mirror) col = g.cols - 1 - col;
       const x = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-      const y = g.origin_y_mm + (g.rows - 1 - row) * (g.slot_h_mm + g.gap_y_mm);
+      const y = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
       out.push({ ...slot, x_mm: x, y_mm: y, key: `${i}-${slot.name}` });
     }
     return out;
@@ -1146,24 +1718,48 @@ function pdfStudio(deckId) { return {
       );
     }
 
-    // Imágenes
+    // Imágenes — clickables. data-* atributos leídos por onPreviewClick():
+    //  * kind=card-front|card-back|cardback
+    //  * card-id (solo si kind es card-*): id del DeckCard
+    //  * face: 'front' | 'back'
+    // Un <rect> transparente encima captura el click con área garantizada
+    // incluso si la <image> aún no ha resuelto la carga (Chrome/Firefox
+    // fallan a veces con pointer-events en <image> mientras el href pende).
     for (const slot of page.chunk) {
       if (!slot) continue;
+      const clickAttrs =
+        slot.kind === 'cardback'
+          ? ` data-slot-kind="cardback" style="cursor:pointer"`
+          : slot.card_id != null
+            ? ` data-slot-kind="${esc(slot.kind)}" data-card-id="${slot.card_id}" ` +
+              `data-face="${esc(slot.face)}" style="cursor:pointer"`
+            : '';
       if (slot.thumbnail) {
         parts.push(
           `<image href="${esc(slot.thumbnail)}" ` +
           `x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
           `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
-          `preserveAspectRatio="none"/>`
+          `preserveAspectRatio="none"${clickAttrs}/>`
         );
       } else {
         parts.push(
           `<rect x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
           `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
-          `fill="#242a3a" stroke="#3a4358" stroke-width="0.1"/>` +
+          `fill="#242a3a" stroke="#3a4358" stroke-width="0.1"${clickAttrs}/>` +
           `<text x="${n(slot.x_mm + g.slot_w_mm / 2)}" ` +
           `y="${n(slot.y_mm + g.slot_h_mm / 2)}" ` +
-          `text-anchor="middle" fill="#a8a8b8" font-size="4">${esc(slot.name)}</text>`
+          `text-anchor="middle" fill="#a8a8b8" font-size="4" style="pointer-events:none">${esc(slot.name)}</text>`
+        );
+      }
+      // Rect transparente encima — captura click aunque la <image> tarde
+      // en cargar. Solo si el slot es interactivo.
+      if (clickAttrs) {
+        parts.push(
+          `<rect x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
+          `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
+          `fill="transparent"${clickAttrs}>` +
+          `<title>${esc(slot.kind === 'cardback' ? 'Cambiar cardback' : 'Cambiar arte — ' + slot.name)}</title>` +
+          `</rect>`
         );
       }
     }
@@ -1214,14 +1810,14 @@ function pdfStudio(deckId) { return {
       parts.push(`</g>`);
     }
 
-    // Reg marks
+    // Reg marks (SVG y-down: TL/TR arriba, BL abajo — coincide con el backend).
     if (o.reg_marks_enabled) {
       parts.push(`<g fill="#000">`);
       const s = o.reg_marks_size_mm;
       for (const [cx, cy] of [
-        [o.reg_marks_inset_mm, g.page_h_mm - o.reg_marks_inset_mm],
-        [g.page_w_mm - o.reg_marks_inset_mm, g.page_h_mm - o.reg_marks_inset_mm],
-        [o.reg_marks_inset_mm, o.reg_marks_inset_mm],
+        [o.reg_marks_inset_mm, o.reg_marks_inset_mm],                          // TL
+        [g.page_w_mm - o.reg_marks_inset_mm, o.reg_marks_inset_mm],            // TR
+        [o.reg_marks_inset_mm, g.page_h_mm - o.reg_marks_inset_mm],            // BL
       ]) {
         parts.push(`<rect x="${n(cx - s/2)}" y="${n(cy - s/2)}" width="${n(s)}" height="${n(s)}"/>`);
       }
@@ -1256,14 +1852,20 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        const y_slot = g.origin_y_mm + (g.rows - 1 - row) * (g.slot_h_mm + g.gap_y_mm);
+        // SVG y-down: row 0 arriba, row n-1 abajo.
+        const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         const xL = x_slot + g.bleed_mm;
         const xR = x_slot + g.slot_w_mm - g.bleed_mm;
-        const yB = y_slot + g.bleed_mm;
-        const yT = y_slot + g.slot_h_mm - g.bleed_mm;
+        // yT/yB en SVG: yT = borde superior (menor Y), yB = borde inferior.
+        const yT = y_slot + g.bleed_mm;
+        const yB = y_slot + g.slot_h_mm - g.bleed_mm;
+        // dy en las esquinas: negativo apunta hacia arriba en el sentido
+        // "usuario" pero, ojo, aquí lo interpretamos como delta en el eje
+        // SVG donde +Y es hacia abajo. Las 4 esquinas: TL(-1,-1) TR(+1,-1)
+        // BL(-1,+1) BR(+1,+1).
         for (const [cx, cy, dx, dy] of [
-          [xL, yB, -1, -1], [xR, yB, 1, -1],
-          [xL, yT, -1, 1],  [xR, yT, 1, 1],
+          [xL, yT, -1, -1], [xR, yT, 1, -1],
+          [xL, yB, -1, 1],  [xR, yB, 1, 1],
         ]) {
           let hEnd, vEnd;
           if (o.card_guides_placement === 'outside') { hEnd = cx + dx*L; vEnd = cy + dy*L; }
@@ -1302,7 +1904,8 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        const y_slot = g.origin_y_mm + (g.rows - 1 - row) * (g.slot_h_mm + g.gap_y_mm);
+        // SVG y-down: row 0 arriba.
+        const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         const x = x_slot + g.bleed_mm;
         const y = y_slot + g.bleed_mm;
         const w = g.slot_w_mm - 2 * g.bleed_mm;
@@ -1323,7 +1926,8 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        const y_slot = g.origin_y_mm + (g.rows - 1 - row) * (g.slot_h_mm + g.gap_y_mm);
+        // SVG y-down: row 0 arriba.
+        const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         V.add(round3(x_slot + g.bleed_mm));
         V.add(round3(x_slot + g.slot_w_mm - g.bleed_mm));
         H.add(round3(y_slot + g.bleed_mm));
@@ -1639,6 +2243,137 @@ function pdfStudio(deckId) { return {
       if (window.toast) window.toast(`Error: ${e.message}`, 'error');
     }
   },
+
+  // =====================================================================
+  // Click sobre una carta del preview → mini picker o cardback picker
+  // =====================================================================
+  onPreviewClick(ev) {
+    // Event delegation: buscamos el ancestro más cercano con data-slot-kind.
+    // Cubre <image>, <rect> (placeholder) y el <rect fill=transparent> que
+    // ponemos encima para garantizar el click aunque la imagen tarde.
+    const el = ev.target.closest && ev.target.closest('[data-slot-kind]');
+    if (!el) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const kind = el.getAttribute('data-slot-kind');
+    if (kind === 'cardback') {
+      // Un cardback no es de una carta concreta — abrimos el picker global.
+      this.openCardbackPicker();
+      return;
+    }
+    const cardId = Number(el.getAttribute('data-card-id'));
+    const face = el.getAttribute('data-face') || 'front';
+    if (!cardId) return;
+    this.openMiniArtPicker(cardId, face);
+  },
+
+  // =====================================================================
+  // Mini art picker
+  // =====================================================================
+  async openMiniArtPicker(cardId, face) {
+    const card = (this.deck?.cards || []).find(c => c.id === cardId);
+    if (!card) return;
+    this.miniPickerCard = card;
+    this.miniPickerFace = face;
+    this.miniPickerOpen = true;
+    this.miniPickerArts = [];
+    this.miniPickerLoading = true;
+    this.miniPickerBusy = false;
+    this.miniPickerBusyKey = null;
+    try {
+      const r = await fetch(`/api/decks/${this.deckId}/cards/${cardId}/prints`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const arts = await r.json();
+      // Filtramos por cara — para DFC el usuario clickó una cara concreta.
+      // Para no-DFC solo hay 'front', así que el filtro no hace daño.
+      this.miniPickerArts = arts.filter(a => (a.face || 'front') === face);
+    } catch (e) {
+      console.error('openMiniArtPicker:', e);
+      if (window.toast) window.toast(`Error cargando artes: ${e.message}`, 'error');
+      this.miniPickerArts = [];
+    } finally {
+      this.miniPickerLoading = false;
+      this.$nextTick(() => window.lucide && window.lucide.createIcons());
+    }
+  },
+
+  closeMiniArtPicker() {
+    this.miniPickerOpen = false;
+    this.miniPickerCard = null;
+    this.miniPickerArts = [];
+    this.miniPickerBusyKey = null;
+  },
+
+  miniArtKey(art) {
+    // Clave única y estable para :key y para marcar el que se está aplicando.
+    if (art.kind === 'custom') return `c-${art.custom_art_id}-${art.face}`;
+    return `s-${art.scryfall_id}-${art.face}`;
+  },
+
+  async pickMiniArt(art, rememberGlobally = false) {
+    if (this.miniPickerBusy) return;
+    const card = this.miniPickerCard;
+    if (!card) return;
+    this.miniPickerBusy = true;
+    this.miniPickerBusyKey = this.miniArtKey(art);
+    try {
+      const body = { deck_card_id: card.id, face: art.face || this.miniPickerFace };
+      if (art.kind === 'custom') body.custom_art_id = art.custom_art_id;
+      else { body.scryfall_id = art.scryfall_id; body.remember_globally = !!rememberGlobally; }
+      const r = await fetch(`/api/decks/${this.deckId}/cards/change-art`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      const updated = await r.json();
+      // Actualiza la carta en deck.cards para que el preview refleje el
+      // cambio sin necesidad de re-fetch completo.
+      const cards = this.deck.cards || [];
+      const idx = cards.findIndex(c => c.id === updated.id);
+      if (idx >= 0) cards[idx] = updated;
+      // Refresca is_chosen dentro del picker abierto para feedback inmediato.
+      this.miniPickerArts = this.miniPickerArts.map(a => ({
+        ...a,
+        is_chosen: this.miniArtKey(a) === this.miniArtKey(art),
+      }));
+      if (window.toast) window.toast(
+        rememberGlobally ? 'Arte recordado globalmente' : 'Arte actualizado',
+        'success',
+      );
+    } catch (e) {
+      console.error('pickMiniArt:', e);
+      if (window.toast) window.toast(`Error: ${e.message}`, 'error');
+    } finally {
+      this.miniPickerBusy = false;
+      this.miniPickerBusyKey = null;
+    }
+  },
+
+  openFullEditor() {
+    // Fallback: si el usuario quiere el picker completo (drives, subida por
+    // URL, filtros avanzados), lo mandamos al editor con la carta seleccionada.
+    if (!this.miniPickerCard) return;
+    const cid = this.miniPickerCard.id;
+    window.open(`/decks/${this.deckId}?openArt=${cid}`, '_blank');
+  },
+
+  // =====================================================================
+  // Guía de opciones
+  // =====================================================================
+  openGuide(section = null) {
+    this.guideOpen = true;
+    this.guideSection = section;
+    this.$nextTick(() => {
+      window.lucide && window.lucide.createIcons();
+      if (section) {
+        const el = document.getElementById('guide-section-' + section);
+        if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    });
+  },
+
+  closeGuide() { this.guideOpen = false; this.guideSection = null; },
+
 }}
 </script>
 

@@ -610,6 +610,7 @@ class BuildPDFRequest(BaseModel):
     include_backs: bool = False
     backs_layout: str = "append"           # "append" | "duplex"
     backs_content: str = "all_cards"       # "all_cards" | "dfc_only"
+    backs_compact_fill: bool = True        # aprovecha huecos de la última hoja de fronts
 
     # Rango de páginas
     page_range: str = ""
@@ -793,6 +794,7 @@ async def build_pdf_endpoint(
         include_backs=payload.include_backs,
         backs_layout=_one_of(payload.backs_layout, ("append", "duplex"), "append"),  # type: ignore[arg-type]
         backs_content=_one_of(payload.backs_content, ("dfc_only", "all_cards"), "all_cards"),  # type: ignore[arg-type]
+        backs_compact_fill=payload.backs_compact_fill,
         page_range=payload.page_range[:200],
         show_footer=payload.show_footer,
     )

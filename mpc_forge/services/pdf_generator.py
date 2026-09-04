@@ -24,7 +24,6 @@ mismo modelo mental (mm) para pintar el preview SVG.
 from __future__ import annotations
 
 import logging
-import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +116,11 @@ class PDFOptions:
     # dfc_only  = solo cara-B de DFC (v1 original)
     # all_cards = cada slot lleva reverso: DFC → cara-B, resto → cardback estándar
     backs_content: BacksContent = "all_cards"
+    # Rellenar huecos libres de la última hoja de fronts con reversos antes
+    # de abrir una hoja nueva (SOLO en backs_layout='append'). Ahorra papel
+    # cuando cortas cartas una por una; irrelevante en duplex, donde cada
+    # hoja de fronts tiene su hoja de reversos correspondiente.
+    backs_compact_fill: bool = True
 
     # --- Rango de páginas ---
     page_range: str = ""
@@ -305,22 +309,53 @@ def build_pdf(
     # Los reversos comparten cols/rows (solo cambia origin_x/y por back_offset).
     g_front = compute_geometry(opts, page_kind="front")
     per_page = g_front.cols * g_front.rows
-    front_pages = math.ceil(len(fronts) / per_page)
 
     # --- Orquestación de páginas ---
+    # Cada "página" es (kind, chunk_idx, chunk). ``kind`` afecta:
+    #  * offsets aplicados en compute_geometry (front vs back)
+    #  * espejo horizontal en _render_page (solo back+duplex)
+    #  * flags hide_*_front/back de las guías
+    #  * etiqueta del pie de página
+    # En modo append+compact_fill una hoja puede mezclar fronts y reversos
+    # en el mismo papel (útil imprimiendo a una sola cara y cortando cada
+    # carta por separado). Esa hoja se etiqueta como "front" porque el
+    # grueso del contenido son fronts y no debe espejarse ni desplazarse
+    # con back_offset.
     pages: list[tuple[str, int, list[dict | None]]] = []
-    for pidx in range(front_pages):
-        start = pidx * per_page
-        pages.append(("front", pidx, list(fronts[start:start + per_page])))
-        if opts.include_backs and opts.backs_layout == "duplex":
+
+    # Trocear los fronts en chunks de per_page (el último puede ser corto)
+    front_chunks: list[list[dict | None]] = [
+        list(fronts[i:i + per_page]) for i in range(0, len(fronts), per_page)
+    ]
+
+    if opts.include_backs and opts.backs_layout == "duplex":
+        # Duplex: por cada hoja de fronts, su hoja espejo de reversos.
+        for pidx, chunk in enumerate(front_chunks):
+            pages.append(("front", pidx, chunk))
+            start = pidx * per_page
             back_chunk = backs[start:start + per_page]
             if any(b is not None for b in back_chunk):
                 pages.append(("back", pidx, list(back_chunk)))
-
-    if opts.include_backs and opts.backs_layout == "append":
-        real_backs = [b for b in backs if b is not None]
-        for pidx, start in enumerate(range(0, len(real_backs), per_page)):
-            pages.append(("back", pidx, list(real_backs[start:start + per_page])))
+    elif opts.include_backs and opts.backs_layout == "append":
+        real_backs: list[dict] = [b for b in backs if b is not None]
+        back_idx = 0
+        # Aprovechar huecos libres de la ÚLTIMA hoja de fronts si hay espacio.
+        if opts.backs_compact_fill and front_chunks:
+            last = front_chunks[-1]
+            free = per_page - len(last)
+            if free > 0 and real_backs:
+                take = min(free, len(real_backs))
+                last.extend(real_backs[:take])
+                back_idx = take
+        for pidx, chunk in enumerate(front_chunks):
+            pages.append(("front", pidx, chunk))
+        # Reversos restantes en hojas nuevas
+        remaining = real_backs[back_idx:]
+        for pidx, i in enumerate(range(0, len(remaining), per_page)):
+            pages.append(("back", pidx, list(remaining[i:i + per_page])))
+    else:
+        for pidx, chunk in enumerate(front_chunks):
+            pages.append(("front", pidx, chunk))
 
     selected = _parse_page_range(opts.page_range, len(pages))
     pages_to_render = [pages[i - 1] for i in selected]
