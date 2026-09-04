@@ -186,6 +186,15 @@
       <span x-show="building">Descargando artes…</span>
     </button>
 
+    {# Extras · F3/T10: modal con la previsualización de print runs #}
+    <button @click="openPrintRuns()"
+            class="text-sm bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
+                   px-3 py-2 rounded-md transition flex items-center gap-1.5"
+            title="Cómo dividiría MPC este mazo en tiers oficiales (18/108/612…)">
+      <i data-lucide="split-square-vertical" class="w-4 h-4"></i>
+      Print runs
+    </button>
+
     {# Post-XML: descargar y/o enviar al desktop tool #}
     <template x-if="lastXmlFilename">
       <div class="flex items-center gap-2">
@@ -834,6 +843,38 @@
               </div>
             </div>
 
+            {# Filtro por set canónico [SET NUM] (Fase 2 · T5) #}
+            {# Muestra los codes de set únicos presentes en los drives indexados. #}
+            <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+              <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">
+                Set canónico
+                <span class="text-fg-faint/70 font-normal normal-case tracking-normal ml-1">(tag [SET NUM])</span>
+              </label>
+              <input type="text"
+                     x-model="pickerFilters.driveExpansionCode"
+                     @input.debounce.400ms="onDriveFiltersChanged()"
+                     placeholder="dmu, lea, mom…"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                            text-[11px] uppercase tracking-wider
+                            focus:outline-none focus:border-accent">
+              <p class="text-[9px] text-fg-faint mt-1 leading-tight">
+                Solo artes con tag [SET NUM] del set indicado (case-insensitive).
+              </p>
+            </div>
+
+            {# Extras · F2/T8: dedup perceptual por pHash #}
+            <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+              <label class="flex items-center gap-2 py-1 px-1 cursor-pointer text-fg-muted hover:text-fg">
+                <input type="checkbox"
+                       x-model="pickerFilters.dedupSimilar"
+                       class="accent-accent w-3.5 h-3.5">
+                <span class="text-xs">Colapsar duplicados</span>
+              </label>
+              <p class="text-[9px] text-fg-faint px-1 leading-tight">
+                Agrupa artes de drives distintos con la misma imagen (pHash).
+              </p>
+            </div>
+
             {# Ordenar #}
             <div>
               <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Ordenar</label>
@@ -940,6 +981,13 @@
                         <span class="text-[8px] font-mono bg-black/70 text-accent-glow rounded px-1"
                               x-text="b"></span>
                       </template>
+                      {# Extras · F2/T8: badge "+N iguales" cuando el dedup colapsó otros drives #}
+                      <template x-if="art.__dup_count > 0">
+                        <span class="text-[9px] font-bold bg-indigo-500/90 text-white rounded px-1 py-0.5"
+                              :title="`Este arte también está en ${art.__dup_count} drive(s) más`">
+                          +<span x-text="art.__dup_count"></span> iguales
+                        </span>
+                      </template>
                     </div>
                   </button>
                   {# Botones de acción sobre custom art (eliminar/reverso) #}
@@ -949,6 +997,25 @@
                                    bg-red-500/90 hover:bg-red-500 text-white rounded p-1"
                             title="Eliminar arte custom">
                       <i data-lucide="trash-2" class="w-3 h-3"></i>
+                    </button>
+                  </template>
+                  {# Extras · F2/T8: botón "Ver similares" para artes de drive con pHash. #}
+                  {# Solo se muestra si el arte tiene image_hash (pHash calculado).      #}
+                  <template x-if="art.kind === 'drive' && art.image_hash">
+                    <button @click.stop="openSimilar(art)"
+                            class="absolute bottom-8 right-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                   bg-indigo-500/90 hover:bg-indigo-500 text-white rounded p-1"
+                            title="Ver otros drives con la misma imagen">
+                      <i data-lucide="link-2" class="w-3 h-3"></i>
+                    </button>
+                  </template>
+                  {# Extras · F3/T11: botón "aplicar arte de X a N cartas" para artes con artist conocido. #}
+                  <template x-if="art.artist && art.artist.length > 0">
+                    <button @click.stop="openArtistApply(art)"
+                            class="absolute bottom-8 left-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                   bg-emerald-500/90 hover:bg-emerald-500 text-white rounded p-1"
+                            :title="'Buscar más cartas del mazo con arte de ' + art.artist">
+                      <i data-lucide="users" class="w-3 h-3"></i>
                     </button>
                   </template>
                 </div>
@@ -1004,6 +1071,397 @@
         <div class="text-sm text-fg-muted text-center" x-text="backModal.name"></div>
         <div class="text-[11px] text-fg-faint text-center">
           El reverso se incluye automáticamente en el XML y PDF.
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ============ MODAL DE PRINT RUNS (Extras · F3/T10) ============ #}
+  {# Muestra la partición del mazo en tiers MPC oficiales y permite      #}
+  {# generar los N XMLs correspondientes con un click.                    #}
+  <template x-if="printRunsOpen">
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @click="closePrintRuns()"
+         @keydown.escape.window="closePrintRuns()">
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+                  max-h-[92vh] flex flex-col overflow-hidden"
+           @click.stop>
+
+        {# Header #}
+        <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+              <i data-lucide="split-square-vertical" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-fg">Print runs</h2>
+              <p class="text-xs text-fg-faint">
+                MPC solo acepta pedidos de tamaño fijo (18, 36, …, 612). Aquí ves cómo se dividiría tu mazo.
+              </p>
+            </div>
+          </div>
+          <button @click="closePrintRuns()"
+                  class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition"
+                  title="Cerrar (Esc)">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        {# Controles #}
+        <div class="p-5 border-b border-border-subtle bg-bg-subtle/30 space-y-3 shrink-0">
+          <div class="flex flex-wrap items-center gap-4">
+            {# Modo greedy vs optimized #}
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-fg-muted">Modo:</label>
+              <div class="flex bg-bg-subtle border border-border-subtle rounded overflow-hidden">
+                <button @click="printRunsMode = 'greedy'; loadPrintRuns()"
+                        :class="printRunsMode === 'greedy' ? 'bg-accent text-black' : 'text-fg-muted hover:bg-border-subtle'"
+                        class="text-xs px-3 py-1.5 transition">
+                  Rápido
+                </button>
+                <button @click="printRunsMode = 'optimized'; loadPrintRuns()"
+                        :class="printRunsMode === 'optimized' ? 'bg-accent text-black' : 'text-fg-muted hover:bg-border-subtle'"
+                        class="text-xs px-3 py-1.5 transition"
+                        title="Solver DP: minimiza wasted slots">
+                  Óptimo (menos wasted)
+                </button>
+              </div>
+            </div>
+            {# Max tier opcional (solo en modo greedy) #}
+            <div x-show="printRunsMode === 'greedy'" class="flex items-center gap-2">
+              <label class="text-xs text-fg-muted">Techo por run:</label>
+              <select x-model="printRunsMaxTier" @change="loadPrintRuns()"
+                      class="text-xs bg-bg-subtle border border-border-subtle rounded px-2 py-1
+                             focus:outline-none focus:border-accent">
+                <option value="">Sin límite (612)</option>
+                <option value="108">108 max</option>
+                <option value="180">180 max</option>
+                <option value="270">270 max</option>
+                <option value="360">360 max</option>
+                <option value="486">486 max</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {# Contenido #}
+        <div class="flex-1 overflow-y-auto p-5">
+          <template x-if="printRunsLoading">
+            <div class="text-center py-12 text-fg-faint text-sm">
+              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <p>Calculando particiones…</p>
+            </div>
+          </template>
+
+          <template x-if="!printRunsLoading && printRunsData">
+            <div class="space-y-4">
+              {# Resumen global #}
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Runs totales</div>
+                  <div class="text-2xl font-semibold text-fg mt-1" x-text="printRunsData?.total_runs ?? '—'"></div>
+                </div>
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Cartas</div>
+                  <div class="text-2xl font-semibold text-fg mt-1" x-text="printRunsData?.total_cards ?? '—'"></div>
+                </div>
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Wasted slots</div>
+                  <div class="text-2xl font-semibold mt-1"
+                       :class="(printRunsData?.total_wasted_slots ?? 0) > 0 ? 'text-amber-400' : 'text-fg'"
+                       x-text="printRunsData?.total_wasted_slots ?? '—'"></div>
+                </div>
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Subtotal MPC</div>
+                  <div class="text-2xl font-semibold text-fg mt-1">
+                    $<span x-text="(printRunsData?.total_subtotal_usd ?? 0).toFixed(2)"></span>
+                  </div>
+                </div>
+              </div>
+
+              {# Lista de runs #}
+              <div class="space-y-2">
+                <template x-for="run in (printRunsData?.runs ?? [])" :key="run.run_index">
+                  <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded bg-accent/10 text-accent flex items-center justify-center text-sm font-semibold">
+                          <span x-text="run.run_index + 1"></span>
+                        </div>
+                        <div>
+                          <div class="text-sm font-medium text-fg">
+                            Run <span x-text="run.run_index + 1"></span>
+                            de <span x-text="printRunsData?.total_runs ?? '?'"></span>
+                            · Tier <span x-text="run.tier_size"></span>
+                          </div>
+                          <div class="text-xs text-fg-faint">
+                            <span x-text="run.total_cards"></span> cartas
+                            · <span x-text="run.wasted_slots"></span> wasted
+                            · $<span x-text="run.subtotal_usd.toFixed(2)"></span>
+                          </div>
+                        </div>
+                      </div>
+                      {# Barra visual del fill del run #}
+                      <div class="hidden md:block w-40">
+                        <div class="h-2 bg-bg-subtle rounded-full overflow-hidden">
+                          <div class="h-full bg-accent transition-all"
+                               :style="'width: ' + Math.round(100 * run.total_cards / run.tier_size) + '%'"></div>
+                        </div>
+                        <div class="text-[10px] text-fg-faint mt-1 text-right">
+                          <span x-text="Math.round(100 * run.total_cards / run.tier_size)"></span>% relleno
+                        </div>
+                      </div>
+                    </div>
+                    {# Detalle expandible de cartas #}
+                    <div x-data="{show: false}" class="mt-2">
+                      <button @click="show = !show"
+                              class="text-[10px] text-fg-faint hover:text-fg-muted underline underline-offset-2">
+                        <span x-show="!show" x-text="`Ver ${run.cards.length} cartas`"></span>
+                        <span x-show="show">Ocultar cartas</span>
+                      </button>
+                      <div x-show="show" x-transition
+                           class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-2 text-xs text-fg-muted">
+                        <template x-for="card in run.cards" :key="card.scryfall_id + ':' + card.name">
+                          <div class="flex items-center gap-1 truncate">
+                            <span class="text-fg-faint">×<span x-text="card.quantity"></span></span>
+                            <span class="truncate" x-text="card.name"></span>
+                            <span x-show="card.has_back" class="text-accent" title="Doble cara">◐</span>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="!printRunsLoading && !printRunsData">
+            <div class="text-center py-12 text-fg-faint text-sm">
+              <p>Sin datos aún. Ajusta los controles arriba o cierra este modal.</p>
+            </div>
+          </template>
+        </div>
+
+        {# Footer con acción principal #}
+        <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between shrink-0">
+          <div class="text-xs text-fg-faint">
+            <template x-if="printRunsData && printRunsData.total_runs > 1">
+              <span>
+                Se generarán <strong x-text="printRunsData?.total_runs"></strong> archivos XML
+                (uno por run, mismo cardback y post-processing).
+              </span>
+            </template>
+            <template x-if="printRunsData && printRunsData.total_runs === 1">
+              <span>Un solo run — puedes usar el botón "Generar XML" normal.</span>
+            </template>
+            <template x-if="!printRunsData && !printRunsLoading">
+              <span class="text-fg-faint/60">Cargando datos del mazo…</span>
+            </template>
+          </div>
+          <button @click="buildSplitXml()"
+                  :disabled="printRunsBuilding || !printRunsData || (printRunsData?.total_runs ?? 0) === 0"
+                  class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                         disabled:opacity-50 transition flex items-center gap-2">
+            <i x-show="!printRunsBuilding" data-lucide="download" class="w-4 h-4"></i>
+            <span x-show="!printRunsBuilding" x-text="(printRunsData?.total_runs ?? 0) > 1
+              ? `Generar los ${printRunsData.total_runs} XMLs`
+              : 'Generar XML'"></span>
+            <span x-show="printRunsBuilding">Descargando artes…</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ============ MODAL "VER SIMILARES" (pHash · Extras F2/T8) ============ #}
+  <template x-if="similarOpen">
+    <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @click="closeSimilar()"
+         @keydown.escape.window="closeSimilar()">
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+                  max-h-[85vh] flex flex-col overflow-hidden"
+           @click.stop>
+        <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+              <i data-lucide="link-2" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-fg">Artes similares</h2>
+              <p class="text-xs text-fg-faint truncate">
+                Match perceptual (pHash) del arte <span x-text="similarSourceArt?.__label || ''"></span>
+              </p>
+            </div>
+          </div>
+          <button @click="closeSimilar()" class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-5">
+          <template x-if="similarLoading">
+            <div class="text-center py-12 text-fg-faint text-sm">
+              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <p>Buscando…</p>
+            </div>
+          </template>
+          <template x-if="!similarLoading && similarData">
+            <div>
+              <template x-if="similarData.similar.length === 0">
+                <p class="text-center py-8 text-sm text-fg-faint">
+                  No hay otros drives con imágenes perceptualmente idénticas.
+                </p>
+              </template>
+              <template x-if="similarData.similar.length > 0">
+                <div>
+                  <p class="text-xs text-fg-faint mb-3">
+                    <span x-text="similarData.similar.length"></span> resultado(s) —
+                    ordenados por proximidad de hash.
+                  </p>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <template x-for="sim in similarData.similar" :key="sim.file_id">
+                      <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg overflow-hidden">
+                        <div class="aspect-[63/88] bg-bg-subtle">
+                          <img :src="sim.thumb_url" :alt="sim.filename"
+                               loading="lazy" class="w-full h-full object-cover"
+                               onerror="this.style.opacity=0.3">
+                        </div>
+                        <div class="p-2">
+                          <div class="text-xs text-fg truncate" x-text="sim.filename"></div>
+                          <div class="text-[10px] text-fg-faint">
+                            Source #<span x-text="sim.source_id"></span> ·
+                            hamming <span x-text="sim.hamming"></span>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  {# ============ MODAL "APLICAR ARTE DE X" (Extras F3/T11) ============ #}
+  <template x-if="artistApplyOpen">
+    <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+         @click="closeArtistApply()"
+         @keydown.escape.window="closeArtistApply()">
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+                  max-h-[90vh] flex flex-col overflow-hidden"
+           @click.stop>
+        <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+              <i data-lucide="users" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-fg">Aplicar arte de este artista</h2>
+              <p class="text-xs text-fg-faint truncate">
+                <span x-text="artistApplyArtist"></span>
+              </p>
+            </div>
+          </div>
+          <button @click="closeArtistApply()" class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-5">
+          <template x-if="artistApplyLoading">
+            <div class="text-center py-12 text-fg-faint text-sm">
+              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <p>Consultando Scryfall (puede tardar 10-30s)…</p>
+            </div>
+          </template>
+          <template x-if="!artistApplyLoading && artistApplyData">
+            <div>
+              <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Encontradas</div>
+                  <div class="text-2xl font-semibold text-emerald-400 mt-1" x-text="artistApplyData.matched.length"></div>
+                </div>
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Sin arte de X</div>
+                  <div class="text-2xl font-semibold text-fg-faint mt-1" x-text="artistApplyData.unmatched_count"></div>
+                </div>
+                <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                  <div class="text-[10px] uppercase tracking-wider text-fg-faint">Skipped</div>
+                  <div class="text-2xl font-semibold mt-1"
+                       :class="artistApplyData.skipped_count > 0 ? 'text-amber-400' : 'text-fg'"
+                       x-text="artistApplyData.skipped_count"></div>
+                </div>
+              </div>
+              <template x-if="artistApplyData.skipped_count > 0">
+                <p class="text-xs text-amber-400 mb-3">
+                  ⚠ Se han saltado <span x-text="artistApplyData.skipped_count"></span> cartas por límite
+                  del recomendador. Vuelve a abrir este modal más tarde para completarlas.
+                </p>
+              </template>
+
+              <template x-if="artistApplyData.matched.length === 0">
+                <p class="text-center py-8 text-sm text-fg-faint">
+                  Ninguna carta del mazo tiene una impresión de <strong x-text="artistApplyArtist"></strong>.
+                </p>
+              </template>
+              <template x-if="artistApplyData.matched.length > 0">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs text-fg-faint">Selecciona qué cartas quieres cambiar:</p>
+                    <div class="flex gap-2">
+                      <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = true)"
+                              class="text-xs text-accent hover:underline">
+                        Todas
+                      </button>
+                      <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = false)"
+                              class="text-xs text-fg-faint hover:underline">
+                        Ninguna
+                      </button>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <template x-for="m in artistApplyData.matched" :key="m.oracle_id">
+                      <label class="bg-bg-subtle/30 border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition"
+                             :class="artistApplyChecked[m.oracle_id] ? 'border-accent shadow-glow' : ''">
+                        <div class="aspect-[63/88] bg-bg-subtle relative">
+                          <img :src="m.image_small" :alt="m.card_name"
+                               loading="lazy" class="w-full h-full object-cover object-top"
+                               onerror="this.style.opacity=0.3">
+                          <div class="absolute top-1.5 right-1.5">
+                            <input type="checkbox" :value="true"
+                                   x-model="artistApplyChecked[m.oracle_id]"
+                                   class="accent-accent w-4 h-4">
+                          </div>
+                        </div>
+                        <div class="p-2">
+                          <div class="text-xs font-medium text-fg truncate" x-text="m.card_name"></div>
+                          <div class="text-[10px] text-fg-faint truncate">
+                            <span x-text="m.set_code.toUpperCase()"></span>
+                            #<span x-text="m.collector_number"></span>
+                          </div>
+                        </div>
+                      </label>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between shrink-0">
+          <div class="text-xs text-fg-faint">
+            <span x-text="artistApplySelectedCount()"></span> carta(s) seleccionada(s)
+          </div>
+          <button @click="applyArtistToSelected()"
+                  :disabled="artistApplyApplying || artistApplySelectedCount() === 0"
+                  class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                         disabled:opacity-50 transition flex items-center gap-2">
+            <i x-show="!artistApplyApplying" data-lucide="check" class="w-4 h-4"></i>
+            <span x-show="!artistApplyApplying" x-text="`Aplicar a ${artistApplySelectedCount()} carta(s)`"></span>
+            <span x-show="artistApplyApplying">Aplicando…</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1408,6 +1866,13 @@ function deckEditor(deckId) {
       // y se aplican en SQL usando índices sobre columnas is_full_art, etc.
       driveTagsInclude: [],       // el arte DEBE tener todos los seleccionados
       driveTagsExclude: [],       // el arte NO DEBE tener ninguno
+      // Filtro por set canónico [SET NUM] (Fase 2 · T5). Case-insensitive.
+      // Se aplica en backend como IndexedArt.expansion_code == ?
+      driveExpansionCode: '',
+      // Extras · F2/T8: colapsar artes duplicados por pHash (cross-drive).
+      // Cuando true, los artes de drives distintos con la misma imagen
+      // aparecen como una única tarjeta con badge "+N iguales".
+      dedupSimilar: false,
     },
     // Debounce para re-cargar drives cuando el usuario toca los filtros.
     // Sin esto, cada click dispararía un fetch inmediato → lag y requests
@@ -1431,6 +1896,29 @@ function deckEditor(deckId) {
     tokensLoading: false,
     tokensData: {tokens: [], total_unique: 0, already_in_deck: 0, missing: 0},
     tokensAdding: false,
+
+    // -- Modal de Print Runs (Extras · F3/T10) --
+    printRunsOpen: false,
+    printRunsLoading: false,
+    printRunsBuilding: false,
+    printRunsMode: 'greedy',       // 'greedy' | 'optimized'
+    printRunsMaxTier: '',          // '' | '108' | '180' | …
+    printRunsData: null,           // {total_runs, runs: [...], ...}
+
+    // -- Modal "Ver similares" (pHash · Extras F2/T8) --
+    similarOpen: false,
+    similarLoading: false,
+    similarSourceArt: null,        // el arte de referencia
+    similarData: null,             // {reference_hash, similar: [...]}
+
+    // -- Modal "Aplicar arte de X a N cartas" (Extras F3/T11) --
+    artistApplyOpen: false,
+    artistApplyLoading: false,
+    artistApplyApplying: false,
+    artistApplySource: null,
+    artistApplyArtist: '',
+    artistApplyData: null,         // {matched, unmatched_count, skipped_count, total_deck_uniques}
+    artistApplyChecked: {},        // {oracle_id: bool}
 
     // -- Modal de estadísticas --
     statsOpen: false,
@@ -1799,6 +2287,9 @@ function deckEditor(deckId) {
         const exc = this.pickerFilters.driveTagsExclude || [];
         if (inc.length) params.set('tags_include', inc.join(','));
         if (exc.length) params.set('tags_exclude', exc.join(','));
+        // Extras · F2/T5: filtro por set canónico [SET NUM]
+        const expCode = (this.pickerFilters.driveExpansionCode || '').trim().toLowerCase();
+        if (expCode) params.set('expansion_code', expCode);
 
         const r = await fetch(`/api/drives/search?${params.toString()}`);
         if (!r.ok) return;
@@ -1829,6 +2320,12 @@ function deckEditor(deckId) {
           is_showcase:  !!h.is_showcase,
           is_alt_art:   !!h.is_alt_art,
           drive_tags:   h.tags || [],
+          // Metadatos canónicos [SET NUM] extraídos del filename/folder
+          // (Fase 2 · T5). Solo presente si el filename usa la convención.
+          canonical_set: h.expansion_code || null,
+          canonical_num: h.collector_number || null,
+          // Extras · F2/T8: pHash (para "Ver similares" y dedup cross-drive).
+          image_hash: h.image_hash || null,
           face: 'front',
           score: h.score,
           _drive_hit: h,
@@ -1909,9 +2406,20 @@ function deckEditor(deckId) {
         sublabel = art.filename || '';
         tooltip = art.filename || 'Arte custom';
       } else if (source === 'drives') {
-        label = art.set_name || 'Drive';        // en drives, set_name = source_name
-        sublabel = art.filename || '';
-        tooltip = `${art.set_name} · ${art.filename}`;
+        // Si el drive lleva metadatos canónicos [SET NUM] (Fase 2 · T5),
+        // mostramos "SET · #NUM" arriba y el nombre del source como sublabel.
+        // Consistente con la etiqueta que ya usamos para scryfall.
+        if (art.canonical_set) {
+          label = art.canonical_set.toUpperCase()
+                + (art.canonical_num ? ' · #' + art.canonical_num : '');
+          sublabel = art.set_name || art.filename || '';   // set_name = source_name en drives
+          tooltip = `${art.canonical_set.toUpperCase()} #${art.canonical_num || '?'} · `
+                  + `${art.set_name} · ${art.filename}`;
+        } else {
+          label = art.set_name || 'Drive';    // en drives, set_name = source_name
+          sublabel = art.filename || '';
+          tooltip = `${art.set_name} · ${art.filename}`;
+        }
       } else {
         label = (art.set_code || '?').toUpperCase() + ' · ' + (art.collector_number || '?');
         const year = art.released_at ? art.released_at.slice(0, 4) : '';
@@ -1965,10 +2473,12 @@ function deckEditor(deckId) {
     resetPickerFilters() {
       const hadDriveFilters =
         (this.pickerFilters.driveTagsInclude || []).length > 0 ||
-        (this.pickerFilters.driveTagsExclude || []).length > 0;
+        (this.pickerFilters.driveTagsExclude || []).length > 0 ||
+        (this.pickerFilters.driveExpansionCode || '').length > 0;
       this.pickerFilters = {
         q: '', source: 'all', set: '', artTypes: [], rarities: [], sort: 'recent',
-        driveTagsInclude: [], driveTagsExclude: [],
+        driveTagsInclude: [], driveTagsExclude: [], driveExpansionCode: '',
+        dedupSimilar: false,
       };
       this.pickerVisibleCount = 60;
       // Si los filtros de drive habían cambiado los resultados servidos,
@@ -2046,6 +2556,36 @@ function deckEditor(deckId) {
         if (a.is_chosen !== b.is_chosen) return a.is_chosen ? -1 : 1;
         return cmp(a, b);
       });
+
+      // Extras · F2/T8: dedup perceptual por image_hash cuando el usuario
+      // lo activa. Colapsa artes de drives distintos con el mismo pHash
+      // (misma imagen alojada en varios sitios) en una sola tarjeta que
+      // muestra "+N iguales" como badge — reduce el ruido visual del
+      // picker cuando hay 5 drives con el mismo pool.
+      //
+      // Se aplica DESPUÉS del sort para preservar cuál "sale ganador" (el
+      // primero en el orden actual). Solo dedupea entre `drives` — custom
+      // y scryfall no llevan pHash.
+      if (this.pickerFilters.dedupSimilar) {
+        const seen = new Map();  // image_hash → índice del "ganador"
+        const deduped = [];
+        for (const a of sorted) {
+          const h = a.image_hash;
+          if (a.__source !== 'drives' || !h) {
+            deduped.push(a);
+            continue;
+          }
+          if (seen.has(h)) {
+            // Ya hay un ganador — solo incrementamos el contador de duplicados
+            const winner = deduped[seen.get(h)];
+            winner.__dup_count = (winner.__dup_count || 0) + 1;
+            continue;
+          }
+          seen.set(h, deduped.length);
+          deduped.push(a);
+        }
+        return deduped;
+      }
 
       return sorted;
     },
@@ -2557,6 +3097,215 @@ function deckEditor(deckId) {
 
     closeTokens() {
       this.tokensOpen = false;
+    },
+
+    // ------ Extras · F3/T10: Modal de Print Runs ------
+
+    async openPrintRuns() {
+      this.printRunsOpen = true;
+      this.printRunsData = null;
+      await this.loadPrintRuns();
+      this.$nextTick(() => window.icons?.());
+    },
+
+    async loadPrintRuns() {
+      this.printRunsLoading = true;
+      try {
+        const params = new URLSearchParams();
+        if (this.printRunsMode === 'optimized') {
+          params.set('optimize', 'true');
+        } else if (this.printRunsMaxTier) {
+          params.set('max_tier', this.printRunsMaxTier);
+        }
+        const url = `/api/decks/${this.deckId}/print-runs/preview` +
+                    (params.toString() ? '?' + params.toString() : '');
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('Error obteniendo preview');
+        this.printRunsData = await r.json();
+      } catch (e) {
+        window.toast('Error', e.message);
+        this.printRunsData = null;
+      } finally {
+        this.printRunsLoading = false;
+        this.$nextTick(() => window.icons?.());
+      }
+    },
+
+    async buildSplitXml() {
+      if (this.printRunsBuilding || !this.printRunsData) return;
+      this.printRunsBuilding = true;
+      try {
+        // Nota: reutilizamos max_tier del payload. El "optimized" no viaja
+        // al build-split-xml (que ya usa el greedy interno) — si el user
+        // quiso optimized, se lo aplicaríamos ahí. Por ahora enviamos el
+        // max_tier equivalente y aceptamos la diferencia si existe.
+        const payload = {
+          cardstock: null,
+          foil: false,
+          max_tier: this.printRunsMode === 'greedy' && this.printRunsMaxTier
+            ? parseInt(this.printRunsMaxTier, 10)
+            : null,
+          create_runs: true,
+        };
+        const r = await fetch(`/api/decks/${this.deckId}/build-split-xml`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Error generando XMLs');
+        const data = await r.json();
+        window.toast(`${data.total_runs} XML${data.total_runs > 1 ? 's' : ''} generados`,
+                     `Cartas: ${data.total_cards}. Descargables desde Historial.`);
+        // Cerrar el modal y refrescar el historial de builds del mazo.
+        this.closePrintRuns();
+        // Si tenemos función de refresh de historial (buildHistoryOpen), la invocamos.
+        if (typeof this.loadBuildHistory === 'function') {
+          this.loadBuildHistory();
+        }
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.printRunsBuilding = false;
+      }
+    },
+
+    closePrintRuns() {
+      this.printRunsOpen = false;
+      this.printRunsData = null;
+    },
+
+    // ------ Extras · F2/T8: modal "Ver similares" (pHash) ------
+
+    async openSimilar(art) {
+      if (!art.image_hash) {
+        window.toast('Sin hash', 'Este arte no tiene pHash calculado.');
+        return;
+      }
+      this.similarOpen = true;
+      this.similarSourceArt = art;
+      this.similarLoading = true;
+      this.similarData = null;
+      try {
+        const r = await fetch(`/api/drives/phash/similar/${encodeURIComponent(art.file_id)}?threshold=8&limit=50`);
+        if (!r.ok) throw new Error('Error buscando similares');
+        this.similarData = await r.json();
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.similarLoading = false;
+        this.$nextTick(() => window.icons?.());
+      }
+    },
+
+    closeSimilar() {
+      this.similarOpen = false;
+      this.similarData = null;
+      this.similarSourceArt = null;
+    },
+
+    /**
+     * El usuario selecciona uno de los similares — lo trata como si hubiera
+     * elegido ese arte en el picker principal. Se llama a pickArt() con el
+     * arte reconvertido a la estructura del picker.
+     */
+    async pickSimilar(similar) {
+      // Reconstruir un "arte" tal como lo esperaría pickArt().
+      const art = {
+        kind: 'drive',
+        source_id: similar.source_id,
+        file_id: similar.file_id,
+        image_small: `/api/drives/search`,  // se ignora
+        __source: 'drives',
+        image_hash: similar.image_hash,
+        _drive_hit: similar,
+      };
+      // Aquí podemos delegar en la lógica del picker o simplemente cerrar.
+      // Preferimos: cerrar similar modal y dejar al usuario re-buscar.
+      this.closeSimilar();
+      window.toast('Info', `Elige "${similar.filename}" del listado principal (source ${similar.source_id}).`);
+    },
+
+    // ------ Extras · F3/T11: "Aplicar arte de X a N cartas" ------
+
+    async openArtistApply(art) {
+      if (!art.artist) {
+        window.toast('Sin artist', 'Este arte no expone artista.');
+        return;
+      }
+      this.artistApplyOpen = true;
+      this.artistApplySource = art;
+      this.artistApplyArtist = art.artist;
+      this.artistApplyLoading = true;
+      this.artistApplyData = null;
+      this.artistApplyChecked = {};   // {oracle_id: true/false}
+      try {
+        const r = await fetch(`/api/decks/${this.deckId}/recommend-by-artist`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({artist: art.artist, role: 'all'}),
+        });
+        if (!r.ok) throw new Error('Error consultando el recomendador');
+        this.artistApplyData = await r.json();
+        // Por defecto todas las coincidencias están marcadas
+        for (const m of (this.artistApplyData.matched || [])) {
+          this.artistApplyChecked[m.oracle_id] = true;
+        }
+      } catch (e) {
+        window.toast('Error', e.message);
+      } finally {
+        this.artistApplyLoading = false;
+        this.$nextTick(() => window.icons?.());
+      }
+    },
+
+    closeArtistApply() {
+      this.artistApplyOpen = false;
+      this.artistApplyData = null;
+      this.artistApplySource = null;
+    },
+
+    artistApplySelectedCount() {
+      if (!this.artistApplyData) return 0;
+      return (this.artistApplyData.matched || [])
+        .filter(m => this.artistApplyChecked[m.oracle_id]).length;
+    },
+
+    /**
+     * Aplica las impresiones seleccionadas del recomendador. Reutiliza el
+     * endpoint change-art por-carta iterando (podría optimizarse con un
+     * endpoint bulk en el futuro — ver TODO).
+     */
+    async applyArtistToSelected() {
+      if (!this.artistApplyData || this.artistApplyApplying) return;
+      const matched = (this.artistApplyData.matched || [])
+        .filter(m => this.artistApplyChecked[m.oracle_id]);
+      if (matched.length === 0) {
+        window.toast('Nada seleccionado', 'Marca al menos una carta.');
+        return;
+      }
+      this.artistApplyApplying = true;
+      let ok = 0, fail = 0;
+      try {
+        for (const m of matched) {
+          try {
+            // Reutilizamos change-art por oracle → scryfall_id
+            const r = await fetch(`/api/decks/${this.deckId}/cards/change-art`, {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                oracle_id: m.oracle_id,
+                scryfall_id: m.scryfall_id,
+              }),
+            });
+            if (r.ok) ok++; else fail++;
+          } catch { fail++; }
+        }
+        window.toast(`${ok} arte${ok !== 1 ? 's' : ''} aplicado${ok !== 1 ? 's' : ''}`,
+                     fail > 0 ? `${fail} fallo(s). Recarga para ver los cambios.` : 'Recarga para ver los cambios.');
+        this.closeArtistApply();
+        // Refrescar el mazo — el usuario verá los nuevos artes al recargar
+        if (typeof this.reload === 'function') this.reload();
+        else location.reload();
+      } finally {
+        this.artistApplyApplying = false;
+      }
     },
 
     async addOneToken(token) {

@@ -13,8 +13,9 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from .archidekt import ArchidektSite
-from .base import ImportSite, ImportSiteError, InvalidURLError, get_registry
+from .base import ImportSite, ImportSiteError, InvalidURLError, _slug_to_title, get_registry
 from .cubecobra import CubeCobraSite
+from .deckstats import DeckstatsSite
 from .moxfield import MoxfieldSite
 from .mtggoldfish import MTGGoldfishSite
 from .scryfall import ScryfallSite
@@ -76,6 +77,7 @@ __all__ = [
     "MoxfieldSite",
     "ArchidektSite",
     "CubeCobraSite",
+    "DeckstatsSite",
     "MTGGoldfishSite",
     "ScryfallSite",
     "TappedOutSite",

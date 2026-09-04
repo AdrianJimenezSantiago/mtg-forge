@@ -54,6 +54,20 @@ class InvalidURLError(ImportSiteError):
         self.url = url
 
 
+def _slug_to_title(slug: str) -> str:
+    """Convierte un slug de URL a un título legible.
+
+    Ejemplo: ``my-commander-deck`` → ``My Commander Deck``.
+    Trata guiones y guiones bajos como separadores de palabra.
+    Devuelve una cadena vacía si el slug no aporta información útil
+    (solo contiene dígitos o está vacío).
+    """
+    words = slug.replace("-", " ").replace("_", " ").split()
+    if not words or all(w.isdigit() for w in words):
+        return ""
+    return " ".join(w.capitalize() for w in words)
+
+
 class ImportSite:
     """Base abstracta para importadores de mazos.
 
@@ -162,3 +176,17 @@ class ImportSite:
         preferimos anotar con "//Commanders" antes del bloque.
         """
         raise NotImplementedError
+
+    @classmethod
+    async def retrieve_deck_name(cls, url: str) -> str | None:
+        """Devuelve el nombre del mazo tal como lo tiene el sitio origen.
+
+        Por defecto devuelve ``None`` — en ese caso ``import_from_url``
+        generará un nombre automático. Los sitios que expongan el nombre en
+        su API (Moxfield, Archidekt…) deben sobreescribir este método.
+
+        **Importante**: este método se llama DESPUÉS de ``retrieve_card_list``
+        para que los sitios que hayan cacheado el payload durante la primera
+        llamada no necesiten hacer un segundo fetch.
+        """
+        return None

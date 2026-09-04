@@ -221,6 +221,10 @@ def create_app() -> FastAPI:
     app.include_router(custom_art_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(integrations.router)
+    # Router auxiliar sin prefijo /api — sirve archivos de LocalFolderSource
+    # como URLs `/local-source/{id}/{file_id}` (referenciadas directamente
+    # desde el frontend como <img src>).
+    app.include_router(integrations.local_source_router)
     app.include_router(debug_routes.router)
     return app
 

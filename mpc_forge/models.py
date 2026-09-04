@@ -154,6 +154,7 @@ class Deck(Base):
     custom_cardback_art_id: Mapped[int | None] = mapped_column(
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
+    # --- Post-processing config (Fase 3 · T9) ---
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
@@ -355,6 +356,47 @@ class IndexedArt(Base):
     is_promo: Mapped[bool] = mapped_column(Boolean, default=False)
     is_alt_art: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # --- Metadatos canónicos (Fase 2 · T5) ---
+    # Los usuarios de MPC Autofill convencionalmente etiquetan sus archivos con
+    # `[SET NUM]` (ej. "Opt [DMU 100].png") para indicar exactamente qué
+    # impresión oficial de Scryfall representa el arte custom. Esto permite
+    # vincular sin ambigüedad un arte alternativo a la carta oficial que
+    # reproduce, incluso cuando el `filename` es una traducción, artist rename
+    # o variante estilística.
+    #
+    # `expansion_code`: código del set (3-4 chars, minúsculas). Ej. "dmu", "lea".
+    # `collector_number`: número dentro del set (string por convención Scryfall:
+    #   admite "12★", "4p", "42a" en tokens/promos).
+    # `canonical_source`: cómo se detectó el par (filename, folder_path).
+    #
+    # Ambas columnas son NULL cuando no hay tag `[SET NUM]` — el arte sigue
+    # siendo buscable por nombre igual que antes.
+    expansion_code: Mapped[str | None] = mapped_column(String(8), default=None, index=True)
+    collector_number: Mapped[str | None] = mapped_column(String(16), default=None)
+    canonical_source: Mapped[str] = mapped_column(String(16), default="")
+
+    # --- Perceptual hash para dedupe cross-drive (Fase 2 · T8) ---
+    # Se calcula opcionalmente al indexar (setting `phash.enabled`, off por
+    # default para no gastar bandwidth). El pHash de 64 bits se guarda como
+    # 16 chars hexadecimales — barato de comparar con hamming distance.
+    # Dos artes con hamming ≤ 8 se consideran "misma imagen" (rango típico
+    # para tolerar recompresión/reescalado leve).
+    # NULL = aún no calculado. Ver `phash.py`.
+    image_hash: Mapped[str | None] = mapped_column(String(16), default=None, index=True)
+
+    # --- URLs directas para tipos no-gdrive (Fase Extras · T7) ---
+    # Los tipos de source distintos a Google Drive (HTTPListing, futuros
+    # S3/R2, etc.) tienen URLs de descarga y thumbnail arbitrarias que no
+    # se pueden derivar del ``file_id``. Antes las codificábamos en el
+    # propio file_id con base64 (ver ``HTTPListingSourceType``), lo que
+    # limitaba a URLs cortas y complicaba el debug. Estas columnas
+    # opcionales guardan las URLs directamente: si están rellenas, los
+    # helpers `download_url()` / `thumbnail_url()` del source_type las
+    # devuelven tal cual. NULL = usar la derivación heredada (gdrive
+    # sigue funcionando como siempre).
+    download_url: Mapped[str | None] = mapped_column(String(1024), default=None)
+    thumb_url: Mapped[str | None] = mapped_column(String(1024), default=None)
+
 
 class DFCPair(Base):
     """Par de nombres front → back de una carta doble-cara.
@@ -382,5 +424,44 @@ class DFCPair(Base):
     front_name: Mapped[str] = mapped_column(String(256), unique=True, index=True)
     back_name: Mapped[str] = mapped_column(String(256))
     kind: Mapped[str] = mapped_column(String(24), default="transform")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class OracleArtistCache(Base):
+    """Cache de (oracle_id, artist) para acelerar el recomendador.
+
+    Motivación (Extras · T11): `recommend_by_artist` hace una llamada a
+    Scryfall (`prints_by_oracle_id`) por cada oracle_id del mazo. Con 100
+    cartas eso son 100 requests y ~50s. Cacheamos las relaciones en local
+    para que la segunda vez que se pida el mismo mazo (o parcialmente el
+    mismo) responda en <100ms.
+
+    Cada fila es una (oracle_id, artist) — una carta puede tener múltiples
+    filas si tiene ediciones de varios artistas. UNIQUE compuesto evita
+    duplicados. TTL sugerido: 7 días (Scryfall añade impresiones con cada
+    set, ~cada 3 meses).
+
+    Uso:
+      - Al llamar al recomendador con un artista X, primero consultamos
+        `SELECT oracle_id FROM oracle_artists WHERE artist_folded = ?`
+        para saber qué oracle_ids del mazo tienen impresiones de X sin
+        tocar Scryfall.
+      - Solo caemos a Scryfall para los oracle_ids que faltan del cache
+        o cuyas filas están stale.
+    """
+    __tablename__ = "oracle_artists"
+    __table_args__ = (
+        UniqueConstraint("oracle_id", "artist_folded",
+                         name="uq_oracle_artists_pair"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    oracle_id: Mapped[str] = mapped_column(String(64), index=True)
+    # ``artist_folded`` es el artist con asciifolding + lowercase (misma
+    # normalización que ``recommender._fold``). Indexado para lookup rápido.
+    artist_folded: Mapped[str] = mapped_column(String(128), index=True)
+    # Nombre display del artist (con casing/acentos originales) — para UI.
+    artist_display: Mapped[str] = mapped_column(String(128), default="")
+    # Cuándo se pobló esta fila. Usado para invalidar por TTL.
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 

@@ -18,15 +18,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.config import PATHS, SCRYFALL_USER_AGENT
 from mpc_forge.models import LocalArt, PrintingCache
+from mpc_forge.services.rate_limiter import AsyncRateLimiter
 from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
 
 Face = Literal["front", "back"]
+Prefer = Literal["png", "large", "normal"]
 
-# Rate limit: el CDN de Scryfall (cards.scryfall.io) tolera ~10 req/s.
-# Un sleep suave entre descargas evita 429/403 en tandas de 100+ cartas.
-_DOWNLOAD_SLEEP = 0.11
+# CDN de Scryfall (cards.scryfall.io) tolera ~10 req/s antes de 429/403.
+# Interpretado como "espaciado mínimo entre inicios de descarga": permite
+# solapar respuestas y usar el ancho de banda real, respetando la cadencia.
+_DOWNLOAD_INTERVAL = 0.11
+
+# Concurrencia máxima de descargas simultáneas. Con 8 tenemos throughput
+# real cerca de 1/_DOWNLOAD_INTERVAL sin machacar el CDN.
+_DOWNLOAD_CONCURRENCY = 8
 
 
 class ArtCache:
@@ -44,7 +51,7 @@ class ArtCache:
                 "Accept": "image/png,image/jpeg,image/webp,image/*,*/*;q=0.8",
             },
         )
-        self._download_lock = asyncio.Lock()
+        self._limiter = AsyncRateLimiter(_DOWNLOAD_INTERVAL)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -54,89 +61,151 @@ class ArtCache:
         db: AsyncSession,
         scryfall_id: str,
         face: Face = "front",
-        prefer: Literal["png", "large", "normal"] = "png",
+        prefer: Prefer = "png",
     ) -> LocalArt | None:
-        """Se asegura de que la imagen está en disco y devuelve el LocalArt.
+        """Descarga (si hace falta) y devuelve el ``LocalArt`` para un par
+        ``(scryfall_id, face)``. Commit implícito.
 
-        Si ya está cacheada (por scryfall_id + face) no vuelve a descargar.
-        Si el hash coincide con otra descarga previa, reutiliza el archivo.
+        Para procesar muchas cartas de una tacada usa :meth:`ensure_many`, que
+        paraleliza descargas y hace un único commit final.
         """
-        existing = await db.scalar(
-            select(LocalArt).where(
-                LocalArt.scryfall_id == scryfall_id, LocalArt.face == face
+        results = await self.ensure_many(db, [(scryfall_id, face)], prefer=prefer)
+        return results.get((scryfall_id, face))
+
+    async def ensure_many(
+        self,
+        db: AsyncSession,
+        requests: list[tuple[str, Face]],
+        *,
+        prefer: Prefer = "png",
+        concurrency: int = _DOWNLOAD_CONCURRENCY,
+    ) -> dict[tuple[str, Face], LocalArt | None]:
+        """Asegura que cada par ``(scryfall_id, face)`` tiene arte en disco.
+
+        Estrategia:
+          1. Lee de un tirón los ``LocalArt`` y ``PrintingCache`` existentes.
+          2. Determina qué peticiones son cache-hit, cuáles no tienen printing,
+             y cuáles requieren bajar bytes.
+          3. Descarga en paralelo (con :class:`AsyncRateLimiter` para respetar
+             la cadencia del CDN y un ``Semaphore`` para acotar concurrencia).
+          4. Escribe archivos y ``LocalArt`` de forma secuencial (misma sesión
+             async → no se puede paralelizar) y hace UN commit al final.
+
+        Comparado con llamar ``ensure()`` en un bucle: ahorra ``2*N`` queries
+        de lookup, ``N`` commits, y compone las descargas en paralelo.
+        """
+        if not requests:
+            return {}
+
+        results: dict[tuple[str, Face], LocalArt | None] = {}
+
+        unique = list({(sfid, face) for sfid, face in requests})
+        sfids = {sfid for sfid, _ in unique}
+
+        existing_rows = (
+            await db.scalars(
+                select(LocalArt).where(LocalArt.scryfall_id.in_(sfids))
             )
-        )
-        if existing:
-            file_path = PATHS.art_dir / existing.relative_path
-            if file_path.exists():
-                return existing
-            log.warning("Cache miss en disco para %s (face=%s), rebajando", scryfall_id, face)
+        ).all()
+        existing_by_key: dict[tuple[str, Face], LocalArt] = {
+            (la.scryfall_id, la.face): la for la in existing_rows  # type: ignore[misc]
+        }
 
-        printing = await db.get(PrintingCache, scryfall_id)
-        if not printing:
-            return None
+        printings_by_id: dict[str, PrintingCache] = {
+            p.scryfall_id: p
+            for p in (
+                await db.scalars(
+                    select(PrintingCache).where(PrintingCache.scryfall_id.in_(sfids))
+                )
+            ).all()
+        }
 
-        url = _pick_image_url(printing, face, prefer)
-        if not url:
-            return None
+        needs_download: list[tuple[str, Face, str]] = []
+        for sfid, face in unique:
+            key = (sfid, face)
+            existing = existing_by_key.get(key)
+            if existing:
+                file_path = PATHS.art_dir / existing.relative_path
+                if file_path.exists():
+                    results[key] = existing
+                    continue
+                log.warning(
+                    "Cache miss en disco para %s (face=%s), re-descargando",
+                    sfid, face,
+                )
+            printing = printings_by_id.get(sfid)
+            if not printing:
+                results[key] = None
+                continue
+            url = _pick_image_url(printing, face, prefer)
+            if not url:
+                results[key] = None
+                continue
+            needs_download.append((sfid, face, url))
 
-        try:
-            async with self._download_lock:
-                await asyncio.sleep(_DOWNLOAD_SLEEP)
-                resp = await self._client.get(url)
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
-            log.error("Error descargando %s: %s", url, e)
-            return None
+        if not needs_download:
+            return results
 
-        data = resp.content
-        digest = hashlib.sha256(data).hexdigest()
+        semaphore = asyncio.Semaphore(max(1, concurrency))
 
-        # ¿Existe ya un archivo con este hash? → reutilizamos.
-        dup = await db.scalar(select(LocalArt).where(LocalArt.sha256 == digest))
-        if dup:
+        async def _fetch(sfid: str, face: Face, url: str) -> tuple[str, Face, str, bytes | None]:
+            async with semaphore:
+                await self._limiter.acquire()
+                try:
+                    resp = await self._client.get(url)
+                    resp.raise_for_status()
+                except httpx.HTTPError as e:
+                    log.error("Error descargando %s: %s", url, e)
+                    return sfid, face, url, None
+                return sfid, face, url, resp.content
+
+        downloads = await asyncio.gather(*(_fetch(*t) for t in needs_download))
+
+        # Escritura de disco y BD: secuencial (aiosqlite serialize writes de
+        # todos modos, y AsyncSession no soporta uso concurrente).
+        dirty = False
+        for sfid, face, url, data in downloads:
+            key = (sfid, face)
+            if data is None:
+                results[key] = None
+                continue
+            digest = hashlib.sha256(data).hexdigest()
+
+            dup = await db.scalar(select(LocalArt).where(LocalArt.sha256 == digest))
+            existing = existing_by_key.get(key)
+
+            if dup:
+                rel = dup.relative_path
+            else:
+                ext = _extension_for(url)
+                rel = _hash_relpath(digest, ext)
+                abs_path = PATHS.art_dir / rel
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+                async with aiofiles.open(abs_path, "wb") as f:
+                    await f.write(data)
+
             if existing:
                 existing.sha256 = digest
-                existing.relative_path = dup.relative_path
+                existing.relative_path = rel
                 existing.bytes_size = len(data)
-                await db.commit()
-                return existing
-            art = LocalArt(
-                sha256=digest,
-                relative_path=dup.relative_path,
-                scryfall_id=scryfall_id,
-                face=face,
-                bytes_size=len(data),
-            )
-            db.add(art)
+                results[key] = existing
+            else:
+                art = LocalArt(
+                    sha256=digest,
+                    relative_path=rel,
+                    scryfall_id=sfid,
+                    face=face,
+                    bytes_size=len(data),
+                )
+                db.add(art)
+                existing_by_key[key] = art
+                results[key] = art
+            dirty = True
+
+        if dirty:
             await db.commit()
-            return art
 
-        # Nuevo: guardamos con nombre determinista basado en hash.
-        ext = _extension_for(url)
-        rel = _hash_relpath(digest, ext)
-        abs_path = PATHS.art_dir / rel
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(abs_path, "wb") as f:
-            await f.write(data)
-
-        if existing:
-            existing.sha256 = digest
-            existing.relative_path = rel
-            existing.bytes_size = len(data)
-            await db.commit()
-            return existing
-
-        art = LocalArt(
-            sha256=digest,
-            relative_path=rel,
-            scryfall_id=scryfall_id,
-            face=face,
-            bytes_size=len(data),
-        )
-        db.add(art)
-        await db.commit()
-        return art
+        return results
 
     def absolute_path(self, art: LocalArt) -> Path:
         return (PATHS.art_dir / art.relative_path).resolve()

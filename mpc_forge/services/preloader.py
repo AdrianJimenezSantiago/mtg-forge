@@ -85,8 +85,18 @@ async def cancel(deck_id: int) -> None:
         state.in_progress = False
 
 
+_PRELOAD_CONCURRENCY = 4
+
+
 async def _run(state: PreloadState, scryfall: ScryfallClient) -> None:
-    """Trae impresiones alternativas de cada oracle_id del mazo, secuencial."""
+    """Trae impresiones alternativas de cada oracle_id del mazo en paralelo.
+
+    Cada tarea usa una sesión de BD propia — SQLAlchemy ``AsyncSession`` no
+    soporta uso concurrente en la misma instancia, y aiosqlite serialize los
+    writes a nivel de conexión, así que la concurrencia real se limita a las
+    llamadas de red a Scryfall. Un semáforo pequeño evita saturar tanto el
+    limitador del cliente como el pool de conexiones.
+    """
     try:
         async with session_scope() as db:
             oracle_ids: list[str] = list({
@@ -99,15 +109,25 @@ async def _run(state: PreloadState, scryfall: ScryfallClient) -> None:
                     )
                 ).all() if r
             })
-            state.total = len(oracle_ids)
-            for oid in oracle_ids:
+        state.total = len(oracle_ids)
+        if not oracle_ids:
+            return
+
+        semaphore = asyncio.Semaphore(_PRELOAD_CONCURRENCY)
+
+        async def _one(oid: str) -> None:
+            async with semaphore:
                 try:
-                    await fetch_printings_for_oracle(db, scryfall, oid)
+                    async with session_scope() as task_db:
+                        await fetch_printings_for_oracle(task_db, scryfall, oid)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:  # noqa: BLE001
                     log.debug("Preload de oracle %s falló: %s", oid, e)
-                state.done += 1
+                finally:
+                    state.done += 1
+
+        await asyncio.gather(*(_one(oid) for oid in oracle_ids))
     except asyncio.CancelledError:
         log.debug("Preload del mazo %s cancelado", state.deck_id)
     except Exception as e:  # noqa: BLE001

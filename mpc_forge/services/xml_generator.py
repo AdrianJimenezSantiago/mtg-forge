@@ -35,6 +35,7 @@ Formato mínimo del XML esperado por mpc-autofill:
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -47,12 +48,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.config import DEFAULT_CARDBACK_NAME, PATHS
-from mpc_forge.models import CustomArt, Deck, DeckCard, LocalArt, PrintingCache
+from mpc_forge.models import CustomArt, Deck, DeckCard, PrintingCache
 from mpc_forge.services import custom_art as custom_art_service
-from mpc_forge.services.art_cache import ArtCache
+from mpc_forge.services.art_cache import ArtCache, Face
 from mpc_forge.services.deck_service import upsert_printing
 
 log = logging.getLogger(__name__)
+
+
+_DFC_LAYOUTS = {"transform", "modal_dfc", "double_faced_token", "reversible_card"}
 
 
 @dataclass
@@ -78,111 +82,18 @@ def _slug(text: str) -> str:
     return "".join(c for c in text.lower() if c.isalnum() or c == " ").strip()
 
 
-async def _resolve_deckcard(
-    db: AsyncSession,
-    scryfall: ScryfallClient,
-    art_cache: ArtCache,
-    dc: DeckCard,
-) -> DeckCardResolved | None:
-    """Resuelve una entrada de deck a rutas concretas de disco.
-
-    Prioridad para el frente: custom_art_front_id → arte de Scryfall.
-    Prioridad para el reverso:
-      1. custom_art_back_id (el usuario puso una imagen específica)
-      2. Si la carta es DFC/transform/MDFC: el back oficial de Scryfall
-      3. Si la carta es meld: la imagen del meld_result (Brisela para Bruna/Gisela).
-         Nota: Scryfall solo tiene la imagen completa de Brisela, no las mitades
-         separadas. Para las mitades exactas, el usuario debe añadir custom back
-         (p.ej. "Brisela Top.png" y "Brisela Bottom.png" en custom_art/).
-    """
-    import json as _json
-
-    front_path: Path | None = None
-    back_path: Path | None = None
-    back_name: str | None = None
-
-    # 1) Frente custom
-    if dc.custom_art_front_id:
-        ca_front = await db.get(CustomArt, dc.custom_art_front_id)
-        if ca_front:
-            abs_p = custom_art_service.absolute_path(ca_front)
-            if abs_p.exists():
-                front_path = abs_p
-            else:
-                log.warning(
-                    "custom_art %s no existe en disco, cayendo al oficial", ca_front.relative_path
-                )
-
-    # 2) Reverso custom (independiente del frente)
-    if dc.custom_art_back_id:
-        ca_back = await db.get(CustomArt, dc.custom_art_back_id)
-        if ca_back:
-            abs_p = custom_art_service.absolute_path(ca_back)
-            if abs_p.exists():
-                back_path = abs_p
-                back_name = ca_back.filename
-
-    # 3) Necesitamos PrintingCache para saber si es DFC/meld y para rellenar
-    #    el frente oficial si no hay custom.
-    printing = await db.get(PrintingCache, dc.scryfall_id)
-    if not printing:
-        card = await scryfall.by_id(dc.scryfall_id)
-        if not card:
-            log.warning("No se encontró printing para %s (%s)", dc.name, dc.scryfall_id)
-            return None
-        printing = await upsert_printing(db, card)
-        await db.commit()
-
-    is_dfc = printing.layout in {
-        "transform", "modal_dfc", "double_faced_token", "reversible_card"
-    }
-    is_meld = printing.layout == "meld"
-
-    # 4) Frente oficial si aún no está
-    if front_path is None:
-        front = await art_cache.ensure(db, dc.scryfall_id, face="front")
-        if not front:
-            log.warning("No se pudo descargar arte para %s (%s)", dc.name, dc.scryfall_id)
-            return None
-        front_path = art_cache.absolute_path(front)
-
-    # 5) Reverso oficial: DFC/MDFC → back de la propia carta
-    if is_dfc and back_path is None:
-        back = await art_cache.ensure(db, dc.scryfall_id, face="back")
-        if back:
-            back_path = art_cache.absolute_path(back)
-            back_name = printing.back_name
-
-    # 6) Reverso para MELD: buscamos el meld_result en related_parts y
-    #    usamos su imagen completa como back. No es ideal (MTG oficial usa las
-    #    mitades separadas), pero es la mejor aproximación automática. El usuario
-    #    puede sobreescribir con custom_art_back_id.
-    if is_meld and back_path is None and printing.related_parts:
-        try:
-            related = _json.loads(printing.related_parts)
-        except (ValueError, TypeError):
-            related = []
-        meld_result_id = next(
-            (p["id"] for p in related if p.get("component") == "meld_result"),
-            None,
-        )
-        if meld_result_id:
-            back = await art_cache.ensure(db, meld_result_id, face="front")
-            if back:
-                back_path = art_cache.absolute_path(back)
-                # Nombre del meld_result para el <name> del XML
-                mr = await db.get(PrintingCache, meld_result_id)
-                back_name = (mr.name if mr else "meld back") + " (meld)"
-
-    return DeckCardResolved(
-        name=dc.name,
-        quantity=dc.quantity,
-        scryfall_id=dc.scryfall_id,
-        front_path=front_path,
-        back_path=back_path,
-        back_name=back_name,
-        query=_slug(dc.name),
-    )
+def _meld_result_id(printing: PrintingCache) -> str | None:
+    """Extrae el ``scryfall_id`` del meld_result del ``related_parts`` JSON."""
+    if not printing.related_parts:
+        return None
+    try:
+        related = json.loads(printing.related_parts)
+    except (ValueError, TypeError):
+        return None
+    for part in related:
+        if part.get("component") == "meld_result":
+            return part.get("id")
+    return None
 
 
 async def resolve_deck_for_xml(
@@ -194,7 +105,16 @@ async def resolve_deck_for_xml(
 ) -> list[DeckCardResolved]:
     """Resuelve todas las cartas del mazo descargando artes faltantes.
 
-    ``on_progress(card_name)`` se llama tras descargar cada carta. Se usa desde
+    Estrategia (batch en 3 fases, era 1 fila cada vez):
+
+      A. Precarga en 3 queries: ``DeckCard`` del mazo, ``CustomArt`` referenciados,
+         y ``PrintingCache`` de las scryfall_ids implicadas.
+      B. Rellena huecos (printings ausentes o meld_results no cacheados) con
+         ``scryfall.by_id`` — solo se llama cuando hace falta.
+      C. Delega en :meth:`ArtCache.ensure_many` la descarga paralela de todos
+         los artes oficiales requeridos, con un único commit al final.
+
+    ``on_progress(card_name)`` se llama tras terminar cada carta. Se usa desde
     los endpoints de build para actualizar el tracker de progreso — pasar
     ``None`` (default) desactiva el tracking.
     """
@@ -205,18 +125,180 @@ async def resolve_deck_for_xml(
             .order_by(DeckCard.role, DeckCard.name)
         )
     ).all()
+    if not cards:
+        return []
+
+    custom_ids = {c.custom_art_front_id for c in cards if c.custom_art_front_id}
+    custom_ids |= {c.custom_art_back_id for c in cards if c.custom_art_back_id}
+    customs_by_id: dict[int, CustomArt] = {}
+    if custom_ids:
+        customs_by_id = {
+            ca.id: ca
+            for ca in (
+                await db.scalars(select(CustomArt).where(CustomArt.id.in_(custom_ids)))
+            ).all()
+        }
+
+    scryfall_ids = {c.scryfall_id for c in cards if c.scryfall_id}
+    printings_by_id: dict[str, PrintingCache] = {}
+    if scryfall_ids:
+        printings_by_id = {
+            p.scryfall_id: p
+            for p in (
+                await db.scalars(
+                    select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
+                )
+            ).all()
+        }
+
+    missing_printings = [sfid for sfid in scryfall_ids if sfid not in printings_by_id]
+    if missing_printings:
+        for sfid in missing_printings:
+            card = await scryfall.by_id(sfid)
+            if card:
+                printings_by_id[sfid] = await upsert_printing(db, card)
+        await db.commit()
+
+    meld_result_ids: dict[str, str] = {}
+    for dc in cards:
+        printing = printings_by_id.get(dc.scryfall_id)
+        if printing and printing.layout == "meld" and not dc.custom_art_back_id:
+            mrid = _meld_result_id(printing)
+            if mrid:
+                meld_result_ids[dc.scryfall_id] = mrid
+
+    if meld_result_ids:
+        meld_ids = set(meld_result_ids.values())
+        missing_meld = [m for m in meld_ids if m not in printings_by_id]
+        if missing_meld:
+            for sfid in missing_meld:
+                card = await scryfall.by_id(sfid)
+                if card:
+                    printings_by_id[sfid] = await upsert_printing(db, card)
+            await db.commit()
+
+    art_requests: list[tuple[str, Face]] = []
+    for dc in cards:
+        printing = printings_by_id.get(dc.scryfall_id)
+        needs_official_front = not dc.custom_art_front_id or (
+            dc.custom_art_front_id not in customs_by_id
+        )
+        if needs_official_front and dc.scryfall_id:
+            art_requests.append((dc.scryfall_id, "front"))
+        if dc.custom_art_back_id and dc.custom_art_back_id in customs_by_id:
+            continue
+        if printing and printing.layout in _DFC_LAYOUTS:
+            art_requests.append((dc.scryfall_id, "back"))
+        elif dc.scryfall_id in meld_result_ids:
+            art_requests.append((meld_result_ids[dc.scryfall_id], "front"))
+
+    art_map = await art_cache.ensure_many(db, art_requests)
+
     resolved: list[DeckCardResolved] = []
     for dc in cards:
-        r = await _resolve_deckcard(db, scryfall, art_cache, dc)
-        if r:
-            resolved.append(r)
+        printing = printings_by_id.get(dc.scryfall_id)
+        front_path: Path | None = None
+        back_path: Path | None = None
+        back_name: str | None = None
+
+        if dc.custom_art_front_id:
+            ca_front = customs_by_id.get(dc.custom_art_front_id)
+            if ca_front:
+                abs_p = custom_art_service.absolute_path(ca_front)
+                if abs_p.exists():
+                    front_path = abs_p
+                else:
+                    log.warning(
+                        "custom_art %s no existe en disco, cayendo al oficial",
+                        ca_front.relative_path,
+                    )
+
+        if dc.custom_art_back_id:
+            ca_back = customs_by_id.get(dc.custom_art_back_id)
+            if ca_back:
+                abs_p = custom_art_service.absolute_path(ca_back)
+                if abs_p.exists():
+                    back_path = abs_p
+                    back_name = ca_back.filename
+
+        if front_path is None and dc.scryfall_id:
+            la = art_map.get((dc.scryfall_id, "front"))
+            if la:
+                front_path = art_cache.absolute_path(la)
+
+        if front_path is None:
+            log.warning("No se pudo resolver frente para %s (%s)", dc.name, dc.scryfall_id)
+        else:
+            if back_path is None and printing and printing.layout in _DFC_LAYOUTS:
+                la = art_map.get((dc.scryfall_id, "back"))
+                if la:
+                    back_path = art_cache.absolute_path(la)
+                    back_name = printing.back_name
+            elif back_path is None and dc.scryfall_id in meld_result_ids:
+                mrid = meld_result_ids[dc.scryfall_id]
+                la = art_map.get((mrid, "front"))
+                if la:
+                    back_path = art_cache.absolute_path(la)
+                    mr = printings_by_id.get(mrid)
+                    back_name = (mr.name if mr else "meld back") + " (meld)"
+
+            resolved.append(DeckCardResolved(
+                name=dc.name,
+                quantity=dc.quantity,
+                scryfall_id=dc.scryfall_id,
+                front_path=front_path,
+                back_path=back_path,
+                back_name=back_name,
+                query=_slug(dc.name),
+            ))
+
         if on_progress is not None:
             try:
                 on_progress(dc.name)
             except Exception as e:  # noqa: BLE001
-                # Nunca romper el build por un fallo en el tracking.
                 log.debug("Progress callback falló: %s", e)
+
     return resolved
+
+
+async def plan_deck_slots(
+    db: AsyncSession,
+    deck: Deck,
+) -> list[DeckCardResolved]:
+    """Versión ligera de ``resolve_deck_for_xml`` que NO descarga arte.
+
+    Uso: previews que solo necesitan saber cuántas cartas y qué reversos
+    (para split de print runs). Los ``front_path``/``back_path`` van a
+    placeholders vacíos — es correcto porque el caller no genera XML,
+    solo cuenta slots.
+
+    `back_path` se pone como placeholder no-None cuando la carta es DFC/MDFC
+    (según el PrintingCache), así el split de print runs puede distinguirlas
+    para colocar reversos correctos si se combinan con `build_split_xml`.
+    """
+    from mpc_forge.models import PrintingCache
+    cards = (
+        await db.scalars(
+            select(DeckCard)
+            .where(DeckCard.deck_id == deck.id, DeckCard.include.is_(True))
+            .order_by(DeckCard.role, DeckCard.name)
+        )
+    ).all()
+    out: list[DeckCardResolved] = []
+    _placeholder = Path("")  # nunca se leerá — solo cuenta como "hay back"
+    for dc in cards:
+        # Consultamos el PrintingCache solo por `back_name` — el resto no
+        # importa para el plan de slots.
+        pc = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
+        has_back = bool(pc and pc.back_name)
+        out.append(DeckCardResolved(
+            name=dc.name, quantity=dc.quantity, scryfall_id=dc.scryfall_id or "",
+            front_path=_placeholder,
+            back_path=_placeholder if has_back else None,
+            back_name=pc.back_name if pc else None,
+            query="",
+        ))
+    return out
 
 
 def build_xml(
@@ -276,8 +358,6 @@ def build_xml(
             slots_with_custom_back.update(slots)
 
     # --- Cardback global aplicado explícitamente a los slots restantes ---
-    # Si hay cardback_path y hay slots sin back propio, generamos un <card>
-    # en <backs> con esos slots agrupados (formato usado por mpcfill.com).
     if cardback_path:
         remaining = [s for s in range(slot_cursor) if s not in slots_with_custom_back]
         if remaining:
@@ -290,7 +370,6 @@ def build_xml(
         # Fallback global (por si el tool no lee <backs>)
         ET.SubElement(root, "cardback").text = str(cardback_path)
 
-    # Bonito para debug.
     pretty = minidom.parseString(ET.tostring(root, encoding="utf-8")).toprettyxml(indent="  ")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(pretty, encoding="utf-8")

@@ -160,6 +160,53 @@ def normalize_deck(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Cabeceras de sección reconocidas. La sección "activa" en la state machine
+# se aplica a todas las cartas siguientes hasta la próxima cabecera. Los
+# nombres canónicos son los valores del dict; matchean varias variantes
+# comunes usadas por Moxfield, MTGA, Deckstats, etc.
+_SECTION_ALIASES: dict[str, str] = {
+    "commander": "commander",
+    "commanders": "commander",
+    "companion": "companion",
+    "companions": "companion",
+    "mainboard": "mainboard",
+    "main": "mainboard",
+    "deck": "mainboard",
+    "sideboard": "sideboard",
+    "side": "sideboard",
+    "maybeboard": "maybeboard",
+    "maybe": "maybeboard",
+    "tokens": "tokens",
+}
+
+
+def _detect_section_header(line: str) -> str | None:
+    """Devuelve el nombre canónico de sección si `line` es una cabecera.
+
+    Reconoce:
+      - "//Commanders", "// Commanders" (formato Moxfield/MPCFill)
+      - "Mainboard", "Mainboard (99)" (formato humano)
+      - "SB:" en prefijo → sección sideboard (formato MTGO)
+    Devuelve None si no es cabecera. Case-insensitive.
+    """
+    s = line.strip()
+    if not s:
+        return None
+    # Formato "//Section" o "// Section"
+    if s.startswith("//"):
+        candidate = s.lstrip("/").strip().lower()
+        # También aceptamos "//deck" seguido de "(99)"
+        candidate = candidate.split("(", 1)[0].strip()
+        return _SECTION_ALIASES.get(candidate)
+    # Formato "Section" o "Section (N)" — solo si esa palabra suelta encaja.
+    # Requerimos que la línea NO empiece por dígitos (una cantidad como "4
+    # Sideboard" NO es cabecera, es una carta llamada Sideboard con qty 4).
+    m = re.match(r"^([A-Za-z]+)(?:\s*\(\d+\))?\s*$", s)
+    if m:
+        return _SECTION_ALIASES.get(m.group(1).lower())
+    return None
+
+
 def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
     """Parser para copy-paste tradicional. Formatos aceptados:
        "4 Lightning Bolt"
@@ -167,6 +214,17 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
        "1 Sol Ring (C21) 263"
        "1 Sol Ring [C21] 263"
        "Lightning Bolt"  (asume 1)
+       "SB: 2 Blood Moon" (prefijo MTGO — asigna sideboard)
+
+    State machine (Extras · F1/T3): las cabeceras `//Commanders`,
+    `//Mainboard`, `Sideboard`, `Maybeboard`, etc. establecen el rol que
+    aplica a las cartas siguientes hasta el próximo cambio. Compatible con
+    los ImportSites (Moxfield, Archidekt, MTGGoldfish) que emiten estos
+    markers y con formatos humanos comunes (MTGA, MTGO, Deckstats).
+
+    Sin cabeceras (import "puro" de texto): todo va a "mainboard" y
+    ``create_deck_from_entries`` decide commander vía type_line — el
+    comportamiento antiguo se preserva por retro-compat.
 
     Cada entrada incluye ``raw_line`` con el texto tal cual lo escribió el
     usuario, para que si la resolución falla podamos mostrárselo de vuelta
@@ -179,18 +237,37 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
         r"(?:\s+[\(\[](?P<set>[A-Za-z0-9]{2,6})[\)\]]"
         r"\s*(?P<num>\S+)?)?\s*$"
     )
+    # Prefijo MTGO "SB:" → sideboard.
+    sb_prefix_re = re.compile(r"^\s*SB:\s*", re.IGNORECASE)
+
+    current_role = "mainboard"
+
     for raw in text.splitlines():
         stripped = raw.strip()
-        if not stripped or stripped.startswith("//") or stripped.startswith("#"):
+        if not stripped or stripped.startswith("#"):
             continue
-        # Cabeceras tipo "Mainboard (99)" u otras — ignoramos las que no tienen nombre.
-        if re.match(r"^(mainboard|commander|sideboard|maybeboard|tokens)\b", raw, re.I):
+
+        # 1) ¿Es una cabecera de sección? Actualiza state y salta.
+        section = _detect_section_header(raw)
+        if section is not None:
+            current_role = section
             continue
-        m = line_re.match(raw)
+
+        # 2) Prefijo MTGO "SB:" fuerza sideboard para ESTA línea concreta
+        # sin cambiar la sección actual (útil en decklists mezcladas).
+        role_for_this_line = current_role
+        if sb_prefix_re.match(raw):
+            role_for_this_line = "sideboard"
+            raw_clean = sb_prefix_re.sub("", raw)
+        else:
+            raw_clean = raw
+
+        m = line_re.match(raw_clean)
         if not m:
             # intento más simple: "Lightning Bolt"
             entries.append({
-                "name": stripped, "quantity": 1, "set": None, "number": None,
+                "name": raw_clean.strip(), "quantity": 1, "set": None, "number": None,
+                "role": role_for_this_line,
                 "raw_line": raw,
             })
             continue
@@ -199,6 +276,7 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
             "quantity": int(m.group("qty") or 1),
             "set": (m.group("set") or "").lower() or None,
             "number": m.group("num") or None,
+            "role": role_for_this_line,
             "raw_line": raw,
         })
     return entries

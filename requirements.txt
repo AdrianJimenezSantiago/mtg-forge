@@ -14,3 +14,8 @@ python-slugify>=8.0
 truststore>=0.10
 reportlab>=4.2
 rapidfuzz>=3.9
+# Opcionales — usadas por la feature pHash cross-drive dedupe (Fase 2 · T8).
+# Si no están instaladas, la feature queda desactivada silenciosamente sin
+# afectar al resto de la app. Instalar con:  pip install Pillow imagehash
+Pillow>=10.0
+imagehash>=4.3

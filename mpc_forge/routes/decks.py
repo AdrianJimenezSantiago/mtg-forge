@@ -1681,9 +1681,12 @@ async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[D
 
 
 async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
-    """Versión single-card (para endpoints que devuelven una sola carta).
+    """Versión single-card (para endpoints que devuelven UNA sola carta).
 
-    Para vistas completas de mazo, usar `_deck_to_view` que hace batch de todo.
+    ATENCIÓN: no llamar a este método en un bucle ``for``. Hace ~5 queries
+    por carta y regresaríamos al N+1 que ya está resuelto. Para lotes de
+    cartas usa :func:`_deckcards_to_views` (5 queries fijas), y para vistas
+    completas de mazo :func:`_deck_to_view`.
     """
     printing = await db.get(PrintingCache, dc.scryfall_id)
     thumb: str | None = None
@@ -1908,4 +1911,176 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             level=val.level,
             breakdown=val.breakdown,
         ),
+    )
+
+
+# ---- Recomendador de artes por artista canónico (Fase 3 · T11) --------------
+
+
+class ArtistRecommendRequest(BaseModel):
+    """Payload del recomendador. Solo requiere ``artist``; los oracle_ids
+    se derivan del deck en el servidor (evita al frontend enviarlos)."""
+    artist: str
+    # Opcional: filtro por rol para acotar (mainboard, commander, all).
+    role: str = "all"
+
+
+class ArtistMatchView(BaseModel):
+    oracle_id: str
+    card_name: str
+    scryfall_id: str
+    set_code: str
+    set_name: str
+    collector_number: str
+    artist: str
+    image_small: str | None = None
+    image_normal: str | None = None
+    released_at: str | None = None
+    is_full_art: bool = False
+    is_promo: bool = False
+
+
+class ArtistRecommendResponse(BaseModel):
+    artist_query: str
+    matched: list[ArtistMatchView]
+    unmatched_count: int
+    skipped_count: int
+    total_deck_uniques: int
+
+
+@router.post(
+    "/{deck_id}/recommend-by-artist",
+    response_model=ArtistRecommendResponse,
+)
+async def recommend_by_artist(
+    deck_id: int,
+    payload: ArtistRecommendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> ArtistRecommendResponse:
+    """Sugiere impresiones del mazo hechas por ``artist``.
+
+    Uso típico: el usuario elige un arte de X para su carta A y quiere ver
+    qué OTRAS cartas del mazo tienen también arte de X. El endpoint devuelve
+    la mejor cover por cada carta (regular > full art > promo; más reciente).
+
+    Limitado a `MAX_ORACLES_PER_REQUEST` cartas únicas por request (~25);
+    el resto vuelve en `skipped_count` para que la UI ofrezca "cargar más".
+    """
+    from mpc_forge.services.recommender import recommend_by_artist as _rec
+
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    # Filtro de rol si el usuario acotó ("commander", "mainboard", "all").
+    role = (payload.role or "all").lower()
+    if role not in {"all", "mainboard", "commander", "sideboard"}:
+        role = "all"
+
+    # DeckCard ya persiste el oracle_id de cada carta al importar — no
+    # necesitamos JOIN a PrintingCache, evitando N+1 y una query extra.
+    stmt = select(DeckCard.oracle_id).where(
+        DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
+    )
+    if role != "all":
+        stmt = stmt.where(DeckCard.role == role)
+    rows = (await db.execute(stmt)).all()
+    oracle_ids = [r[0] for r in rows if r[0]]
+    total_unique = len(set(oracle_ids))
+
+    result = await _rec(scryfall, oracle_ids, payload.artist, db=db)
+    return ArtistRecommendResponse(
+        artist_query=result.artist_query,
+        matched=[ArtistMatchView(**vars(m)) for m in result.matched],
+        unmatched_count=len(result.unmatched),
+        skipped_count=len(result.skipped),
+        total_deck_uniques=total_unique,
+    )
+
+
+# ---- Recomendador por estilo (Extras · F3/T11) ------------------------------
+
+
+class StyleRecommendRequest(BaseModel):
+    """Payload para recommend-by-style. Al menos un criterio debe activarse."""
+    set_code: str | None = None
+    borderless: bool = False
+    showcase: bool = False
+    extended: bool = False
+    full_art: bool = False
+    role: str = "all"
+
+
+class StyleMatchView(BaseModel):
+    oracle_id: str
+    card_name: str
+    scryfall_id: str
+    set_code: str
+    set_name: str
+    collector_number: str
+    artist: str
+    image_small: str | None = None
+    image_normal: str | None = None
+    released_at: str | None = None
+    matched_criteria: list[str]
+
+
+class StyleRecommendResponse(BaseModel):
+    query: dict
+    matched: list[StyleMatchView]
+    unmatched_count: int
+    skipped_count: int
+    total_deck_uniques: int
+
+
+@router.post(
+    "/{deck_id}/recommend-by-style",
+    response_model=StyleRecommendResponse,
+)
+async def recommend_by_style_endpoint(
+    deck_id: int,
+    payload: StyleRecommendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+) -> StyleRecommendResponse:
+    """Extras · F3/T11: recomienda impresiones que cumplen criterios de estilo.
+
+    Al menos uno de ``set_code / borderless / showcase / extended / full_art``
+    debe estar activo. Los criterios se combinan con AND.
+    """
+    from mpc_forge.services.recommender import recommend_by_style
+
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    role = (payload.role or "all").lower()
+    if role not in {"all", "mainboard", "commander", "sideboard"}:
+        role = "all"
+
+    stmt = select(DeckCard.oracle_id).where(
+        DeckCard.deck_id == deck_id, DeckCard.include.is_(True),
+    )
+    if role != "all":
+        stmt = stmt.where(DeckCard.role == role)
+    rows = (await db.execute(stmt)).all()
+    oracle_ids = [r[0] for r in rows if r[0]]
+    total_unique = len(set(oracle_ids))
+
+    result = await recommend_by_style(
+        scryfall, oracle_ids,
+        set_code=payload.set_code,
+        borderless=payload.borderless,
+        showcase=payload.showcase,
+        extended=payload.extended,
+        full_art=payload.full_art,
+        db=db,
+    )
+    return StyleRecommendResponse(
+        query=result.query,
+        matched=[StyleMatchView(**vars(m)) for m in result.matched],
+        unmatched_count=len(result.unmatched),
+        skipped_count=len(result.skipped),
+        total_deck_uniques=total_unique,
     )

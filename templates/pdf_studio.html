@@ -949,11 +949,7 @@ function pdfStudio(deckId) { return {
     } catch (e) {
       console.error('deck fetch:', e);
     }
-    // 3b) Cardback settings del mazo. La respuesta incluye tanto el cardback
-    // específico (si lo hay) como el default_image_url del cardback global,
-    // así que con una sola llamada cubrimos ambos casos y evitamos meter una
-    // petición HEAD extra a /api/cardback que ensuciaría la consola con 404
-    // en instalaciones sin default-back.
+    // 3b) Cardback settings del mazo.
     try {
       const rs = await fetch(`/api/decks/${this.deckId}/cardback-settings`);
       if (rs.ok) this.cardbackSettings = await rs.json();

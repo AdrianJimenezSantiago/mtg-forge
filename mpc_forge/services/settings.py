@@ -28,6 +28,12 @@ from mpc_forge.models import KeyValue
 
 log = logging.getLogger(__name__)
 
+
+# Snapshot cacheado en memoria del último ``get_all``. La app es single-process
+# y todos los writes pasan por ``set_many``, así que invalidar ahí basta para
+# mantener la coherencia. Ver ``get_all`` / ``set_many``.
+_cached_snapshot: dict[str, Any] | None = None
+
 SettingType = Literal["str", "float", "int", "bool", "json", "path"]
 
 
@@ -244,6 +250,35 @@ DEFINITIONS: list[SettingDef] = [
             "de fichero desde el editor. Vacío = usa el default junto al ejecutable."
         ),
     ),
+    # --- Búsqueda avanzada (Fase 2 · T8) ---
+    SettingDef(
+        key="phash.enabled",
+        label="Detectar imágenes duplicadas (pHash)",
+        type="bool",
+        group="Búsqueda avanzada",
+        default=False,
+        description=(
+            "Calcula un hash perceptual de cada arte para agrupar imágenes idénticas "
+            "aunque estén en drives distintos o tengan variaciones leves de compresión. "
+            "Requiere descargar los thumbnails (~50KB cada uno). Activarlo puede "
+            "tardar varios minutos la primera vez si tienes muchos drives indexados. "
+            "Requiere Pillow e imagehash instaladas."
+        ),
+    ),
+    SettingDef(
+        key="phash.threshold",
+        label="Umbral de similitud pHash",
+        type="int",
+        group="Búsqueda avanzada",
+        default=8,
+        description=(
+            "Distancia de Hamming máxima para considerar dos imágenes 'iguales'. "
+            "Más bajo = más estricto (solo copias casi idénticas). Más alto = agrupa "
+            "también variantes con recorte / watermark. Rango típico: 4-12."
+        ),
+        min_value=0,
+        max_value=32,
+    ),
 ]
 
 _DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in DEFINITIONS}
@@ -280,7 +315,16 @@ def _serialize(sd: SettingDef, value: Any) -> str:
 
 
 async def get_all(db: AsyncSession) -> dict[str, Any]:
-    """Snapshot actual de todos los settings, con defaults aplicados si faltan."""
+    """Snapshot actual de todos los settings, con defaults aplicados si faltan.
+
+    El resultado se cachea en ``_cached_snapshot`` — la app es single-process
+    y todos los writes pasan por :func:`set_many`, que invalida el cache. La
+    segunda llamada (y siguientes) no toca la BD.
+    """
+    global _cached_snapshot
+    if _cached_snapshot is not None:
+        return _cached_snapshot
+
     rows = (await db.scalars(select(KeyValue).where(KeyValue.key.like("settings.%")))).all()
     stored: dict[str, str] = {r.key[len("settings."):]: r.value for r in rows}
     out: dict[str, Any] = {}
@@ -294,19 +338,20 @@ async def get_all(db: AsyncSession) -> dict[str, Any]:
             except (ValueError, json.JSONDecodeError) as e:
                 log.warning("Setting %s corrupto (%s), usando default", sd.key, e)
                 out[sd.key] = sd.default
+
+    _cached_snapshot = out
     return out
 
 
 async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
     """Guarda los valores indicados y devuelve el snapshot actualizado.
 
-    OPTIMIZACIÓN: batch prefetch de KeyValues existentes. Antes: 1 SELECT por
-    cada key en updates (N queries). Ahora: 1 SELECT WHERE key IN (?) + N
-    updates in-memory + commit. Para "Restablecer defaults" con 15 settings
-    pasa de 15 → 1 query.
+    Batch prefetch de KeyValues existentes: 1 SELECT WHERE key IN (?) en vez de
+    N queries individuales. Invalida el cache de ``get_all`` antes de releerlo.
     """
-    # Validación primero: si algún valor es inválido, abortamos sin tocar BD.
-    valid_updates: dict[str, tuple[Any, str]] = {}  # key → (raw_value, serialized)
+    global _cached_snapshot
+
+    valid_updates: dict[str, tuple[Any, str]] = {}
     for key, value in updates.items():
         sd = _DEFS_BY_KEY.get(key)
         if not sd:
@@ -323,10 +368,8 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
         valid_updates[key] = (value, _serialize(sd, value))
 
     if not valid_updates:
-        # Nada que hacer — devolvemos snapshot sin tocar la BD.
         return await get_all(db)
 
-    # Batch fetch de KeyValues existentes.
     kv_keys = [f"settings.{k}" for k in valid_updates]
     existing_rows = (
         await db.scalars(
@@ -343,6 +386,8 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
         else:
             db.add(KeyValue(key=kv_key, value=serialized))
     await db.commit()
+
+    _cached_snapshot = None
     snapshot = await get_all(db)
     apply_to_config(snapshot)
     return snapshot

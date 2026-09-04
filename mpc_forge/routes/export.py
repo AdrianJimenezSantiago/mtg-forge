@@ -1,6 +1,7 @@
 """Endpoints de exportación: XML MPC-Autofill, estimador, historial, backup."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -145,7 +146,8 @@ async def build_xml_endpoint(
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.xml"
 
     cardback = default_cardback_path()
-    result = build_xml(
+    result = await asyncio.to_thread(
+        build_xml,
         cards=resolved,
         output_path=out_path,
         cardstock=cardstock,
@@ -194,6 +196,162 @@ async def build_xml_endpoint(
         tier_size=est.tier_size,
         estimated_cost_eur=est.total_eur,  # devolvemos EUR total al frontend
         run_id=run_id,
+    )
+
+
+# ---- Split de print runs para mazos grandes (Fase 3 · T10) -----------------
+
+
+class PrintRunPlanCardView(BaseModel):
+    name: str
+    quantity: int
+    scryfall_id: str
+    has_back: bool
+
+
+class PrintRunPlanView(BaseModel):
+    run_index: int
+    tier_size: int
+    unit_usd: float
+    subtotal_usd: float
+    total_cards: int
+    wasted_slots: int
+    cards: list[PrintRunPlanCardView]
+
+
+class PrintRunSplitResponse(BaseModel):
+    total_runs: int
+    total_cards: int
+    total_wasted_slots: int
+    total_subtotal_usd: float
+    runs: list[PrintRunPlanView]
+
+
+@router.get(
+    "/decks/{deck_id}/print-runs/preview",
+    response_model=PrintRunSplitResponse,
+)
+async def preview_print_runs(
+    deck_id: int,
+    db: DbDep,
+    max_tier: int | None = None,
+    optimize: bool = False,
+) -> PrintRunSplitResponse:
+    """Previsualiza cómo se partiría el mazo en print runs MPC.
+
+    ``max_tier`` opcional para forzar un techo (ej. 108 para dividir aunque
+    quepan en 612). Por defecto usa el tier máximo definido en `MPC_TIERS`.
+
+    ``optimize`` (Extras · F3/T10): si True, usa el DP solver
+    (`split_into_runs_optimized`) para minimizar wasted_slots.
+
+    NO descarga arte ni genera XMLs — solo cuenta slots vía
+    ``plan_deck_slots`` que consulta la BD. Útil para que la UI muestre
+    "tu mazo son 700 cartas → 2 runs (612 + 88)" al instante.
+    """
+    from mpc_forge.services.print_runs import (
+        split_into_runs, split_into_runs_optimized, summary_dict,
+    )
+    from mpc_forge.services.xml_generator import plan_deck_slots
+
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    slots = await plan_deck_slots(db, deck)
+    if not slots:
+        return PrintRunSplitResponse(
+            total_runs=0, total_cards=0, total_wasted_slots=0,
+            total_subtotal_usd=0.0, runs=[],
+        )
+    if optimize:
+        plan = split_into_runs_optimized(slots)
+    else:
+        plan = split_into_runs(slots, max_tier=max_tier)
+    return PrintRunSplitResponse(**summary_dict(plan))
+
+
+class BuildSplitXMLRequest(BaseModel):
+    """Payload para generar N XMLs de una vez (uno por run)."""
+    cardstock: str | None = None
+    foil: bool = False
+    max_tier: int | None = None
+    create_runs: bool = True
+    """Si True, cada XML genera además su print_run en historial."""
+
+
+class BuildSplitXMLResponse(BaseModel):
+    total_runs: int
+    xml_paths: list[str]
+    total_cards: int
+    total_subtotal_usd: float
+    run_ids: list[int]
+
+
+@router.post(
+    "/decks/{deck_id}/build-split-xml",
+    response_model=BuildSplitXMLResponse,
+)
+async def build_split_xml_endpoint(
+    deck_id: int,
+    payload: BuildSplitXMLRequest,
+    db: DbDep,
+    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    art_cache: Annotated[ArtCache, Depends(_get_art_cache)],
+) -> BuildSplitXMLResponse:
+    """Genera un XML por cada print run tras dividir el mazo.
+
+    Cada fichero comparte el mismo cardback (custom o default) y cardstock.
+    Se numeran ``-run1of3.xml``, ``-run2of3.xml``, etc.
+    """
+    from mpc_forge.services.print_runs import split_into_runs
+
+    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    if not deck:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+
+    resolved = await resolve_deck_for_xml(db, scryfall, art_cache, deck)
+    if not resolved:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
+
+    plan = split_into_runs(resolved, max_tier=payload.max_tier)
+    if not plan.runs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El split no produjo runs")
+
+    cardstock = payload.cardstock or DEFAULT_CARDSTOCK
+    foil = payload.foil
+    cardback = await _resolve_deck_cardback(db, deck)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    xml_paths: list[str] = []
+    run_ids: list[int] = []
+    for run_plan in plan.runs:
+        suffix = f"-run{run_plan.run_index + 1}of{plan.total_runs}"
+        out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}{suffix}.xml"
+        r = await asyncio.to_thread(
+            build_xml,
+            cards=run_plan.cards, output_path=out_path,
+            cardstock=cardstock, foil=foil, cardback_path=cardback,
+        )
+        xml_paths.append(str(r.xml_path))
+
+        if payload.create_runs:
+            run_row = await history.create_print_run_from_deck(
+                db, deck=deck, cardstock=cardstock, foil=foil,
+                tier_size=run_plan.tier_size,
+                estimated_cost_eur=run_plan.subtotal_usd * cfg.USD_TO_EUR,
+                xml_path=str(r.xml_path),
+                run_name=f"{deck.name} · run {run_plan.run_index + 1}/{plan.total_runs}",
+            )
+            run_ids.append(run_row.id)
+
+    await db.commit()
+    return BuildSplitXMLResponse(
+        total_runs=plan.total_runs,
+        xml_paths=xml_paths,
+        total_cards=plan.total_cards,
+        total_subtotal_usd=plan.total_subtotal_usd,
+        run_ids=run_ids,
     )
 
 
@@ -642,7 +800,10 @@ async def build_pdf_endpoint(
     # Cardback específico del mazo (v2). El generador solo lo usa cuando
     # backs_content='all_cards'; para el resto no consulta el disco.
     cardback = await _resolve_deck_cardback(db, deck)
-    result = build_pdf(resolved, out_path, options, cardback_path_override=cardback)
+
+    result = await asyncio.to_thread(
+        build_pdf, resolved, out_path, options, cardback_path_override=cardback
+    )
     build_progress.finish(deck_id)
     filename = Path(str(result.pdf_path)).name
     await deck_activity.log_event(
@@ -731,7 +892,9 @@ async def export_images_endpoint(
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}-images.zip"
     cardback = await _resolve_deck_cardback(db, deck)
-    result = build_images_zip(resolved, out_path, decklist_text, cardback_path=cardback)
+    result = await asyncio.to_thread(
+        build_images_zip, resolved, out_path, decklist_text, cardback_path=cardback
+    )
     build_progress.finish(deck_id)
 
     filename = out_path.name

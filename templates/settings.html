@@ -762,10 +762,47 @@
                      class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                             focus:outline-none focus:border-accent">
             </div>
+            {# Extras · F2/T7: selector de source_type + auto-detección #}
+            <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
+              <select x-model="draft.source_type"
+                      @change="draft.url && validateSource()"
+                      class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                             focus:outline-none focus:border-accent">
+                <option value="">Auto-detectar tipo</option>
+                <option value="gdrive">Google Drive (folder)</option>
+                <option value="gdrive-file">Google Drive (archivo)</option>
+                <option value="local-folder">Carpeta local</option>
+                <option value="http-listing">HTTP manifest (JSON)</option>
+                <option value="s3">S3 / Cloudflare R2 (público)</option>
+              </select>
+              <button type="button" @click="validateSource()"
+                      :disabled="!draft.url || validating"
+                      class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-xs
+                             hover:border-accent-soft transition disabled:opacity-50">
+                <span x-show="!validating">Validar URL</span>
+                <span x-show="validating">Validando…</span>
+              </button>
+            </div>
             <input type="url" x-model="draft.url"
-                   placeholder="https://drive.google.com/drive/folders/…"
+                   @blur="draft.url && validateSource()"
+                   :placeholder="urlPlaceholder()"
                    class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                           focus:outline-none focus:border-accent">
+            {# Resultado de la validación (feedback inmediato) #}
+            <div x-show="validation.checked"
+                 :class="validation.valid ? 'text-green-500' : 'text-red-400'"
+                 class="text-xs px-3 py-1">
+              <span x-show="validation.valid">
+                ✓ <span x-text="validation.label"></span> detectado
+                <span x-show="validation.canonical_url && validation.canonical_url !== draft.url"
+                      class="text-fg-faint ml-1">
+                  · URL canónica: <span x-text="validation.canonical_url"></span>
+                </span>
+              </span>
+              <span x-show="!validation.valid">
+                ✗ <span x-text="validation.error || 'URL inválida'"></span>
+              </span>
+            </div>
             <textarea x-model="draft.description" rows="2"
                       placeholder="Descripción (opcional)"
                       class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
@@ -1337,7 +1374,14 @@ function artSourcesPanel() {
     indexingIds: [],
     hasApiKey: false,
     _pollTimer: null,
-    draft: {name: '', url: '', description: '', tags: '', pinned: false},
+    draft: {name: '', url: '', description: '', tags: '', pinned: false, source_type: ''},
+    // Extras · F2/T7: estado de validación de URL antes de guardar.
+    // Se pobla al perder el foco del input URL o al hacer click en "Validar URL".
+    validating: false,
+    validation: {
+      checked: false, valid: false,
+      detected_type: '', canonical_url: '', label: '', error: '',
+    },
 
     async load() {
       this.loading = true;
@@ -1506,13 +1550,63 @@ function artSourcesPanel() {
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         window.toast('Source añadido', this.draft.name);
-        this.draft = {name: '', url: '', description: '', tags: '', pinned: false};
+        this.draft = {name: '', url: '', description: '', tags: '', pinned: false, source_type: ''};
+        this.validation = {checked: false, valid: false, detected_type: '', canonical_url: '', label: '', error: ''};
         this.showAdd = false;
         await this.load();
       } catch (e) {
         window.toast('Error', e.message);
       } finally {
         this.saving = false;
+      }
+    },
+
+    // Extras · F2/T7: placeholder dinámico para el input URL según el tipo elegido.
+    urlPlaceholder() {
+      switch (this.draft.source_type) {
+        case 'gdrive':       return 'https://drive.google.com/drive/folders/…';
+        case 'gdrive-file':  return 'https://drive.google.com/file/d/…';
+        case 'local-folder': return 'C:/mtg-art/  o  /home/user/mtg-art  o  file://…';
+        case 'http-listing': return 'https://example.com/manifest.json';
+        case 's3':           return 's3://bucket/prefix  o  https://bucket.s3.amazonaws.com/';
+        default:             return 'URL o ruta (se auto-detectará el tipo)';
+      }
+    },
+
+    // Valida la URL contra el backend sin guardarla. Devuelve feedback visual.
+    async validateSource() {
+      if (!this.draft.url) {
+        this.validation = {checked: false, valid: false, detected_type: '', canonical_url: '', label: '', error: ''};
+        return;
+      }
+      this.validating = true;
+      try {
+        const r = await fetch('/api/art-sources/validate', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: this.draft.url, source_type: this.draft.source_type || null}),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          this.validation = {
+            checked: true,
+            valid: d.valid,
+            detected_type: d.detected_type,
+            canonical_url: d.canonical_url,
+            label: d.label,
+            error: d.error || '',
+          };
+          // Si el usuario dejó "Auto-detectar" y el backend detectó un tipo válido,
+          // lo pre-rellenamos para que el user vea qué salió.
+          if (d.valid && !this.draft.source_type) {
+            this.draft.source_type = d.detected_type;
+          }
+        } else {
+          this.validation = {checked: true, valid: false, detected_type: '', canonical_url: '', label: '', error: 'Error del servidor'};
+        }
+      } catch (e) {
+        this.validation = {checked: true, valid: false, detected_type: '', canonical_url: '', label: '', error: e.message};
+      } finally {
+        this.validating = false;
       }
     },
 

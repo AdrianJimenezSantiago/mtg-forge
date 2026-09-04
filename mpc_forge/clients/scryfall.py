@@ -4,18 +4,18 @@ Respeta el rate limit recomendado (~100 ms entre llamadas) y devuelve datos crud
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 import httpx
 
 from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
+from mpc_forge.services.rate_limiter import AsyncRateLimiter
 from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
 
-_RATE_LIMIT_SLEEP = 0.10  # 100 ms entre llamadas — política recomendada por Scryfall.
+_RATE_LIMIT_INTERVAL = 0.10  # 100 ms entre inicios de llamada — política recomendada por Scryfall.
 
 
 class ScryfallClient:
@@ -29,15 +29,14 @@ class ScryfallClient:
             timeout=30.0,
             verify=not ssl_insecure(),
         )
-        self._lock = asyncio.Lock()
+        self._limiter = AsyncRateLimiter(_RATE_LIMIT_INTERVAL)
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        async with self._lock:
-            await asyncio.sleep(_RATE_LIMIT_SLEEP)
-            resp = await self._client.get(path, params=params)
+        await self._limiter.acquire()
+        resp = await self._client.get(path, params=params)
         if resp.status_code == 404:
             return {}
         resp.raise_for_status()
@@ -84,9 +83,8 @@ class ScryfallClient:
             next_url = page.get("next_page")
             if not next_url:
                 break
-            async with self._lock:
-                await asyncio.sleep(_RATE_LIMIT_SLEEP)
-                resp = await self._client.get(next_url)
+            await self._limiter.acquire()
+            resp = await self._client.get(next_url)
             resp.raise_for_status()
             page = resp.json()
         return results
@@ -96,11 +94,10 @@ class ScryfallClient:
         results: list[dict[str, Any]] = []
         for i in range(0, len(identifiers), 75):
             chunk = identifiers[i : i + 75]
-            async with self._lock:
-                await asyncio.sleep(_RATE_LIMIT_SLEEP)
-                resp = await self._client.post(
-                    "/cards/collection", json={"identifiers": chunk}
-                )
+            await self._limiter.acquire()
+            resp = await self._client.post(
+                "/cards/collection", json={"identifiers": chunk}
+            )
             resp.raise_for_status()
             payload = resp.json()
             results.extend(payload.get("data", []))

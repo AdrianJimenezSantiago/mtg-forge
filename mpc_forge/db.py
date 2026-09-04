@@ -111,6 +111,23 @@ async def init_db() -> None:
             ("indexed_art", "is_textless",   "BOOLEAN DEFAULT 0"),
             ("indexed_art", "is_promo",      "BOOLEAN DEFAULT 0"),
             ("indexed_art", "is_alt_art",    "BOOLEAN DEFAULT 0"),
+            # Fase 2 · Tarea 5: metadatos canónicos extraídos de `[SET NUM]`
+            # en filename o folder path. NULL = arte sin tag canónico
+            # (matching por nombre sigue funcionando como antes).
+            # `backfill_normalized_names()` rellena estos campos junto con
+            # tags cuando NORMALIZATION_VERSION cambia.
+            ("indexed_art", "expansion_code",   "VARCHAR(8) DEFAULT NULL"),
+            ("indexed_art", "collector_number", "VARCHAR(16) DEFAULT NULL"),
+            ("indexed_art", "canonical_source", "VARCHAR(16) DEFAULT ''"),
+            # Fase 2 · Tarea 8: perceptual hash para dedupe cross-drive.
+            # NULL = aún no calculado. Opt-in via setting `phash.enabled`.
+            # No hay backfill automático — se rellena vía `POST /api/drives/
+            # phash/compute` por source, para no gastar bandwidth sin permiso.
+            ("indexed_art", "image_hash",       "VARCHAR(16) DEFAULT NULL"),
+            # Extras · T7: URLs directas para tipos no-gdrive. NULL = derivar
+            # con el patrón del source_type (gdrive lo hace desde file_id).
+            ("indexed_art", "download_url",     "VARCHAR(1024) DEFAULT NULL"),
+            ("indexed_art", "thumb_url",        "VARCHAR(1024) DEFAULT NULL"),
         ]
         for table, column, ddl in _add_column_if_missing:
             info = await conn.execute(text(f"PRAGMA table_info({table})"))
@@ -189,9 +206,122 @@ async def init_db() -> None:
             # sin depender de la comparación case-insensitive.
             "CREATE INDEX IF NOT EXISTS ix_dfc_pairs_front_lower "
             "ON dfc_pairs(lower(front_name))",
+            # Fase 2 · Tarea 5: filtro por set canónico (`expansion_code`) en
+            # el picker de drives. La columna guarda NULL para la mayoría de
+            # filas → index parcial ahorra espacio y acelera queries.
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_expansion "
+            "ON indexed_art(expansion_code) WHERE expansion_code IS NOT NULL",
+            # Fase 2 · Tarea 8: index parcial sobre image_hash — la mayoría
+            # de filas serán NULL hasta que el usuario active pHash. El
+            # index acelera `find_similar()` que hace WHERE image_hash IS
+            # NOT NULL antes del scan hamming en memoria.
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_phash "
+            "ON indexed_art(image_hash) WHERE image_hash IS NOT NULL",
         ]
         for stmt in extra_indexes:
             await conn.execute(text(stmt))
+
+        # --- FTS5 para búsqueda en drives (Fase 2 · Tarea 6) ---
+        # SQLite 3.9+ trae FTS5 (search full-text con ranking BM25). Comprobamos
+        # que la extensión está disponible antes de usarla. Si no lo está
+        # (raro: builds antiguas de Windows con SQLite estático sin FTS5), la
+        # búsqueda cae a la implementación LIKE anterior — 100% transparente
+        # para el resto de la app.
+        #
+        # La tabla virtual es una "sombra" que sincronizamos vía triggers con
+        # `indexed_art`. Guardamos ahí solo los campos consultados por la UI
+        # de búsqueda (name_normalized + filename + tags), no toda la fila.
+        # `content=` la enlaza a `indexed_art` como "tabla contenido externo":
+        # FTS5 solo mantiene el índice invertido, no una copia de los datos.
+        # Rowid compartido → JOINs triviales.
+        fts5_ok = await _try_setup_fts5(conn)
+        # Guardamos el flag en KV para que el runtime sepa si puede usar MATCH.
+        # Ver `gdrive_search.search()`.
+        await conn.execute(text(
+            "INSERT OR REPLACE INTO kv_store (key, value) VALUES ('fts5_available', :v)"
+        ), {"v": "1" if fts5_ok else "0"})
+
+
+async def _try_setup_fts5(conn) -> bool:
+    """Intenta crear la tabla virtual FTS5 y sus triggers. Devuelve True si
+    FTS5 está disponible y todo se aplicó bien.
+
+    Idempotente: usa CREATE VIRTUAL TABLE IF NOT EXISTS y triggers WHERE.
+    Si FTS5 no está compilado en la SQLite del usuario, el primer CREATE
+    lanza una excepción OperationalError; la capturamos y devolvemos False.
+    """
+    try:
+        # Detección: intentamos crear una tabla virtual efímera. Si FTS5 no
+        # está compilado, SQLite tira "no such module: fts5" aquí.
+        await conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS indexed_art_fts USING fts5("
+            "  name_normalized,"
+            "  filename,"
+            "  tags,"
+            # `content=` externo apunta a la tabla real. FTS5 solo mantiene
+            # el índice invertido — cero duplicación de datos.
+            "  content='indexed_art',"
+            "  content_rowid='id',"
+            # Tokenizer: unicode61 con remove_diacritics=2 hace asciifolding
+            # nativo dentro de FTS5. Complementario al que aplicamos al
+            # indexar (defense in depth: si el name_normalized ya está
+            # asciifolded, FTS5 no toca; si no, FTS5 lo hace).
+            "  tokenize='unicode61 remove_diacritics 2'"
+            ")"
+        ))
+    except Exception as e:  # noqa: BLE001
+        log.warning(
+            "FTS5 no disponible en esta build de SQLite (%s). La búsqueda usará "
+            "el modo LIKE. Actualiza el runtime si tienes muchos drives — "
+            "FTS5 acelera 10-100x las queries.", e
+        )
+        return False
+
+    # Triggers de sincronización. Idempotentes: si ya existen, no hacen nada
+    # (CREATE TRIGGER IF NOT EXISTS soportado desde SQLite 3.7).
+    await conn.execute(text(
+        "CREATE TRIGGER IF NOT EXISTS indexed_art_fts_insert "
+        "AFTER INSERT ON indexed_art BEGIN "
+        "  INSERT INTO indexed_art_fts(rowid, name_normalized, filename, tags) "
+        "  VALUES (new.id, new.name_normalized, new.filename, new.tags); "
+        "END"
+    ))
+    await conn.execute(text(
+        "CREATE TRIGGER IF NOT EXISTS indexed_art_fts_delete "
+        "AFTER DELETE ON indexed_art BEGIN "
+        "  INSERT INTO indexed_art_fts(indexed_art_fts, rowid, name_normalized, filename, tags) "
+        "  VALUES ('delete', old.id, old.name_normalized, old.filename, old.tags); "
+        "END"
+    ))
+    await conn.execute(text(
+        "CREATE TRIGGER IF NOT EXISTS indexed_art_fts_update "
+        "AFTER UPDATE ON indexed_art BEGIN "
+        "  INSERT INTO indexed_art_fts(indexed_art_fts, rowid, name_normalized, filename, tags) "
+        "  VALUES ('delete', old.id, old.name_normalized, old.filename, old.tags); "
+        "  INSERT INTO indexed_art_fts(rowid, name_normalized, filename, tags) "
+        "  VALUES (new.id, new.name_normalized, new.filename, new.tags); "
+        "END"
+    ))
+
+    # Si el índice está vacío pero indexed_art tiene filas, rebuild manual.
+    # Comando FTS5 documentado: INSERT INTO fts(fts, cmd) VALUES ('rebuild');
+    # Solo se ejecuta cuando la tabla virtual está vacía Y la real no —
+    # típicamente después de un upgrade que introduce FTS5.
+    real_count = int((await conn.execute(text(
+        "SELECT COUNT(*) FROM indexed_art"
+    ))).scalar() or 0)
+    fts_count = int((await conn.execute(text(
+        "SELECT COUNT(*) FROM indexed_art_fts"
+    ))).scalar() or 0)
+    if real_count > 0 and fts_count == 0:
+        log.info("FTS5 vacío pero %d filas en indexed_art — rebuild de la tabla virtual…",
+                 real_count)
+        await conn.execute(text(
+            "INSERT INTO indexed_art_fts(indexed_art_fts) VALUES ('rebuild')"
+        ))
+        log.info("Rebuild de FTS5 completo")
+
+    return True
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

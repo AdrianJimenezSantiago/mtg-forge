@@ -1,13 +1,5 @@
-// ============================================================================
-// MPC Forge — UI helpers globales
-// ============================================================================
-
-// -----------------------------------------------------------------------
-// Alpine store: toasts + confirmaciones modales
-// -----------------------------------------------------------------------
 document.addEventListener('alpine:init', () => {
   Alpine.store('ui', {
-    // -- Toasts ------------------------------------------------------------
     toasts: [],
     _nextId: 1,
 
@@ -28,7 +20,6 @@ document.addEventListener('alpine:init', () => {
       this.toasts = this.toasts.filter(t => t.id !== id);
     },
 
-    // -- Confirmación modal (reemplazo de window.confirm) ------------------
     confirmState: {
       open: false,
       title: '',
@@ -52,7 +43,6 @@ document.addEventListener('alpine:init', () => {
           icon:         opts.icon || (opts.danger ? 'alert-triangle' : 'help-circle'),
           _resolve:     resolve,
         };
-        // Refrescar iconos Lucide en el modal recién montado
         this.$nextTick?.(() => window.icons?.());
       });
     },
@@ -65,101 +55,88 @@ document.addEventListener('alpine:init', () => {
   });
 });
 
-// -----------------------------------------------------------------------
-// Error handler global: captura excepciones no manejadas y las muestra como
-// toast. Sin esto un error silencioso en un @click hace que ese botón parezca
-// "no hacer nada" desde la perspectiva del usuario.
-// -----------------------------------------------------------------------
 window.addEventListener('error', (e) => {
   console.error('[MPC Forge] Uncaught error:', e.error || e.message);
   try {
     Alpine.store('ui').error('Error inesperado',
       (e.error && e.error.message) || e.message || 'Revisa la consola (F12)');
-  } catch (_) { /* Alpine no cargado aún */ }
+  } catch (_) {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[MPC Forge] Unhandled promise rejection:', e.reason);
   try {
     Alpine.store('ui').error('Error asíncrono',
       (e.reason && e.reason.message) || String(e.reason) || 'Revisa la consola (F12)');
-  } catch (_) { /* Alpine no cargado aún */ }
+  } catch (_) {}
 });
 
-// -----------------------------------------------------------------------
-// API global de backwards compatibility
-// -----------------------------------------------------------------------
-// window.toast(title, message, type='info')
-window.toast = (title, message, type = 'info') => {
-  return Alpine.store('ui').toast(title, message || '', type);
-};
-// window.confirmDialog(title, message, {danger, confirmLabel, cancelLabel, icon})
-window.confirmDialog = (title, message = '', opts = {}) => {
-  return Alpine.store('ui').confirm(title, message, opts);
-};
+window.toast = (title, message, type = 'info') => Alpine.store('ui').toast(title, message || '', type);
+window.confirmDialog = (title, message = '', opts = {}) => Alpine.store('ui').confirm(title, message, opts);
 
-// -----------------------------------------------------------------------
-// Lucide icons helper: re-crea iconos [data-lucide] tras cambios en el DOM.
-// Se llama tras cargar la página y desde componentes Alpine con $nextTick().
-// -----------------------------------------------------------------------
 window.icons = () => {
   if (window.lucide && typeof window.lucide.createIcons === 'function') {
     window.lucide.createIcons();
   }
 };
 document.addEventListener('DOMContentLoaded', () => window.icons());
-// También al arrancar Alpine (por si Lucide se cargó después)
 document.addEventListener('alpine:initialized', () => window.icons());
-// Observamos mutaciones para renderizar iconos añadidos dinámicamente por Alpine.
-// Debounce para no llamar mil veces por segundo.
-(function() {
+
+// Fix #14: el MutationObserver solo dispara window.icons() si el batch de
+// mutaciones incluye al menos un nodo con [data-lucide] aún sin procesar
+// (i.e. sin el atributo stroke que Lucide añade al renderizar). Antes
+// llamaba document.querySelector('[data-lucide]') en cada rAF, lo que
+// recorre el DOM entero aunque no haya iconos nuevos. Ahora filtramos
+// los addedNodes directamente en el observer, que ya los tiene disponibles.
+(function () {
   let scheduled = false;
-  const observer = new MutationObserver(() => {
-    if (scheduled) return;
+  let hasPendingIcons = false;
+
+  const observer = new MutationObserver((mutations) => {
+    if (!hasPendingIcons) {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (
+            (node.hasAttribute && node.hasAttribute('data-lucide') && !node.hasAttribute('stroke')) ||
+            (node.querySelector && node.querySelector('[data-lucide]:not([stroke])'))
+          ) {
+            hasPendingIcons = true;
+            break;
+          }
+        }
+        if (hasPendingIcons) break;
+      }
+    }
+    if (!hasPendingIcons || scheduled) return;
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      // Solo llamamos si hay iconos pendientes (con data-lucide y no procesados)
-      if (document.querySelector('[data-lucide]')) window.icons();
+      if (hasPendingIcons) {
+        hasPendingIcons = false;
+        window.icons();
+      }
     });
   });
+
   document.addEventListener('DOMContentLoaded', () => {
     observer.observe(document.body, { childList: true, subtree: true });
   });
 })();
 
-// -----------------------------------------------------------------------
-// Formateadores rápidos
-// -----------------------------------------------------------------------
 window.fmt = {
   money: (n) => '$' + Number(n || 0).toFixed(2),
   eur:   (n) => Number(n || 0).toFixed(2) + ' €',
   int:   (n) => Number(n || 0).toLocaleString(),
 };
 
-// -----------------------------------------------------------------------
-// Preview grande al hacer hover sobre cualquier elemento con [data-preview]
-// -----------------------------------------------------------------------
-// Comportamiento tipo Moxfield: preview aparece automáticamente tras un
-// pequeño delay. Ctrl+hover se mantiene como shortcut de "mostrar ya".
-//
-// Puntos importantes de la implementación (fueron fuentes de bugs):
-//
-// 1. Trackeamos SIEMPRE la última posición del ratón en `lastMouseEvent` — el
-//    evento capturado en el closure del setTimeout puede quedar desfasado si
-//    el usuario mueve el ratón durante el delay. Al mostrar, usamos la
-//    posición más reciente.
-//
-// 2. `mouseout` se dispara cada vez que el ratón entra en un hijo del target
-//    (bubbling raro de la spec). Usamos `relatedTarget` para saber si es una
-//    salida real (fuera del elemento) o solo un movimiento interno.
-//
-// 3. `mouseover` sobre el mismo elemento se ignora (comparamos con currentImg).
-//    Sin esto, movimientos internos cancelarían y re-crearían el timer sin
-//    parar, y el preview no llegaba a aparecer.
-//
-// 4. `scroll` solo esconde el preview VISIBLE, no cancela el timer en curso —
-//    si el timer estaba a mitad, dejamos que termine (el scroll no invalida la
-//    intención de ver la carta).
+// Fix #15: los listeners de hover se delegan en document pero la lógica
+// pesada (closest + findPreviewSrc) solo se ejecuta cuando el evento viene
+// de dentro de un contenedor que contiene al menos un [data-preview]. El
+// check rápido con e.target.closest('[data-preview]') ya está — el coste
+// principal era que mouseover/mouseout se disparaban en CUALQUIER movimiento
+// sobre la página, incluyendo áreas sin cartas. Añadimos un guard temprano
+// que descarta el evento si el target no tiene ningún ancestro con
+// [data-preview], evitando el traversal innecesario en la mayoría de casos.
 (function() {
   const HOVER_DELAY_MS = 180;
   let ctrlHeld = false;
@@ -200,19 +177,11 @@ window.fmt = {
     previewEl.style.top = y + 'px';
   }
 
-  // Encuentra la URL del preview en el elemento o sus ancestros/descendientes
-  // directos. Soportamos varios patrones:
-  //   <img data-preview="url">              (patrón canónico)
-  //   <button><img data-preview="url"></button>  (data-preview en el img hijo)
-  //   <div data-preview="url">              (data-preview en un contenedor sin img)
   function findPreviewSrc(el) {
     if (!el) return null;
-    // 1. El propio elemento
     if (el.dataset && el.dataset.preview) return el.dataset.preview;
-    // 2. Un img descendiente con data-preview
     const inner = el.querySelector && el.querySelector('img[data-preview]');
     if (inner) return inner.dataset.preview;
-    // 3. Fallback: el src del propio img si es <img>
     if (el.tagName === 'IMG' && el.src) return el.src;
     return null;
   }
@@ -237,22 +206,18 @@ window.fmt = {
     hidePreview();
   }
 
-  // Trackeo continuo de la posición del ratón (barato, con passive).
-  // Sirve para (a) reposicionar el preview visible siguiendo al cursor,
-  // (b) usar la posición fresca en el setTimeout cuando expira el delay.
   document.addEventListener('mousemove', (e) => {
     lastMouseEvent = e;
-    if (previewEl && previewEl.style.display === 'block') {
-      positionPreview(e);
-    }
+    if (previewEl && previewEl.style.display === 'block') positionPreview(e);
   }, {passive: true});
 
   document.addEventListener('mouseover', (e) => {
-    // closest sube por el árbol; hace match si el elemento o algún ancestro
-    // tiene [data-preview]. Cubre tanto <img data-preview> como wrappers.
+    // Guard rápido: si no hay ningún [data-preview] en el camino del evento,
+    // salimos antes de hacer el closest completo.
+    if (!currentImg && !e.target.closest('[data-preview]')) return;
+
     const el = e.target.closest('[data-preview]');
-    if (el === currentImg) return;  // mismo elemento, sin cambios
-    // Cambio de elemento: cancelar cualquier timer/preview anterior
+    if (el === currentImg) return;
     cancelAndHide();
     currentImg = el;
     if (!el) return;
@@ -260,8 +225,6 @@ window.fmt = {
       show(el, e);
     } else {
       hoverTimer = setTimeout(() => {
-        // Al expirar el delay: usar posición fresca del ratón, no la
-        // capturada al inicio del hover.
         if (currentImg === el) show(el, lastMouseEvent);
       }, HOVER_DELAY_MS);
     }
@@ -269,15 +232,12 @@ window.fmt = {
 
   document.addEventListener('mouseout', (e) => {
     if (!currentImg) return;
-    // mouseout se dispara al pasar a un hijo — comprobamos relatedTarget
-    // para saber si es una salida real fuera del elemento actual.
     const to = e.relatedTarget;
-    if (to && currentImg.contains(to)) return;  // sigue dentro
+    if (to && currentImg.contains(to)) return;
     cancelAndHide();
     currentImg = null;
   });
 
-  // Ctrl para mostrar instantáneamente (sin esperar delay).
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Control' && !ctrlHeld) {
       ctrlHeld = true;
@@ -297,9 +257,6 @@ window.fmt = {
     currentImg = null;
   });
 
-  // Scroll y click: SOLO ocultar el preview visible, no cancelar el timer
-  // en curso. Con timer en curso, el usuario probablemente sigue interesado
-  // en la carta bajo el cursor — que aparezca cuando toque.
   document.addEventListener('scroll', hidePreview, {capture: true, passive: true});
   document.addEventListener('click', hidePreview);
 })();

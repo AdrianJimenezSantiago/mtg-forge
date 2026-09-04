@@ -269,6 +269,46 @@ async def get_back_name(db: AsyncSession, front_name: str) -> str | None:
     return row.back_name if row else None
 
 
+async def bulk_lookup(db: AsyncSession, names: list[str]) -> dict[str, dict[str, str]]:
+    """Lookup masivo de nombres → ``{"back_name": ..., "kind": ...}`` desde cache.
+
+    Uso: previews de import ("¿cuántas cartas de mi decklist son DFC?"),
+    analytics, y cualquier UI que necesite saber qué cartas son doble-cara
+    SIN hacer round-trip a Scryfall.
+
+    - Un solo `SELECT WHERE lower(front_name) IN (…)` — O(N) filas
+      escaneadas gracias al índice ``ix_dfc_pairs_front_lower``.
+    - Case-insensitive: el mapa de salida usa el nombre EXACTO que el
+      caller pidió (útil para reconciliar con el input original).
+
+    Devuelve solo las cartas que están en el cache. Las que no están en el
+    cache se omiten (no significa que no sean DFC — puede ser que el cache
+    esté desactualizado; el caller decide qué hacer).
+    """
+    if not names:
+        return {}
+    # Normalizar a lower para el WHERE IN.
+    lowered = [n.lower() for n in names if n]
+    rows = (await db.execute(
+        select(DFCPair.front_name, DFCPair.back_name, DFCPair.kind)
+        .where(func.lower(DFCPair.front_name).in_(lowered))
+    )).all()
+    # Índice: lower(front_name) → (back_name, kind)
+    by_lower: dict[str, tuple[str, str]] = {
+        f.lower(): (b, k) for f, b, k in rows
+    }
+    # Emit devolvemos los nombres EXACTOS del caller (preservando su casing)
+    # para que la reconciliación con el decklist original sea trivial.
+    out: dict[str, dict[str, str]] = {}
+    for n in names:
+        if not n:
+            continue
+        found = by_lower.get(n.lower())
+        if found:
+            out[n] = {"back_name": found[0], "kind": found[1]}
+    return out
+
+
 async def get_all_pairs(db: AsyncSession) -> list[tuple[str, str, str]]:
     """Devuelve todos los pares como tuplas (front, back, kind). Útil para
     exponer via API o para pre-cargar en memoria un dict rápido.

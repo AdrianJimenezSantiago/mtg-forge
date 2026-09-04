@@ -51,7 +51,11 @@ log = logging.getLogger(__name__)
 #   2: añadido asciifolding para manejar acentos y diacríticos.
 #   3: añadida extracción de tags (`is_full_art`, `is_borderless`, …). El
 #      backfill escribe tags sobre filas ya indexadas sin re-descargar.
-NORMALIZATION_VERSION = 3
+#   4: añadida extracción de metadatos canónicos [SET NUM]. El backfill
+#      rellena expansion_code / collector_number / canonical_source.
+#   5: extract_tags también matchea segmentos de folder sin brackets
+#      (Extras · F1/T4) y respeta overrides del vocabulario del usuario.
+NORMALIZATION_VERSION = 5
 
 
 # Semáforo global: máximo 3 indexados concurrentes.
@@ -60,6 +64,11 @@ NORMALIZATION_VERSION = 3
 # Un drive gigante (source 3 tiene decenas de miles de imágenes) puede tardar minutos;
 # con concurrencia=3 los otros drives no esperan innecesariamente.
 _INDEX_SEMAPHORE = asyncio.Semaphore(3)
+
+# Commits parciales cada N filas — evitamos mantener un lock de escritura
+# demasiado tiempo con drives gigantes, y damos progreso visible en la UI.
+# Compartido entre `_index_via_api` (gdrive) y `_index_generic` (resto).
+_COMMIT_EVERY = 500
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +173,21 @@ def normalize_filename(name: str) -> str:
 #
 # Los flags booleanos derivados (is_full_art, is_borderless…) se calculan aquí
 # también, para que el indexer los pueda escribir sin lógica duplicada.
+#
+# Extras · F1/T4: el vocabulario es EDITABLE por el usuario. Al arrancar,
+# `_load_user_vocab_overrides()` mira si existe
+# ``<data_dir>/tag_vocabulary.json`` y lo mergea sobre el default. Formato:
+#
+#   {"aliases": {"my_custom_tag": ["gold border", "silver bordered"], ...}}
+#
+# Los tags definidos por el usuario se emiten como tags en el CSV pero NO
+# generan columnas booleanas nuevas (las columnas son fijas). Los usuarios
+# pueden filtrar por ellos vía FTS5 sobre el campo `tags`.
 
-# vocabulario canónico: canonical_tag → set de aliases lowercase (sin espacios finales).
+# Vocabulario canónico DEFAULT: canonical_tag → set de aliases lowercase.
 # Los aliases se comparan contra el contenido bruto de los brackets, permitiendo
 # múltiples formas de nombrar el mismo concepto ("FA" = "full art").
-_TAG_VOCABULARY: dict[str, frozenset[str]] = {
+_DEFAULT_TAG_VOCABULARY: dict[str, frozenset[str]] = {
     "full_art": frozenset({
         "full art", "fullart", "full-art", "fa",
     }),
@@ -208,12 +227,106 @@ _TAG_VOCABULARY: dict[str, frozenset[str]] = {
     }),
 }
 
-# Lookup inverso: alias → canonical_tag. Compuesto una vez al import.
-_ALIAS_TO_CANONICAL: dict[str, str] = {
-    alias: canon
-    for canon, aliases in _TAG_VOCABULARY.items()
-    for alias in aliases
-}
+
+def _load_user_vocab_overrides() -> dict[str, frozenset[str]]:
+    """Carga el vocabulario custom del usuario desde
+    ``<data_dir>/tag_vocabulary.json``. Devuelve un dict con el mismo
+    formato que ``_DEFAULT_TAG_VOCABULARY``.
+
+    JSON esperado::
+
+        {
+          "aliases": {
+            "gold_border": ["gold border", "gold-bordered", "gld"],
+            "silver_border": ["silver border", "silver bordered", "slv"]
+          }
+        }
+
+    Robusto: si el archivo no existe, está mal formado, o no tiene la
+    estructura correcta, devuelve dict vacío sin crash. El log de warning
+    ayuda al usuario a debuggear su JSON.
+    """
+    import json
+    from mpc_forge import config as _cfg
+    path = _cfg.PATHS.data_dir / "tag_vocabulary.json"
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("tag_vocabulary.json inválido, ignorado: %s", e)
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    aliases = raw.get("aliases") or {}
+    if not isinstance(aliases, dict):
+        return {}
+    out: dict[str, frozenset[str]] = {}
+    for canonical, alias_list in aliases.items():
+        if not isinstance(alias_list, list):
+            continue
+        clean = frozenset(
+            str(a).lower().strip() for a in alias_list if isinstance(a, (str, int))
+        )
+        if clean and isinstance(canonical, str):
+            out[canonical.lower().strip()] = clean
+    if out:
+        log.info("Vocabulario de tags custom cargado: %d tags añadidos", len(out))
+    return out
+
+
+# Cache module-level. Se invalida via `reload_tag_vocabulary()` desde Ajustes.
+_VOCAB_CACHE: dict[str, frozenset[str]] | None = None
+_ALIAS_TO_CANONICAL_CACHE: dict[str, str] | None = None
+
+
+def _get_vocab() -> tuple[dict[str, frozenset[str]], dict[str, str]]:
+    """Devuelve ``(vocab_dict, alias_to_canonical_dict)`` con overrides
+    del usuario aplicados si existen. Cached module-level."""
+    global _VOCAB_CACHE, _ALIAS_TO_CANONICAL_CACHE
+    if _VOCAB_CACHE is not None and _ALIAS_TO_CANONICAL_CACHE is not None:
+        return _VOCAB_CACHE, _ALIAS_TO_CANONICAL_CACHE
+    merged = dict(_DEFAULT_TAG_VOCABULARY)
+    for canonical, aliases in _load_user_vocab_overrides().items():
+        # Merge: si el usuario redefine un canonical existente, unimos aliases.
+        existing = merged.get(canonical, frozenset())
+        merged[canonical] = frozenset(set(existing) | set(aliases))
+    inverse: dict[str, str] = {
+        alias: canonical
+        for canonical, aliases in merged.items()
+        for alias in aliases
+    }
+    _VOCAB_CACHE, _ALIAS_TO_CANONICAL_CACHE = merged, inverse
+    return merged, inverse
+
+
+def reload_tag_vocabulary() -> None:
+    """Fuerza recarga del vocabulario en la próxima llamada a `extract_tags`.
+
+    Se llama desde el endpoint `POST /api/tag-vocabulary/reload` para que
+    el usuario pueda editar el JSON en caliente sin reiniciar la app.
+    """
+    global _VOCAB_CACHE, _ALIAS_TO_CANONICAL_CACHE
+    _VOCAB_CACHE = None
+    _ALIAS_TO_CANONICAL_CACHE = None
+
+
+# Retrocompatibilidad — algunos módulos aún importan estos símbolos.
+# Se resuelven ahora vía _get_vocab() cada vez que se accede.
+class _LazyAliasMap:
+    """Proxy dict que resuelve al lookup real de `_get_vocab()` en cada get."""
+    def get(self, key, default=None):
+        return _get_vocab()[1].get(key, default)
+
+    def __contains__(self, key):
+        return key in _get_vocab()[1]
+
+    def __getitem__(self, key):
+        return _get_vocab()[1][key]
+
+
+_ALIAS_TO_CANONICAL = _LazyAliasMap()
+
 
 # Regex para extraer contenido de () y []. No queremos ni matchear
 # recursivamente ni cruzar entre paréntesis — grupo simple con contenido no-anidado.
@@ -223,30 +336,39 @@ _BRACKET_CONTENTS_RE = re.compile(r"[\(\[]([^\(\)\[\]]+)[\)\]]")
 def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, bool]]:
     """Extrae tags canónicos del filename y del folder_path.
 
-    Recorre todos los ``()`` y ``[]`` en ambos, saca el contenido, y lo
-    matchea contra el vocabulario canónico. Un mismo tag detectado múltiples
-    veces aparece una sola vez en el CSV.
+    Fuentes de tags (en orden de prioridad):
+      1. Contenido dentro de ``()`` y ``[]`` en ``filename`` y ``folder_path``
+         (ej. "Sol Ring (Full Art).png").
+      2. Extras · F1/T4: **segmentos de folder** que coincidan EXACTAMENTE
+         (case-insensitive, tras strip) con algún alias del vocabulario
+         (ej. carpeta llamada "Full Art/Sol Ring.png" → tag full_art). Solo
+         segmentos completos — "Anime Cards" no matchea "anime" para
+         evitar falsos positivos.
+
+    Un mismo tag detectado múltiples veces aparece una sola vez en el CSV.
 
     Devuelve una tupla ``(tags_csv, flags)``:
-      - ``tags_csv``: string CSV ordenado alfabéticamente (ej. "borderless,full_art").
+      - ``tags_csv``: string CSV ordenado alfabéticamente.
       - ``flags``: dict con las claves booleanas is_full_art, is_borderless, etc.
-        que se escriben directamente en las columnas de ``IndexedArt``.
 
     Ejemplos:
       extract_tags("Sol Ring (Full Art).png")
         → ("full_art", {"is_full_art": True, ...})
       extract_tags("Forest (BL) [Retro].png")
-        → ("borderless,retro", {"is_borderless": True, "is_retro": True, ...})
-      extract_tags("Opt.png", "Anime folder/")
-        → ("anime", {"is_anime": True, ...})
+        → ("borderless,retro", ...)
+      extract_tags("Opt.png", "Anime/subfolder/Opt.png")
+        → ("anime", ...)  # segmento "Anime" == alias exacto
+      extract_tags("Opt.png", "Anime Cards/Opt.png")
+        → ("", ...)  # "Anime Cards" != cualquier alias exacto
 
-    Tag `back` NO se refleja como flag booleano — el indicador de reverso ya
-    se maneja en `parse_filename` de custom_art (marker [BACK]). Aquí lo
-    detectamos por si un archivo en drive lo lleva, para poder filtrarlo si
-    procede, pero no genera un `is_back` (ese contexto pertenece a la lógica
-    de front/back de la carta, no al indexado de arte).
+    Tag `back` NO se refleja como flag booleano — el indicador de reverso
+    se maneja en la lógica de custom_art. Detectarlo aquí permite filtrar
+    reversos en el picker si el usuario quiere.
     """
+    _vocab, alias_to_canonical = _get_vocab()
     seen: set[str] = set()
+
+    # (1) Contenido de () y [] — fuente clásica.
     for text in (filename or "", folder_path or ""):
         for content in _BRACKET_CONTENTS_RE.findall(text):
             # Un mismo bracket puede contener varios tags separados por coma:
@@ -255,9 +377,22 @@ def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, b
                 key = _asciifold(raw).lower().strip()
                 if not key:
                     continue
-                canon = _ALIAS_TO_CANONICAL.get(key)
+                canon = alias_to_canonical.get(key)
                 if canon:
                     seen.add(canon)
+
+    # (2) Segmentos de folder sin brackets — solo si matchean EXACTO un alias.
+    # Con "/" como separador (POSIX) o "\\" (Windows). Splitteamos ambos.
+    if folder_path:
+        segments = re.split(r"[/\\]", folder_path)
+        for seg in segments:
+            key = _asciifold(seg).lower().strip()
+            if not key:
+                continue
+            # Solo alias exactos; segmento "Full Art" matchea, "Full Art Cards" no.
+            canon = alias_to_canonical.get(key)
+            if canon:
+                seen.add(canon)
 
     csv = ",".join(sorted(seen))
     # Flags derivados. Solo los que existen como columna en IndexedArt.
@@ -272,6 +407,126 @@ def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, b
         "is_alt_art":    "alt_art"    in seen,
     }
     return csv, flags
+
+
+# ---------------------------------------------------------------------------
+# Extracción de metadatos canónicos [SET NUM]
+# ---------------------------------------------------------------------------
+# Los drives de MPC Autofill tienden a etiquetar los archivos con
+# `[SET NUM]` (ej. "Opt [DMU 100].png", "Lightning Bolt [LEA 161]") para
+# vincular sin ambigüedad el arte custom con una impresión oficial concreta
+# de Scryfall. Detectarlo nos permite:
+#
+# - Mostrar en el picker "DMU · #100" como badge, igual que para artes
+#   oficiales, aunque el archivo esté en Google Drive.
+# - Que el resolver de decks priorice `[SET NUM]` sobre matching por nombre
+#   fuzzy (fase 3): si el usuario tiene "Opt [DMU 100].png" y elige Opt en
+#   su mazo, sabemos QUÉ impresión oficial reproduce el arte.
+# - Filtrar por set en el panel de drives igual que se filtra Scryfall.
+#
+# Formato aceptado: `[SET NUM]` o `(SET NUM)` con:
+#   - SET: 2-6 chars alfanuméricos (los códigos de set van de 2 a 6 chars).
+#     Se guarda en minúsculas por consistencia con Scryfall.
+#   - NUM: número + sufijos posibles ("100", "42a", "12★", "4p").
+#     Se guarda tal cual (Scryfall los distingue).
+#
+# Detección extra:
+#   - Se busca primero en el `filename`. Si no encuentra, se cae al
+#     `folder_path` (una carpeta llamada "DMU 100" o "[DMU 100]" aplica
+#     al arte de dentro).
+#
+# El `canonical_source` distingue de dónde vino el tag para debug y para
+# priorizar en el picker.
+
+# Codes de set que NO queremos matchear porque son colisiones frecuentes:
+# 3 chars muy comunes en filenames de proxy art sin ser realmente set codes.
+_SET_CODE_BLACKLIST = frozenset({
+    "art",   # "[Art]" tag
+    "back",  # "[BACK]" tag
+    "fa",    # "[FA]" tag full art
+    "bl",    # "[BL]" tag borderless
+    "ea",    # "[EA]" tag extended
+    "sc",    # "[SC]" tag showcase
+    "fr",    # "[FR]" francés
+    "jp",    # "[JP]" japonés
+    "en",    # "[EN]" inglés
+    "es",    # "[ES]" español
+    "de",    # "[DE]" alemán
+    "png",   # extensiones que a veces se meten
+    "jpg",
+    "jpeg",
+    "webp",
+})
+
+# Match "[SET NUM]" o "(SET NUM)" con NUM = alphanumeric + posibles símbolos
+# ★☆*p (usados por Scryfall para promo variants / stars).
+# El SET es 2-6 alfanumérico, NUM es al menos 1 char.
+# Requerimos un espacio entre SET y NUM para distinguir de contenidos como
+# "[Full Art]" o "[BACK]" (que no llevan espacio + número).
+_CANONICAL_RE = re.compile(
+    r"[\[\(]"
+    r"([A-Za-z0-9]{2,6})"     # set code
+    r"\s+"                     # separador obligatorio
+    r"([A-Za-z0-9★☆\*]+)"      # collector number (relajado)
+    r"[\]\)]"
+)
+
+
+def extract_canonical(
+    filename: str, folder_path: str = ""
+) -> tuple[str | None, str | None, str]:
+    """Extrae ``(expansion_code, collector_number, source)`` de un filename.
+
+    Busca `[SET NUM]` o `(SET NUM)` primero en el ``filename``, luego en el
+    ``folder_path``. Devuelve el primer match no blacklisteado.
+
+    ``expansion_code`` se devuelve en minúsculas para consistencia con Scryfall.
+    ``collector_number`` se preserva tal cual (Scryfall es case-sensitive en
+    los sufijos: "12a" ≠ "12A").
+    ``source`` es "filename", "folder" o "" si no hubo match.
+
+    Ejemplos:
+      "Opt [DMU 100].png"                → ("dmu", "100", "filename")
+      "Sol Ring (LEA 263).png"           → ("lea", "263", "filename")
+      "Lightning Bolt [2X2 117].png"     → ("2x2", "117", "filename")
+      "Forest.png" en "DMU [DMU 275]/"   → ("dmu", "275", "folder")
+      "Opt [BACK].png"                   → (None, None, "") (BACK blacklisted)
+      "Forest [Full Art].png"            → (None, None, "") (tag conocido)
+      "Random file.png"                  → (None, None, "")
+    """
+    for source_label, text in (("filename", filename or ""), ("folder", folder_path or "")):
+        for match in _CANONICAL_RE.finditer(text):
+            set_code = match.group(1).lower()
+            collector_num = match.group(2)
+
+            # Descartar tags de arte conocidos: si el contenido entero del
+            # bracket es un tag reconocido en el vocabulario, NO es un par
+            # (set, num). Esto evita interpretar "Full Art" o "Alt Art" como
+            # `(set="full", num="Art")` — el falso match más común.
+            full_content = f"{set_code} {collector_num}".lower()
+            if _ALIAS_TO_CANONICAL.get(full_content):
+                continue
+            # Si el 'collector_number' es puramente alfabético y matchea la
+            # segunda palabra de algún alias conocido, también es probable
+            # colisión. Ej.: "Full Art" → SET="Full", NUM="Art". "Art" solo
+            # no está en el vocab, pero la combinación sí. Ya lo cubre el
+            # check anterior.
+
+            if set_code in _SET_CODE_BLACKLIST:
+                continue
+            # Extra sanity: los set codes de Scryfall siempre son alfanuméricos
+            # pero raramente son todo-dígitos y cortos. Descartamos "1 2",
+            # "10 5" y similares (típicos en "Nave Marín 1 2" tipo página).
+            if set_code.isdigit() and len(set_code) < 3:
+                continue
+            # Y el collector_number nunca es puramente alfabético largo — si
+            # es todo letras (>2 chars), casi seguro es una etiqueta tipo
+            # "Alternate", "Retro", etc. Los números reales de Scryfall
+            # siempre tienen al menos un dígito.
+            if collector_num.isalpha() and len(collector_num) > 2:
+                continue
+            return set_code, collector_num, source_label
+    return None, None, ""
 
 
 # ---------------------------------------------------------------------------
@@ -361,12 +616,22 @@ async def _index_via_api(
     files_updated = 0
     folders_visited = 0
     since_last_commit = 0
-    _COMMIT_EVERY = 500
     _LOG_FOLDERS_EVERY = 20
 
     # Cola: (folder_id, path_relativo)
     queue: list[tuple[str, str]] = [(folder_id, "")]
     seen_folders: set[str] = {folder_id}
+
+    # Preload de IndexedArt existentes para este source. Antes: 1 SELECT por
+    # cada archivo del drive (miles). Ahora: 1 SELECT total + lookups O(1) en
+    # el dict. Las filas nuevas insertadas durante el indexado se añaden aquí
+    # para mantenerlo consistente si el mismo file_id aparece dos veces.
+    existing_by_file_id: dict[str, IndexedArt] = {
+        art.file_id: art
+        for art in (await db.scalars(
+            select(IndexedArt).where(IndexedArt.source_id == source.id)
+        )).all()
+    }
 
     async def _partial_commit() -> None:
         """Persiste lo acumulado y actualiza indexed_files para la UI."""
@@ -433,16 +698,11 @@ async def _index_via_api(
                 if mime not in _IMAGE_MIMES:
                     continue
 
-                # Upsert manual (buscar por source_id+file_id)
-                existing = (await db.execute(
-                    select(IndexedArt).where(
-                        IndexedArt.source_id == source.id,
-                        IndexedArt.file_id == item_id,
-                    )
-                )).scalar_one_or_none()
+                existing = existing_by_file_id.get(item_id)
 
                 size = int(item.get("size", 0) or 0)
                 tags_csv, tag_flags = extract_tags(name, current_path)
+                exp_code, coll_num, canon_source = extract_canonical(name, current_path)
                 if existing:
                     existing.filename = name
                     existing.name_normalized = normalize_filename(name)
@@ -451,11 +711,14 @@ async def _index_via_api(
                     existing.mime_type = mime
                     existing.indexed_at = datetime.now(timezone.utc)
                     existing.tags = tags_csv
+                    existing.expansion_code = exp_code
+                    existing.collector_number = coll_num
+                    existing.canonical_source = canon_source
                     for flag, value in tag_flags.items():
                         setattr(existing, flag, value)
                     files_updated += 1
                 else:
-                    db.add(IndexedArt(
+                    new_art = IndexedArt(
                         source_id=source.id,
                         file_id=item_id,
                         filename=name,
@@ -464,8 +727,13 @@ async def _index_via_api(
                         size_bytes=size,
                         mime_type=mime,
                         tags=tags_csv,
+                        expansion_code=exp_code,
+                        collector_number=coll_num,
+                        canonical_source=canon_source,
                         **tag_flags,
-                    ))
+                    )
+                    db.add(new_art)
+                    existing_by_file_id[item_id] = new_art
                     files_added += 1
                 since_last_commit += 1
 
@@ -524,37 +792,49 @@ async def _index_via_scraping(
                 error=f"No se pudo cargar embedded view: {e}",
             )
 
-    # Parseamos con regex simple
     matches = _EMBED_ITEM_RE.findall(html)
+    if matches:
+        existing_by_file_id: dict[str, IndexedArt] = {
+            art.file_id: art
+            for art in (await db.scalars(
+                select(IndexedArt).where(IndexedArt.source_id == source.id)
+            )).all()
+        }
+    else:
+        existing_by_file_id = {}
+
     for file_id, mime_frag, name in matches:
-        # Filtro solo imágenes
         if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
             continue
         mime = f"image/{mime_frag.split('/')[-1]}"
         tags_csv, tag_flags = extract_tags(name, "")
-        existing = (await db.execute(
-            select(IndexedArt).where(
-                IndexedArt.source_id == source.id,
-                IndexedArt.file_id == file_id,
-            )
-        )).scalar_one_or_none()
+        exp_code, coll_num, canon_source = extract_canonical(name, "")
+        existing = existing_by_file_id.get(file_id)
         if existing:
             existing.filename = name
             existing.name_normalized = normalize_filename(name)
             existing.mime_type = mime
             existing.indexed_at = datetime.now(timezone.utc)
             existing.tags = tags_csv
+            existing.expansion_code = exp_code
+            existing.collector_number = coll_num
+            existing.canonical_source = canon_source
             for flag, value in tag_flags.items():
                 setattr(existing, flag, value)
             files_updated += 1
         else:
-            db.add(IndexedArt(
+            new_art = IndexedArt(
                 source_id=source.id, file_id=file_id, filename=name,
                 name_normalized=normalize_filename(name),
                 folder_path="", size_bytes=0, mime_type=mime,
                 tags=tags_csv,
+                expansion_code=exp_code,
+                collector_number=coll_num,
+                canonical_source=canon_source,
                 **tag_flags,
-            ))
+            )
+            db.add(new_art)
+            existing_by_file_id[file_id] = new_art
             files_added += 1
 
     err = None
@@ -583,7 +863,14 @@ def _extract_folder_id(url: str) -> str | None:
 
 
 async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
-    """Indexa un drive. Usa API key si está configurada, si no cae a scraping.
+    """Indexa una source. El comportamiento depende del ``source_type``:
+
+    - ``"gdrive"``: API v3 si hay API key, si no scraping HTML (legacy path).
+    - ``"local-folder"``, ``"http-listing"``, cualquier otro tipo registrado
+      en ``services.source_types``: usa el flujo genérico (`_index_generic`)
+      que consume el ``SourceFile`` iterado por el tipo.
+    - ``"gdrive-file"`` o cualquier tipo sin implementación: no-op con
+      warning.
 
     Serializa vía semáforo global: aunque la UI lance N indexados en paralelo,
     se ejecutan uno a uno para no saturar el lock de SQLite.
@@ -596,44 +883,199 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
         return IndexResult(source_id=source_id, files_added=0, files_updated=0,
                           folders_visited=0, error="Source no encontrado")
 
-    folder_id = _extract_folder_id(source.url)
-    if not folder_id:
+    stype = source.source_type or "gdrive"
+
+    # gdrive → path legacy específico. Los demás → path genérico via source_types.
+    if stype == "gdrive":
+        folder_id = _extract_folder_id(source.url)
+        if not folder_id:
+            result = IndexResult(
+                source_id=source_id, files_added=0, files_updated=0,
+                folders_visited=0,
+                error="La URL no parece un folder de Google Drive",
+            )
+            source.indexed_at = datetime.now(timezone.utc)
+            source.index_error = result.error or ""
+            await db.commit()
+            return result
+
+        async with _INDEX_SEMAPHORE:  # máx 3 concurrentes
+            api_key = (getattr(cfg, "GOOGLE_API_KEY", "") or "").strip()
+            mode = "API v3" if api_key else "scraping (sin API key)"
+            log.info("▶ Empezando indexado de source %d (%s) vía %s",
+                     source_id, source.name, mode)
+            if api_key:
+                result = await _index_via_api(db, source, folder_id, api_key)
+            else:
+                result = await _index_via_scraping(db, source, folder_id)
+    elif stype == "gdrive-file":
+        # File source individual — no se indexa (es un solo archivo, se usa
+        # directo al añadir arte custom por URL).
         result = IndexResult(
             source_id=source_id, files_added=0, files_updated=0,
             folders_visited=0,
-            error="La URL no parece un folder de Google Drive",
+            error="Los sources tipo 'archivo suelto' no se indexan.",
         )
-        source.indexed_at = datetime.now(timezone.utc)
-        source.index_error = result.error or ""
-        await db.commit()
-        return result
-
-    async with _INDEX_SEMAPHORE:  # máx 3 concurrentes
-        api_key = (getattr(cfg, "GOOGLE_API_KEY", "") or "").strip()
-        mode = "API v3" if api_key else "scraping (sin API key)"
-        log.info("▶ Empezando indexado de source %d (%s) vía %s",
-                 source_id, source.name, mode)
-        if api_key:
-            result = await _index_via_api(db, source, folder_id, api_key)
+    else:
+        # Dispatch al flujo genérico basado en source_types.
+        from mpc_forge.services.source_types import resolve
+        type_cls = resolve(stype)
+        if type_cls is None:
+            result = IndexResult(
+                source_id=source_id, files_added=0, files_updated=0,
+                folders_visited=0,
+                error=f"Tipo de source desconocido: {stype!r}",
+            )
         else:
-            result = await _index_via_scraping(db, source, folder_id)
+            async with _INDEX_SEMAPHORE:
+                log.info("▶ Empezando indexado genérico de source %d (%s, tipo=%s)",
+                         source_id, source.name, stype)
+                result = await _index_generic(db, source, type_cls)
 
-        # Actualizar estado del source. Contamos filas reales de IndexedArt.
-        from sqlalchemy import func
-        source.indexed_at = datetime.now(timezone.utc)
-        source.indexed_files = int(await db.scalar(
-            select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source.id)
-        ) or 0)
-        source.index_error = result.error or ""
-        await db.commit()
+    # Actualizar estado del source. Contamos filas reales de IndexedArt.
+    from sqlalchemy import func
+    source.indexed_at = datetime.now(timezone.utc)
+    source.indexed_files = int(await db.scalar(
+        select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source.id)
+    ) or 0)
+    source.index_error = result.error or ""
+    await db.commit()
 
     log.info(
-        "✓ Terminado source %d (%s): total=%d archivos (+%d nuevos, ~%d actualizados) "
-        "en %d folders. Error=%s",
-        source_id, source.name, source.indexed_files, result.files_added,
+        "✓ Terminado source %d (%s, tipo=%s): total=%d archivos (+%d nuevos, "
+        "~%d actualizados) en %d folders. Error=%s",
+        source_id, source.name, stype, source.indexed_files, result.files_added,
         result.files_updated, result.folders_visited, result.error or "ninguno",
     )
     return result
+
+
+async def _index_generic(db: AsyncSession, source: ArtSource, type_cls) -> IndexResult:
+    """Flujo de indexado genérico para tipos que exponen ``list_files()``.
+
+    Consume el ``AsyncIterator[SourceFile]`` de ``type_cls`` y hace upsert en
+    ``IndexedArt`` para cada archivo. Comparte con el path gdrive:
+      - Extracción de tags y metadatos canónicos.
+      - Normalización con asciifolding.
+      - Commits parciales cada ``_COMMIT_EVERY`` filas para no bloquear
+        el lock demasiado tiempo con carpetas gigantes.
+      - Extras · F2/T8: cálculo pHash inline si `phash.enabled` está
+        activo. NO se hace en el path gdrive (demasiadas descargas) —
+        para gdrive se ofrece un endpoint dedicado en `routes/integrations.py`.
+    """
+    from mpc_forge.services import phash as _phash
+
+    # ¿Debemos calcular pHash inline? Solo si:
+    #   - El setting phash.enabled está activo (mira BD)
+    #   - Las libs Pillow/imagehash están disponibles
+    # La evaluación se hace UNA vez al arrancar el indexado.
+    phash_active = await _phash.enabled(db)
+    # Crear cliente httpx propio si vamos a calcular pHash. Reutilizado para
+    # todas las descargas del batch. Se cierra al final via context manager.
+    phash_client = None
+    if phash_active:
+        import httpx
+        from mpc_forge.ssl_config import ssl_insecure
+        from mpc_forge import config as _cfg
+        phash_client = httpx.AsyncClient(
+            timeout=15.0,
+            verify=not ssl_insecure(),
+            headers={"User-Agent": _cfg.MOXFIELD_USER_AGENT},
+        )
+
+    files_added = 0
+    files_updated = 0
+    since_last_commit = 0
+
+    # Preload de IndexedArt existentes: cambia N SELECTs (uno por archivo del
+    # source) por 1 SELECT + lookup O(1) en memoria.
+    existing_by_file_id: dict[str, IndexedArt] = {
+        art.file_id: art
+        for art in (await db.scalars(
+            select(IndexedArt).where(IndexedArt.source_id == source.id)
+        )).all()
+    }
+
+    async def _partial_commit():
+        nonlocal since_last_commit
+        try:
+            await db.commit()
+        except Exception as e:  # noqa: BLE001
+            log.warning("Commit parcial de source %d falló: %s", source.id, e)
+        since_last_commit = 0
+
+    try:
+        async for sf in type_cls.list_files(source):
+            existing = existing_by_file_id.get(sf.file_id)
+
+            tags_csv, tag_flags = extract_tags(sf.filename, sf.folder_path)
+            exp_code, coll_num, canon_source = extract_canonical(sf.filename, sf.folder_path)
+
+            if existing:
+                existing.filename = sf.filename
+                existing.name_normalized = normalize_filename(sf.filename)
+                existing.folder_path = sf.folder_path
+                existing.size_bytes = sf.size_bytes
+                existing.mime_type = sf.mime_type
+                existing.indexed_at = datetime.now(timezone.utc)
+                existing.tags = tags_csv
+                existing.expansion_code = exp_code
+                existing.collector_number = coll_num
+                existing.canonical_source = canon_source
+                for flag, value in tag_flags.items():
+                    setattr(existing, flag, value)
+                if phash_active and phash_client is not None and not existing.image_hash:
+                    thumb = _phash._default_thumb_url(existing, source)
+                    if thumb:
+                        h = await _phash.compute_from_url(phash_client, thumb)
+                        if h:
+                            existing.image_hash = h
+                files_updated += 1
+            else:
+                new_art = IndexedArt(
+                    source_id=source.id,
+                    file_id=sf.file_id,
+                    filename=sf.filename,
+                    name_normalized=normalize_filename(sf.filename),
+                    folder_path=sf.folder_path,
+                    size_bytes=sf.size_bytes,
+                    mime_type=sf.mime_type,
+                    tags=tags_csv,
+                    expansion_code=exp_code,
+                    collector_number=coll_num,
+                    canonical_source=canon_source,
+                    **tag_flags,
+                )
+                if phash_active and phash_client is not None:
+                    thumb = _phash._default_thumb_url(new_art, source)
+                    if thumb:
+                        h = await _phash.compute_from_url(phash_client, thumb)
+                        if h:
+                            new_art.image_hash = h
+                db.add(new_art)
+                existing_by_file_id[sf.file_id] = new_art
+                files_added += 1
+            since_last_commit += 1
+            if since_last_commit >= _COMMIT_EVERY:
+                await _partial_commit()
+
+        if since_last_commit > 0:
+            await _partial_commit()
+    except Exception as e:  # noqa: BLE001
+        log.exception("Error indexando source %d (%s) via tipo genérico",
+                      source.id, source.name)
+        return IndexResult(
+            source_id=source.id, files_added=files_added, files_updated=files_updated,
+            folders_visited=0, error=f"{type(e).__name__}: {e}",
+        )
+    finally:
+        if phash_client is not None:
+            await phash_client.aclose()
+
+    return IndexResult(
+        source_id=source.id, files_added=files_added, files_updated=files_updated,
+        folders_visited=0, error=None,
+    )
 
 
 async def clear_index(db: AsyncSession, source_id: int) -> int:
@@ -723,6 +1165,9 @@ async def backfill_normalized_names(db: AsyncSession) -> int:
         for art in rows:
             new_norm = normalize_filename(art.filename)
             new_tags_csv, new_flags = extract_tags(art.filename, art.folder_path)
+            new_exp, new_num, new_canon_source = extract_canonical(
+                art.filename, art.folder_path
+            )
             row_changed = False
             if new_norm != art.name_normalized:
                 art.name_normalized = new_norm
@@ -734,6 +1179,16 @@ async def backfill_normalized_names(db: AsyncSession) -> int:
                 if getattr(art, flag, False) != value:
                     setattr(art, flag, value)
                     row_changed = True
+            # Canonical metadata (v4). None es un valor legítimo (arte sin tag).
+            if new_exp != art.expansion_code:
+                art.expansion_code = new_exp
+                row_changed = True
+            if new_num != art.collector_number:
+                art.collector_number = new_num
+                row_changed = True
+            if new_canon_source != (art.canonical_source or ""):
+                art.canonical_source = new_canon_source
+                row_changed = True
             if row_changed:
                 updated += 1
         await db.commit()

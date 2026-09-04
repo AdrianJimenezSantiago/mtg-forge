@@ -163,6 +163,76 @@ async def list_sources(db: AsyncSession) -> list[ArtSource]:
     )
 
 
+def _detect_source_type(url: str) -> tuple[str, str]:
+    """Detecta el ``source_type`` a partir de la URL y devuelve
+    ``(source_type, canonical_url)``.
+
+    Reglas de detección (evaluadas en orden):
+      1. Google Drive folder → "gdrive" + URL canónica
+      2. Google Drive file → "gdrive-file" + URL de descarga directa
+      3. Prefijo ``file://`` o ruta absoluta local → "local-folder"
+      4. Termina en ``.json`` sobre HTTP(S) → "http-listing"
+      5. Cualquier otra cosa → "other"
+
+    NUEVO en Fase 2 (Tarea 7): antes solo distinguíamos gdrive vs
+    gdrive-file vs other. Ahora reconocemos local-folder y http-listing.
+
+    La detección es best-effort — el usuario puede sobreescribir el tipo
+    desde la UI si le hace falta (por ejemplo, para un HTTP manifest cuya
+    URL no termine en .json).
+    """
+    from mpc_forge.services.source_types import resolve
+    from pathlib import Path
+    raw = (url or "").strip()
+
+    # 1-2) Google Drive
+    parsed = parse_gdrive_url(raw)
+    if parsed.kind == "folder":
+        return "gdrive", parsed.canonical
+    if parsed.kind == "file":
+        return "gdrive-file", parsed.canonical
+
+    # 3) Local folder — file:// o ruta absoluta detectable
+    if raw.startswith("file://") or (len(raw) >= 2 and (raw[0] in "/\\" or raw[1] == ":")):
+        try:
+            local_cls = resolve("local-folder")
+            if local_cls:
+                canonical = local_cls.validate_url(raw)
+                return "local-folder", canonical
+        except (ValueError, Exception):  # noqa: BLE001
+            # Ruta parece local pero no válida — cae a "other" para que el
+            # usuario vea el warning en la UI y corrija.
+            pass
+
+    # 4) HTTP JSON manifest
+    if raw.startswith(("http://", "https://")) and raw.lower().endswith(".json"):
+        try:
+            http_cls = resolve("http-listing")
+            if http_cls:
+                canonical = http_cls.validate_url(raw)
+                return "http-listing", canonical
+        except (ValueError, Exception):  # noqa: BLE001
+            pass
+
+    # 5) S3 / R2 (Extras · F3/T7). Heurística por prefijo o hostname.
+    is_s3_like = (
+        raw.startswith("s3://")
+        or ".s3.amazonaws.com" in raw.lower()
+        or ".r2.cloudflarestorage.com" in raw.lower()
+        or ".r2.dev" in raw.lower()
+    )
+    if is_s3_like:
+        try:
+            s3_cls = resolve("s3")
+            if s3_cls:
+                canonical = s3_cls.validate_url(raw)
+                return "s3", canonical
+        except (ValueError, Exception):  # noqa: BLE001
+            pass
+
+    return "other", raw
+
+
 async def add_source(
     db: AsyncSession,
     name: str,
@@ -170,14 +240,27 @@ async def add_source(
     description: str = "",
     tags: str = "",
     pinned: bool = False,
+    source_type: str | None = None,
 ) -> ArtSource:
+    """Crea un ArtSource nuevo. Si ``source_type`` no se especifica, se
+    autodetecta a partir de la URL (ver ``_detect_source_type``).
+    """
     if not name.strip():
         raise ValueError("El nombre no puede estar vacío")
     if not url.strip():
         raise ValueError("La URL no puede estar vacía")
-    parsed = parse_gdrive_url(url)
-    canonical = parsed.canonical if parsed.kind != "unknown" else url.strip()
-    src_type = "gdrive" if parsed.kind == "folder" else ("gdrive-file" if parsed.kind == "file" else "other")
+
+    if source_type:
+        # Si el caller fuerza un tipo, respetamos su URL tal cual (después
+        # de validate_url del tipo, que puede normalizar).
+        from mpc_forge.services.source_types import resolve
+        type_cls = resolve(source_type)
+        if type_cls is None:
+            raise ValueError(f"Tipo de source desconocido: {source_type!r}")
+        canonical = type_cls.validate_url(url)
+        src_type = source_type
+    else:
+        src_type, canonical = _detect_source_type(url)
 
     src = ArtSource(
         name=name.strip(),
@@ -201,6 +284,7 @@ async def update_source(
     description: str | None = None,
     tags: str | None = None,
     pinned: bool | None = None,
+    source_type: str | None = None,
 ) -> ArtSource | None:
     src = await db.get(ArtSource, source_id)
     if not src:
@@ -208,13 +292,24 @@ async def update_source(
     if name is not None:
         src.name = name.strip()
     if url is not None:
-        parsed = parse_gdrive_url(url)
-        src.url = parsed.canonical if parsed.kind != "unknown" else url.strip()
-        src.source_type = (
-            "gdrive" if parsed.kind == "folder"
-            else "gdrive-file" if parsed.kind == "file"
-            else "other"
-        )
+        if source_type:
+            # Tipo forzado por el caller — validar contra su clase concreta.
+            from mpc_forge.services.source_types import resolve
+            type_cls = resolve(source_type)
+            if type_cls is None:
+                raise ValueError(f"Tipo de source desconocido: {source_type!r}")
+            src.url = type_cls.validate_url(url)
+            src.source_type = source_type
+        else:
+            src.source_type, src.url = _detect_source_type(url)
+    elif source_type is not None:
+        # Solo cambia el tipo (URL no tocada): validamos con el nuevo tipo.
+        from mpc_forge.services.source_types import resolve
+        type_cls = resolve(source_type)
+        if type_cls is None:
+            raise ValueError(f"Tipo de source desconocido: {source_type!r}")
+        src.url = type_cls.validate_url(src.url)
+        src.source_type = source_type
     if description is not None:
         src.description = description.strip()
     if tags is not None:

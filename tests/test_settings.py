@@ -8,11 +8,12 @@ class TestSettingsRedesign:
         assert r.status_code == 200
         data = r.json()
         groups = sorted({d["group"] for d in data["definitions"]})
-        # 5 grupos ahora: los 4 originales + "Ubicación de datos" (nuevo, para
-        # los overrides de paths.*).
+        # 6 grupos: los 4 originales + "Ubicación de datos" (overrides de
+        # paths.*) + "Búsqueda avanzada" (settings de pHash cross-drive
+        # añadido en Fase 2 · T8).
         assert groups == [
-            "General", "MPC Autofill", "Precios y envío",
-            "Red y conexión", "Ubicación de datos",
+            "Búsqueda avanzada", "General", "MPC Autofill",
+            "Precios y envío", "Red y conexión", "Ubicación de datos",
         ]
 
     async def test_ssl_insecure_setting_exists(self, client):

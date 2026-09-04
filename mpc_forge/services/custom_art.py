@@ -14,6 +14,7 @@ También soporta añadir por URL: se descarga a la carpeta bajo `_downloaded/`.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import re
@@ -22,7 +23,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import httpx
 from slugify import slugify
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.config import PATHS
@@ -116,34 +117,52 @@ def parse_filename(rel_path: Path) -> tuple[str, str, str | None]:
     return normalize_card_name(stem), face, variant
 
 
-async def rescan(db: AsyncSession) -> dict[str, int]:
-    """Reindexa toda la carpeta. Añade nuevos, elimina huérfanos.
+def _scan_disk(root: Path) -> dict[str, tuple[Path, int]]:
+    """Recorre ``root`` recursivamente y devuelve ``{rel_path: (abs, size)}``.
 
-    Devuelve stats: {"total", "added", "removed", "kept"}.
+    Ejecutable en un hilo con :func:`asyncio.to_thread` para no bloquear el
+    event loop cuando la carpeta contiene miles de archivos.
     """
-    root = PATHS.custom_art_dir
-    disk_files: dict[str, Path] = {}
+    disk: dict[str, tuple[Path, int]] = {}
     for f in root.rglob("*"):
         if not f.is_file():
             continue
         if f.suffix.lower() not in _IMAGE_EXTS:
             continue
+        try:
+            size = f.stat().st_size
+        except OSError:
+            continue
         rel = str(f.relative_to(root)).replace("\\", "/")
-        disk_files[rel] = f
+        disk[rel] = (f, size)
+    return disk
+
+
+async def rescan(db: AsyncSession) -> dict[str, int]:
+    """Reindexa toda la carpeta. Añade nuevos, elimina huérfanos.
+
+    El walk del sistema de archivos se lanza en un hilo para no bloquear el
+    event loop, y los borrados se hacen en una sola sentencia bulk en vez de
+    una por huérfano.
+
+    Devuelve stats: ``{"total", "added", "removed", "kept"}``.
+    """
+    root = PATHS.custom_art_dir
+    disk_files = await asyncio.to_thread(_scan_disk, root)
 
     existing = (await db.scalars(select(CustomArt))).all()
     existing_by_path: dict[str, CustomArt] = {ca.relative_path: ca for ca in existing}
 
+    orphan_ids = [
+        ca.id for path, ca in existing_by_path.items() if path not in disk_files
+    ]
+    removed = len(orphan_ids)
+    if orphan_ids:
+        await db.execute(delete(CustomArt).where(CustomArt.id.in_(orphan_ids)))
+
     added = 0
-    removed = 0
     kept = 0
-
-    for rel_path, ca in existing_by_path.items():
-        if rel_path not in disk_files:
-            await db.delete(ca)
-            removed += 1
-
-    for rel_path, abs_path in disk_files.items():
+    for rel_path, (_abs_path, size) in disk_files.items():
         if rel_path in existing_by_path:
             kept += 1
             continue
@@ -154,7 +173,7 @@ async def rescan(db: AsyncSession) -> dict[str, int]:
             card_name_normalized=card_name,
             variant_label=variant,
             face=face,
-            bytes_size=abs_path.stat().st_size,
+            bytes_size=size,
         ))
         added += 1
 

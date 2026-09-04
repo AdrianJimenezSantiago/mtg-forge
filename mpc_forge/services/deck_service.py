@@ -392,16 +392,93 @@ async def import_from_plaintext(
 
     Las entradas no resueltas conservan la línea original (``raw_line``) para
     que el usuario vea exactamente qué texto no se pudo interpretar.
+
+    Pre-procesamiento con cache DFC (Extras · F1/T2):
+    Antes de resolver contra Scryfall, cada entry con `name` se consulta
+    contra el cache local de DFCPair. Si el usuario metió un nombre de
+    reverso (ej. "Insectile Aberration", "Sage Animist"), lo revertimos al
+    front correspondiente (Delver of Secrets, Nissa, Vastwood Seer) para
+    que la impresión sea la correcta. Esto emula lo que hace MPC Autofill
+    Desktop y ahorra al usuario horas de confusión.
     """
     entries = parse_plain_decklist(text)
+    # El parser ya asigna roles según cabeceras `//Sideboard`, etc.
+    # (state machine). Solo aplicamos default para entradas sin rol
+    # explícito por retro-compatibilidad con parsers antiguos.
     for e in entries:
         e.setdefault("role", "mainboard")
+
+    # DFC pre-processing: revertir backs a fronts usando el cache local.
+    await _revert_dfc_backs_to_fronts(db, entries)
+
     resolved = await resolve_cards(db, scryfall, entries)
     unresolved = _unresolved_from_entries(resolved)
     deck = await create_deck_from_entries(
         db, name=name, entries=resolved, fmt=fmt, include_extras=include_extras,
     )
     return deck, unresolved
+
+
+async def _revert_dfc_backs_to_fronts(
+    db: AsyncSession, entries: list[dict[str, Any]],
+) -> None:
+    """Si `entries` contiene nombres que son BACKS de cartas DFC, los reemplaza
+    por su FRONT usando el cache local ``dfc_pairs``.
+
+    Sin esta corrección, "Insectile Aberration" (el reverso de Delver of
+    Secrets) fallaría al resolver contra Scryfall porque no existe una
+    printing con ese nombre principal. MPC Autofill Desktop hace lo mismo
+    nativamente.
+
+    Modifica ``entries`` in-place. Añade ``dfc_reverted_from`` para trazar el
+    reemplazo (útil para logs y UI).
+
+    No-op si el cache DFC está vacío (aún no sincronizado). En ese caso los
+    entries pasan tal cual y Scryfall los rechazará como unresolved — el
+    usuario los verá y sabrá corregir manualmente.
+    """
+    from sqlalchemy import func, select
+    from mpc_forge.models import DFCPair
+
+    # Recolectamos los names únicos (case-insensitive) que necesitamos verificar.
+    names_by_lower: dict[str, list[dict[str, Any]]] = {}
+    for e in entries:
+        n = (e.get("name") or "").strip()
+        if not n or e.get("scryfall_id"):
+            continue
+        # Si el nombre ya contiene " // " es un nombre DFC completo (ambas caras).
+        # Enviarlo a Scryfall tal cual es correcto — NO intentar revertirlo,
+        # porque sólo los nombres de BACK-face puro (sin //) son candidatos.
+        # Revertir "Zanarkand, Ancient Metropolis // Lasting Fayth" podría
+        # transformarlo erróneamente si el caché tiene datos inconsistentes.
+        if " // " in n:
+            continue
+        names_by_lower.setdefault(n.lower(), []).append(e)
+    if not names_by_lower:
+        return
+
+    # Buscar los que aparecen como BACK en el cache. Un solo query IN.
+    rows = (await db.execute(
+        select(DFCPair.front_name, DFCPair.back_name).where(
+            func.lower(DFCPair.back_name).in_(list(names_by_lower.keys()))
+        )
+    )).all()
+
+    revert_count = 0
+    for front, back in rows:
+        for entry in names_by_lower.get(back.lower(), []):
+            original = entry["name"]
+            entry["dfc_reverted_from"] = original
+            entry["name"] = front
+            revert_count += 1
+
+    if revert_count > 0:
+        # No es un error — el user tenía una lista con backs y los normalizamos.
+        # Log en debug para no llenar la salida en imports masivos.
+        import logging as _lg
+        _lg.getLogger(__name__).info(
+            "DFC pre-processing: revertidos %d backs a fronts vía cache local", revert_count,
+        )
 
 
 async def import_from_url(
@@ -441,14 +518,25 @@ async def import_from_url(
         raise ImportSiteError(f"{site_cls.name} devolvió una lista vacía")
 
     if not name:
-        # Autogenera nombre razonable a partir del último segmento no-vacío
-        # de la URL. Ej: https://www.moxfield.com/decks/AbCdEf → "Moxfield · AbCdEf"
-        from urllib.parse import urlparse
-        segments = [
-            s for s in (urlparse(url).path or "").split("/") if s and s.lower() != "decks"
-        ]
-        tail = segments[-1] if segments else "imported"
-        name = f"{site_cls.name} · {tail}"[:256]
+        # 1) Intentar obtener el nombre real del mazo desde el sitio.
+        #    retrieve_deck_name() reutiliza el payload ya cacheado por
+        #    retrieve_card_list (sin segundo fetch) cuando el sitio lo soporta.
+        try:
+            site_name = await site_cls.retrieve_deck_name(url)
+        except Exception:  # noqa: BLE001
+            site_name = None
+
+        if site_name:
+            name = site_name[:256]
+        else:
+            # 2) Fallback: autogenerar a partir del último segmento de la URL.
+            #    Ej: https://www.moxfield.com/decks/AbCdEf → "Moxfield · AbCdEf"
+            from urllib.parse import urlparse
+            segments = [
+                s for s in (urlparse(url).path or "").split("/") if s and s.lower() != "decks"
+            ]
+            tail = segments[-1] if segments else "imported"
+            name = f"{site_cls.name} · {tail}"[:256]
 
     return await import_from_plaintext(
         db, scryfall,

@@ -95,18 +95,17 @@ def build_images_zip(
     total_backs = 0
     included_cardback = False
 
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        # --- Imágenes ---
+    # PNG/JPG/WEBP ya están comprimidas — re-comprimir con DEFLATED gasta CPU
+    # sin ganancia real (a menudo aumenta ligeramente el tamaño). Guardamos
+    # las imágenes STORED y aplicamos DEFLATED solo a los ficheros de texto.
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_STORED) as zf:
         for c in cards:
             front_face, back_face = _split_dfc(c.name)
             ext = Path(str(c.front_path)).suffix or '.png'
             arc_front = f"{_safe_filename(front_face)}{ext}"
 
-            # Dedupe por path exacto: si dos cartas comparten arte
-            # (o si el nombre saneado colisiona), damos preferencia al primero.
             src = Path(str(c.front_path))
             if arc_front in seen_files and seen_files[arc_front] != str(src):
-                # Colisión con arte distinto — desambigua con el scryfall_id.
                 arc_front = f"{_safe_filename(front_face)}__{c.scryfall_id[:8]}{ext}"
 
             if arc_front not in seen_files:
@@ -117,7 +116,6 @@ def build_images_zip(
                     log.warning("Imagen de frente no encontrada: %s", src)
                     missing += 1
 
-            # Cara trasera de DFC
             if c.back_path:
                 back_name = c.back_name or back_face or f"{front_face}__back"
                 back_ext = Path(str(c.back_path)).suffix or '.png'
@@ -136,7 +134,6 @@ def build_images_zip(
                         log.warning("Imagen de reverso no encontrada: %s", back_src)
                         missing += 1
 
-        # --- Cardback específico (o global) ---
         if cardback_path is not None and cardback_path.exists():
             cb_ext = cardback_path.suffix or ".png"
             cb_arc = f"_cardback{cb_ext}"
@@ -147,17 +144,15 @@ def build_images_zip(
             except FileNotFoundError:
                 log.warning("Cardback no encontrado: %s", cardback_path)
 
-        # --- Decklist ---
         # UTF-8 sin BOM. Moxfield acepta ambos pero sin BOM es más portable.
-        zf.writestr('decklist.txt', decklist_text)
+        zf.writestr('decklist.txt', decklist_text, compress_type=zipfile.ZIP_DEFLATED)
 
-        # --- README ---
         readme = _build_readme(
             len(cards),
             len([c for c in cards if c.back_path]),
             included_cardback,
         )
-        zf.writestr('README.txt', readme)
+        zf.writestr('README.txt', readme, compress_type=zipfile.ZIP_DEFLATED)
 
     total_files = len(seen_files) + 2  # + decklist.txt + README.txt
     return ImageExportResult(
