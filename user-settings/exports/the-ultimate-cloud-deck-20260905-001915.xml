@@ -1,0 +1,557 @@
+<?xml version="1.0" ?>
+<order>
+  <details>
+    <quantity>100</quantity>
+    <stock>(S30) Standard Smooth</stock>
+    <foil>false</foil>
+  </details>
+  <fronts>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\92\72\9272553a1b22bb77bfd58785e3b0c66bbf4bc83eff9e0c614ae55174ef69c8d4.png</id>
+      <slots>0</slots>
+      <name>Cloud, Ex-SOLDIER</name>
+      <query>cloud ex soldier</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\27\d6\27d69b5917d589196512ae8aa7719f0bea9cccc08fae1cbd293fed47e9de49c6.png</id>
+      <slots>1</slots>
+      <name>Adeline, Resplendent Cathar</name>
+      <query>adeline resplendent cathar</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\a5\2a\a52a5af458b1346926e483b23cea290706185f8d6632f5b8c2863727a8316f3c.png</id>
+      <slots>2</slots>
+      <name>Aettir and Priwen</name>
+      <query>aettir and priwen</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\5b\de\5bde3974accb2bfe5945bac39b87c4d788beb6e61a5c202bacdc617f3f901ae3.png</id>
+      <slots>3</slots>
+      <name>Akroma's Will</name>
+      <query>akromas will</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\bb\b6\bbb627ff67b4f680dec5f45ac74f6f21d23960a6f5363e07a602d8975eb777e4.png</id>
+      <slots>4</slots>
+      <name>Arcane Signet</name>
+      <query>arcane signet</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\9f\a0\9fa03d09e15a96e3e7c3e86c9b2ac16e32f2ce5b240f0bd1db6993f2fb0dd655.png</id>
+      <slots>5</slots>
+      <name>Armory Automaton</name>
+      <query>armory automaton</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\28\9b\289b76c4fa5e3aac5096903d865046d15197e2bbcb27dde607a39dc1b11f8f72.png</id>
+      <slots>6</slots>
+      <name>Barret, Avalanche Leader</name>
+      <query>barret avalanche leader</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\1c\21\1c21ba9427f6be761e251f3a0ac53edbc0ad0a7e4ac74fababaa01ccc8703405.png</id>
+      <slots>7</slots>
+      <name>Battlefield Forge</name>
+      <query>battlefield forge</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\dd\a6\dda662133da6f78d604b354414ef9329a1b7bc448218b4981b0d318e7699d77f.png</id>
+      <slots>8</slots>
+      <name>Beatrix, Loyal General</name>
+      <query>beatrix loyal general</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\ae\db\aedbe599097e02921957ef09603f0b537b3836bda6afe2f15bab38d4c6ca7573.png</id>
+      <slots>9</slots>
+      <name>Bruse Tarl, Boorish Herder</name>
+      <query>bruse tarl boorish herder</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\21\63\2163714a932e0f5dce95482cc4aeff4ddad0db1263fe329cc2346283b4d4e081.png</id>
+      <slots>10</slots>
+      <name>Brushland</name>
+      <query>brushland</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\1e\ea\1eea463444d2e5de65da91d5d2adf551dde77c3a15f6ca44678d2ca4aa31f514.png</id>
+      <slots>11</slots>
+      <name>Bugenhagen, Wise Elder</name>
+      <query>bugenhagen wise elder</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\23\98\23982e040cd736330368d8d34f2e6d0b01c24dd52f6d32c5bf7f0ffe9f32e1de.png</id>
+      <slots>12</slots>
+      <name>Buster Sword</name>
+      <query>buster sword</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\d6\9d\d69d1e5a3038157a72665cc1333a0ca94b2617499fb4ebe9d30ee81f23e90b78.png</id>
+      <slots>13</slots>
+      <name>Canopy Vista</name>
+      <query>canopy vista</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\27\3f\273f718e61274f3843b9804a62e9a030102deff26e4732bb0eda51fae244e6b9.png</id>
+      <slots>14</slots>
+      <name>Champion's Helm</name>
+      <query>champions helm</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\96\8e\968ee2f204fa1cf068245b78fe2b28dfe54fc5710d3629cacaa46cebb065cba7.png</id>
+      <slots>15</slots>
+      <name>Chromatic Lantern</name>
+      <query>chromatic lantern</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f8\7b\f87b4caf866d653adf0a9648024561ec7c493ec38f704eaf35caaa70ef74dc21.png</id>
+      <slots>16</slots>
+      <name>Cid, Freeflier Pilot</name>
+      <query>cid freeflier pilot</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\b0\41\b041d385069c0948405288f37e14bfc19898ce749e8cf69f126d147a5daf61cf.png</id>
+      <slots>17</slots>
+      <name>Cinder Glade</name>
+      <query>cinder glade</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\e8\6e\e86ef999f2abc6fe604907a10b58f6c686e4d0dc434bf11d0d209688ee397830.png</id>
+      <slots>18</slots>
+      <name>Clever Concealment</name>
+      <query>clever concealment</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\65\3c\653c9e89f696b0ab4f021d895f7c76ce1c41e49729b631603cfd9f9cd4f54842.png</id>
+      <slots>19</slots>
+      <name>Clifftop Retreat</name>
+      <query>clifftop retreat</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\50\24\5024b3cb313802331ee2c6ca2cb928b9ed3064a8f3a28fa9a253c650afbd4c97.png</id>
+      <slots>20</slots>
+      <name>Cloud, Midgar Mercenary</name>
+      <query>cloud midgar mercenary</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\0c\87\0c87e08640def6157257905d898ff4aaa06d9ccdf77ab1db9815921d9ab2e360.png</id>
+      <slots>21</slots>
+      <name>Cloud, Planet's Champion</name>
+      <query>cloud planets champion</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f0\6a\f06af1004b1d4b644f211e0f59baadf50b2966c001e22065dbe6c934e0d0cc82.png</id>
+      <slots>22</slots>
+      <name>Colossus Hammer</name>
+      <query>colossus hammer</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\45\92\4592b54c82d4c0cb5b59530b012519d3ad314952827f5412d1d5736b518e6ad1.png</id>
+      <slots>23</slots>
+      <name>Command Beacon</name>
+      <query>command beacon</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\cd\84\cd843e8b02921519e9a7fc1d7e5fd8cf667312148be899c4b8bb15cc72660332.png</id>
+      <slots>24</slots>
+      <name>Command Tower</name>
+      <query>command tower</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\8b\f1\8bf1bded69e311d65febf481e82dedaa2a1498f5ab1847eca5a7651b5df5d42e.png</id>
+      <slots>25</slots>
+      <name>Conqueror's Flail</name>
+      <query>conquerors flail</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\67\1b\671b7f2edf457cc37bf17688a89faadbc9a47824edd82658ea5afeb64d218906.png</id>
+      <slots>26</slots>
+      <name>Danitha Capashen, Paragon</name>
+      <query>danitha capashen paragon</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\4f\da\4fdab4eeaac01788f9216a30329a9e2a5cfa1dfd8e25ef1d48a9c16830ccb14c.png</id>
+      <slots>27</slots>
+      <name>Darksteel Plate</name>
+      <query>darksteel plate</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f9\c6\f9c622f5df71f238a4c92fdc0f6ff618c12864d9404e2f4efd0d0923a458021f.png</id>
+      <slots>28</slots>
+      <name>Day of Judgment</name>
+      <query>day of judgment</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\e4\61\e461adfe5257d28beb5e08c9fe2e79e22ba6394322a249f0782c567298043f17.png</id>
+      <slots>29</slots>
+      <name>Demolition Field</name>
+      <query>demolition field</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\b9\42\b9420f1f48635260c7eebdbaa026e8212c9f88957e64ade3e5d961d452226cd9.png</id>
+      <slots>30</slots>
+      <name>Dispatch</name>
+      <query>dispatch</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\9f\c8\9fc83180b9a368ef4e9847ca72e28f85879178b18ccad3d650941334aa19ef94.png</id>
+      <slots>31</slots>
+      <name>Exotic Orchard</name>
+      <query>exotic orchard</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\4d\e5\4de52e9635f01e0ea4fbced0358b85f49c738ccd57b3810eb9364f9546547b5a.png</id>
+      <slots>32</slots>
+      <name>Farewell</name>
+      <query>farewell</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\8a\6a\8a6a8c6548c6e346369d74fed4b21400e71673ff8fb18565c8b0fbca4f1c0b33.png</id>
+      <slots>33</slots>
+      <name>Farseek</name>
+      <query>farseek</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\62\cf\62cf59ec0a75badbc2bbfe04ee7d9898e64219c799e4ac76d38b16223308b404.png</id>
+      <slots>34</slots>
+      <name>Fire-Lit Thicket</name>
+      <query>fire lit thicket</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\6e\5c\6e5cd36f693b602931146683a735818e61e8f88bc89ef0172bb81f9311190c37.png</id>
+      <slots>35</slots>
+      <name>Firion, Wild Rose Warrior</name>
+      <query>firion wild rose warrior</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\5f\97\5f97cd4d3751174dad6660ea6f23c1eada78a2f2ffbe41ede783d4c5efcd31d0.png</id>
+      <slots>36,37,38,39</slots>
+      <name>Forest</name>
+      <query>forest</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\ba\db\badbce316ecade8df36fe3940de30ccab116a9c0619db3597167a0c7cc4172c6.png</id>
+      <slots>40</slots>
+      <name>Freya Crescent</name>
+      <query>freya crescent</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\86\c2\86c2ecf601b9cb2f785b436ac23db03456fd6bd92808dcb169b089543f64457e.png</id>
+      <slots>41</slots>
+      <name>Genji Glove</name>
+      <query>genji glove</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\00\d0\00d02e8b07d8c71fc0046269ccad70a95adf06a343f89278c4cb2ca2310ae34d.png</id>
+      <slots>42</slots>
+      <name>Gilgamesh, Master-at-Arms</name>
+      <query>gilgamesh master at arms</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\0e\f1\0ef148c17f80cdf5cd3a234330963b029b73efc625c64229eae9ee35c835b041.png</id>
+      <slots>43</slots>
+      <name>Godo, Bandit Warlord</name>
+      <query>godo bandit warlord</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\14\34\143400e3f42d87b28f1df9d6a5bc68a6add4ed73abe8bfc8250e1afcef4b914c.png</id>
+      <slots>44</slots>
+      <name>Hero's Blade</name>
+      <query>heros blade</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\95\c7\95c711377d665d9afe7d12bd8acc239d817dc839a95ea710ac4f62fc67d35ea5.png</id>
+      <slots>45</slots>
+      <name>Ishgard, the Holy See // Faith &amp; Grief</name>
+      <query>ishgard the holy see faith grief</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\0a\0f\0a0f8560743d3a92260925ee865da633a8cc1552844c0d622e4bb113e382b930.png</id>
+      <slots>46</slots>
+      <name>Jumbo Cactuar</name>
+      <query>jumbo cactuar</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\51\00\51007d8a31db2793dd592ee951234553b5657e6ce2304de0ef0126d4f6e4e655.png</id>
+      <slots>47</slots>
+      <name>Jungle Shrine</name>
+      <query>jungle shrine</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f8\a6\f8a66b51b8dc8c038da4eaaa811b477329fe0ad60cc25d18a68cb098f7a70d7d.png</id>
+      <slots>48</slots>
+      <name>Lightning Bolt</name>
+      <query>lightning bolt</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\10\c0\10c01b6d072bf7d8728ead0743f722bdae4ad5fe500c2771065fe494523d4330.png</id>
+      <slots>49</slots>
+      <name>Lightning Greaves</name>
+      <query>lightning greaves</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\69\2a\692a9d4bb8be8860a08329d6a5a1ff6d7edf57d8319b59cb19a9b08da4f57e98.png</id>
+      <slots>50</slots>
+      <name>Lightning, Army of One</name>
+      <query>lightning army of one</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\b0\6b\b06b7352f05099e38051ed158fe3b39ade17abd1915a5de51418d66156dd00d1.png</id>
+      <slots>51</slots>
+      <name>Lindblum, Industrial Regency // Mage Siege</name>
+      <query>lindblum industrial regency mage siege</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\d6\41\d641ffd025cdd690e4d19c503dcaade5ff1bf26262c03d010c3656358bb4c3a7.png</id>
+      <slots>52</slots>
+      <name>Machinist's Arsenal</name>
+      <query>machinists arsenal</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\7e\7a\7e7aab95dad27507838e9da33e35467eb7f22a962bbb770cfcc4c3547fd0bafc.png</id>
+      <slots>53</slots>
+      <name>Mangara, the Diplomat</name>
+      <query>mangara the diplomat</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\76\3b\763b879d38e269190f8310c35fdadc86ff5cb0136f254f707ffb0f675f9eec2e.png</id>
+      <slots>54</slots>
+      <name>Mind Stone</name>
+      <query>mind stone</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\8f\89\8f8906c1e156f363b933768901ac451182e4337d840f3cd939b8c413371091ec.png</id>
+      <slots>55,56,57</slots>
+      <name>Mountain</name>
+      <query>mountain</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\3e\d0\3ed078869acd6cdf53b8583e0c11a0b622892494f3e035c9f4d749a89d87718c.png</id>
+      <slots>58</slots>
+      <name>Nature's Claim</name>
+      <query>natures claim</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f6\79\f679a46c4f6b096f5e564bd37d68c3bbdc788862aa6afe7461784cdc0078b1ed.png</id>
+      <slots>59</slots>
+      <name>Nature's Lore</name>
+      <query>natures lore</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\ae\5c\ae5c6fa024c1461b70a21423c73424ea84af2c2fc1d30d36e13a52ffc8a26b43.png</id>
+      <slots>60</slots>
+      <name>Nibelheim Aflame</name>
+      <query>nibelheim aflame</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\a5\6f\a56ffd5a9bae4e291211b3245189130e021da3f6b027b8e82ba0545df14c64b1.png</id>
+      <slots>61</slots>
+      <name>Path to Exile</name>
+      <query>path to exile</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\18\04\1804a09c20fc1297885c0365d50100c6ab2bae1a83ce2dbc6e260a30b350303b.png</id>
+      <slots>62,63,64,65,66</slots>
+      <name>Plains</name>
+      <query>plains</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\a3\f5\a3f5ad626a96856fdfb4fe659bc5bdd6af1732475aa13b7cdfbcd880af0cb3a2.png</id>
+      <slots>67</slots>
+      <name>Professor Hojo</name>
+      <query>professor hojo</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\91\f0\91f0937e2004d7d137eef3a926957432e98b8df0512fb12c1d10ccd3d369ae44.png</id>
+      <slots>68</slots>
+      <name>Puresteel Paladin</name>
+      <query>puresteel paladin</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\44\73\44737c54bd52cf8d2680fe35719b81f15d000d571e0530277f65e5f1ea074e5f.png</id>
+      <slots>69</slots>
+      <name>Ragavan, Nimble Pilferer</name>
+      <query>ragavan nimble pilferer</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\a8\5d\a85d73de0d8999530e0ba199a870a73bdb54bd16a079b1d2f5032aebb31afa01.png</id>
+      <slots>70</slots>
+      <name>Rampant Growth</name>
+      <query>rampant growth</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\f5\a5\f5a553c8cf9d570d176b469a23b1ccb563a2b32298accba82e3b0fe4c767dd2c.png</id>
+      <slots>71</slots>
+      <name>Rampant Rejuvenator</name>
+      <query>rampant rejuvenator</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\1b\31\1b315339eb07335351fe28f7a8a1bb1c5fa437388df1cf9e06dfcd8db882f834.png</id>
+      <slots>72</slots>
+      <name>Raubahn, Bull of Ala Mhigo</name>
+      <query>raubahn bull of ala mhigo</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\d9\1c\d91ccab439777b79402a8cee639e3ac30b2bd93906254aa37413207840b500b4.png</id>
+      <slots>73</slots>
+      <name>Red XIII, Proud Warrior</name>
+      <query>red xiii proud warrior</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\0f\49\0f49d9dc4b5af8d24b10f100a04500b3310500bc5613ece50d8a64d36fa7b7f2.png</id>
+      <slots>74</slots>
+      <name>Rogue's Passage</name>
+      <query>rogues passage</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\c2\d3\c2d30b05b7a405aea73a2587a7ab822bc65ae9b54303dbac634998da5aeb883b.png</id>
+      <slots>75</slots>
+      <name>Rootbound Crag</name>
+      <query>rootbound crag</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\e7\15\e71553befceadedd2f697c4d5c8b491cc8ffe2cfccff50090e39faaa0061bfb3.png</id>
+      <slots>76</slots>
+      <name>Rugged Prairie</name>
+      <query>rugged prairie</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\16\56\1656f6dd4454c1af0cbb040e2893705d3a25fe993934302b4e50f9e4195ebdb9.png</id>
+      <slots>77</slots>
+      <name>Samurai's Katana</name>
+      <query>samurais katana</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\1f\15\1f157f11f25d72bddcfd18c629723cc64d76d4272f050d20ea604291cbf9573c.png</id>
+      <slots>78</slots>
+      <name>Sephiroth, Fallen Hero</name>
+      <query>sephiroth fallen hero</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\15\ed\15ede9d5e7ed5666a219781c45fd9ec4a4f5c42be44b22d8750978b4ae3446dc.png</id>
+      <slots>79</slots>
+      <name>Slayers' Stronghold</name>
+      <query>slayers stronghold</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\57\58\5758b7bcca4f4afe0191710d814ebc37c215e3f8a62d35756234383a23e41bdf.png</id>
+      <slots>80</slots>
+      <name>Snort</name>
+      <query>snort</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\51\51\515102451d47086b93293eb6e7e537b5a99a6664702da818eb3db56a9edf7bcd.png</id>
+      <slots>81</slots>
+      <name>Sol Ring</name>
+      <query>sol ring</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\da\ad\daad7176bae5770dd1a9922afbd06c4c65591eface0c570a276d97b24c7ab108.png</id>
+      <slots>82</slots>
+      <name>Spire of Industry</name>
+      <query>spire of industry</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\6c\13\6c1388a39ca8618a477dedae55a70332ad92a56137175de80c0d05a2fedee1a9.png</id>
+      <slots>83</slots>
+      <name>Sram, Senior Edificer</name>
+      <query>sram senior edificer</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\4d\5d\4d5d724a0a1887fe1700b0d3396dc164145269813539e57b4791927d99e9b350.png</id>
+      <slots>84</slots>
+      <name>Starting Town</name>
+      <query>starting town</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\77\38\773894bb0061594e31b134c9383a641e1ddc9e9ff4ba6b4d44de7ec7523ee43e.png</id>
+      <slots>85</slots>
+      <name>Stroke of Midnight</name>
+      <query>stroke of midnight</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\86\08\86089fb3dc0852e8311a961387a8ca69374d4b1cbcd7b94765bc6c17d57de42b.png</id>
+      <slots>86</slots>
+      <name>Sunpetal Grove</name>
+      <query>sunpetal grove</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\fd\46\fd469f3dec57145d5d51fbe73848f733d82fbacae9437058a36d31961a99c1a9.png</id>
+      <slots>87</slots>
+      <name>Swiftfoot Boots</name>
+      <query>swiftfoot boots</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\15\a4\15a4c6292b30de2119c1bc187561f653fa017fd41d9a5f20470172eae5179f1c.png</id>
+      <slots>88</slots>
+      <name>Sword of the Animist</name>
+      <query>sword of the animist</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\3d\5f\3d5f72439626d04bf7100921588f8ab327854ae45bc75e212a82637e288e67e9.png</id>
+      <slots>89</slots>
+      <name>Swords to Plowshares</name>
+      <query>swords to plowshares</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\13\6e\136e448dd85bc98d2704a4c66fb1e4a7c93610ede6bc67b9079819a8d5e97094.png</id>
+      <slots>90</slots>
+      <name>Talisman of Conviction</name>
+      <query>talisman of conviction</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\ac\fc\acfc6ec445142627d18ea63c046fbc1aa3ec61e09ac1a0fce472734c24733cba.png</id>
+      <slots>91</slots>
+      <name>The Gold Saucer</name>
+      <query>the gold saucer</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\6d\2c\6d2c7ab9bdc6feb625596e08aea6c8d753231250d53a9c1d445ce119aad1f6ce.png</id>
+      <slots>92</slots>
+      <name>Three Visits</name>
+      <query>three visits</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\a5\43\a54306a355f90737461adc2fa533371fdf5102a4b831ea936be687f60254b0fa.png</id>
+      <slots>93</slots>
+      <name>Tifa, Martial Artist</name>
+      <query>tifa martial artist</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\07\d7\07d7f7d460cf781a9d7931d9ee5239ea072d3992b9121f2a4f5c19545e8facbd.png</id>
+      <slots>94</slots>
+      <name>Ultima Weapon</name>
+      <query>ultima weapon</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\b8\a8\b8a86d3c0eadb7c7c89b2950cb1c8a5cd82a329aeb5ff07aa4758f3bc65e7d7a.png</id>
+      <slots>95</slots>
+      <name>Umezawa's Jitte</name>
+      <query>umezawas jitte</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\0f\2e\0f2e04efbf666fd9a3ab80813d97987997c10b7c23e8ccaa54078fca5c60480d.png</id>
+      <slots>96</slots>
+      <name>Vanquish the Horde</name>
+      <query>vanquish the horde</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\c8\6a\c86ae458f4eefc521dac0302126acb1fa4839b6b44bd9e51a7d4ba79c25fe5eb.png</id>
+      <slots>97</slots>
+      <name>Wrecking Ball Arm</name>
+      <query>wrecking ball arm</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\50\3c\503c6465fda89621c0cd337bddc1960858bc1c5ad51f1cbe13c736abc04c6582.png</id>
+      <slots>98</slots>
+      <name>Zack Fair</name>
+      <query>zack fair</query>
+    </card>
+    <card>
+      <id>C:\Users\Pc\Desktop\Software\mtg-forge\user-settings\art\70\2f\702f5d4ad4081d16720e717304d031269387da037f1a077f99f4528f5a629349.png</id>
+      <slots>99</slots>
+      <name>Zanarkand, Ancient Metropolis // Lasting Fayth</name>
+      <query>zanarkand ancient metropolis lasting fayth</query>
+    </card>
+  </fronts>
+  <backs/>
+</order>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Ajustes · MPC Forge{% endblock %}
+{% block title %}{{ t.settings_title }} · MPC Forge{% endblock %}
 {% block content %}
 {#
   Vista de Ajustes rediseñada.
@@ -29,8 +29,8 @@
           <i data-lucide="settings" class="w-4 h-4"></i>
         </div>
         <div>
-          <h1 class="font-display font-semibold tracking-tight text-lg leading-none">Ajustes</h1>
-          <p class="text-[11px] text-fg-faint mt-0.5">Los cambios se aplican al instante y se guardan en tu carpeta de datos.</p>
+          <h1 class="font-display font-semibold tracking-tight text-lg leading-none">{{ t.settings_title }}</h1>
+          <p class="text-[11px] text-fg-faint mt-0.5">{{ t.settings_subtitle }}</p>
         </div>
       </div>
 
@@ -40,7 +40,7 @@
       <div class="relative w-full sm:w-72">
         <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint"></i>
         <input type="search" x-model="searchQuery"
-               placeholder="Buscar en ajustes…"
+               placeholder="{{ t.settings_search_placeholder }}"
                class="w-full bg-bg-subtle border border-border-subtle rounded-md pl-9 pr-3 py-2 text-sm
                       focus:outline-none focus:border-accent transition">
       </div>
@@ -48,10 +48,10 @@
       <button @click="resetAll()"
               class="text-xs bg-bg-subtle hover:bg-danger-bg border border-border-strong hover:border-danger-border
                      text-fg-muted hover:text-danger px-3 py-2 rounded-md transition flex items-center gap-1.5"
-              title="Restablecer TODOS los ajustes a sus valores por defecto">
+              title="{{ t.settings_reset_defaults }}">
         <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Restablecer defaults</span>
-        <span class="sm:hidden">Reset</span>
+        <span class="hidden sm:inline">{{ t.settings_reset_defaults }}</span>
+        <span class="sm:hidden">{{ t.settings_reset_short }}</span>
       </button>
     </div>
   </div>
@@ -77,7 +77,7 @@
 
     {# --- Sidebar colapsable (mobile/tablet) --- #}
     <div class="lg:hidden">
-      <label class="block text-[11px] font-medium text-fg-muted uppercase tracking-wider mb-1">Sección</label>
+      <label class="block text-[11px] font-medium text-fg-muted uppercase tracking-wider mb-1">{{ t.settings_section_label }}</label>
       <select x-model="activeSection"
               class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm
                      focus:outline-none focus:border-accent">
@@ -94,7 +94,7 @@
       <template x-if="loading">
         <div class="text-center py-12 text-fg-faint text-sm">
           <i data-lucide="loader-2" class="w-4 h-4 mx-auto mb-2 animate-spin"></i>
-          Cargando ajustes…
+          {{ t.settings_loading }}
         </div>
       </template>
 
@@ -104,14 +104,14 @@
       <template x-if="searchQuery && !loading">
         <div class="space-y-4">
           <div class="text-xs text-fg-muted">
-            Resultados para <span class="text-fg font-mono" x-text="'“' + searchQuery + '”'"></span>
+            {{ t.settings_results_for }} <span class="text-fg font-mono" x-text="'“' + searchQuery + '”'"></span>
             · <span x-text="searchResults.length"></span>
-            <span x-text="searchResults.length === 1 ? 'coincidencia' : 'coincidencias'"></span>
+            <span x-text="searchResults.length === 1 ? '{{ t.settings_match_singular }}' : '{{ t.settings_match_plural }}'"></span>
           </div>
 
           <template x-if="searchResults.length === 0">
             <div class="text-center py-8 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
-              Sin resultados. Prueba con otras palabras.
+              {{ t.settings_no_results }}
             </div>
           </template>
 
@@ -148,9 +148,9 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
             <i data-lucide="settings" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">General</h2>
+            <h2 class="font-medium">{{ t.settings_general }}</h2>
           </div>
-          <p class="text-xs text-fg-muted">Cardstock, foil, cardback y preferencias de arte que se aplican al abrir un mazo.</p>
+          <p class="text-xs text-fg-muted">{{ t.settings_general_desc }}</p>
           <div class="space-y-4 pt-1">
             <template x-for="def in defsInGroup('General')" :key="def.key">
               <div x-html="renderRow(def)"></div>
@@ -166,9 +166,9 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
             <i data-lucide="dollar-sign" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Precios y envío</h2>
+            <h2 class="font-medium">{{ t.settings_prices }}</h2>
           </div>
-          <p class="text-xs text-fg-muted">Conversión USD → EUR y coste de envío usados por el estimador del mazo.</p>
+          <p class="text-xs text-fg-muted">{{ t.settings_prices_desc }}</p>
           <div class="space-y-4 pt-1">
             <template x-for="def in defsInGroup('Precios y envío')" :key="def.key">
               <div x-html="renderRow(def)"></div>
@@ -184,9 +184,9 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
             <i data-lucide="wifi" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Red y conexión</h2>
+            <h2 class="font-medium">{{ t.settings_network }}</h2>
           </div>
-          <p class="text-xs text-fg-muted">User-Agent, API key de Google Drive y opción de bypass SSL para entornos corporativos.</p>
+          <p class="text-xs text-fg-muted">{{ t.settings_network_desc }}</p>
           <div class="space-y-4 pt-1">
             <template x-for="def in defsInGroup('Red y conexión')" :key="def.key">
               <div x-html="renderRow(def)"></div>
@@ -197,9 +197,9 @@
             <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
               <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
               <div>
-                <div class="font-medium">Verificación SSL desactivada</div>
+                <div class="font-medium">{{ t.settings_ssl_disabled }}</div>
                 <div class="text-fg-muted mt-0.5">
-                  Los clientes HTTPX ya instanciados no cambian sin reiniciar. Cierra la app y vuelve a abrirla para aplicar el modo insecure.
+                  {{ t.settings_ssl_restart_hint }}
                 </div>
               </div>
             </div>
@@ -215,43 +215,39 @@
              x-data="autofillStatus()" x-init="load()">
           <div class="flex items-center gap-2">
             <i data-lucide="zap" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">MPC Autofill (desktop tool)</h2>
+            <h2 class="font-medium">{{ t.settings_autofill }}</h2>
             <span class="ml-auto flex items-center gap-1.5 text-[11px]">
               <span class="w-1.5 h-1.5 rounded-full"
                     :class="status.available ? 'bg-success' : 'bg-fg-faint'"></span>
               <span :class="status.available ? 'text-success' : 'text-fg-faint'"
-                    x-text="status.available ? 'Detectado' : 'No detectado'"></span>
+                    x-text="status.available ? '{{ t.settings_autofill_detected }}' : '{{ t.settings_autofill_not_found }}'"></span>
             </span>
           </div>
-          <p class="text-xs text-fg-muted">
-            Cuando está instalado, MPC Forge puede lanzarlo directamente con el XML generado
-            para que suba todo a MakePlayingCards.com automáticamente.
-          </p>
+          <p class="text-xs text-fg-muted">{{ t.settings_autofill_desc }}</p>
 
           <template x-if="status.available">
             <div class="text-xs bg-success-bg border border-success-border rounded-lg p-3 space-y-1">
               <div class="text-success font-medium flex items-center gap-1.5">
                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-                Detectado
+                {{ t.settings_autofill_detected_text }}
               </div>
               <div class="text-fg-muted font-mono break-all" x-text="status.exe_path"></div>
-              <div class="text-fg-faint">Origen: <span x-text="status.source"></span></div>
+              <div class="text-fg-faint">{{ t.settings_autofill_origin }}: <span x-text="status.source"></span></div>
             </div>
           </template>
           <template x-if="!status.available">
             <div class="text-xs bg-bg-subtle border border-border-subtle rounded-lg p-3 space-y-2">
               <div class="text-fg-muted">
-                No se ha encontrado el binario.
+                {{ t.settings_autofill_not_found_desc }}
                 <span x-text="status.hint" class="block mt-1"></span>
               </div>
               <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank"
                  class="inline-flex items-center gap-1 text-accent hover:underline">
                 <i data-lucide="external-link" class="w-3 h-3"></i>
-                Descargar releases de chilli-axe/mpc-autofill
+                {{ t.settings_autofill_download_link }}
               </a>
               <div class="text-fg-faint pt-2 border-t border-border-subtle">
-                Coloca el ejecutable en la carpeta del proyecto, en el PATH del sistema,
-                o configura la ruta abajo.
+                {{ t.settings_autofill_place_hint }}
               </div>
             </div>
           </template>
@@ -260,7 +256,7 @@
                   class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
                          px-3 py-1.5 rounded transition flex items-center gap-1.5 w-fit">
             <i data-lucide="refresh-cw" class="w-3 h-3"></i>
-            Volver a comprobar
+            {{ t.settings_recheck }}
           </button>
 
           <div class="pt-4 border-t border-border-subtle space-y-4">
@@ -284,34 +280,33 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
             <i data-lucide="image" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Fuentes de arte (drives comunitarios)</h2>
+            <h2 class="font-medium">{{ t.settings_art_sources_title }}</h2>
           </div>
           <p class="text-xs text-fg-muted">
-            Lista curada de Google Drives comunitarios con arte custom pre-sembrada
-            (como los que usa mpcfill.com). Descarga imágenes desde ellos y añádelas al mazo.
+            {{ t.settings_drives_desc }}
           </p>
 
           {# Grid de stats #}
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-fg-faint">Drives</div>
+              <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_drives_col }}</div>
               <div class="text-2xl font-semibold text-fg mt-1" x-text="artSources.length"></div>
-              <div class="text-[10px] text-fg-faint mt-0.5">configurados</div>
+              <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_configured }}</div>
             </div>
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-fg-faint">Indexados</div>
+              <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_indexed_col }}</div>
               <div class="text-2xl font-semibold text-fg mt-1" x-text="driveStats.sources_indexed"></div>
-              <div class="text-[10px] text-fg-faint mt-0.5"><span x-text="pctIndexed + '%'"></span> del total</div>
+              <div class="text-[10px] text-fg-faint mt-0.5"><span x-text="pctIndexed + '%'"></span> {{ t.settings_of_total }}</div>
             </div>
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-fg-faint">Archivos</div>
+              <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_files_col }}</div>
               <div class="text-2xl font-semibold text-fg mt-1" x-text="driveStats.total_files.toLocaleString()"></div>
-              <div class="text-[10px] text-fg-faint mt-0.5">para búsqueda fuzzy</div>
+              <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_fuzzy_search }}</div>
             </div>
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-fg-faint">Pinned</div>
+              <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_pinned_col }}</div>
               <div class="text-2xl font-semibold text-accent mt-1" x-text="pinnedCount"></div>
-              <div class="text-[10px] text-fg-faint mt-0.5">favoritos</div>
+              <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_favorites }}</div>
             </div>
           </div>
 
@@ -319,11 +314,7 @@
           <template x-if="!hasGoogleApiKey">
             <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
               <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-              <div>
-                Sin Google API key configurada, la indexación de drives se limita al primer nivel.
-                Añádela en <button @click="selectSection('network')" class="underline hover:text-fg">Red y conexión</button>
-                para búsquedas fuzzy completas con subcarpetas.
-              </div>
+              <div>{{ t.settings_no_api_key_warn }}</div>
             </div>
           </template>
 
@@ -332,12 +323,12 @@
                     class="bg-accent hover:bg-accent-soft text-black text-sm font-medium
                            px-4 py-2 rounded-md transition flex items-center gap-1.5">
               <i data-lucide="settings-2" class="w-4 h-4"></i>
-              Gestionar drives
+              {{ t.settings_manage_drives_btn }}
             </button>
             <a href="/api/drives/stats" target="_blank"
                class="text-xs text-fg-muted hover:text-fg px-3 py-2 rounded-md transition flex items-center gap-1.5">
               <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-              Ver stats en JSON
+              {{ t.settings_drives_json }}
             </a>
           </div>
         </div>
@@ -350,21 +341,17 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
             <i data-lucide="folder" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Arte custom</h2>
+            <h2 class="font-medium">{{ t.settings_custom_art_title }}</h2>
           </div>
-          <p class="text-sm text-fg-muted">
-            Puedes usar tus propios artes (o los que hayas descargado de la comunidad) mezclados
-            con los oficiales de Scryfall. Dos formas de añadirlos:
-          </p>
+          <p class="text-sm text-fg-muted">{{ t.settings_custom_art_desc }}</p>
           <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
             <li>
-              <strong class="text-fg">Desde la propia app</strong>: en el editor de mazo, selecciona una carta
-              y pulsa <span class="text-accent">+ Añadir por URL</span>.
+              <strong class="text-fg">{{ t.settings_custom_from_app }}</strong>: {{ t.settings_custom_drop }}
+              <span class="text-accent">{{ t.settings_custom_from_url }}</span>.
             </li>
             <li>
-              <strong class="text-fg">Dropeando archivos</strong> en
-              <span class="font-mono text-accent text-xs">%APPDATA%\MPC-Forge\custom_art\</span>.
-              El nombre debe coincidir con el de la carta.
+              <strong class="text-fg">{{ t.settings_custom_drop }}</strong> {{ t.settings_place_file_at }}
+              <span class="font-mono text-accent text-xs">{{ t.settings_custom_drop_path }}</span>
             </li>
           </ol>
 
@@ -374,17 +361,17 @@
                     class="w-full flex items-center justify-between text-sm text-fg-muted hover:text-fg transition">
               <span class="flex items-center gap-2">
                 <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
-                Ver convenciones de nombre
+                {{ t.settings_naming_conventions }}
               </span>
               <i data-lucide="chevron-down" class="w-4 h-4 transition-transform"
                  :class="open ? 'rotate-180' : ''"></i>
             </button>
             <div x-show="open" x-collapse class="pt-3 space-y-1.5 text-xs">
               <div class="bg-bg-subtle border border-border-subtle rounded p-3 font-mono space-y-1">
-                <div><span class="text-accent">Sol Ring.png</span> <span class="text-fg-faint ml-2">→ carta base</span></div>
-                <div><span class="text-accent">Sol Ring - Anime.png</span> <span class="text-fg-faint ml-2">→ variante "Anime"</span></div>
-                <div><span class="text-accent">Sol Ring (Retro Frame).png</span> <span class="text-fg-faint ml-2">→ variante "Retro Frame"</span></div>
-                <div><span class="text-accent">Delver of Secrets [BACK].png</span> <span class="text-fg-faint ml-2">→ reverso de DFC</span></div>
+                <div><span class="text-accent">Sol Ring.png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_base }}</span></div>
+                <div><span class="text-accent">Sol Ring - Anime.png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_variant }} "Anime"</span></div>
+                <div><span class="text-accent">Sol Ring (Retro Frame).png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_variant }} "Retro Frame"</span></div>
+                <div><span class="text-accent">Delver of Secrets [BACK].png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_back }}</span></div>
               </div>
             </div>
           </div>
@@ -393,16 +380,15 @@
           <div class="pt-4 border-t border-border-subtle">
             <div class="text-sm font-medium mb-1.5 flex items-center gap-2">
               <i data-lucide="layout-template" class="w-3.5 h-3.5 text-fg-muted"></i>
-              Cardback
+              {{ t.settings_cardback_section }}
             </div>
             <p class="text-xs text-fg-muted">
-              Coloca un archivo llamado
               <span class="font-mono text-accent" x-text="values.default_cardback_name + '.png'"></span>
-              o <span class="font-mono text-accent" x-text="values.default_cardback_name + '.jpg'"></span>
-              en la carpeta:
+              / <span class="font-mono text-accent" x-text="values.default_cardback_name + '.jpg'"></span>
+              {{ t.settings_place_file_at }}
             </p>
             <div class="text-xs font-mono bg-bg-subtle rounded p-2 text-fg-muted break-all mt-2 border border-border-subtle">
-              %APPDATA%\MPC-Forge\cardbacks\
+              {{ t.settings_cardback_path }}
             </div>
           </div>
         </div>
@@ -415,12 +401,9 @@
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
             <i data-lucide="archive" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Backup y datos</h2>
+            <h2 class="font-medium">{{ t.settings_backup_title }}</h2>
           </div>
-          <p class="text-sm text-fg-muted">
-            Crea un zip con la BD (mazos, historial, preferencias), los artes descargados de Scryfall
-            y los cardbacks. El zip queda en tu carpeta de datos.
-          </p>
+          <p class="text-sm text-fg-muted">{{ t.settings_backup_desc }}</p>
           <div class="flex items-center gap-2">
             <button @click="createBackup()"
                     :disabled="backingUp"
@@ -428,18 +411,18 @@
                            disabled:opacity-50 transition flex items-center gap-1.5">
               <i data-lucide="download" class="w-3.5 h-3.5" x-show="!backingUp"></i>
               <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="backingUp"></i>
-              <span x-text="backingUp ? 'Comprimiendo…' : 'Crear backup'"></span>
+              <span x-text="backingUp ? '{{ t.settings_backup_compressing }}' : '{{ t.settings_backup_create }}'"></span>
             </button>
           </div>
           <template x-if="lastBackup">
             <div class="text-xs bg-success-bg border border-success-border rounded-lg p-3 space-y-1">
               <div class="text-success font-medium flex items-center gap-1.5">
                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-                Backup creado
+                {{ t.settings_backup_created }}
               </div>
               <div class="text-fg-muted font-mono break-all" x-text="lastBackup.path"></div>
               <div class="text-fg-faint">
-                Tamaño: <span x-text="(lastBackup.size_bytes / 1e6).toFixed(2)"></span> MB
+                {{ t.settings_backup_size }} <span x-text="(lastBackup.size_bytes / 1e6).toFixed(2)"></span> MB
               </div>
             </div>
           </template>
@@ -456,43 +439,36 @@
               </div>
               <button @click="loadPaths()"
                       class="text-[11px] text-fg-faint hover:text-fg flex items-center gap-1"
-                      title="Recargar rutas efectivas">
+                      title="{{ t.settings_reload_paths }}">
                 <i data-lucide="refresh-cw" class="w-3 h-3"></i>
-                Refrescar
+                {{ t.settings_refresh_btn }}
               </button>
             </div>
 
-            {# Explicación general #}
+            {# Paths description #}
             <p class="text-xs text-fg-muted">
-              Por defecto todo vive en
               <code class="text-fg font-mono" x-text="paths.install_root + '/user-settings/'"></code>
-              (portable — la app usa la carpeta donde está instalada).
-              Puedes redirigir los directorios de contenido a otro sitio si
-              quieres separar cache, exports o backups.
             </p>
 
             {# Warning importante: el cambio no mueve ficheros ni actualiza mounts HTTP #}
             <div class="bg-warning-bg border border-warning-border rounded-lg p-3 text-xs space-y-1">
               <div class="flex items-center gap-1.5 text-warning font-medium">
                 <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
-                Antes de cambiar una ruta
+                {{ t.settings_before_change }}
               </div>
               <ul class="text-fg-muted space-y-0.5 list-disc list-inside">
-                <li>Los ficheros ya existentes <strong class="text-fg">no se mueven</strong>. Muévelos manualmente si quieres conservarlos.</li>
-                <li>Es recomendable <strong class="text-fg">reiniciar la app</strong> tras el cambio para que las URLs de imágenes servidas por HTTP se refresquen.</li>
+                <li>{{ t.settings_no_move_warning }}</li>
+                <li>{{ t.settings_restart_warning }}</li>
               </ul>
             </div>
 
             {# BD fija — solo lectura, muestra la ruta actual #}
             <div class="flex items-start gap-2 text-xs font-mono py-1">
-              <span class="text-fg-faint shrink-0 w-28">BD:</span>
+              <span class="text-fg-faint shrink-0 w-28">{{ t.settings_db_label }}:</span>
               <span class="text-fg-muted break-all" x-text="paths.db_path || '…'"></span>
-              <span class="ml-auto shrink-0 text-[10px] text-fg-faint bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5">fija</span>
+              <span class="ml-auto shrink-0 text-[10px] text-fg-faint bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5">{{ t.settings_db_fixed }}</span>
             </div>
 
-            {# Directorios personalizables — un bloque por cada uno.
-               El template comparte estructura: label + descripción + input
-               editable + botón restaurar. #}
             <template x-for="pathConfig in customPathsConfig" :key="pathConfig.key">
               <div class="space-y-1.5 py-2 border-t border-border-subtle/40">
                 <div class="flex items-center justify-between">
@@ -502,7 +478,7 @@
                 <p class="text-[11px] text-fg-muted" x-text="pathConfig.description"></p>
                 <div class="flex items-center gap-2">
                   <input type="text"
-                         :placeholder="pathConfig.effectivePath || 'Ruta por defecto'"
+                         :placeholder="pathConfig.effectivePath || '{{ t.settings_default_path }}'"
                          x-model="pathOverrides[pathConfig.key]"
                          @change="markPathDirty(pathConfig.key)"
                          class="flex-1 bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5
@@ -513,14 +489,13 @@
                                  flex items-center gap-1 shrink-0"
                           :disabled="!pathOverrides[pathConfig.key]"
                           :class="!pathOverrides[pathConfig.key] ? 'opacity-40 cursor-not-allowed' : ''"
-                          title="Vaciar el override y volver al default">
+                          title="{{ t.settings_clear_override }}">
                     <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
-                    Restaurar
+                    {{ t.common_reset }}
                   </button>
                 </div>
-                {# Ruta efectiva en uso — la que la app está usando ahora #}
                 <div class="text-[10px] text-fg-faint font-mono break-all pl-1">
-                  En uso: <span class="text-fg-muted" x-text="pathConfig.effectivePath"></span>
+                  {{ t.settings_in_use }} <span class="text-fg-muted" x-text="pathConfig.effectivePath"></span>
                 </div>
               </div>
             </template>
@@ -529,7 +504,7 @@
             <div class="pt-2 flex items-center justify-end gap-2" x-show="pathsDirty">
               <button @click="discardPathChanges()"
                       class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded transition">
-                Descartar
+                {{ t.settings_discard }}
               </button>
               <button @click="savePathOverrides()"
                       :disabled="savingPaths"
@@ -537,7 +512,7 @@
                              disabled:opacity-50 transition flex items-center gap-1.5">
                 <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="savingPaths"></i>
                 <i data-lucide="save" class="w-3.5 h-3.5" x-show="!savingPaths"></i>
-                <span x-text="savingPaths ? 'Guardando…' : 'Guardar cambios'"></span>
+                <span x-text="savingPaths ? '{{ t.settings_saving }}' : '{{ t.settings_save_changes }}'"></span>
               </button>
             </div>
           </div>
@@ -552,34 +527,32 @@
              x-data="debugLogPanel()" x-init="load()">
           <div class="flex items-center gap-2">
             <i data-lucide="file-text" class="w-4 h-4 text-accent"></i>
-            <h2 class="font-medium">Log de depuración</h2>
+            <h2 class="font-medium">{{ t.settings_debug_log }}</h2>
             <span class="ml-auto flex items-center gap-1.5 text-[11px]">
               <span class="w-1.5 h-1.5 rounded-full"
                     :class="info.exists ? 'bg-warning' : 'bg-fg-faint'"></span>
               <span :class="info.exists ? 'text-warning' : 'text-fg-faint'"
-                    x-text="info.exists ? 'Activo' : 'Sin log'"></span>
+                    x-text="info.exists ? '{{ t.settings_log_active }}' : '{{ t.settings_log_none }}'"></span>
             </span>
           </div>
           <p class="text-sm text-fg-muted">
-            Todo lo que hace la app se registra en un archivo temporal mientras está corriendo.
-            El log se <strong class="text-fg">borra automáticamente</strong> al cerrar la app en condiciones normales.
-            Si algo va mal, descárgalo antes de cerrar para compartirlo.
+            {{ t.settings_backup_desc }}
           </p>
 
           <template x-if="info.exists">
             <div class="text-xs bg-bg-subtle border border-border-subtle rounded-lg p-3 space-y-1">
               <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-14">Ruta:</span>
+                <span class="text-fg-faint shrink-0 w-14">{{ t.settings_log_path }}:</span>
                 <span class="text-fg-muted font-mono break-all" x-text="info.path"></span>
               </div>
               <div class="flex items-start gap-2">
-                <span class="text-fg-faint shrink-0 w-14">Tamaño:</span>
+                <span class="text-fg-faint shrink-0 w-14">{{ t.settings_log_size }}:</span>
                 <span class="text-fg-muted font-mono" x-text="(info.size_bytes / 1024).toFixed(1) + ' KB'"></span>
               </div>
             </div>
           </template>
           <template x-if="!info.exists">
-            <div class="text-xs text-fg-faint italic">Sin log activo (aún no se ha escrito nada esta sesión).</div>
+            <div class="text-xs text-fg-faint italic">{{ t.settings_log_none_msg }}</div>
           </template>
 
           <div class="flex flex-wrap items-center gap-2 pt-1">
@@ -608,12 +581,12 @@
           <template x-if="showTail">
             <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
                  @click="showTail = false" @keydown.escape.window="showTail = false">
-              <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl max-h-[85vh] flex flex-col"
+              <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl max-h-[85vh] flex flex-col"
                    @click.stop>
                 <div class="flex items-center justify-between p-4 border-b border-border-subtle">
                   <h3 class="font-medium flex items-center gap-2">
                     <i data-lucide="file-text" class="w-4 h-4 text-fg-muted"></i>
-                    Últimas líneas del log
+                    {{ t.settings_log_tail_title }}
                   </h3>
                   <div class="flex items-center gap-2">
                     <button @click="copyTail()"
@@ -622,13 +595,13 @@
                       <template x-if="!copied">
                         <span class="flex items-center gap-1.5">
                           <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                          Copiar
+                          {{ t.settings_copy_btn }}
                         </span>
                       </template>
                       <template x-if="copied">
                         <span class="flex items-center gap-1.5 text-success">
                           <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                          Copiado
+                          {{ t.settings_copied_btn }}
                         </span>
                       </template>
                     </button>
@@ -659,10 +632,10 @@
   {# Alpine 3 no cruzan barreras de x-data.                                        #}
   {# ============================================================================ #}
   <template x-if="showDrivesModal">
-    <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+    <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="showDrivesModal = false"
          @keydown.escape.window="showDrivesModal = false">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
         {# El body del modal es un componente Alpine independiente. Solo el         #}
         {# botón X y el backdrop quedan fuera para poder cerrar el modal.           #}
@@ -675,10 +648,10 @@
                 <i data-lucide="image" class="w-4 h-4"></i>
               </div>
               <div class="min-w-0">
-                <h3 class="font-medium">Gestionar fuentes de arte</h3>
+                <h3 class="font-medium">{{ t.settings_manage_sources }}</h3>
                 <p class="text-[11px] text-fg-faint mt-0.5">
-                  <span x-text="sources.length"></span> drives ·
-                  <span x-text="stats.total_files.toLocaleString()"></span> archivos indexados
+                  <span x-text="sources.length"></span> {{ t.settings_drives_count_label }} ·
+                  <span x-text="stats.total_files.toLocaleString()"></span> {{ t.settings_files_indexed_count }}
                 </p>
               </div>
             </div>
@@ -687,17 +660,17 @@
                       class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
                              text-fg-muted hover:text-fg px-3 py-1.5 rounded transition disabled:opacity-50
                              flex items-center gap-1.5"
-                      :title="`Restaurar los ${catalogSize} drives del catálogo curado (idempotente)`">
+                      :title="`{{ t.settings_restore_confirm }}`.replace('{n}', catalogSize)">
                 <i data-lucide="refresh-ccw" class="w-3.5 h-3.5" :class="restoring ? 'animate-spin' : ''"></i>
-                <span x-show="!restoring">Restaurar catálogo</span>
-                <span x-show="restoring">Restaurando…</span>
+                <span x-show="!restoring">{{ t.settings_restore_catalog }}</span>
+                <span x-show="restoring">{{ t.settings_restoring }}</span>
               </button>
               <button @click="showAdd = !showAdd"
                       class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
                              text-fg-muted hover:text-fg px-3 py-1.5 rounded transition flex items-center gap-1.5">
                 <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                <span x-show="!showAdd">Añadir drive</span>
-                <span x-show="showAdd">Cancelar</span>
+                <span x-show="!showAdd">{{ t.settings_add_drive }}</span>
+                <span x-show="showAdd">{{ t.common_cancel }}</span>
               </button>
               {# El botón de cerrar NO está dentro del scope de artSourcesPanel:     #}
               {# se coloca fuera (tras cerrar el div de x-data) para que pueda      #}
@@ -713,40 +686,40 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <i data-lucide="search" class="w-4 h-4 text-info"></i>
-                <span class="text-xs font-medium text-info">Índice para búsqueda fuzzy</span>
+                <span class="text-xs font-medium text-info">{{ t.settings_fuzzy_index }}</span>
               </div>
               <div class="flex items-center gap-1">
                 <button @click="indexPinned()" :disabled="indexingIds.length > 0"
                         class="text-[10px] bg-bg-subtle hover:bg-info-bg border border-border-subtle
                                text-fg-muted hover:text-info px-2 py-1 rounded disabled:opacity-50 transition"
-                        title="Indexa los drives que has marcado como pinned">
-                  Indexar pinned
+                        title="{{ t.settings_index_pinned }}">
+                  {{ t.settings_index_pinned_btn }}
                 </button>
                 <button @click="indexAll()" :disabled="indexingIds.length > 0"
                         class="text-[10px] bg-bg-subtle hover:bg-info-bg border border-border-subtle
                                text-fg-muted hover:text-info px-2 py-1 rounded disabled:opacity-50 transition"
-                        title="Indexa todos los drives (puede tardar varios minutos)">
-                  Indexar todos
+                        title="{{ t.settings_index_all }}">
+                  {{ t.settings_index_all_btn }}
                 </button>
               </div>
             </div>
             <div class="text-[11px] text-fg-muted">
-              <span x-text="stats.total_files.toLocaleString()"></span> archivos indexados
-              en <span x-text="stats.sources_indexed"></span> drives
+              <span x-text="stats.total_files.toLocaleString()"></span> {{ t.settings_files_indexed_count }}
+              · <span x-text="stats.sources_indexed"></span> drives
               <template x-if="indexingIds.length > 0">
-                · <span class="text-info animate-pulse">indexando <span x-text="indexingIds.length"></span>…</span>
+                · <span class="text-info animate-pulse">{{ t.settings_indexing_plural }} <span x-text="indexingIds.length"></span>…</span>
               </template>
             </div>
             <template x-if="!hasApiKey">
               <div class="text-[10px] text-warning flex items-start gap-1">
                 <i data-lucide="alert-triangle" class="w-3 h-3 shrink-0 mt-0.5"></i>
-                <span>Sin Google API key: solo se indexa el primer nivel de cada drive. Configúrala en <em>Red y conexión</em>.</span>
+                <span>{{ t.settings_no_api_key }} {{ t.settings_network_link }}.</span>
               </div>
             </template>
             <template x-if="hasApiKey">
               <div class="text-[10px] text-success flex items-center gap-1">
                 <i data-lucide="check" class="w-3 h-3"></i>
-                API key configurada — indexado recursivo disponible.
+                {{ t.settings_apikey_ok }}
               </div>
             </template>
           </div>
@@ -755,32 +728,31 @@
           <div x-show="showAdd" x-transition
                class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 space-y-2">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <input type="text" x-model="draft.name" placeholder="Nombre (ej. Cardstock Con)"
+              <input type="text" x-model="draft.name" placeholder="Name (e.g. Cardstock Con)"
                      class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                             focus:outline-none focus:border-accent">
-              <input type="text" x-model="draft.tags" placeholder="Tags separadas por coma"
+              <input type="text" x-model="draft.tags" placeholder="Tags separated by comma"
                      class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                             focus:outline-none focus:border-accent">
             </div>
-            {# Extras · F2/T7: selector de source_type + auto-detección #}
             <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
               <select x-model="draft.source_type"
                       @change="draft.url && validateSource()"
                       class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                              focus:outline-none focus:border-accent">
-                <option value="">Auto-detectar tipo</option>
+                <option value="">{{ t.settings_type_auto }}</option>
                 <option value="gdrive">Google Drive (folder)</option>
-                <option value="gdrive-file">Google Drive (archivo)</option>
-                <option value="local-folder">Carpeta local</option>
+                <option value="gdrive-file">Google Drive (file)</option>
+                <option value="local-folder">Local folder</option>
                 <option value="http-listing">HTTP manifest (JSON)</option>
-                <option value="s3">S3 / Cloudflare R2 (público)</option>
+                <option value="s3">S3 / Cloudflare R2 (public)</option>
               </select>
               <button type="button" @click="validateSource()"
                       :disabled="!draft.url || validating"
                       class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-xs
                              hover:border-accent-soft transition disabled:opacity-50">
-                <span x-show="!validating">Validar URL</span>
-                <span x-show="validating">Validando…</span>
+                <span x-show="!validating">{{ t.settings_validate_url }}</span>
+                <span x-show="validating">{{ t.settings_validating }}</span>
               </button>
             </div>
             <input type="url" x-model="draft.url"
@@ -788,36 +760,35 @@
                    :placeholder="urlPlaceholder()"
                    class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                           focus:outline-none focus:border-accent">
-            {# Resultado de la validación (feedback inmediato) #}
             <div x-show="validation.checked"
                  :class="validation.valid ? 'text-green-500' : 'text-red-400'"
                  class="text-xs px-3 py-1">
               <span x-show="validation.valid">
-                ✓ <span x-text="validation.label"></span> detectado
+                ✓ <span x-text="validation.label"></span> {{ t.settings_validated }}
                 <span x-show="validation.canonical_url && validation.canonical_url !== draft.url"
                       class="text-fg-faint ml-1">
-                  · URL canónica: <span x-text="validation.canonical_url"></span>
+                  · URL: <span x-text="validation.canonical_url"></span>
                 </span>
               </span>
               <span x-show="!validation.valid">
-                ✗ <span x-text="validation.error || 'URL inválida'"></span>
+                ✗ <span x-text="validation.error || '{{ t.settings_url_invalid }}'"></span>
               </span>
             </div>
             <textarea x-model="draft.description" rows="2"
-                      placeholder="Descripción (opcional)"
+                      placeholder="Description (optional)"
                       class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                              focus:outline-none focus:border-accent"></textarea>
             <div class="flex items-center justify-between">
               <label class="flex items-center gap-2 text-xs text-fg-muted">
                 <input type="checkbox" x-model="draft.pinned"
                        class="rounded border-border-strong bg-bg-subtle text-accent">
-                Fijar (aparecerá destacado)
+                {{ t.settings_pin_label }}
               </label>
               <button @click="add()" :disabled="!draft.name || !draft.url || saving"
                       class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-1.5 rounded-md
                              disabled:opacity-50 transition">
-                <span x-show="!saving">Añadir</span>
-                <span x-show="saving">Guardando…</span>
+                <span x-show="!saving">{{ t.settings_add_btn }}</span>
+                <span x-show="saving">{{ t.settings_saving }}</span>
               </button>
             </div>
           </div>
@@ -825,7 +796,7 @@
           {# Lista de drives #}
           <template x-if="sources.length === 0 && !loading">
             <div class="text-sm text-fg-faint text-center py-8">
-              Sin drives configurados. Añade uno arriba o pulsa "Restaurar catálogo".
+              {{ t.settings_no_drives }}
             </div>
           </template>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -852,16 +823,16 @@
                     </template>
                     <template x-if="indexingIds.includes(s.id)">
                       <div class="text-[10px] text-info mt-1.5 font-mono animate-pulse">
-                        ⟳ Indexando…
+                        {{ t.settings_drive_indexing }}
                         <template x-if="s.indexed_files > 0">
-                          <span>(<span x-text="s.indexed_files.toLocaleString()"></span> hasta ahora)</span>
+                          <span>(<span x-text="s.indexed_files.toLocaleString()"></span> {{ t.settings_until_now }})</span>
                         </template>
                       </div>
                     </template>
                     <template x-if="!indexingIds.includes(s.id) && s.indexed_files > 0">
                       <div class="text-[10px] text-info mt-1.5 font-mono flex items-center gap-1">
                         <i data-lucide="check" class="w-3 h-3"></i>
-                        Indexado: <span x-text="s.indexed_files.toLocaleString()"></span> archivos
+                        {{ t.settings_indexed_files }} <span x-text="s.indexed_files.toLocaleString()"></span> {{ t.settings_files_col | lower }}
                       </div>
                     </template>
                     <template x-if="s.index_error">
@@ -874,23 +845,23 @@
                   <div class="flex items-center gap-1 shrink-0">
                     <a :href="s.url" target="_blank" rel="noopener"
                        class="p-1.5 rounded bg-bg-subtle hover:bg-border-subtle text-fg-muted hover:text-accent transition"
-                       title="Abrir en el navegador">
+                       title="{{ t.settings_open_browser }}">
                       <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                     </a>
                     <button @click="indexOne(s)"
                             :disabled="indexingIds.includes(s.id)"
                             class="p-1.5 rounded bg-bg-subtle hover:bg-info-bg text-fg-muted hover:text-info transition disabled:opacity-50"
-                            :title="s.indexed_files > 0 ? 'Re-indexar' : 'Indexar para búsqueda fuzzy'">
+                            :title="s.indexed_files > 0 ? '{{ t.settings_reindex }}' : '{{ t.settings_fuzzy_index }}'">
                       <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="indexingIds.includes(s.id) ? 'animate-spin' : ''"></i>
                     </button>
                     <button @click="togglePin(s)"
                             class="p-1.5 rounded bg-bg-subtle hover:bg-border-subtle text-fg-muted hover:text-accent transition"
-                            :title="s.pinned ? 'Desfijar' : 'Fijar'">
+                            :title="s.pinned ? '{{ t.settings_unpin_drive }}' : '{{ t.settings_pin_drive }}'">
                       <i data-lucide="star" class="w-3.5 h-3.5"></i>
                     </button>
                     <button @click="remove(s)"
                             class="p-1.5 rounded bg-bg-subtle hover:bg-danger-bg text-fg-muted hover:text-danger transition"
-                            title="Eliminar">
+                            title="{{ t.common_delete }}">
                       <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                     </button>
                   </div>
@@ -901,27 +872,19 @@
           </div>
 
           <div class="text-[11px] text-fg-faint mt-2 space-y-1 pt-3 border-t border-border-subtle">
-            <div class="font-medium text-fg-muted mb-1">Cómo usar arte descargado de estos drives:</div>
+            <div class="font-medium text-fg-muted mb-1">{{ t.settings_how_to_use_drives }}</div>
             <div class="pl-3 space-y-0.5">
-              <div><span class="text-fg-muted">1.</span> Descarga la imagen del drive (Google Drive → "Descargar").</div>
-              <div><span class="text-fg-muted">2a.</span> Cópiala a
-                <span class="font-mono text-accent">%APPDATA%\MPC-Forge\custom_art\</span>
-                con el nombre exacto de la carta.
-              </div>
-              <div><span class="text-fg-muted">2b.</span> O en el editor: selecciona la carta →
-                <span class="text-accent">+ Añadir por URL</span> con la URL directa.
-              </div>
+              <div><span class="text-fg-muted">1.</span> {{ t.settings_drive_step1 }}</div>
+              <div><span class="text-fg-muted">2a.</span> {{ t.settings_drive_step2a }}</div>
+              <div><span class="text-fg-muted">2b.</span> {{ t.settings_drive_step2b }}</div>
             </div>
           </div>
           </div>
         </div>
 
-        {# Botón X de cerrar el modal: FUERA del scope de artSourcesPanel.        #}
-        {# Absolute-positioned encima del header para acceder a showDrivesModal   #}
-        {# del shell directamente.                                                #}
         <button @click="showDrivesModal = false"
                 class="absolute top-5 right-5 text-fg-muted hover:text-fg p-1 rounded"
-                title="Cerrar (Esc)">
+                title="{{ t.settings_close_esc }}">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
@@ -972,36 +935,36 @@ function settingsShell() {
       const map = [
         {
           key: 'paths.art_dir',
-          label: 'Cache de artes (Scryfall)',
-          description: 'Miniaturas descargadas. Puede crecer varios GB — moverlo a otro disco libera espacio en el principal.',
+          label: 'Art cache (Scryfall)',
+          description: 'Downloaded thumbnails. Can grow several GB — moving to another disk frees space on the main one.',
           effectiveKey: 'art_dir',
           hint: 'ej: D:\\mtg\\art',
         },
         {
           key: 'paths.custom_art_dir',
-          label: 'Arte custom del usuario',
-          description: 'Imágenes locales que sustituyen al arte oficial.',
+          label: 'User custom art',
+          description: 'Local images that replace official art.',
           effectiveKey: 'custom_art_dir',
           hint: '',
         },
         {
           key: 'paths.exports_dir',
-          label: 'XMLs y PDFs generados',
-          description: 'Salida final del pipeline. Útil apuntar a una carpeta sincronizada con la nube.',
+          label: 'Generated XMLs and PDFs',
+          description: 'Final pipeline output. Useful to point to a cloud-synced folder.',
           effectiveKey: 'exports_dir',
           hint: '',
         },
         {
           key: 'paths.backups_dir',
           label: 'Backups (.zip)',
-          description: 'Recomendable apuntar a un disco distinto o carpeta en la nube.',
+          description: 'Recommended to point to a different disk or cloud folder.',
           effectiveKey: 'backups_dir',
           hint: '',
         },
         {
           key: 'paths.cardbacks_dir',
-          label: 'Cardbacks (reversos)',
-          description: 'Imágenes de reverso disponibles en el picker.',
+          label: 'Cardbacks (back faces)',
+          description: 'Back face images available in the picker.',
           effectiveKey: 'cardbacks_dir',
           hint: '',
         },
@@ -1038,16 +1001,19 @@ function settingsShell() {
     // Definición del sidebar. `group` es la etiqueta que usa settings.py; la
     // relación key ↔ group se utiliza también para saltar de un resultado de
     // búsqueda a su sección.
-    sections: [
-      { key: 'general',      label: 'General',            icon: 'settings',      group: 'General' },
-      { key: 'prices',       label: 'Precios y envío',    icon: 'dollar-sign',   group: 'Precios y envío' },
-      { key: 'network',      label: 'Red y conexión',     icon: 'wifi',          group: 'Red y conexión' },
-      { key: 'autofill',     label: 'MPC Autofill',       icon: 'zap',           group: 'MPC Autofill' },
-      { key: 'art-sources',  label: 'Fuentes de arte',    icon: 'image',         group: null },
-      { key: 'custom-art',   label: 'Arte custom',        icon: 'folder',        group: null },
-      { key: 'backup',       label: 'Backup y datos',     icon: 'archive',       group: null },
-      { key: 'log',          label: 'Log de depuración',  icon: 'file-text',     group: null },
-    ],
+    get sections() {
+      const _t = window._t || ((k) => k);
+      return [
+        { key: 'general',      label: _t('settings_nav_general'),      icon: 'settings',      group: 'General' },
+        { key: 'prices',       label: _t('settings_nav_prices'),       icon: 'dollar-sign',   group: 'Precios y envío' },
+        { key: 'network',      label: _t('settings_nav_network'),      icon: 'wifi',          group: 'Red y conexión' },
+        { key: 'autofill',     label: _t('settings_nav_autofill'),     icon: 'zap',           group: 'MPC Autofill' },
+        { key: 'art-sources',  label: _t('settings_nav_art_sources'),  icon: 'image',         group: null },
+        { key: 'custom-art',   label: _t('settings_nav_custom_art'),   icon: 'folder',        group: null },
+        { key: 'backup',       label: _t('settings_nav_backup'),       icon: 'archive',       group: null },
+        { key: 'log',          label: _t('settings_nav_log'),          icon: 'file-text',     group: null },
+      ];
+    },
 
     async load() {
       this.loading = true;
@@ -1061,7 +1027,7 @@ function settingsShell() {
         // el resto de settings.
         this.loadPaths();
       } catch (e) {
-        window.toast('Error cargando ajustes', e.message);
+        window.toast(window._t('settings_loading'), e.message);
       } finally {
         this.loading = false;
         // Reload lucide iconos tras render inicial
@@ -1149,18 +1115,18 @@ function settingsShell() {
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
         this.values = data.values;
-        window.toast('Guardado', key);
+        window.toast(window._t('settings_saved'), key);
       } catch (e) {
-        window.toast('Error guardando', e.message);
+        window.toast(window._t('common_error'), e.message);
         this.load();  // recarga estado auténtico
       }
     },
 
     async resetAll() {
       if (!await window.confirmDialog(
-        'Restablecer ajustes',
-        '¿Volver todos los ajustes a sus valores por defecto?',
-        { danger: true, icon: 'rotate-ccw', confirmLabel: 'Restablecer' })) return;
+        window._t('settings_reset_defaults'),
+        window._t('common_reset') + '?',
+        { danger: true, icon: 'rotate-ccw', confirmLabel: window._t('common_reset') })) return;
       const updates = {};
       for (const d of this.definitions) updates[d.key] = d.default;
       try {
@@ -1171,7 +1137,7 @@ function settingsShell() {
         });
         const data = await r.json();
         this.values = data.values;
-        window.toast('Restablecido', 'Todos los ajustes vueltos a default');
+        window.toast(window._t('settings_saved'), window._t('common_reset'));
       } catch (e) {
         window.toast('Error', e.message);
       }
@@ -1181,11 +1147,11 @@ function settingsShell() {
       this.backingUp = true;
       try {
         const r = await fetch('/api/backup', {method: 'POST'});
-        if (!r.ok) throw new Error('Error del servidor');
+        if (!r.ok) throw new Error(window._t('common_error'));
         this.lastBackup = await r.json();
-        window.toast('Backup creado', this.lastBackup.path);
+        window.toast(window._t('settings_backup_created'), this.lastBackup.path);
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.backingUp = false;
       }
@@ -1198,7 +1164,7 @@ function settingsShell() {
     async loadPaths() {
       try {
         const r = await fetch('/api/settings/paths');
-        if (!r.ok) throw new Error('No se pudieron cargar las rutas');
+        if (!r.ok) throw new Error(window._t('settings_paths'));
         this.paths = await r.json();
         // Poblamos los inputs con los overrides guardados. Si values[key] no
         // existe (primera vez), queda vacío = usa default.
@@ -1243,17 +1209,14 @@ function settingsShell() {
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || 'Error guardando');
+          throw new Error(err.detail || window._t('common_error'));
         }
         const data = await r.json();
         this.values = data.values;
         // Recargamos las rutas efectivas para reflejar los cambios aplicados.
         await this.loadPaths();
         this.pathsDirty = false;
-        window.toast(
-          'Rutas guardadas',
-          'La app usa las rutas nuevas desde ya. Reinicia para refrescar las URLs de imágenes.',
-        );
+        window.toast(window._t('settings_paths_saved'), window._t('settings_paths_saved_desc'));
       } catch (e) {
         window.toast('Error', e.message);
       } finally {
@@ -1302,7 +1265,7 @@ function settingsShell() {
       if (def.type === 'path') {
         // Como str pero con placeholder "por defecto" — comunica claramente
         // que vacío ≠ desactivado, sino "usar la ruta calculada por la app".
-        return `<input type="text" value="${escLabel}" placeholder="por defecto"
+        return `<input type="text" value="${escLabel}" placeholder=""
                        @change="update('${def.key}', $event.target.value)"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                               font-mono focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
@@ -1419,17 +1382,17 @@ function artSourcesPanel() {
         if (wait) {
           const data = await r.json();
           if (data.error) {
-            window.toast('Indexado con problemas', data.error.substring(0, 100));
+            window.toast(window._t('common_error'), data.error.substring(0, 100));
           } else {
-            window.toast(`Indexado ${s.name}`,
+            window.toast(window._t('settings_indexed_files') + ' ' + s.name,
               `+${data.files_added} / ~${data.files_updated} en ${data.folders_visited} carpetas`);
           }
         } else {
-          window.toast('Indexando en background', s.name);
+          window.toast(window._t('settings_indexing_progress'), s.name);
           this._startPolling();
         }
       } catch (e) {
-        window.toast('Error indexando', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         if (!this.hasApiKey) {
           this.indexingIds = this.indexingIds.filter(id => id !== s.id);
@@ -1464,10 +1427,7 @@ function artSourcesPanel() {
         const elapsed = (Date.now() - this._pollStartedAt) / 1000;
         if (this.indexingIds.length === 0 || elapsed > 900) {
           if (this.indexingIds.length > 0) {
-            window.toast(
-              'Polling timeout',
-              `${this.indexingIds.length} indexados no completaron en 15 min. Comprueba logs.`
-            );
+            window.toast('Timeout', `${this.indexingIds.length} pending`);
           }
           this.indexingIds = [];
           clearInterval(this._pollTimer);
@@ -1479,25 +1439,25 @@ function artSourcesPanel() {
     async indexPinned() {
       const pinned = this.sources.filter(s => s.pinned);
       if (pinned.length === 0) {
-        window.toast('Sin drives pinned', 'Marca algunos con ★ primero.');
+        window.toast(window._t('settings_pinned_col'), window._t('settings_pin_drive') + ' ★');
         return;
       }
       const pending = pinned.filter(s => !s.indexed_at);
       const skipped = pinned.length - pending.length;
       if (pending.length === 0) {
-        window.toast('Ya están indexados', `Los ${pinned.length} pinned ya tienen índice. Usa el botón ↻ de cada tarjeta para re-indexar.`);
+        window.toast(window._t('settings_indexed_files'), `${pinned.length}`);
         return;
       }
       const msg = skipped > 0
         ? `Indexar ${pending.length} drives pinned pendientes? (${skipped} ya indexados se saltan)`
         : `Indexar ${pending.length} drives pinned?`;
-      if (!await window.confirmDialog('Indexar drives pinned', msg,
-        { icon: 'refresh-cw', confirmLabel: 'Indexar' })) return;
+      if (!await window.confirmDialog(window._t('settings_index_pinned_btn'), msg,
+        { icon: 'refresh-cw', confirmLabel: window._t('settings_index_all_btn') })) return;
       for (const s of pending) {
         this.indexingIds.push(s.id);
         fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
       }
-      window.toast('Indexando pinned', `${pending.length} drives en background`);
+      window.toast(window._t('settings_indexing_progress'), `${pending.length}`);
       this._startPolling();
     },
 
@@ -1505,19 +1465,19 @@ function artSourcesPanel() {
       const pending = this.sources.filter(s => !s.indexed_at);
       const skipped = this.sources.length - pending.length;
       if (pending.length === 0) {
-        window.toast('Ya están todos indexados', `Los ${this.sources.length} drives ya tienen índice. Usa el botón ↻ de cada tarjeta para re-indexar.`);
+        window.toast(window._t('settings_indexed_files'), `${this.sources.length}`);
         return;
       }
       const msg = skipped > 0
         ? `Indexar ${pending.length} drives pendientes? (${skipped} ya indexados se saltan)\n\nPuede tardar varios minutos y consumir cuota de tu API key.`
         : `Indexar los ${pending.length} drives? Puede tardar 10-30 minutos y consumir cuota de tu API key.`;
-      if (!await window.confirmDialog('Indexar todos los drives', msg,
-        { icon: 'refresh-cw', confirmLabel: 'Indexar' })) return;
+      if (!await window.confirmDialog(window._t('settings_index_all_btn'), msg,
+        { icon: 'refresh-cw', confirmLabel: window._t('settings_index_all_btn') })) return;
       for (const s of pending) {
         this.indexingIds.push(s.id);
         fetch(`/api/art-sources/${s.id}/index`, {method: 'POST'});
       }
-      window.toast('Indexando pendientes', `${pending.length} drives en background`);
+      window.toast(window._t('settings_indexing_progress'), `${pending.length}`);
       this._startPolling();
     },
 
@@ -1528,9 +1488,9 @@ function artSourcesPanel() {
         if (!r.ok) throw new Error('Error');
         const d = await r.json();
         if (d.added === 0) {
-          window.toast('Nada que restaurar', `Ya tienes los ${d.total_curated} drives del catálogo.`);
+          window.toast(window._t('settings_restore_catalog'), `${d.total_curated}`);
         } else {
-          window.toast(`Restaurados ${d.added} drives`, `${d.skipped} ya existían, catálogo: ${d.total_curated}`);
+          window.toast(`${d.added} ${window._t('settings_restore_catalog')}`, `${d.total_curated}`);
         }
         await this.load();
       } catch (e) {
@@ -1549,7 +1509,7 @@ function artSourcesPanel() {
           body: JSON.stringify(this.draft),
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast('Source añadido', this.draft.name);
+        window.toast(window._t('settings_add_btn'), this.draft.name);
         this.draft = {name: '', url: '', description: '', tags: '', pinned: false, source_type: ''};
         this.validation = {checked: false, valid: false, detected_type: '', canonical_url: '', label: '', error: ''};
         this.showAdd = false;
@@ -1623,13 +1583,13 @@ function artSourcesPanel() {
 
     async remove(s) {
       if (!await window.confirmDialog(
-        'Eliminar source',
-        `¿Eliminar el drive "${s.name}" del catálogo?\n\nSi era del catálogo curado, puedes restaurarlo con "Restaurar catálogo".`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Eliminar' })) return;
+        window._t('common_delete'),
+        `"${s.name}"`,
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       try {
         const r = await fetch(`/api/art-sources/${s.id}`, {method: 'DELETE'});
         if (!r.ok) throw new Error('Error');
-        window.toast('Eliminado', s.name);
+        window.toast(window._t('common_delete'), s.name);
         await this.load();
       } catch (e) { window.toast('Error', e.message); }
     }
@@ -1668,7 +1628,7 @@ function debugLogPanel() {
         this.copied = true;
         setTimeout(() => this.copied = false, 2000);
       } catch (e) {
-        window.toast('No se pudo copiar', 'Selecciona el texto manualmente.');
+        window.toast(window._t('common_error'), '');
       }
     }
   };

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Historial · MPC Forge{% endblock %}
+{% block title %}{{ t.history_title }} · MPC Forge{% endblock %}
 {% block content %}
 {#
   Vista de Historial rediseñada.
@@ -30,14 +30,14 @@
           <i data-lucide="history" class="w-4 h-4"></i>
         </div>
         <div>
-          <h1 class="font-display font-semibold tracking-tight text-lg leading-none">Historial</h1>
-          <p class="text-[11px] text-fg-faint mt-0.5">Timeline de cambios por mazo y registro de tiradas de impresión.</p>
+          <h1 class="font-display font-semibold tracking-tight text-lg leading-none">{{ t.history_title }}</h1>
+          <p class="text-[11px] text-fg-faint mt-0.5">{{ t.history_subtitle }}</p>
         </div>
       </div>
       <div class="flex-1"></div>
       <div class="text-[11px] text-fg-faint">
-        <span x-text="decks.length"></span> mazos ·
-        <span x-text="totalActivityCount"></span> eventos totales
+        <span x-text="decks.length"></span> {{ t.history_decks_section | lower }} ·
+        <span x-text="totalActivityCount"></span> {{ t.history_events_total }}
       </div>
     </div>
   </div>
@@ -47,21 +47,21 @@
     {# ============ SECCIÓN 1: GRID DE MAZOS ============ #}
     <section>
       <div class="flex items-center gap-2 mb-4">
-        <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">Mazos</h2>
-        <span class="text-[11px] text-fg-faint">— haz clic para ver el timeline</span>
+        <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">{{ t.history_decks_section }}</h2>
+        <span class="text-[11px] text-fg-faint">— {{ t.history_timeline | lower }}</span>
       </div>
 
       <template x-if="loading">
         <div class="text-center py-16 text-fg-faint text-sm">
           <i data-lucide="loader-2" class="w-4 h-4 mx-auto mb-2 animate-spin"></i>
-          Cargando mazos…
+          {{ t.history_loading_decks }}
         </div>
       </template>
 
       <template x-if="!loading && decks.length === 0">
         <div class="text-center py-16 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
-          Aún no has creado ningún mazo.
-          <a href="/" class="text-accent hover:underline ml-1">Crear uno →</a>
+          {{ t.history_no_decks_yet }}
+          <a href="/" class="text-accent hover:underline ml-1">{{ t.history_create_link }}</a>
         </div>
       </template>
 
@@ -82,7 +82,7 @@
                 <div class="w-full h-full flex items-center justify-center text-fg-faint">
                   <div class="text-center">
                     <i data-lucide="layers" class="w-8 h-8 mx-auto mb-2"></i>
-                    <div class="text-[10px] uppercase tracking-widest">Sin commander</div>
+                    <div class="text-[10px] uppercase tracking-widest">{{ t.history_no_commander }}</div>
                   </div>
                 </div>
               </template>
@@ -103,7 +103,7 @@
               <div class="font-display text-base leading-tight truncate group-hover:text-accent-glow transition"
                    x-text="deck.name" :title="deck.name"></div>
               <div class="flex items-center justify-between text-[11px] text-fg-faint">
-                <span x-text="deck.card_count + ' cartas'"></span>
+                <span x-text="deck.card_count + ' {{ t.history_cards_count }}'"></span>
                 <span class="text-fg-muted" x-text="deck.format"></span>
               </div>
               <template x-if="deck.last_activity_at">
@@ -115,7 +115,7 @@
               </template>
               <template x-if="!deck.last_activity_at">
                 <div class="text-[11px] text-fg-faint italic pt-1 border-t border-border-subtle/60">
-                  Sin actividad registrada
+                  {{ t.history_no_activity_reg }}
                 </div>
               </template>
             </div>
@@ -127,13 +127,13 @@
     {# ============ SECCIÓN 2: TIRADAS DE IMPRESIÓN (PrintRuns) ============ #}
     <section>
       <div class="flex items-center gap-2 mb-4">
-        <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">Tiradas de impresión</h2>
-        <span class="text-[11px] text-fg-faint">— vista global de todos los XML/PDF generados</span>
+        <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">{{ t.history_runs_section }}</h2>
+        <span class="text-[11px] text-fg-faint">— XML/PDF</span>
       </div>
 
       <template x-if="runs.length === 0">
         <div class="text-center py-8 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
-          Aún no has generado ningún XML.
+          {{ t.history_no_xml_yet }}
         </div>
       </template>
 
@@ -142,12 +142,12 @@
         <table class="w-full text-sm">
           <thead class="bg-bg-subtle text-fg-muted text-xs uppercase tracking-wider">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">Nombre</th>
-              <th class="text-left px-4 py-3 font-medium">Fecha</th>
-              <th class="text-right px-4 py-3 font-medium">Cartas</th>
-              <th class="text-right px-4 py-3 font-medium">Tier</th>
-              <th class="text-right px-4 py-3 font-medium">Coste</th>
-              <th class="text-left px-4 py-3 font-medium">Stock</th>
+              <th class="text-left px-4 py-3 font-medium">{{ t.history_col_name }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ t.history_col_date }}</th>
+              <th class="text-right px-4 py-3 font-medium">{{ t.history_col_cards }}</th>
+              <th class="text-right px-4 py-3 font-medium">{{ t.history_col_tier }}</th>
+              <th class="text-right px-4 py-3 font-medium">{{ t.history_col_cost }}</th>
+              <th class="text-left px-4 py-3 font-medium">{{ t.history_col_stock }}</th>
             </tr>
           </thead>
           <tbody>
@@ -176,10 +176,10 @@
   {# MODAL: TIMELINE DE UN MAZO                                                    #}
   {# ============================================================================ #}
   <template x-if="timelineOpen">
-    <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+    <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="closeTimeline()"
          @keydown.escape.window="closeTimeline()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
 
         {# Header con arte pequeño del commander + nombre + link al editor #}
@@ -196,12 +196,12 @@
           </template>
 
           <div class="flex-1 min-w-0">
-            <div class="text-[10px] uppercase tracking-widest text-fg-faint">Timeline</div>
+            <div class="text-[10px] uppercase tracking-widest text-fg-faint">{{ t.history_timeline }}</div>
             <div class="font-display text-xl text-accent-glow truncate" x-text="timelineDeck?.name || ''"></div>
             <div class="flex items-center gap-3 mt-1 text-[11px] text-fg-muted">
-              <span x-text="timelineDeck?.card_count + ' cartas'"></span>
+              <span x-text="timelineDeck?.card_count + ' {{ t.history_cards_count }}'"></span>
               <span>·</span>
-              <span><span x-text="timelineDeck?.activity_count"></span> eventos</span>
+              <span><span x-text="timelineDeck?.activity_count"></span> {{ t.history_events_count }}</span>
               <template x-if="timelineDeck?.format">
                 <span>·</span>
               </template>
@@ -212,7 +212,7 @@
                  class="text-[11px] text-accent hover:text-accent-glow hover:underline
                         flex items-center gap-1">
                 <i data-lucide="external-link" class="w-3 h-3"></i>
-                Ir al editor
+                {{ t.history_go_to_editor }}
               </a>
             </div>
           </div>
@@ -244,17 +244,17 @@
           <template x-if="timelineLoading">
             <div class="text-center py-12 text-fg-faint text-sm">
               <i data-lucide="loader-2" class="w-4 h-4 mx-auto mb-2 animate-spin"></i>
-              Cargando timeline…
+              {{ t.history_loading_timeline }}
             </div>
           </template>
 
           <template x-if="!timelineLoading && filteredActivity.length === 0">
             <div class="text-center py-12 text-fg-faint text-sm">
               <template x-if="activity.length === 0">
-                <div>Sin actividad registrada todavía.</div>
+                <div>{{ t.history_no_activity }}</div>
               </template>
               <template x-if="activity.length > 0">
-                <div>Ningún evento coincide con el filtro.</div>
+                <div>{{ t.history_no_filter }}</div>
               </template>
             </div>
           </template>
@@ -291,10 +291,10 @@
                                  text-fg-muted hover:text-warning
                                  px-2 py-1 rounded flex items-center gap-1 shrink-0
                                  disabled:opacity-50 disabled:cursor-wait"
-                          :title="'Deshacer: ' + event.summary">
+                          :title="'{{ t.history_undo }}: ' + event.summary">
                     <i data-lucide="undo-2" class="w-3 h-3" x-show="undoingEventId !== event.id"></i>
                     <i data-lucide="loader-2" class="w-3 h-3 animate-spin" x-show="undoingEventId === event.id"></i>
-                    <span>Deshacer</span>
+                    <span>{{ t.history_undo }}</span>
                   </button>
                 </template>
               </div>
@@ -304,9 +304,9 @@
 
         {# Footer con contador #}
         <div class="px-5 py-2 border-t border-border-subtle bg-bg-inset/30 text-[11px] text-fg-faint text-center">
-          <span x-text="filteredActivity.length"></span> de <span x-text="activity.length"></span> eventos
+          <span x-text="filteredActivity.length"></span> {{ t.history_of_events }} <span x-text="activity.length"></span> {{ t.history_events_count }}
           <template x-if="activity.length >= 500">
-            <span> · mostrando los últimos 500</span>
+            <span> · {{ t.history_showing_last }}</span>
           </template>
         </div>
       </div>
@@ -339,104 +339,107 @@ function esc(s) {
 
 // Metadata por tipo de evento. Añadir uno nuevo: agrega entrada aquí + emite
 // desde el backend con el mismo string. Sin renderer → usa event.summary.
-const KIND_META = {
-  deck_created:         { icon: 'sparkles',        tone: 'accent',  label: 'Creación',
+function buildKindMeta() {
+  const _t = window._t || ((k) => k);
+  return {
+  deck_created:         { icon: 'sparkles',        tone: 'accent',  label: _t('history_kind_created'),
     render: (ev) => {
       const p = ev.payload || {};
-      const src = p.source === 'moxfield' ? 'Moxfield' : (p.source === 'text' ? 'texto plano' : 'manual');
-      let msg = `Mazo creado desde <b>${esc(src)}</b> con <b>${p.card_count || 0}</b> cartas`;
-      if (p.unresolved_count) msg += ` <span class="text-warning">(${p.unresolved_count} no resueltas)</span>`;
+      const srcMap = { moxfield: 'Moxfield', text: _t('history_filter_meta'), manual: 'manual' };
+      const src = srcMap[p.source] || p.source || 'manual';
+      let msg = `${_t('history_kind_created')}: <b>${esc(src)}</b> · <b>${p.card_count || 0}</b> ${_t('history_cards_count')}`;
+      if (p.unresolved_count) msg += ` <span class="text-warning">(${p.unresolved_count} unresolved)</span>`;
       return msg;
     }
   },
-  deck_renamed:         { icon: 'pencil',          tone: 'info',    label: 'Renombrado',
+  deck_renamed:         { icon: 'pencil',          tone: 'info',    label: _t('history_kind_renamed'),
     render: (ev) => {
       const p = ev.payload || {};
-      return `Mazo renombrado: <span class="text-fg-muted">${esc(p.old_name || '')}</span> → <b>${esc(p.new_name || '')}</b>`;
+      return `${_t('history_kind_renamed')}: <span class="text-fg-muted">${esc(p.old_name || '')}</span> → <b>${esc(p.new_name || '')}</b>`;
     }
   },
-  deck_localized:       { icon: 'languages',       tone: 'info',    label: 'Idioma',
+  deck_localized:       { icon: 'languages',       tone: 'info',    label: _t('history_kind_localized'),
     render: (ev) => {
       const p = ev.payload || {};
-      let msg = `Idioma cambiado a <b>${esc(p.lang || '?')}</b>: ${p.localized || 0} cartas actualizadas`;
-      if (p.unchanged) msg += `, ${p.unchanged} ya estaban`;
+      let msg = `${_t('history_kind_localized')}: <b>${esc(p.lang || '?')}</b> · ${p.localized || 0} ${_t('history_cards_count')}`;
+      if (p.unchanged) msg += `, ${p.unchanged} unchanged`;
       if (p.unavailable && p.unavailable.length) {
-        msg += ` · <span class="text-warning">${p.unavailable.length} sin arte disponible</span>`;
+        msg += ` · <span class="text-warning">${p.unavailable.length} unavailable</span>`;
       }
-      if (p.skipped_custom) msg += ` · ${p.skipped_custom} con arte custom respetadas`;
+      if (p.skipped_custom) msg += ` · ${p.skipped_custom} custom`;
       return msg;
     }
   },
-  card_added:           { icon: 'plus-circle',     tone: 'success', label: 'Añadida',
+  card_added:           { icon: 'plus-circle',     tone: 'success', label: _t('history_kind_added'),
     render: (ev) => {
       const p = ev.payload || {};
-      const stacked = p.stacked ? ' <span class="text-fg-faint">(sumada a existente)</span>' : '';
-      return `Añadida <b>${p.quantity || 1}×</b> ${esc(ev.card_name || 'carta')} a <b>${esc(p.role || 'mainboard')}</b>${stacked}`;
+      const stacked = p.stacked ? ' <span class="text-fg-faint">(stacked)</span>' : '';
+      return `${_t('history_kind_added')} <b>${p.quantity || 1}×</b> ${esc(ev.card_name || 'card')} → <b>${esc(p.role || 'mainboard')}</b>${stacked}`;
     }
   },
-  card_removed:         { icon: 'minus-circle',    tone: 'danger',  label: 'Eliminada',
+  card_removed:         { icon: 'minus-circle',    tone: 'danger',  label: _t('history_kind_removed'),
     render: (ev) => {
       const p = ev.payload || {};
-      return `Eliminada <b>${p.quantity || 1}×</b> ${esc(ev.card_name || 'carta')} de <b>${esc(p.role || 'mainboard')}</b>`;
+      return `${_t('history_kind_removed')} <b>${p.quantity || 1}×</b> ${esc(ev.card_name || 'card')} ← <b>${esc(p.role || 'mainboard')}</b>`;
     }
   },
-  card_moved:           { icon: 'arrow-right-left',tone: 'info',    label: 'Movida',
+  card_moved:           { icon: 'arrow-right-left',tone: 'info',    label: _t('history_kind_moved'),
     render: (ev) => {
       const p = ev.payload || {};
-      return `Movida <b>${esc(ev.card_name || 'carta')}</b>: <span class="text-fg-muted">${esc(p.from_role || '?')}</span> → <b>${esc(p.to_role || '?')}</b>`;
+      return `${_t('history_kind_moved')} <b>${esc(ev.card_name || 'card')}</b>: <span class="text-fg-muted">${esc(p.from_role || '?')}</span> → <b>${esc(p.to_role || '?')}</b>`;
     }
   },
-  card_qty_changed:     { icon: 'hash',            tone: 'info',    label: 'Cantidad',
+  card_qty_changed:     { icon: 'hash',            tone: 'info',    label: _t('history_kind_qty'),
     render: (ev) => {
       const p = ev.payload || {};
-      return `Cantidad de <b>${esc(ev.card_name || 'carta')}</b>: <span class="text-fg-muted">${p.old_qty || 0}×</span> → <b>${p.new_qty || 0}×</b>`;
+      return `${_t('history_kind_qty')} <b>${esc(ev.card_name || 'card')}</b>: <span class="text-fg-muted">${p.old_qty || 0}×</span> → <b>${p.new_qty || 0}×</b>`;
     }
   },
-  card_include_toggled: { icon: 'eye',             tone: 'neutral', label: 'Inclusión',
+  card_include_toggled: { icon: 'eye',             tone: 'neutral', label: _t('history_kind_include'),
     render: (ev) => {
       const p = ev.payload || {};
-      const verb = p.new_include ? 'Reactivada' : 'Excluida del XML';
-      return `${verb}: <b>${esc(ev.card_name || 'carta')}</b>`;
+      const verb = p.new_include ? 'Restored' : 'Excluded from XML';
+      return `${verb}: <b>${esc(ev.card_name || 'card')}</b>`;
     }
   },
-  card_art_changed:     { icon: 'image',           tone: 'accent',  label: 'Arte',
+  card_art_changed:     { icon: 'image',           tone: 'accent',  label: _t('history_kind_art'),
     render: (ev) => {
       const p = ev.payload || {};
       if (p.kind === 'custom') {
-        let msg = `Arte de <b>${esc(ev.card_name || 'carta')}</b> cambiado a custom`;
+        let msg = `${_t('history_kind_art')} <b>${esc(ev.card_name || 'card')}</b> → custom`;
         if (p.custom_variant) msg += ` <span class="text-fg-muted">"${esc(p.custom_variant)}"</span>`;
         if (p.custom_filename) msg += ` <span class="text-fg-faint text-[11px]">(${esc(p.custom_filename)})</span>`;
         return msg;
       }
       const fromLoc = p.old_set ? `${esc((p.old_set||'').toUpperCase())} ${esc(p.old_number || '')}` : '?';
       const toLoc   = p.new_set ? `${esc((p.new_set||'').toUpperCase())} ${esc(p.new_number || '')}` : '?';
-      const remember = p.remember_globally ? ' <span class="text-accent/70 text-[11px]">(recordado globalmente)</span>' : '';
-      return `Arte de <b>${esc(ev.card_name || 'carta')}</b>: <span class="text-fg-muted font-mono">${fromLoc}</span> → <b class="font-mono">${toLoc}</b>${remember}`;
+      const remember = p.remember_globally ? ` <span class="text-accent/70 text-[11px]">(${_t('deck_art_remembered')})</span>` : '';
+      return `${_t('history_kind_art')} <b>${esc(ev.card_name || 'card')}</b>: <span class="text-fg-muted font-mono">${fromLoc}</span> → <b class="font-mono">${toLoc}</b>${remember}`;
     }
   },
-  role_cleared:         { icon: 'trash-2',         tone: 'danger',  label: 'Sección vaciada',
+  role_cleared:         { icon: 'trash-2',         tone: 'danger',  label: _t('history_kind_cleared'),
     render: (ev) => {
       const p = ev.payload || {};
       const sample = (p.card_names_sample || []).slice(0, 5).map(esc).join(', ');
-      const more = p.truncated ? ` +${(p.deleted || 0) - (p.card_names_sample || []).length} más` : '';
-      let msg = `Sección <b>${esc(p.role || '?')}</b> vaciada — <b>${p.deleted || 0}</b> cartas eliminadas`;
+      const more = p.truncated ? ` +${(p.deleted || 0) - (p.card_names_sample || []).length} more` : '';
+      let msg = `${_t('history_kind_cleared')}: <b>${esc(p.role || '?')}</b> — <b>${p.deleted || 0}</b> ${_t('history_cards_count')}`;
       if (sample) msg += ` <span class="text-fg-faint text-[11px]">(${sample}${more})</span>`;
       return msg;
     }
   },
-  related_added:        { icon: 'plus-square',     tone: 'success', label: 'Relacionadas',
+  related_added:        { icon: 'plus-square',     tone: 'success', label: _t('history_kind_related'),
     render: (ev) => {
       const p = ev.payload || {};
-      const trigger = p.trigger_card ? ` para <b>${esc(p.trigger_card)}</b>` : '';
-      const kind = p.kind === 'tokens' ? 'tokens' : 'cartas relacionadas';
-      return `Añadidas <b>${p.count || 0}</b> ${kind}${trigger}`;
+      const trigger = p.trigger_card ? ` for <b>${esc(p.trigger_card)}</b>` : '';
+      const kind = p.kind === 'tokens' ? 'tokens' : 'related cards';
+      return `${_t('history_kind_added')} <b>${p.count || 0}</b> ${kind}${trigger}`;
     }
   },
   xml_generated:        { icon: 'file-code',       tone: 'accent',  label: 'XML',
     render: (ev) => {
       const p = ev.payload || {};
       const foil = p.foil ? ' foil' : '';
-      return `XML generado: <b>${p.total_cards || 0}</b> cartas · <b>${esc(p.cardstock || '?')}</b>${foil} · <b>${(p.estimated_cost_eur || 0).toFixed(2)} €</b> <span class="text-fg-faint text-[11px]">(${esc(p.xml_filename || '')})</span>`;
+      return `XML: <b>${p.total_cards || 0}</b> ${_t('history_cards_count')} · <b>${esc(p.cardstock || '?')}</b>${foil} · <b>${(p.estimated_cost_eur || 0).toFixed(2)} €</b> <span class="text-fg-faint text-[11px]">(${esc(p.xml_filename || '')})</span>`;
     }
   },
   pdf_generated:        { icon: 'file-text',       tone: 'accent',  label: 'PDF',
@@ -444,27 +447,33 @@ const KIND_META = {
       const p = ev.payload || {};
       const opts = [
         p.page_size ? p.page_size.toUpperCase() : null,
-        p.cut_marks ? 'con marcas' : null,
-        p.include_backs ? 'con reversos' : null,
+        p.cut_marks ? 'cut marks' : null,
+        p.include_backs ? 'with backs' : null,
       ].filter(Boolean).join(' · ');
-      return `PDF generado: <b>${p.total_slots || 0}</b> cartas en <b>${p.total_pages || 0}</b> páginas <span class="text-fg-muted">(${esc(opts)})</span> <span class="text-fg-faint text-[11px]">(${esc(p.pdf_filename || '')})</span>`;
+      return `PDF: <b>${p.total_slots || 0}</b> ${_t('history_cards_count')} in <b>${p.total_pages || 0}</b> pages <span class="text-fg-muted">(${esc(opts)})</span> <span class="text-fg-faint text-[11px]">(${esc(p.pdf_filename || '')})</span>`;
     }
   },
-};
+  };
+}
 
-// Grupos de filtros: valor → lista de kinds que engloba.
-// El filtro "all" es especial: no filtra nada.
-const FILTER_GROUPS = [
-  { value: 'all',       label: 'Todos',       icon: null,                 kinds: null },
-  { value: 'cards',     label: 'Cartas',      icon: 'square-stack',       kinds: ['card_added','card_removed','card_moved','card_qty_changed','card_include_toggled','related_added','role_cleared'] },
-  { value: 'art',       label: 'Arte',        icon: 'image',              kinds: ['card_art_changed'] },
-  { value: 'lang',      label: 'Idioma',      icon: 'languages',          kinds: ['deck_localized'] },
-  { value: 'exports',   label: 'Impresión',   icon: 'printer',            kinds: ['xml_generated','pdf_generated'] },
-  { value: 'meta',      label: 'Mazo',        icon: 'settings',           kinds: ['deck_created','deck_renamed'] },
-];
+// FILTER_GROUPS se construye lazy la primera vez que se llama a historyPage()
+// para que _t() ya tenga window._T disponible.
+function buildFilterGroups() {
+  const _t = window._t || ((k) => k);
+  return [
+    { value: 'all',     label: _t('history_filter_all'),     icon: null,            kinds: null },
+    { value: 'cards',   label: _t('history_filter_cards'),   icon: 'square-stack',  kinds: ['card_added','card_removed','card_moved','card_qty_changed','card_include_toggled','related_added','role_cleared'] },
+    { value: 'art',     label: _t('history_filter_art'),     icon: 'image',         kinds: ['card_art_changed'] },
+    { value: 'lang',    label: _t('history_filter_lang'),    icon: 'languages',     kinds: ['deck_localized'] },
+    { value: 'exports', label: _t('history_filter_exports'), icon: 'printer',       kinds: ['xml_generated','pdf_generated'] },
+    { value: 'meta',    label: _t('history_filter_meta'),    icon: 'settings',      kinds: ['deck_created','deck_renamed'] },
+  ];
+}
 
 
 function historyPage() {
+  const KIND_META = buildKindMeta();
+  const FILTER_GROUPS = buildFilterGroups();
   return {
     loading: true,
     decks: [],
@@ -488,9 +497,7 @@ function historyPage() {
       return this.decks.reduce((sum, d) => sum + (d.activity_count || 0), 0);
     },
 
-    // El filtro se computa client-side sobre el array ya cargado. La API
-    // permite filtrar server-side también (?kinds=...) pero como cargamos
-    // los últimos 500 eventos de golpe, es más responsivo alternar en local.
+    // El filtro se computa client-side sobre el array ya cargado.
     get filteredActivity() {
       const g = FILTER_GROUPS.find(f => f.value === this.activeFilter);
       if (!g || !g.kinds) return this.activity;
@@ -509,7 +516,7 @@ function historyPage() {
         this.runs = runsR.ok ? await runsR.json() : [];
         this.undoableKinds = undoR.ok ? await undoR.json() : [];
       } catch (e) {
-        window.toast && window.toast('Error cargando historial', e.message);
+        window.toast && window.toast(window._t('history_error_loading'), e.message);
       } finally {
         this.loading = false;
         this.$nextTick(() => window.icons && window.icons());
@@ -526,7 +533,7 @@ function historyPage() {
         const r = await fetch(`/api/decks/${deck.id}/activity?limit=500`);
         if (r.ok) this.activity = await r.json();
       } catch (e) {
-        window.toast && window.toast('Error cargando timeline', e.message);
+        window.toast && window.toast(window._t('history_error_timeline'), e.message);
       } finally {
         this.timelineLoading = false;
         // Actualizar counts en las pills de filtro
@@ -551,9 +558,6 @@ function historyPage() {
       return (KIND_META[kind] && KIND_META[kind].icon) || 'circle';
     },
 
-    // Clase Tailwind con bg+border+text según "tono" del evento.
-    // Tonos: accent (dorado), info (azul), success (verde), danger (rojo),
-    //        neutral (gris), warning (naranja).
     toneClass(kind) {
       const meta = KIND_META[kind];
       const tone = meta ? meta.tone : 'neutral';
@@ -578,13 +582,10 @@ function historyPage() {
           return esc(ev.summary || ev.kind);
         }
       }
-      // Fallback: usar el summary pre-computado por el backend
       return esc(ev.summary || ev.kind);
     },
 
     // ---- Undo ----
-    // Filtro doble: kind reversible + evento no marcado como "resultado de un
-    // undo previo" (para evitar la telaraña "deshacer un deshacer un deshacer").
     canUndo(ev) {
       if (!this.undoableKinds.includes(ev.kind)) return false;
       if (ev.payload && ev.payload.undone_event_id) return false;
@@ -592,7 +593,7 @@ function historyPage() {
     },
 
     async undoEvent(ev) {
-      if (this.undoingEventId) return;  // ya hay uno en curso
+      if (this.undoingEventId) return;
       if (!this.canUndo(ev)) return;
       this.undoingEventId = ev.id;
       try {
@@ -602,49 +603,43 @@ function historyPage() {
         );
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
-          // 409 = estado del mazo divergió, 400 = kind no reversible.
-          // El backend devuelve un mensaje legible en `detail`.
-          const detail = data.detail || 'No se pudo deshacer';
-          window.toast && window.toast('No se puede deshacer', detail);
+          const detail = data.detail || window._t('history_undo_failed');
+          window.toast && window.toast(window._t('history_undo_failed'), detail);
           return;
         }
-        window.toast && window.toast('Deshecho', data.summary);
-        // Recargamos el timeline para que aparezca el evento nuevo del undo
-        // y los contadores queden bien. También refrescamos el grid principal
-        // porque el activity_count del mazo cambió.
+        window.toast && window.toast(window._t('history_undone'), data.summary);
         if (this.timelineDeck) {
           await this.openTimeline(this.timelineDeck);
         }
-        // Fire-and-forget refrescamos los mazos (no queremos bloquear el UX)
         fetch('/api/decks/_/with-activity').then(async r => {
           if (r.ok) this.decks = await r.json();
         });
       } catch (e) {
-        window.toast && window.toast('Error deshaciendo', e.message);
+        window.toast && window.toast(window._t('history_undo_error'), e.message);
       } finally {
         this.undoingEventId = null;
       }
     },
 
-    // "hace 3 min" / "hace 2 d". Fallback a la fecha si es hace mucho.
+    // Relative time — locale-aware via window._LANG
     relativeTime(iso) {
       if (!iso) return '';
       const then = new Date(iso).getTime();
       const now = Date.now();
       const diff = Math.max(0, Math.round((now - then) / 1000));
-      if (diff < 60)      return `hace ${diff} s`;
-      if (diff < 3600)    return `hace ${Math.round(diff / 60)} min`;
-      if (diff < 86400)   return `hace ${Math.round(diff / 3600)} h`;
-      if (diff < 604800)  return `hace ${Math.round(diff / 86400)} d`;
-      // Más de una semana: fecha compacta
-      const d = new Date(iso);
-      return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      const _t = window._t || ((k) => k);
+      if (diff < 60)    return _t('history_relative_min').replace('{n}', diff + 's');
+      if (diff < 3600)  return _t('history_relative_min').replace('{n}', Math.round(diff / 60));
+      if (diff < 86400) return _t('history_relative_h').replace('{n}', Math.round(diff / 3600));
+      if (diff < 604800)return _t('history_relative_d').replace('{n}', Math.round(diff / 86400));
+      const locale = window._LANG === 'en' ? 'en-US' : 'es-ES';
+      return new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: 'short' });
     },
 
     formatDate(iso) {
       if (!iso) return '';
-      const d = new Date(iso);
-      return d.toLocaleString('es-ES', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const locale = window._LANG === 'en' ? 'en-US' : 'es-ES';
+      return new Date(iso).toLocaleString(locale, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     },
   };
 }

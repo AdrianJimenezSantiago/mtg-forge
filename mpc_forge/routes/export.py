@@ -153,6 +153,7 @@ async def build_xml_endpoint(
         cardstock=cardstock,
         foil=foil,
         cardback_path=cardback,
+        web_mode=payload.web_mode,
     )
     build_progress.finish(deck_id)
 
@@ -278,6 +279,8 @@ class BuildSplitXMLRequest(BaseModel):
     max_tier: int | None = None
     create_runs: bool = True
     """Si True, cada XML genera además su print_run en historial."""
+    web_mode: bool = False
+    """Si True, el XML generado es compatible con mpcfill.com (``<id>`` vacío)."""
 
 
 class BuildSplitXMLResponse(BaseModel):
@@ -332,6 +335,7 @@ async def build_split_xml_endpoint(
             build_xml,
             cards=run_plan.cards, output_path=out_path,
             cardstock=cardstock, foil=foil, cardback_path=cardback,
+            web_mode=payload.web_mode,
         )
         xml_paths.append(str(r.xml_path))
 

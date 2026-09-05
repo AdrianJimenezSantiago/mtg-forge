@@ -79,7 +79,15 @@ class XMLBuildResult:
 
 
 def _slug(text: str) -> str:
-    return "".join(c for c in text.lower() if c.isalnum() or c == " ").strip()
+    import re
+    # Normaliza separador DFC (//) → espacio (antes de limpiar el resto)
+    text = text.replace("//", " ")
+    # Guiones → espacio: Ex-SOLDIER → ex soldier, Master-at-Arms → master at arms
+    text = text.replace("-", " ")
+    # Elimina todo lo que no sea alfanumérico ni espacio
+    text = "".join(c for c in text.lower() if c.isalnum() or c == " ")
+    # Colapsa múltiples espacios consecutivos (deja solo uno)
+    return re.sub(r" +", " ", text).strip()
 
 
 def _meld_result_id(printing: PrintingCache) -> str | None:
@@ -307,10 +315,19 @@ def build_xml(
     cardstock: str,
     foil: bool,
     cardback_path: Path | None,
+    web_mode: bool = False,
 ) -> XMLBuildResult:
     """Construye el XML final.
 
     Asigna slots correlativos y agrupa cartas iguales para minimizar entradas.
+
+    Args:
+        web_mode: Si True, el campo ``<id>`` se deja vacío en lugar de usar
+            la ruta local del arte. Usar cuando el destino es mpcfill.com
+            (web), que busca imágenes por ``<query>`` y no puede leer rutas
+            locales de Windows. Si False (default), se incluyen las rutas
+            locales para que el desktop client de MPC Autofill las lea
+            directamente desde disco.
 
     Estructura `<backs>` (compatible con MPC Autofill desktop tool y mpcfill.com):
       - Cada carta con back propio (DFC/MDFC/meld/custom back) → su propio `<card>`
@@ -344,14 +361,16 @@ def build_xml(
             slots_map.append(c.name)
 
         front_card = ET.SubElement(fronts_el, "card")
-        ET.SubElement(front_card, "id").text = str(c.front_path)
+        # web_mode=True → <id> vacío; mpcfill.com usará <query> para buscar.
+        # web_mode=False → ruta local para el desktop client de MPC Autofill.
+        ET.SubElement(front_card, "id").text = "" if web_mode else str(c.front_path)
         ET.SubElement(front_card, "slots").text = slots_str
         ET.SubElement(front_card, "name").text = c.name
         ET.SubElement(front_card, "query").text = c.query
 
         if c.back_path:
             back_card = ET.SubElement(backs_el, "card")
-            ET.SubElement(back_card, "id").text = str(c.back_path)
+            ET.SubElement(back_card, "id").text = "" if web_mode else str(c.back_path)
             ET.SubElement(back_card, "slots").text = slots_str
             ET.SubElement(back_card, "name").text = c.back_name or c.name
             ET.SubElement(back_card, "query").text = _slug(c.back_name or c.name)
@@ -362,13 +381,14 @@ def build_xml(
         remaining = [s for s in range(slot_cursor) if s not in slots_with_custom_back]
         if remaining:
             back_card = ET.SubElement(backs_el, "card")
-            ET.SubElement(back_card, "id").text = str(cardback_path)
+            ET.SubElement(back_card, "id").text = "" if web_mode else str(cardback_path)
             ET.SubElement(back_card, "slots").text = ",".join(str(s) for s in remaining)
             cb_name = cardback_path.name
             ET.SubElement(back_card, "name").text = cb_name
             ET.SubElement(back_card, "query").text = _slug(cardback_path.stem)
         # Fallback global (por si el tool no lee <backs>)
-        ET.SubElement(root, "cardback").text = str(cardback_path)
+        if not web_mode:
+            ET.SubElement(root, "cardback").text = str(cardback_path)
 
     pretty = minidom.parseString(ET.tostring(root, encoding="utf-8")).toprettyxml(indent="  ")
     output_path.parent.mkdir(parents=True, exist_ok=True)

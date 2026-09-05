@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from mpc_forge.paths import static_dir, template_dir
@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
 from mpc_forge.models import Deck, DeckCard, PrintingCache, PrintRun
+from mpc_forge.services.i18n import LANG_FLAGS, SUPPORTED_LANGS, detect_lang, get_translations
 
 log = logging.getLogger(__name__)
 
@@ -53,9 +54,48 @@ def _asset_v(filename: str) -> int:
 # {% extends %} o {% include %}).
 templates.env.globals["asset_v"] = _asset_v
 
+# Exponer constantes i18n a todos los templates
+templates.env.globals["SUPPORTED_LANGS"] = SUPPORTED_LANGS
+templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
+
 router = APIRouter(tags=["ui"])
 
 DbDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def _t_context(request: Request) -> dict:
+    """Devuelve el contexto i18n que se añade a todos los templates.
+
+    - ``t``    → objeto Translations con acceso tipo ``t.nav_decks``
+    - ``lang`` → código de idioma activo ("es" | "en")
+    - ``_T``   → dict completo para inyectar en ``window._T`` desde JS
+    """
+    lang = detect_lang(request)
+    tr = get_translations(lang)
+    return {"t": tr, "lang": lang, "_T": tr.as_dict()}
+
+
+@router.post("/set-lang", response_class=HTMLResponse)
+async def set_language(
+    request: Request,
+    lang: str = Form(...),
+    next_url: str = Form(default="/"),
+) -> Response:
+    """Cambia el idioma de la UI guardándolo en una cookie de larga duración."""
+    from mpc_forge.services.i18n import _TRANSLATIONS
+    if lang not in _TRANSLATIONS:
+        lang = "es"
+    # Redirect al referer o a la home — mantiene al usuario en la página actual
+    referer = request.headers.get("referer", next_url)
+    response = RedirectResponse(url=referer, status_code=303)
+    response.set_cookie(
+        key="lang",
+        value=lang,
+        max_age=365 * 24 * 3600,  # 1 año
+        httponly=False,            # JS puede leer window._LANG si hace falta
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -96,7 +136,7 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"decks": decks},
+        {"decks": decks, **_t_context(request)},
     )
 
 
@@ -108,7 +148,7 @@ async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "deck.html",
-        {"deck": deck},
+        {"deck": deck, **_t_context(request)},
     )
 
 
@@ -120,7 +160,7 @@ async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "proof.html",
-        {"deck": deck},
+        {"deck": deck, **_t_context(request)},
     )
 
 
@@ -136,7 +176,7 @@ async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResp
     return templates.TemplateResponse(
         request,
         "pdf_studio.html",
-        {"deck": deck},
+        {"deck": deck, **_t_context(request)},
     )
 
 
@@ -144,9 +184,9 @@ async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResp
 async def history_page(request: Request) -> HTMLResponse:
     """Vista de historial. Los datos (mazos, runs, timelines) se cargan vía
     fetch desde el frontend — el template no necesita context inicial."""
-    return templates.TemplateResponse(request, "history.html", {})
+    return templates.TemplateResponse(request, "history.html", _t_context(request))
 
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "settings.html", {})
+    return templates.TemplateResponse(request, "settings.html", _t_context(request))

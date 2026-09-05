@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Mazos · MPC Forge{% endblock %}
+{% block title %}{{ t.home_title }} · MPC Forge{% endblock %}
 {% block content %}
 <div class="max-w-6xl mx-auto p-8 space-y-8">
 
@@ -8,9 +8,9 @@
     <div>
       <h1 class="text-2xl font-display font-semibold tracking-tight text-fg flex items-center gap-3">
         <i data-lucide="layers" class="w-6 h-6 text-accent"></i>
-        Mazos
+        {{ t.home_title }}
       </h1>
-      <p class="text-sm text-fg-muted mt-1.5">Importa desde una URL soportada o pega una lista para empezar.</p>
+      <p class="text-sm text-fg-muted mt-1.5">{{ t.home_subtitle }}</p>
     </div>
   </div>
 
@@ -24,10 +24,10 @@
         <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
           <i data-lucide="download" class="w-4 h-4"></i>
         </div>
-        <h2 class="font-medium">Desde URL</h2>
+        <h2 class="font-medium">{{ t.home_import_url_title }}</h2>
       </div>
       <p class="text-xs text-fg-muted mb-3">
-        Pega una URL de un sitio soportado. El mazo debe ser público.
+        {{ t.home_import_url_desc }}
       </p>
       <form @submit.prevent="importUrl">
         <div class="flex gap-2">
@@ -44,7 +44,7 @@
                          disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5">
             <i data-lucide="download" class="w-3.5 h-3.5" x-show="!loading"></i>
             <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="loading"></i>
-            <span x-text="loading ? 'Importando…' : 'Importar'"></span>
+            <span x-text="loading ? '{{ t.home_import_url_loading }}' : '{{ t.home_import_url_btn }}'"></span>
           </button>
         </div>
         {# Chips con los sitios soportados. Se rellena tras loadSites(). #}
@@ -60,21 +60,21 @@
         <template x-if="urlInput.trim() && !urlSiteHint">
           <p class="text-[11px] text-amber-400 mt-2 flex items-center gap-1">
             <i data-lucide="alert-triangle" class="w-3 h-3"></i>
-            Este hostname no coincide con ningún sitio soportado.
+            {{ t.home_import_url_unknown }}
           </p>
         </template>
         <template x-if="urlSiteHint">
           <p class="text-[11px] text-emerald-400 mt-2 flex items-center gap-1">
             <i data-lucide="check-circle-2" class="w-3 h-3"></i>
-            Detectado: <span x-text="urlSiteHint" class="font-medium"></span>
+            {{ t.home_import_url_detected }}: <span x-text="urlSiteHint" class="font-medium"></span>
           </p>
         </template>
         <label class="flex items-start gap-2 mt-3 text-xs text-fg-muted cursor-pointer group">
           <input type="checkbox" x-model="includeExtrasUrl"
                  class="mt-0.5 w-3.5 h-3.5 rounded border-border-strong bg-bg-subtle text-accent focus:ring-accent/50">
           <span class="group-hover:text-fg transition">
-            Incluir también sideboard, tokens, maybeboard, companion
-            <span class="block text-fg-faint mt-0.5">Por defecto solo comandante + 99 principales. El coste se calcula sobre las 100.</span>
+            {{ t.home_import_extras_url }}
+            <span class="block text-fg-faint mt-0.5">{{ t.home_import_extras_url_sub }}</span>
           </span>
         </label>
       </form>
@@ -87,11 +87,11 @@
         <div class="w-8 h-8 rounded-lg bg-fg-faint/10 text-fg-muted flex items-center justify-center">
           <i data-lucide="file-text" class="w-4 h-4"></i>
         </div>
-        <h2 class="font-medium">Pegar lista</h2>
+        <h2 class="font-medium">{{ t.home_import_text_title }}</h2>
       </div>
-      <p class="text-xs text-fg-muted mb-3">Un nombre por línea (con cantidad opcional).</p>
+      <p class="text-xs text-fg-muted mb-3">{{ t.home_import_text_desc }}</p>
       <form @submit.prevent="importText">
-        <input type="text" x-model="deckName" placeholder="Nombre del mazo"
+        <input type="text" x-model="deckName" placeholder="{{ t.home_import_text_name }}"
                class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm mb-2
                       focus:outline-none focus:border-accent transition">
         <textarea x-model="deckText" rows="4"
@@ -102,14 +102,14 @@
           <input type="checkbox" x-model="includeExtrasText"
                  class="mt-0.5 w-3.5 h-3.5 rounded border-border-strong bg-bg-subtle text-accent focus:ring-accent/50">
           <span class="group-hover:text-fg transition">
-            Incluir sideboard / maybeboard si están marcados en la lista
+            {{ t.home_import_extras_text }}
           </span>
         </label>
         <button type="submit" :disabled="loading"
                 class="mt-2 w-full bg-bg-subtle hover:bg-border-subtle border border-border-strong text-sm
                        font-medium px-4 py-2 rounded-md disabled:opacity-50 transition flex items-center justify-center gap-1.5">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-          Crear mazo
+          {{ t.home_import_text_btn }}
         </button>
       </form>
     </div>
@@ -119,7 +119,7 @@
       <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
            @keydown.escape.window="unresolvedModal.open = false"
            x-transition.opacity>
-        <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal max-w-2xl w-full
+        <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal animate-scale-in max-w-2xl w-full
                     max-h-[85vh] flex flex-col"
              @click.outside="unresolvedModal.open = false">
           {# Header #}
@@ -128,12 +128,12 @@
               <i data-lucide="alert-triangle" class="w-5 h-5"></i>
             </div>
             <div class="min-w-0 flex-1">
-              <h3 class="font-semibold text-fg">Mazo importado con incidencias</h3>
+              <h3 class="font-semibold text-fg">{{ t.home_unresolved_title }}</h3>
               <p class="text-xs text-fg-muted mt-1">
                 <span class="text-amber-400 font-medium" x-text="unresolvedModal.unresolved.length"></span>
-                <span x-text="unresolvedModal.unresolved.length === 1 ? ' carta no se pudo resolver' : ' cartas no se pudieron resolver'"></span>
+                <span x-text="unresolvedModal.unresolved.length === 1 ? ' {{ t.home_unresolved_not_resolved }}' : ' {{ t.home_unresolved_not_resolved_pl }}'"></span>
                 contra Scryfall. El mazo <span class="text-fg font-medium" x-text="'“' + unresolvedModal.deckName + '”'"></span>
-                se creó con las <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> totales.
+                {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
               </p>
             </div>
             <button @click="unresolvedModal.open = false"
@@ -145,9 +145,7 @@
           {# Body: lista de fallos con línea original + motivo probable #}
           <div class="flex-1 overflow-y-auto p-5 space-y-2">
             <p class="text-xs text-fg-muted mb-2">
-              Motivos habituales: nombre mal escrito, cartas muy recientes que Scryfall aún no ha indexado,
-              o códigos de set/número incorrectos. Puedes copiar toda la lista y reintentar corrigiendo,
-              o continuar al mazo y añadirlas manualmente desde el editor.
+              {{ t.home_unresolved_hint }}
             </p>
             <div class="rounded-lg border border-border-subtle bg-bg-subtle/40 divide-y divide-border-subtle/60">
               <template x-for="(entry, i) in unresolvedModal.unresolved" :key="i">
@@ -159,7 +157,7 @@
                     <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
                       <span x-show="entry.set">Set: <span class="font-mono uppercase" x-text="entry.set"></span></span>
                       <span x-show="entry.number">Nº: <span class="font-mono" x-text="entry.number"></span></span>
-                      <span x-show="entry.role && entry.role !== 'mainboard'">Rol: <span x-text="entry.role"></span></span>
+                      <span x-show="entry.role && entry.role !== 'mainboard'">Role: <span x-text="entry.role"></span></span>
                     </div>
                   </div>
                 </div>
@@ -173,18 +171,18 @@
                     class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
                            px-3 py-2 rounded-md transition flex items-center gap-1.5">
               <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              Copiar lista de fallos
+              {{ t.home_unresolved_copy }}
             </button>
             <div class="flex-1"></div>
             <button @click="closeUnresolvedAndReload()"
                     class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
                            px-3 py-2 rounded-md transition">
-              Cerrar
+              {{ t.common_close }}
             </button>
             <button @click="continueToDeck()"
                     class="text-xs bg-accent hover:bg-accent-soft text-black font-medium
                            px-3 py-2 rounded-md transition flex items-center gap-1.5">
-              <span>Continuar al mazo</span>
+              <span>{{ t.home_unresolved_continue }}</span>
               <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
             </button>
           </div>
@@ -197,7 +195,7 @@
   {# ============= DECK LIST ============= #}
   <div>
     <div class="flex items-center gap-2 mb-3">
-      <h2 class="text-xs font-medium text-fg-muted uppercase tracking-wider">Tus mazos</h2>
+      <h2 class="text-xs font-medium text-fg-muted uppercase tracking-wider">{{ t.home_decks_section }}</h2>
       {% if decks %}
         <span class="text-xs text-fg-faint font-mono">({{ decks|length }})</span>
       {% endif %}
@@ -208,8 +206,8 @@
         <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
           <i data-lucide="inbox" class="w-6 h-6"></i>
         </div>
-        <p class="text-sm text-fg-muted">Aún no tienes mazos.</p>
-        <p class="text-xs text-fg-faint mt-1">Importa uno arriba para empezar.</p>
+        <p class="text-sm text-fg-muted">{{ t.home_empty_title }}</p>
+        <p class="text-xs text-fg-faint mt-1">{{ t.home_empty_subtitle }}</p>
       </div>
     {% else %}
       <div x-data="deckListActions()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -230,7 +228,7 @@
                   <div class="w-full h-full flex items-center justify-center text-fg-faint">
                     <div class="text-center">
                       <i data-lucide="layers" class="w-8 h-8 mx-auto mb-2"></i>
-                      <div class="text-[10px] uppercase tracking-widest">Sin commander</div>
+                      <div class="text-[10px] uppercase tracking-widest">{{ t.history_no_commander }}</div>
                     </div>
                   </div>
                 {% endif %}
@@ -255,7 +253,7 @@
                 <div class="flex items-center justify-between text-[11px] text-fg-faint">
                   <span class="flex items-center gap-1">
                     <i data-lucide="library" class="w-3 h-3"></i>
-                    {{ deck.card_count }} entradas
+                    {{ deck.card_count }} {{ t.home_deck_entries }}
                   </span>
                   <span class="text-fg-muted">{{ deck.format }}</span>
                 </div>
@@ -272,7 +270,7 @@
               <button @click="open = !open"
                       class="p-1.5 rounded bg-bg-elevated/90 backdrop-blur-sm border border-border-subtle
                              hover:bg-bg-elevated text-fg-muted hover:text-fg"
-                      title="Acciones">
+                      title="{{ t.common_actions }}">
                 <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
               <div x-show="open" x-transition
@@ -282,19 +280,19 @@
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-bg-subtle text-fg-muted hover:text-fg">
                   <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
-                  Renombrar…
+                  {{ t.home_deck_rename }}
                 </button>
                 <button @click="duplicate({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-bg-subtle text-fg-muted hover:text-fg">
                   <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                  Duplicar…
+                  {{ t.home_deck_duplicate }}
                 </button>
                 <button @click="del({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-danger/10 text-danger">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                  Eliminar mazo
+                  {{ t.home_deck_delete }}
                 </button>
               </div>
             </div>
@@ -401,7 +399,7 @@ function importPanel() {
         const data = await r.json();
         await this._handleImportResult(data);
       } catch (e) {
-        Alpine.store('ui').error('Error importando', e.message);
+        Alpine.store('ui').error(window._t('js_error_importing'), e.message);
         this.loading = false;
       }
     },
@@ -420,7 +418,7 @@ function importPanel() {
         const data = await r.json();
         await this._handleImportResult(data);
       } catch (e) {
-        Alpine.store('ui').error('Error creando', e.message);
+        Alpine.store('ui').error(window._t('js_error_creating'), e.message);
         this.loading = false;
       }
     },
@@ -449,7 +447,7 @@ function importPanel() {
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-      Alpine.store('ui').success('Copiado', `${this.unresolvedModal.unresolved.length} entradas al portapapeles`);
+      Alpine.store('ui').success(window._t('js_copied'), `${this.unresolvedModal.unresolved.length} ${window._t('js_entries_clipboard')}`);
     },
 
     continueToDeck() {
@@ -471,26 +469,19 @@ function importPanel() {
 function deckListActions() {
   return {
     async rename(id, oldName) {
-      const newName = prompt('Nuevo nombre para el mazo:', oldName);
+      const newName = prompt(window._t('js_new_deck_name_prompt'), oldName);
       if (!newName || newName.trim() === oldName) return;
       const r = await fetch(`/api/decks/${id}`, {
         method: 'PATCH', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name: newName.trim()})
       });
       if (r.ok) location.reload();
-      else Alpine.store('ui').error('Error', 'No se pudo renombrar');
+      else Alpine.store('ui').error(window._t('common_error'), window._t('js_error_rename'));
     },
     async duplicate(id, originalName) {
-      // Sugerimos "{original} (copia)" como default. Si el usuario borra el
-      // input y acepta, el backend usa el mismo default; si pulsa cancelar,
-      // abortamos.
-      const suggested = `${originalName} (copia)`;
-      const newName = prompt(
-        `Nombre del nuevo mazo:\n\nSe duplicarán todas las cartas, roles, y arte custom.\n` +
-        `No se copia el enlace a Moxfield ni el historial.`,
-        suggested
-      );
-      if (newName === null) return;  // cancelado
+      const suggested = `${originalName} ${window._t('js_deck_copy_suffix')}`;
+      const newName = prompt(window._t('js_duplicate_prompt'), suggested);
+      if (newName === null) return;
       const trimmed = (newName || '').trim();
       const r = await fetch(`/api/decks/${id}/duplicate`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -498,22 +489,22 @@ function deckListActions() {
       });
       if (r.ok) {
         const data = await r.json();
-        window.toast('Mazo duplicado', `"${data.name}" creado con ${data.cards.length} cartas`);
-        // Navegamos al mazo nuevo directamente (más útil que recargar)
+        window.toast(window._t('js_deck_duplicated'), `"${data.name}" — ${data.cards.length} ${window._t('js_deck_created_cards')}`);
         window.location.href = `/decks/${data.id}`;
       } else {
         const err = await r.json().catch(() => ({}));
-        Alpine.store('ui').error('Error duplicando', err.detail || 'No se pudo duplicar');
+        Alpine.store('ui').error(window._t('common_error'), err.detail || window._t('js_error_duplicating'));
       }
     },
     async del(id, name) {
+      const msg = window._t('js_delete_deck_confirm').replace('{name}', name);
       if (!await window.confirmDialog(
-        'Eliminar mazo',
-        `¿Eliminar el mazo "${name}"?\n\nSe perderán las cartas y elecciones de arte. Los archivos descargados NO se borran.`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Eliminar' })) return;
+        window._t('home_deck_delete'),
+        msg,
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${id}`, {method: 'DELETE'});
       if (r.ok) location.reload();
-      else Alpine.store('ui').error('Error', 'No se pudo eliminar');
+      else Alpine.store('ui').error(window._t('common_error'), window._t('js_error_deleting'));
     }
   }
 }

@@ -3,9 +3,25 @@ document.addEventListener('alpine:init', () => {
     toasts: [],
     _nextId: 1,
 
+    /**
+     * Añade un toast. Garantiza que SIEMPRE hay un mensaje descriptivo:
+     * si el caller no pasa `message` (o pasa cadena vacía / null / undefined),
+     * se rellena con un fallback razonable según el tipo. Antes salían toasts
+     * con solo el título ("Éxito", "Error"…) que resultaban poco útiles.
+     */
     toast(title, message = '', type = 'info', ttl = 4500) {
+      // Fallbacks por tipo cuando no viene mensaje descriptivo:
+      const _t = window._t || ((k) => k);
+      const fallbacks = {
+        success: _t('js_toast_success_fallback'),
+        error:   _t('js_toast_error_fallback'),
+        warning: _t('js_toast_warning_fallback'),
+        info:    _t('js_toast_info_fallback'),
+      };
+      const cleanMsg = (message ?? '').toString().trim();
+      const finalMsg = cleanMsg || fallbacks[type] || fallbacks.info;
       const id = this._nextId++;
-      const t = { id, title, message, type, ttl, createdAt: Date.now() };
+      const t = { id, title, message: finalMsg, type, ttl, createdAt: Date.now() };
       this.toasts.push(t);
       if (ttl > 0) {
         setTimeout(() => this.dismissToast(id), ttl);
@@ -32,13 +48,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     async confirm(title, message = '', opts = {}) {
+      const _t = window._t || ((k) => k);
       return new Promise((resolve) => {
         this.confirmState = {
           open: true,
           title,
           message,
-          confirmLabel: opts.confirmLabel || 'Confirmar',
-          cancelLabel:  opts.cancelLabel  || 'Cancelar',
+          confirmLabel: opts.confirmLabel || _t('common_confirm'),
+          cancelLabel:  opts.cancelLabel  || _t('common_cancel'),
           danger:       !!opts.danger,
           icon:         opts.icon || (opts.danger ? 'alert-triangle' : 'help-circle'),
           _resolve:     resolve,
@@ -58,15 +75,17 @@ document.addEventListener('alpine:init', () => {
 window.addEventListener('error', (e) => {
   console.error('[MPC Forge] Uncaught error:', e.error || e.message);
   try {
-    Alpine.store('ui').error('Error inesperado',
-      (e.error && e.error.message) || e.message || 'Revisa la consola (F12)');
+    const _t = window._t || ((k) => k);
+    Alpine.store('ui').error(_t('js_error_unexpected'),
+      (e.error && e.error.message) || e.message || _t('js_check_console'));
   } catch (_) {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[MPC Forge] Unhandled promise rejection:', e.reason);
   try {
-    Alpine.store('ui').error('Error asíncrono',
-      (e.reason && e.reason.message) || String(e.reason) || 'Revisa la consola (F12)');
+    const _t = window._t || ((k) => k);
+    Alpine.store('ui').error(_t('js_error_async'),
+      (e.reason && e.reason.message) || String(e.reason) || _t('js_check_console'));
   } catch (_) {}
 });
 
@@ -138,12 +157,21 @@ window.fmt = {
 // que descarta el evento si el target no tiene ningún ancestro con
 // [data-preview], evitando el traversal innecesario en la mayoría de casos.
 (function() {
-  const HOVER_DELAY_MS = 180;
+  const HOVER_DELAY_MS = 120;   // ms antes de mostrar el zoom (más reactivo que el original 180ms)
   let ctrlHeld = false;
   let currentImg = null;
   let previewEl = null;
   let hoverTimer = null;
   let lastMouseEvent = null;
+
+  // Escala las URLs de Scryfall de /small/ a /normal/ para la preview en alta resolución.
+  // Para arte custom (URLs no-Scryfall) devuelve la misma URL sin modificar.
+  function upsizeUrl(url) {
+    if (!url) return url;
+    return url.includes('cards.scryfall.io/small/')
+      ? url.replace('cards.scryfall.io/small/', 'cards.scryfall.io/normal/')
+      : url;
+  }
 
   function ensurePreview() {
     if (previewEl) return previewEl;
@@ -189,9 +217,10 @@ window.fmt = {
   function show(target, e) {
     const src = findPreviewSrc(target);
     if (!src) return;
+    const hiresSrc = upsizeUrl(src);   // /small/ → /normal/ para mejor resolución
     const el = ensurePreview();
     const img = el.querySelector('img');
-    if (img.src !== src) img.src = src;
+    if (img.src !== hiresSrc) img.src = hiresSrc;
     el.style.display = 'block';
     positionPreview(e || lastMouseEvent || {clientX: 0, clientY: 0});
   }

@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ deck.name }} · MPC Forge{% endblock %}
 {% block content %}
-<div x-data="deckEditor({{ deck.id }})" x-init="load()" class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
+<div x-data="deckEditor({{ deck.id }})" x-init="load()"
+     class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto animate-fade-in">
 
   {# ============ BARRA DE PROGRESO DE BUILD ============ #}
   {# Fixed abajo a la derecha mientras hay build en curso. Cubre XML y PDF
@@ -11,11 +12,11 @@
   <template x-if="buildProgress && buildProgress.total > 0">
     <div x-transition
          class="fixed bottom-5 right-5 z-40 bg-bg-elevated border border-accent/40 rounded-xl shadow-modal
-                p-4 w-[380px] max-w-[calc(100vw-2.5rem)]">
+                p-4 w-[380px] max-w-[calc(100vw-2.5rem)] animate-slide-in-up">
       <div class="flex items-center gap-2 mb-2">
-        <i data-lucide="loader-2" class="w-4 h-4 text-accent animate-spin"></i>
+        <div class="spinner-ring spinner-ring--sm"></div>
         <span class="text-sm font-medium text-accent-glow">
-          Generando <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span>
+          Generando <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span><span class="loading-dots"><span></span><span></span><span></span></span>
         </span>
         <span class="ml-auto text-[11px] font-mono text-fg-faint">
           <span x-text="buildProgress.current"></span>/<span x-text="buildProgress.total"></span>
@@ -46,14 +47,14 @@
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-3">
-        <a href="/" class="text-fg-muted hover:text-fg text-sm">← Mazos</a>
+        <a href="/" class="text-fg-muted hover:text-fg text-sm">{{ t.deck_back_link }}</a>
       </div>
       <div class="flex items-center gap-3 mt-2 flex-wrap">
         {# Nombre editable inline #}
         <div class="flex items-center gap-2 min-w-0">
           <template x-if="!editingName">
             <h1 @dblclick="startRename()" class="text-2xl font-semibold tracking-tight truncate cursor-text hover:text-accent transition"
-                title="Doble click para renombrar">{{ deck.name }}</h1>
+                title="{{ t.deck_rename_hint }}">{{ deck.name }}</h1>
           </template>
           <template x-if="editingName">
             <input type="text" x-model="editNameValue" x-ref="nameInput"
@@ -84,247 +85,281 @@
           · <a href="{{ deck.source_url }}" target="_blank" class="hover:text-accent">Moxfield ↗</a>
         {% endif %}
         <span>·</span>
-        <a href="/decks/{{ deck.id }}/proof" class="hover:text-accent">Vista proof ↗</a>
+        <a href="/decks/{{ deck.id }}/proof" class="hover:text-accent">{{ t.deck_proof_link }}</a>
         <span>·</span>
-        <button @click="deleteDeck()" class="text-red-400/70 hover:text-red-400">Eliminar mazo</button>
+        <button @click="deleteDeck()" class="text-red-400/70 hover:text-red-400">{{ t.deck_delete }}</button>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 flex-wrap">
-      <button @click="rescanCustom()" :disabled="rescanning"
-              class="text-xs text-fg-muted hover:text-fg border border-border-subtle hover:border-border-strong
-                     px-3 py-2 rounded-md transition disabled:opacity-50">
-        <span x-show="!rescanning">↻ Re-escanear custom</span>
-        <span x-show="rescanning">Escaneando…</span>
-      </button>
-    </div>
   </div>
 
   {# ============ PANEL COSTE + STOCK/FOIL + GENERAR ============ #}
-  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-4 shadow-card flex flex-wrap items-center gap-4">
-    {# Coste EUR con desglose #}
-    <template x-if="estimate">
-      <div class="min-w-0">
-        <div class="flex items-baseline gap-3">
-          <span class="text-xs text-fg-muted uppercase tracking-wider">Coste total</span>
-          <span class="text-2xl font-semibold text-fg" x-text="estimate.total_eur.toFixed(2) + ' €'"></span>
-          <span class="text-xs text-fg-faint" x-text="estimate.total_cards + '/' + estimate.tier_size + ' cartas'"></span>
-        </div>
-        <div class="text-[11px] text-fg-faint mt-1 flex items-center gap-2 flex-wrap">
-          <span>Cartas: <span class="font-mono" x-text="estimate.subtotal_eur.toFixed(2)"></span> €</span>
-          <span>·</span>
-          <span>Envío: <span class="font-mono" x-text="estimate.shipping_eur.toFixed(2)"></span> € 
-            (<span x-text="estimate.shipping_base_eur.toFixed(2)"></span> base + <span x-text="estimate.shipping_eu_extra_eur.toFixed(2)"></span> EU)</span>
-          <span>·</span>
-          <span class="text-fg-faint" x-text="'≈ $' + estimate.subtotal_usd + ' USD s/envío'"></span>
-        </div>
-        <template x-if="estimate.next_tier_saves_eur">
-          <div class="text-[11px] text-accent mt-1">
-            +<span x-text="estimate.cards_to_next_tier"></span> cartas al tier
-            <span x-text="estimate.next_tier_size"></span> →
-            total <span x-text="estimate.next_tier_total_eur.toFixed(2)"></span> €
-            (ahorras <span x-text="estimate.next_tier_saves_eur.toFixed(2)"></span> €)
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl shadow-card">
+
+    {# --- Fila 1: Coste estimado  +  Acciones principales de impresión --- #}
+    <div class="flex flex-wrap items-start gap-4 p-4">
+
+      {# Coste EUR con desglose — crece para ocupar el espacio libre #}
+      <div class="flex-1 min-w-0 space-y-0.5">
+        <template x-if="estimate">
+          <div>
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="text-xs text-fg-muted">{{ t.deck_cost_label }}</span>
+              <span class="text-2xl font-semibold text-fg" x-text="estimate.total_eur.toFixed(2) + ' €'"></span>
+              <span class="text-xs text-fg-faint font-mono" x-text="estimate.total_cards + '/' + estimate.tier_size + ' cartas'"></span>
+            </div>
+            <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
+              <span>Cartas: <span class="font-mono" x-text="estimate.subtotal_eur.toFixed(2)"></span> €</span>
+              <span class="text-border-subtle">·</span>
+              <span>Envío: <span class="font-mono" x-text="estimate.shipping_eur.toFixed(2)"></span> €
+                (<span x-text="estimate.shipping_base_eur.toFixed(2)"></span> base + <span x-text="estimate.shipping_eu_extra_eur.toFixed(2)"></span> EU)</span>
+              <span class="text-border-subtle">·</span>
+              <span x-text="'≈ $' + estimate.subtotal_usd + ' USD {{ t.deck_cost_usd }}'"></span>
+            </div>
+            <template x-if="estimate.next_tier_saves_eur">
+              <div class="text-[11px] text-accent mt-1">
+                +<span x-text="estimate.cards_to_next_tier"></span> cartas al tier
+                <span x-text="estimate.next_tier_size"></span> →
+                total <span x-text="estimate.next_tier_total_eur.toFixed(2)"></span> €
+                (ahorras <span x-text="estimate.next_tier_saves_eur.toFixed(2)"></span> €)
+              </div>
+            </template>
+          </div>
+        </template>
+
+        {# Indicador de precarga (visible en background, incrustado bajo el coste) #}
+        <template x-if="preload.inProgress && preload.total > 0">
+          <div class="flex items-center gap-2 text-xs text-fg-muted mt-1.5"
+               :title="`Precargando artes alternativos — el picker será instantáneo`">
+            <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-accent"></i>
+            <span>{{ t.deck_preloading }}</span>
+            <span class="font-mono text-accent" x-text="`${preload.done}/${preload.total}`"></span>
+            <div class="w-12 h-1 bg-bg-inset rounded-full overflow-hidden">
+              <div class="h-full bg-accent transition-all duration-500"
+                   :style="`width: ${Math.round(100 * preload.done / Math.max(preload.total, 1))}%`"></div>
+            </div>
           </div>
         </template>
       </div>
-    </template>
 
-    <div class="flex-1"></div>
+      {# Acciones principales de impresión — agrupadas a la derecha #}
+      <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
 
-    {# Selector de stock #}
-    <div class="flex items-center gap-2">
-      <label class="text-xs text-fg-muted">Stock</label>
-      <select x-model="cardstock"
-              class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm
-                     focus:outline-none focus:border-accent">
-        {% for opt in ["(S30) Standard Smooth", "(S33) Superior Smooth", "(M31) Linen", "(M32) Superior Linen", "(P10) Plastic"] %}
-          <option value="{{ opt }}">{{ opt }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <label class="text-xs text-fg-muted flex items-center gap-2">
-      <input type="checkbox" x-model="foil" class="accent-accent"> Foil
-    </label>
-
-    {# Indicador de precarga (solo visible mientras precarga en background) #}
-    <template x-if="preload.inProgress && preload.total > 0">
-      <div class="flex items-center gap-2 text-xs text-fg-muted bg-bg-subtle/50 border border-border-subtle
-                  rounded-md px-3 py-1.5"
-           :title="`Precargando artes alternativos en background — abrir el modal después será instantáneo`">
-        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-accent"></i>
-        <span>Precargando</span>
-        <span class="font-mono text-accent" x-text="`${preload.done}/${preload.total}`"></span>
-        {# Mini barra de progreso #}
-        <div class="w-16 h-1 bg-bg-inset rounded-full overflow-hidden">
-          <div class="h-full bg-accent transition-all duration-500"
-               :style="`width: ${Math.round(100 * preload.done / Math.max(preload.total, 1))}%`"></div>
-        </div>
-      </div>
-    </template>
-
-    <button @click="openStats()"
-            class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium
-                   px-3 py-2 rounded-md transition flex items-center gap-1.5"
-            title="Ver estadísticas del mazo (curva, colores, tipos)">
-      <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
-      Estadísticas
-    </button>
-
-    <button @click="openTokens()"
-            class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium
-                   px-3 py-2 rounded-md transition flex items-center gap-1.5"
-            title="Tokens que las cartas del mazo generan (no cuentan al mazo de 100, sí al PDF)">
-      <i data-lucide="sparkles" class="w-4 h-4"></i>
-      Tokens
-    </button>
-
-    <button @click="buildXml()" :disabled="building"
-            class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
-                   disabled:opacity-50 transition">
-      <span x-show="!building">Generar XML</span>
-      <span x-show="building">Descargando artes…</span>
-    </button>
-
-    {# Extras · F3/T10: modal con la previsualización de print runs #}
-    <button @click="openPrintRuns()"
-            class="text-sm bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
-                   px-3 py-2 rounded-md transition flex items-center gap-1.5"
-            title="Cómo dividiría MPC este mazo en tiers oficiales (18/108/612…)">
-      <i data-lucide="split-square-vertical" class="w-4 h-4"></i>
-      Print runs
-    </button>
-
-    {# Post-XML: descargar y/o enviar al desktop tool #}
-    <template x-if="lastXmlFilename">
-      <div class="flex items-center gap-2">
-        <button @click="downloadXml()"
-                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
-                       px-3 py-2 rounded-md transition flex items-center gap-1.5"
-                title="Descargar el XML generado">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i>
-          Descargar
-        </button>
-        <template x-if="autofillStatus.available">
-          <button @click="launchAutofill()" :disabled="launchingAutofill"
-                  class="text-xs bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 text-indigo-200
-                         px-3 py-2 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"
-                  title="Abrir el XML con MPC Autofill desktop tool">
-            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-            <span x-show="!launchingAutofill">Enviar a MPC Autofill</span>
-            <span x-show="launchingAutofill">Lanzando…</span>
-          </button>
-        </template>
-        <template x-if="!autofillStatus.available">
-          <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank"
-             class="text-xs text-fg-faint hover:text-fg-muted underline"
-             title="Descarga el desktop tool para automatizar la subida a MakePlayingCards">
-            ¿Cómo automatizar subida?
+        {# PDF Studio — acción primaria #}
+        <div class="flex items-stretch">
+          <a :href="`/decks/${deckId}/pdf`"
+             class="bg-accent/10 hover:bg-accent/20 border border-accent/50 text-accent-glow text-sm font-medium
+                    px-4 py-2 rounded-l-md transition flex items-center gap-1.5"
+             title="{{ t.deck_pdf_studio }}">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+            <span>{{ t.deck_pdf_studio }}</span>
+            <i data-lucide="arrow-right" class="w-3 h-3 opacity-60"></i>
           </a>
-        </template>
-      </div>
-    </template>
-
-    {# Botón: cambiar idioma de las cartas (arte oficial en el idioma pedido) #}
-    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
-      <button @click="open = !open" :disabled="localizing"
-              class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-3 py-2 rounded-md
-                     disabled:opacity-50 transition flex items-center gap-1.5"
-              title="Cambiar el idioma del arte oficial de las cartas del mazo (usa Scryfall)">
-        <i data-lucide="languages" class="w-4 h-4"></i>
-        <span x-show="!localizing">Idioma ▾</span>
-        <span x-show="localizing">Localizando…</span>
-      </button>
-      <div x-show="open" x-transition
-           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
-        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Idioma del arte</div>
-        <p class="text-[11px] text-fg-faint leading-relaxed">
-          Aplica a todas las cartas del mazo. Las que no tengan impresión en ese idioma
-          (promos, Secret Lair…) se quedan como estén. Las que tengan arte custom no se tocan.
-        </p>
-        <label class="flex items-center justify-between text-xs gap-2 pt-1">
-          <span class="text-fg-muted">Idioma</span>
-          <select x-model="localizeLang"
-                  class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs min-w-[9rem]">
-            <template x-for="(label, code) in supportedLangs" :key="code">
-              <option :value="code" x-text="label + ' (' + code + ')'"></option>
+          <button @click="buildPdf()" :disabled="buildingPdf"
+                  class="bg-bg-subtle hover:bg-border-subtle border border-l-0 border-border-strong text-fg-muted hover:text-fg
+                         text-sm px-2.5 py-2 rounded-r-md disabled:opacity-50 transition flex items-center"
+                  title="{{ t.deck_pdf_quick }}">
+            <template x-if="!buildingPdf">
+              <i data-lucide="zap" class="w-4 h-4"></i>
             </template>
+            <template x-if="buildingPdf">
+              <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            </template>
+          </button>
+        </div>
+
+        {# Separador visual #}
+        <div class="w-px h-8 bg-border-subtle/50 hidden sm:block"></div>
+
+        {# Generar XML + acciones post-generación en la misma fila #}
+        <div class="flex items-center gap-1.5">
+          <button @click="buildXml()" :disabled="building"
+                  class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm
+                         font-medium px-4 py-2 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                  title="{{ t.deck_title_xml_generate }}">
+            <template x-if="!building">
+              <i data-lucide="code-xml" class="w-4 h-4 text-fg-muted"></i>
+            </template>
+            <template x-if="building">
+              <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-accent"></i>
+            </template>
+            <span x-show="!building">{{ t.deck_xml }}</span>
+            <span x-show="building">{{ t.deck_xml_processing }}</span>
+          </button>
+
+          {# Post-XML: botones compactos que aparecen tras la generación #}
+          <template x-if="lastXmlFilename">
+            <div class="flex items-center gap-1">
+              <button @click="downloadXml()"
+                      class="p-2 rounded-md bg-bg-subtle hover:bg-border-subtle border border-border-strong
+                             text-fg-muted hover:text-fg transition"
+                      title="{{ t.deck_xml_download }}">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              </button>
+              <template x-if="autofillStatus.available">
+                <button @click="launchAutofill()" :disabled="launchingAutofill"
+                        class="p-2 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/40
+                               text-indigo-300 disabled:opacity-50 transition"
+                        title="{{ t.deck_xml_autofill }}">
+                  <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                </button>
+              </template>
+              <template x-if="!autofillStatus.available">
+                <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank"
+                   class="text-[10px] text-fg-faint hover:text-fg-muted underline px-1"
+                   title="{{ t.deck_xml_autofill_help }}">
+                  {{ t.deck_xml_autofill_short }}
+                </a>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    {# --- Separador --- #}
+    <div class="border-t border-border-subtle/50 mx-4"></div>
+
+    {# --- Fila 2: Configuración  +  Herramientas secundarias --- #}
+    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+
+      {# Izquierda: Stock + Foil #}
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-fg-muted shrink-0">{{ t.deck_stock_label }}</label>
+          <select x-model="cardstock"
+                  class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm
+                         focus:outline-none focus:border-accent">
+            {% for opt in ["(S30) Standard Smooth", "(S33) Superior Smooth", "(M31) Linen", "(M32) Superior Linen", "(P10) Plastic"] %}
+              <option value="{{ opt }}">{{ opt }}</option>
+            {% endfor %}
           </select>
+        </div>
+        <label class="text-xs text-fg-muted flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" x-model="foil" class="accent-accent w-3.5 h-3.5"> {{ t.deck_foil }}
         </label>
-        <button @click="localizeDeck(); open = false"
-                :disabled="localizing"
-                class="w-full bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition mt-1 disabled:opacity-50">
-          Aplicar a todo el mazo
+      </div>
+
+      {# Derecha: Herramientas agrupadas #}
+      <div class="flex items-center gap-1.5 flex-wrap">
+
+        {# Grupo análisis #}
+        <button @click="openStats()"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                       px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+                title="{{ t.deck_stats_title }}">
+          <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">{{ t.deck_stats }}</span>
         </button>
-      </div>
-    </div>
+        <button @click="openTokens()"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                       px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+                title="{{ t.deck_tokens_title }}">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">{{ t.deck_tokens }}</span>
+        </button>
+        <button @click="openPrintRuns()"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                       px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+                title="{{ t.deck_runs_title }}">
+          <i data-lucide="split-square-vertical" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">{{ t.deck_runs }}</span>
+        </button>
 
-    {# Botón: Copiar/descargar decklist como texto plano #}
-    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
-      <button @click="open = !open" :disabled="exportingDecklist"
-              class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm font-medium px-3 py-2 rounded-md
-                     disabled:opacity-50 transition flex items-center gap-1.5"
-              title="Exportar la lista del mazo como texto plano">
-        <i data-lucide="clipboard-list" class="w-4 h-4"></i>
-        <span x-show="!exportingDecklist">Decklist ▾</span>
-        <span x-show="exportingDecklist">Preparando…</span>
-      </button>
-      <div x-show="open" x-transition
-           class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
-        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider mb-1">Formato de la lista</div>
-        <label class="flex items-center justify-between text-xs gap-2">
-          <span class="text-fg-muted">Formato</span>
-          <select x-model="decklistFormat" class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
-            <option value="with_set">Con set (MTGO/MPCFill)</option>
-            <option value="arena">Arena (SET mayúsculas)</option>
-            <option value="simple">Simple (solo nombre)</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 text-xs text-fg-muted">
-          <input type="checkbox" x-model="decklistHeaders" class="accent-accent">
-          Cabeceras por sección (Commander/Deck)
-        </label>
-        <div class="flex gap-2 pt-1">
-          <button @click="copyDecklist(); open = false"
-                  class="flex-1 bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
-            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            Copiar
-          </button>
-          <button @click="downloadDecklist(); open = false"
-                  class="flex-1 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            .txt
-          </button>
-        </div>
-        <div class="text-[10px] text-fg-faint text-center pt-1">
-          Solo cartas activas · tokens y meld excluidos
-        </div>
-      </div>
-    </div>
+        {# Separador #}
+        <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
 
-    {# El dropdown antiguo se ha sustituido por el PDF Studio (/decks/{id}/pdf).
-       Dejamos aquí un botón principal que abre el Studio y un icono secundario
-       para "generar rápido" con los últimos ajustes guardados en localStorage,
-       para los usuarios que ya tienen su preset y solo quieren re-descargar. #}
-    <div class="flex items-stretch">
-      <a :href="`/decks/${deckId}/pdf`"
-         class="bg-accent/10 hover:bg-accent/20 border border-accent/50 text-accent-glow text-sm font-medium
-                px-4 py-2 rounded-l-md transition flex items-center gap-1.5">
-        <i data-lucide="file-text" class="w-4 h-4"></i>
-        <span>PDF Studio</span>
-        <i data-lucide="arrow-right" class="w-3.5 h-3.5 opacity-60"></i>
-      </a>
-      <button @click="buildPdf()" :disabled="buildingPdf"
-              class="bg-bg-subtle hover:bg-border-subtle border border-l-0 border-border-strong text-fg-muted hover:text-fg
-                     text-sm px-2.5 py-2 rounded-r-md disabled:opacity-50 transition flex items-center"
-              title="Generar PDF rápido con los últimos ajustes del Studio">
-        <template x-if="!buildingPdf">
-          <i data-lucide="zap" class="w-4 h-4"></i>
-        </template>
-        <template x-if="buildingPdf">
-          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-        </template>
-      </button>
+        {# Idioma — dropdown #}
+        <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+          <button @click="open = !open" :disabled="localizing"
+                  class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                         px-3 py-1.5 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                  title="{{ t.deck_title_change_lang }}">
+            <i data-lucide="languages" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline" x-show="!localizing">{{ t.nav_lang_label }}</span>
+            <span class="hidden sm:inline" x-show="localizing">…</span>
+            <i data-lucide="chevron-down" class="w-3 h-3 opacity-50"></i>
+          </button>
+          <div x-show="open" x-transition
+               class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+            <div class="text-xs font-medium text-fg-muted mb-1">{{ t.deck_lang_title }}</div>
+            <p class="text-[11px] text-fg-faint leading-relaxed">
+              {{ t.deck_lang_note }}
+              (promos, Secret Lair…) quedan como estén. Custom art no se toca.
+            </p>
+            <label class="flex items-center justify-between text-xs gap-2 pt-1">
+              <span class="text-fg-muted">{{ t.deck_lang_label }}</span>
+              <select x-model="localizeLang"
+                      class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs min-w-[9rem]">
+                <template x-for="(label, code) in supportedLangs" :key="code">
+                  <option :value="code" x-text="label + ' (' + code + ')'"></option>
+                </template>
+              </select>
+            </label>
+            <button @click="localizeDeck(); open = false" :disabled="localizing"
+                    class="w-full bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition disabled:opacity-50">
+              {{ t.deck_lang_btn }}
+            </button>
+          </div>
+        </div>
+
+        {# Decklist — dropdown #}
+        <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+          <button @click="open = !open" :disabled="exportingDecklist"
+                  class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                         px-3 py-1.5 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                  title="{{ t.deck_title_export_text }}">
+            <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline" x-show="!exportingDecklist">Decklist</span>
+            <span class="hidden sm:inline" x-show="exportingDecklist">…</span>
+            <i data-lucide="chevron-down" class="w-3 h-3 opacity-50"></i>
+          </button>
+          <div x-show="open" x-transition
+               class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+            <div class="text-xs font-medium text-fg-muted mb-1">{{ t.deck_decklist_title }}</div>
+            <label class="flex items-center justify-between text-xs gap-2">
+              <span class="text-fg-muted">{{ t.deck_decklist_format }}</span>
+              <select x-model="decklistFormat" class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
+                <option value="with_set">{{ t.deck_decklist_opt_set }}</option>
+                <option value="arena">{{ t.deck_decklist_opt_arena }}</option>
+                <option value="simple">{{ t.deck_decklist_opt_simple }}</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-2 text-xs text-fg-muted">
+              <input type="checkbox" x-model="decklistHeaders" class="accent-accent">
+              {{ t.deck_decklist_headers }}
+            </label>
+            <div class="flex gap-2 pt-1">
+              <button @click="copyDecklist(); open = false"
+                      class="flex-1 bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                Copiar
+              </button>
+              <button @click="downloadDecklist(); open = false"
+                      class="flex-1 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                .txt
+              </button>
+            </div>
+            <div class="text-[10px] text-fg-faint text-center pt-1">{{ t.deck_decklist_note }}</div>
+          </div>
+        </div>
+
+        {# Separador #}
+        <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
+
+        {# Re-escanear custom art #}
+        <button @click="rescanCustom()" :disabled="rescanning"
+                class="text-xs text-fg-muted hover:text-fg border border-border-subtle hover:border-border-strong
+                       px-3 py-1.5 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"
+                title="{{ t.deck_custom_art_title }}">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5" x-show="!rescanning"></i>
+          <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="rescanning"></i>
+          <span class="hidden sm:inline" x-show="!rescanning">{{ t.deck_custom_art }}</span>
+          <span class="hidden sm:inline" x-show="rescanning">{{ t.deck_custom_scanning }}</span>
+        </button>
+
+      </div>
     </div>
   </div>
 
@@ -336,50 +371,50 @@
 
       {# Filtros + añadir carta + orden + agrupación + layout #}
       <div class="flex items-center gap-2 text-sm flex-wrap">
-        <input type="search" x-model="filter" placeholder="Buscar por nombre, tipo o color…"
+        <input type="search" x-model="filter" placeholder="{{ t.deck_filter_placeholder }}"
                class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm w-72
                       focus:outline-none focus:border-accent">
         <select x-model="sortMode"
                 class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm text-fg-muted
                        focus:outline-none focus:border-accent">
-          <option value="name">Ordenar: nombre</option>
-          <option value="cmc">Ordenar: coste (CMC)</option>
-          <option value="type">Ordenar: tipo</option>
-          <option value="color">Ordenar: color</option>
+          <option value="name">{{ t.deck_sort_name }}</option>
+          <option value="cmc">{{ t.deck_sort_cmc }}</option>
+          <option value="type">{{ t.deck_sort_type }}</option>
+          <option value="color">{{ t.deck_sort_color }}</option>
         </select>
         {# Agrupación: por rol (Commander/Mainboard/…) o por tipo (Creatures/…). #}
         {# Estilo Moxfield: al elegir "Tipo", el mainboard se subdivide por tipo. #}
         <select x-model="groupMode"
                 class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm text-fg-muted
                        focus:outline-none focus:border-accent"
-                title="Cómo agrupar las cartas">
-          <option value="role">Agrupar: rol</option>
-          <option value="type">Agrupar: tipo</option>
+                title="{{ t.deck_title_group_cards }}">
+          <option value="role">{{ t.deck_group_role }}</option>
+          <option value="type">{{ t.deck_group_type }}</option>
         </select>
         {# Layout: masonry multi-columna (default, aprovecha ancho) vs lista larga. #}
         <div class="inline-flex bg-bg-subtle border border-border-subtle rounded-md overflow-hidden"
-             title="Distribución de las secciones">
+             title="{{ t.deck_title_view_dist }}">
           <button type="button" @click="layoutMode = 'columns'"
                   :class="layoutMode === 'columns' ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg'"
                   class="px-2 py-1.5 transition flex items-center gap-1">
             <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
-            <span class="text-xs">Columnas</span>
+            <span class="text-xs">{{ t.deck_view_columns }}</span>
           </button>
           <button type="button" @click="layoutMode = 'list'"
                   :class="layoutMode === 'list' ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg'"
                   class="px-2 py-1.5 transition flex items-center gap-1 border-l border-border-subtle">
             <i data-lucide="list" class="w-3.5 h-3.5"></i>
-            <span class="text-xs">Lista</span>
+            <span class="text-xs">{{ t.deck_view_list }}</span>
           </button>
         </div>
         <button @click="showAddCard = !showAddCard"
                 class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
                        px-3 py-1.5 rounded-md transition">
-          <span x-show="!showAddCard">+ Añadir carta</span>
-          <span x-show="showAddCard">Cancelar</span>
+          <span x-show="!showAddCard">{{ t.deck_add_card }}</span>
+          <span x-show="showAddCard">{{ t.common_cancel }}</span>
         </button>
         <span class="ml-auto text-xs text-fg-faint">
-          <span x-text="totalCards"></span> cartas · <span x-text="uniqueCards"></span> únicas
+          <span x-text="totalCards"></span> {{ t.history_cards_count }} · <span x-text="uniqueCards"></span>
         </span>
       </div>
 
@@ -390,7 +425,7 @@
         <div class="flex items-center gap-2">
           <div class="flex-1 relative">
             <input type="text" x-model="newCardName" x-ref="newCardInput"
-                   placeholder="Empieza a escribir (ej. sol r...)"
+                   placeholder="{{ t.deck_placeholder_card_search }}"
                    @input.debounce.200ms="autocomplete()"
                    @keydown.arrow-down.prevent="autoMove(1)"
                    @keydown.arrow-up.prevent="autoMove(-1)"
@@ -420,17 +455,17 @@
           <select x-model="newCardRole"
                   class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm
                          focus:outline-none focus:border-accent">
-            <option value="mainboard">Mainboard</option>
-            <option value="commander">Comandante</option>
-            <option value="companion">Compañero</option>
-            <option value="sideboard">Sideboard</option>
-            <option value="tokens">Tokens</option>
-            <option value="maybeboard">Maybeboard</option>
+            <option value="mainboard">{{ t.deck_mainboard_option }}</option>
+            <option value="commander">{{ t.deck_commander_option }}</option>
+            <option value="companion">{{ t.deck_companion_option }}</option>
+            <option value="sideboard">{{ t.deck_role_sideboard }}</option>
+            <option value="tokens">{{ t.deck_tokens }}</option>
+            <option value="maybeboard">{{ t.deck_role_maybeboard }}</option>
           </select>
           <button @click="addCard()" :disabled="addingCard || !newCardName"
                   class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-1.5 rounded-md
                          disabled:opacity-50 transition">
-            <span x-show="!addingCard">Añadir</span>
+            <span x-show="!addingCard">{{ t.deck_add_card_placeholder }}</span>
             <span x-show="addingCard">…</span>
           </button>
         </div>
@@ -455,10 +490,10 @@
          la misma columna sin cortarse a media lista.
       #}
       <div :class="layoutMode === 'columns'
-                     ? 'md:columns-2 lg:columns-3 2xl:columns-4 gap-4 space-y-4'
+                     ? 'md:columns-2 lg:columns-3 2xl:columns-4 gap-4'
                      : 'space-y-4'">
         <template x-for="group in displayGroups" :key="group.role">
-          <div class="bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden break-inside-avoid mb-4">
+          <div class="bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden break-inside-avoid mb-4 animate-fade-in">
             {# Separador clickable — mismo diseño pero adaptado a card individual #}
             <button type="button" @click="toggleGroup(group.role)"
                     class="w-full flex items-center gap-2 px-4 py-2 bg-bg-subtle/50 hover:bg-bg-subtle transition
@@ -469,16 +504,16 @@
               <span class="font-medium text-fg-muted" x-text="group.label"></span>
               <span class="font-mono text-fg-faint" x-text="'(' + group.total + ')'"></span>
               <template x-if="group.role === 'sideboard' || group.role === 'tokens' || group.role === 'maybeboard'">
-                <span class="ml-1 text-[10px] text-fg-faint normal-case tracking-normal">· no cuenta</span>
+                <span class="ml-1 text-[10px] text-fg-faint normal-case tracking-normal">· {{ t.deck_no_count | replace("· ", "") }}</span>
               </template>
               {# Botón vaciar sección — solo para roles reales (no tipos) con contenido #}
               <template x-if="group.total > 0 && isGroupExpanded(group.role) && !group.role.startsWith('type:')">
                 <span @click.stop="clearRole(group.role, group.total)"
                       class="ml-auto text-[10px] text-fg-faint hover:text-danger normal-case tracking-normal
                              px-2 py-0.5 rounded hover:bg-danger-bg transition cursor-pointer flex items-center gap-1"
-                      :title="'Eliminar todas las cartas de ' + group.label">
+                      :title="window._T.deck_clear_section_title + ' ' + group.label">
                   <i data-lucide="trash-2" class="w-3 h-3"></i>
-                  Vaciar
+                  {{ t.deck_group_clear }}
                 </span>
               </template>
             </button>
@@ -486,157 +521,189 @@
             {# Cartas del grupo — visible según isGroupExpanded (con defaults sensatos). #}
             <div x-show="isGroupExpanded(group.role)">
             <template x-for="card in group.cards" :key="card.id">
-              <div class="flex items-center gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0 hover:bg-bg-subtle transition"
-                   :class="selectedCardId === card.id ? 'bg-bg-subtle ring-1 ring-inset ring-accent/40' : ''">
+              {# Borde izquierdo coloreado por rareza + fondo sutil si está excluida #}
+              <div class="flex gap-3 px-3 py-2.5 border-b border-border-subtle last:border-b-0
+                          hover:bg-bg-subtle/60 transition relative"
+                   :class="[
+                     selectedCardId === card.id ? 'bg-bg-subtle/80 ring-1 ring-inset ring-accent/40' : '',
+                     !card.include ? 'opacity-50' : '',
+                     rarityBorderClass(card.rarity)
+                   ]">
 
-                {# Thumb clickable → abre el modal de selección de arte #}
+                {# ── THUMBNAIL ─────────────────────────────────────────────── #}
                 <button @click="openArtPicker(card)"
-                        class="w-10 h-14 rounded-md bg-bg-base overflow-hidden shrink-0 border border-border-subtle relative hover:border-accent/50 transition">
-                  <template x-if="card.thumbnail_url">
-                    <img :src="card.thumbnail_url" :data-preview="card.thumbnail_url"
-                         class="w-full h-full object-cover object-top" loading="lazy">
-                  </template>
-                  <template x-if="card.custom_art_front_id">
-                    <div class="absolute top-0 right-0 bg-fuchsia-500 w-2 h-2 rounded-bl" title="Arte custom"></div>
-                  </template>
+                        class="shrink-0 w-11 h-[60px] rounded-md overflow-hidden border border-border-subtle
+                               hover:border-accent/60 transition relative bg-bg-base"
+                        title="{{ t.deck_card_change_art }}">
+                  <img x-show="card.thumbnail_url"
+                       :src="card.thumbnail_url" :data-preview="card.thumbnail_url"
+                       class="w-full h-full object-cover object-top" loading="lazy">
+                  {# Cantidad como overlay en la parte inferior del thumb (solo si > 1) #}
+                  <div x-show="card.quantity > 1"
+                       class="absolute bottom-0 inset-x-0 bg-black/75 text-center text-[10px]
+                              font-bold text-white leading-[14px]"
+                       x-text="card.quantity + '×'"></div>
+                  {# Dot de custom art #}
+                  <div x-show="card.custom_art_front_id"
+                       class="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-fuchsia-400
+                              ring-1 ring-black/40" title="{{ t.deck_art_custom_title }}"></div>
                 </button>
 
-                <div class="flex-1 min-w-0 cursor-pointer" @click="openArtPicker(card)">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span class="text-sm text-fg-muted font-mono" x-text="card.quantity + '×'"></span>
-                    <span class="text-sm font-medium truncate" x-text="card.name"></span>
-                    {# Coste de maná oficial con mana-font #}
-                    <template x-if="card.mana_cost">
-                      <span x-html="renderManaCost(card.mana_cost)"></span>
-                    </template>
-                    {# Badge según layout: DFC / MDFC / MELD / BATTLE #}
-                    <template x-if="card.layout === 'transform'">
-                      <span class="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded px-1 py-0.5" title="Transform (doble cara)">DFC</span>
-                    </template>
-                    <template x-if="card.layout === 'modal_dfc'">
-                      <span class="text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded px-1 py-0.5" title="Modal Double-Faced">MDFC</span>
-                    </template>
-                    <template x-if="card.layout === 'meld'">
-                      <span class="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded px-1 py-0.5" title="Meld — se fusiona">MELD</span>
-                    </template>
-                    <template x-if="card.layout === 'battle'">
-                      <span class="text-[10px] font-mono bg-red-500/20 text-red-300 border border-red-500/30 rounded px-1 py-0.5" title="Battle">BATTLE</span>
-                    </template>
-                    <template x-if="card.custom_art_front_id">
-                      <span class="text-[10px] font-mono bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30 rounded px-1 py-0.5">CUSTOM</span>
-                    </template>
-                  </div>
-                  <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-3 flex-wrap">
-                    <template x-if="card.type_line">
-                      <span class="text-fg-muted" x-text="shortType(card.type_line)"></span>
-                    </template>
-                    <span>
-                      <span x-text="card.printings_available"></span> impresiones
-                      <template x-if="card.custom_arts_available > 0">
-                        <span class="text-fuchsia-400">
-                          + <span x-text="card.custom_arts_available"></span> custom
-                        </span>
-                      </template>
-                    </span>
-                    {# Botón ver reverso — solo si tiene back_thumbnail #}
-                    <template x-if="card.back_thumbnail_url">
-                      <button @click.stop="showBackFor(card)"
-                              class="text-indigo-300 hover:text-indigo-200 border border-indigo-500/40 hover:border-indigo-500/70 rounded px-1.5 py-0.5 transition text-[10px]"
-                              title="Ver reverso">
-                        ⇄ Reverso
-                      </button>
-                    </template>
-                    {# Botón añadir relacionadas — para meld/tokens/etc. #}
-                    <template x-if="card.related_parts && card.related_parts.length > 0">
-                      <button @click.stop="addRelated(card)"
-                              :disabled="addingRelated === card.id"
-                              class="text-amber-300 hover:text-amber-200 border border-amber-500/40 hover:border-amber-500/70 rounded px-1.5 py-0.5 transition text-[10px] disabled:opacity-50"
-                              :title="'Añadir al mazo: ' + card.related_parts.map(p => p.name).join(', ')">
-                        <span x-show="addingRelated !== card.id">
-                          + <span x-text="card.related_parts.length"></span>
-                          <span x-show="card.related_parts.some(p => p.component === 'meld_result' || p.component === 'meld_part')">meld</span>
-                          <span x-show="card.related_parts.every(p => p.component === 'token')">tokens</span>
-                          <span x-show="!card.related_parts.some(p => p.component === 'meld_result' || p.component === 'meld_part') && !card.related_parts.every(p => p.component === 'token')">rel.</span>
-                        </span>
-                        <span x-show="addingRelated === card.id">…</span>
-                      </button>
-                    </template>
-                    <template x-if="card.history_copies > 0">
-                      <span class="text-accent/80">
-                        Impresa <span x-text="card.history_copies"></span>×
-                      </span>
-                    </template>
-                  </div>
-                </div>
+                {# ── INFO PRINCIPAL ────────────────────────────────────────── #}
+                <div class="flex-1 min-w-0 cursor-pointer self-center space-y-0.5"
+                     @click="openArtPicker(card)">
 
-                {# Controles CRUD por carta #}
-                <div class="flex items-center gap-1 shrink-0" @click.stop>
-                  <button @click="openArtPicker(card)"
-                          class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
-                          title="Cambiar arte">
-                    <i data-lucide="image" class="w-4 h-4"></i>
-                  </button>
-                  <button @click="changeQty(card, card.quantity - 1)"
-                          :disabled="card.quantity <= 1"
-                          class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg disabled:opacity-30"
-                          title="Menos cantidad">
-                    <i data-lucide="minus" class="w-4 h-4"></i>
-                  </button>
-                  <button @click="changeQty(card, card.quantity + 1)"
-                          class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg"
-                          title="Más cantidad">
-                    <i data-lucide="plus" class="w-4 h-4"></i>
-                  </button>
-                  <button @click="toggleInclude(card)"
-                          :class="card.include ? 'text-fg-muted hover:text-amber-400' : 'text-fg-faint hover:text-green-400'"
-                          class="p-1 rounded hover:bg-bg-base transition"
-                          :title="card.include ? 'Excluir del XML' : 'Incluir'">
-                    {# Nota: usamos x-show sobre <i> directo (no <template x-if>) porque
-                       Lucide reemplaza <i data-lucide> con un <svg> generado. Cuando
-                       un template x-if se destruye/recrea, Alpine puede dejar el <svg>
-                       viejo suelto y añadir el nuevo, apareciendo ambos iconos
-                       apilados. Con x-show ambos <i> existen desde el principio,
-                       Lucide los procesa una sola vez y solo cambia display. #}
-                    <i data-lucide="eye-off" class="w-4 h-4" x-show="card.include"></i>
-                    <i data-lucide="eye" class="w-4 h-4" x-show="!card.include"></i>
-                  </button>
-
-                  {# Mover a otra sección. Dropdown con las opciones distintas    #}
-                  {# a la sección actual. Excluimos 'tokens' y 'meld_result' como #}
-                  {# destino porque son roles que se generan automáticamente y no #}
-                  {# tiene sentido mover cartas normales ahí manualmente.         #}
-                  <div x-data="{ open: false }" @click.outside="open = false" class="relative">
-                    <button @click="open = !open"
-                            class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
-                            title="Mover a otra sección">
-                      <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
-                    </button>
-                    <div x-show="open" x-transition
-                         class="absolute right-0 top-full mt-1 z-30 bg-bg-elevated border border-border-strong
-                                rounded-md shadow-lg py-1 min-w-[10rem]">
-                      <div class="text-[10px] uppercase tracking-wider text-fg-faint px-3 py-1">Mover a</div>
-                      <template x-for="opt in [
-                        {role:'commander', label:'Comandante'},
-                        {role:'mainboard', label:'Mazo'},
-                        {role:'sideboard', label:'Sideboard'},
-                        {role:'maybeboard', label:'Maybeboard'},
-                        {role:'companion', label:'Compañero'},
-                      ]" :key="opt.role">
-                        <button x-show="opt.role !== card.role"
-                                @click="moveCardTo(card, opt.role); open = false"
-                                class="w-full text-left text-xs px-3 py-1.5 hover:bg-bg-subtle text-fg-muted hover:text-fg transition flex items-center gap-2">
-                          <span x-text="opt.label"></span>
-                        </button>
-                      </template>
+                  {# Línea 1: Nombre + coste de maná (coste flota a la derecha) #}
+                  <div class="flex items-start gap-2 min-w-0">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-baseline gap-1 flex-wrap leading-snug">
+                        {# Cantidad solo si es 1 (si es >1 ya aparece en el thumb) #}
+                        <span x-show="card.quantity === 1"
+                              class="text-[10px] font-mono text-fg-faint shrink-0">1×</span>
+                        {# Nombre: font-semibold, nunca trunca — wrappea si es muy largo #}
+                        <span class="text-[13px] font-semibold text-fg leading-snug"
+                              style="word-break:break-word" x-text="card.name"></span>
+                      </div>
                     </div>
+                    {# Coste de maná alineado a la derecha del nombre #}
+                    <span x-show="card.mana_cost" x-html="renderManaCost(card.mana_cost)"
+                          class="shrink-0 self-center leading-none pt-0.5"></span>
                   </div>
 
-                  <button @click="deleteCard(card)"
-                          class="p-1 rounded hover:bg-red-500/20 text-fg-faint hover:text-red-400 transition"
-                          title="Eliminar del mazo">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                  </button>
+                  {# Línea 2: Tipo abreviado + badges de layout especial #}
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span x-show="card.type_line"
+                          class="text-[11px] text-fg-faint truncate max-w-[16rem]"
+                          x-text="shortType(card.type_line)"></span>
+                    <span x-show="card.layout === 'transform'"
+                          class="shrink-0 text-[9px] font-mono bg-indigo-500/20 text-indigo-300
+                                 border border-indigo-500/30 rounded px-1" title="{{ t.deck_badge_dfc }}">DFC</span>
+                    <span x-show="card.layout === 'modal_dfc'"
+                          class="shrink-0 text-[9px] font-mono bg-cyan-500/20 text-cyan-300
+                                 border border-cyan-500/30 rounded px-1" title="{{ t.deck_badge_mdfc }}">MDFC</span>
+                    <span x-show="card.layout === 'meld'"
+                          class="shrink-0 text-[9px] font-mono bg-amber-500/20 text-amber-300
+                                 border border-amber-500/30 rounded px-1" title="{{ t.deck_badge_meld }}">MELD</span>
+                    <span x-show="card.layout === 'battle'"
+                          class="shrink-0 text-[9px] font-mono bg-red-500/20 text-red-300
+                                 border border-red-500/30 rounded px-1">BATTLE</span>
+                    <span x-show="card.custom_art_front_id"
+                          class="shrink-0 text-[9px] font-mono bg-fuchsia-500/20 text-fuchsia-300
+                                 border border-fuchsia-500/30 rounded px-1">CUSTOM</span>
+                  </div>
+
+                  {# Línea 3: Chips de meta — rareza, impresiones, historial, acciones DFC/rel #}
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    {# Rareza como píldora coloreada con letra inicial #}
+                    <span x-show="card.rarity"
+                          class="text-[9px] font-bold px-1.5 py-0.5 rounded-sm leading-none"
+                          :class="rarityChipClass(card.rarity)"
+                          :title="card.rarity"
+                          x-text="rarityLetter(card.rarity)"></span>
+                    {# Impresiones disponibles #}
+                    <span class="text-[10px] text-fg-faint">
+                      <span x-text="card.printings_available"></span> {{ t.deck_card_printings }}
+                    </span>
+                    {# Custom arts disponibles #}
+                    <span x-show="card.custom_arts_available > 0"
+                          class="text-[10px] text-fuchsia-400">
+                      +<span x-text="card.custom_arts_available"></span> custom
+                    </span>
+                    {# Historial de impresión #}
+                    <span x-show="card.history_copies > 0"
+                          class="text-[10px] text-accent/70">
+                      {{ t.deck_card_printed }} <span x-text="card.history_copies"></span>×
+                    </span>
+                    {# Botón ver reverso #}
+                    <button x-show="card.back_thumbnail_url"
+                            @click.stop="showBackFor(card)"
+                            class="text-[10px] text-indigo-300 hover:text-indigo-200
+                                   border border-indigo-500/40 hover:border-indigo-500/70
+                                   rounded px-1.5 py-0.5 transition"
+                            title="Ver reverso">{{ t.deck_card_back }}</button>
+                    {# Botón añadir relacionadas (meld / tokens / etc.) #}
+                    <button x-show="card.related_parts && card.related_parts.length > 0"
+                            @click.stop="addRelated(card)"
+                            :disabled="addingRelated === card.id"
+                            class="text-[10px] text-amber-300 hover:text-amber-200
+                                   border border-amber-500/40 hover:border-amber-500/70
+                                   rounded px-1.5 py-0.5 transition disabled:opacity-50"
+                            :title="window._T.deck_add_related_title + ': ' + (card.related_parts || []).map(p => p.name).join(', ')">
+                      <span x-show="addingRelated !== card.id">
+                        + <span x-text="(card.related_parts || []).length"></span>
+                        <span x-show="(card.related_parts || []).some(p => p.component === 'meld_result' || p.component === 'meld_part')">meld</span>
+                        <span x-show="(card.related_parts || []).every(p => p.component === 'token')">tokens</span>
+                        <span x-show="!(card.related_parts || []).some(p => p.component === 'meld_result' || p.component === 'meld_part') && !(card.related_parts || []).every(p => p.component === 'token')">rel.</span>
+                      </span>
+                      <span x-show="addingRelated === card.id">…</span>
+                    </button>
+                  </div>
                 </div>
+
+                {# ── CONTROLES CRUD ────────────────────────────────────────── #}
+                {# Dos filas de iconos compactos para no ocupar anchura extra.  #}
+                <div class="flex flex-col items-end justify-center gap-1 shrink-0" @click.stop>
+                  {# Fila A: arte · cantidad #}
+                  <div class="flex items-center gap-0.5">
+                    <button @click="openArtPicker(card)"
+                            class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
+                            title="{{ t.deck_card_change_art }}">
+                      <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button @click="changeQty(card, card.quantity - 1)" :disabled="card.quantity <= 1"
+                            class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg disabled:opacity-30"
+                            title="{{ t.deck_card_less }}">
+                      <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button @click="changeQty(card, card.quantity + 1)"
+                            class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg"
+                            title="{{ t.deck_card_more }}">
+                      <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                  {# Fila B: excluir · mover · eliminar #}
+                  <div class="flex items-center gap-0.5">
+                    <button @click="toggleInclude(card)"
+                            :class="card.include ? 'text-fg-muted hover:text-amber-400' : 'text-fg-faint hover:text-green-400'"
+                            class="p-1 rounded hover:bg-bg-base transition"
+                            :title="card.include ? '{{ t.deck_card_exclude }}' : '{{ t.deck_card_include }}'">
+                      {# x-show en lugar de x-if para que Lucide los procese una sola vez #}
+                      <i data-lucide="eye-off" class="w-3.5 h-3.5" x-show="card.include"></i>
+                      <i data-lucide="eye" class="w-3.5 h-3.5" x-show="!card.include"></i>
+                    </button>
+                    <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+                      <button @click="open = !open"
+                              class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
+                              title="{{ t.deck_card_move }}">
+                        <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i>
+                      </button>
+                      <div x-show="open" x-transition
+                           class="absolute right-0 top-full mt-1 z-30 bg-bg-elevated border border-border-strong
+                                  rounded-md shadow-lg py-1 min-w-[10rem]">
+                        <div class="text-[10px] uppercase tracking-wider text-fg-faint px-3 py-1">{{ t.deck_card_move_to }}</div>
+                        <template x-for="opt in [
+                          {role:'commander', label:'{{ t.deck_role_commander }}'},
+                          {role:'mainboard', label:'{{ t.deck_role_mainboard }}'},
+                          {role:'sideboard', label:'{{ t.deck_role_sideboard }}'},
+                          {role:'maybeboard', label:'{{ t.deck_role_maybeboard }}'},
+                          {role:'companion', label:'{{ t.deck_role_companion }}'},
+                        ]" :key="opt.role">
+                          <button x-show="opt.role !== card.role"
+                                  @click="moveCardTo(card, opt.role); open = false"
+                                class="w-full text-left text-xs px-3 py-1.5 hover:bg-bg-subtle text-fg-muted hover:text-fg transition flex items-center gap-2">
+                            <span x-text="opt.label"></span>
+                          </button>
+                        </template>
+                      </div>
+                    </div>
+                    <button @click="deleteCard(card)"
+                            class="p-1 rounded hover:bg-red-500/20 text-fg-faint hover:text-red-400 transition"
+                            title="{{ t.deck_card_delete }}">
+                      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </template>
             </div>
@@ -649,10 +716,10 @@
 
   {# ============ MODAL DE SELECCIÓN DE ARTE ============ #}
   <template x-if="artPickerOpen">
-    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="closeArtPicker()"
          @keydown.escape.window="closeArtPicker()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-[1600px]
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-[1600px]
                   h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
 
@@ -664,7 +731,7 @@
                    class="w-11 h-14 rounded object-cover object-top border border-border-subtle shrink-0">
             </template>
             <div class="min-w-0">
-              <div class="text-[10px] uppercase tracking-widest text-fg-faint">Elegir arte para</div>
+              <div class="text-[10px] uppercase tracking-widest text-fg-faint">{{ t.picker_title }}</div>
               <div class="font-display text-lg text-accent-glow truncate" x-text="pickerCard?.name || ''"></div>
               <div class="text-xs text-fg-muted mt-0.5 flex items-center gap-2">
                 <template x-if="!pickerLoading">
@@ -686,7 +753,7 @@
           </div>
           <button @click="closeArtPicker()"
                   class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
-                  title="Cerrar (Esc)">
+                  title="{{ t.deck_close_esc }}">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
@@ -704,7 +771,7 @@
               <div class="relative">
                 <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint"></i>
                 <input type="text" x-model="pickerFilters.q"
-                       placeholder="Set, artista, número…"
+                       placeholder="{{ t.deck_placeholder_picker }}"
                        class="w-full bg-bg-subtle border border-border-subtle rounded pl-8 pr-2 py-1.5
                               focus:outline-none focus:border-accent">
               </div>
@@ -715,10 +782,10 @@
               <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Fuente</label>
               <div class="space-y-1">
                 <template x-for="opt in [
-                  {v:'all',      l:'Todo',        c:pickerCounts.all},
-                  {v:'custom',   l:'Custom',      c:pickerCounts.custom},
-                  {v:'drives',   l:'Drives',      c:pickerCounts.drives},
-                  {v:'scryfall', l:'Oficiales',   c:pickerCounts.scryfall},
+                  {v:'all',      l:window._T.picker_source_all,        c:pickerCounts.all},
+                  {v:'custom',   l:window._T.picker_source_custom,      c:pickerCounts.custom},
+                  {v:'drives',   l:window._T.picker_source_drives,      c:pickerCounts.drives},
+                  {v:'scryfall', l:window._T.picker_source_official,  c:pickerCounts.scryfall},
                 ]" :key="opt.v">
                   <label class="flex items-center justify-between gap-2 py-1 px-2 rounded cursor-pointer
                                 hover:bg-bg-subtle transition"
@@ -740,7 +807,7 @@
               <select x-model="pickerFilters.set"
                       class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
                              focus:outline-none focus:border-accent">
-                <option value="">Todos</option>
+                <option value="">{{ t.picker_set_all }}</option>
                 <template x-for="s in pickerAvailableSets" :key="s.code">
                   <option :value="s.code" x-text="s.code.toUpperCase() + ' — ' + s.name"></option>
                 </template>
@@ -825,11 +892,11 @@
                 </button>
                 <div x-show="open" x-transition class="space-y-1 mt-1.5">
                   <template x-for="opt in [
-                    {v:'full_art',   l:'Sin full art'},
-                    {v:'borderless', l:'Sin borderless'},
-                    {v:'retro',      l:'Sin retro'},
-                    {v:'promo',      l:'Sin promo'},
-                    {v:'alt_art',    l:'Sin alt art'},
+                    {v:'full_art',   l:window._T.deck_exclude_full_art},
+                    {v:'borderless', l:window._T.deck_exclude_borderless},
+                    {v:'retro',      l:window._T.deck_exclude_retro},
+                    {v:'promo',      l:window._T.deck_exclude_promo},
+                    {v:'alt_art',    l:window._T.deck_exclude_alt_art},
                   ]" :key="'ex-'+opt.v">
                     <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
                       <input type="checkbox" :value="opt.v"
@@ -968,11 +1035,11 @@
                       </template>
                       <template x-if="art.is_preferred && !art.is_chosen">
                         <span class="text-[9px] font-bold bg-emerald-500/90 text-white rounded px-1 py-0.5"
-                              title="Preferencia global">GLOBAL</span>
+                              title="{{ t.deck_global_pref }}">GLOBAL</span>
                       </template>
                       <template x-if="art.is_last_used && !art.is_chosen && !art.is_preferred">
                         <span class="text-[9px] font-bold bg-indigo-500/80 text-white rounded px-1 py-0.5"
-                              title="Última usada en otro mazo">LAST</span>
+                              title="{{ t.deck_last_used }}">LAST</span>
                       </template>
                     </div>
                     {# Badges inferior-izquierda de tipo especial #}
@@ -995,7 +1062,7 @@
                     <button @click.stop="deleteCustom(art)"
                             class="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition
                                    bg-red-500/90 hover:bg-red-500 text-white rounded p-1"
-                            title="Eliminar arte custom">
+                            title="{{ t.deck_delete_art_title }}">
                       <i data-lucide="trash-2" class="w-3 h-3"></i>
                     </button>
                   </template>
@@ -1038,12 +1105,12 @@
         <div class="px-4 py-2.5 border-t border-border-subtle bg-bg-inset text-[11px] text-fg-faint shrink-0
                     flex items-center justify-between">
           <span>
-            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> elegir ·
-            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Doble click</kbd> recordar globalmente ·
-            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Ctrl+hover</kbd> preview
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> {{ t.picker_footer_click }} ·
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">{{ t.picker_footer_dblclick_key | default("Doble click") }}</kbd> {{ t.picker_footer_dblclick }} ·
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Hover</kbd> {{ t.picker_footer_hover }}
           </span>
           <span>
-            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Esc</kbd> cerrar
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Esc</kbd> {{ t.picker_footer_esc }}
           </span>
         </div>
       </div>
@@ -1055,7 +1122,7 @@
     <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
          @click="backModal = null"
          @keydown.escape.window="backModal = null">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-card max-w-md w-full p-4 space-y-3"
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-card max-w-md w-full p-4 space-y-3 animate-scale-in"
            @click.stop>
         <div class="flex items-center justify-between">
           <div class="min-w-0">
@@ -1080,10 +1147,10 @@
   {# Muestra la partición del mazo en tiers MPC oficiales y permite      #}
   {# generar los N XMLs correspondientes con un click.                    #}
   <template x-if="printRunsOpen">
-    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="closePrintRuns()"
          @keydown.escape.window="closePrintRuns()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
                   max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
 
@@ -1102,7 +1169,7 @@
           </div>
           <button @click="closePrintRuns()"
                   class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition"
-                  title="Cerrar (Esc)">
+                  title="{{ t.deck_close_esc }}">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
@@ -1148,7 +1215,7 @@
         <div class="flex-1 overflow-y-auto p-5">
           <template x-if="printRunsLoading">
             <div class="text-center py-12 text-fg-faint text-sm">
-              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <div class="spinner-ring mb-3"></div>
               <p>Calculando particiones…</p>
             </div>
           </template>
@@ -1208,7 +1275,7 @@
                                :style="'width: ' + Math.round(100 * run.total_cards / run.tier_size) + '%'"></div>
                         </div>
                         <div class="text-[10px] text-fg-faint mt-1 text-right">
-                          <span x-text="Math.round(100 * run.total_cards / run.tier_size)"></span>% relleno
+                          <span x-text="Math.round(100 * run.total_cards / run.tier_size)"></span>% full
                         </div>
                       </div>
                     </div>
@@ -1253,7 +1320,7 @@
               </span>
             </template>
             <template x-if="printRunsData && printRunsData.total_runs === 1">
-              <span>Un solo run — puedes usar el botón "Generar XML" normal.</span>
+              <span>{{ t.deck_runs_title }}</span>
             </template>
             <template x-if="!printRunsData && !printRunsLoading">
               <span class="text-fg-faint/60">Cargando datos del mazo…</span>
@@ -1279,7 +1346,7 @@
     <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
          @click="closeSimilar()"
          @keydown.escape.window="closeSimilar()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
                   max-h-[85vh] flex flex-col overflow-hidden"
            @click.stop>
         <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
@@ -1301,7 +1368,7 @@
         <div class="flex-1 overflow-y-auto p-5">
           <template x-if="similarLoading">
             <div class="text-center py-12 text-fg-faint text-sm">
-              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <div class="spinner-ring mb-3"></div>
               <p>Buscando…</p>
             </div>
           </template>
@@ -1350,7 +1417,7 @@
     <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
          @click="closeArtistApply()"
          @keydown.escape.window="closeArtistApply()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-4xl
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
                   max-h-[90vh] flex flex-col overflow-hidden"
            @click.stop>
         <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
@@ -1372,7 +1439,7 @@
         <div class="flex-1 overflow-y-auto p-5">
           <template x-if="artistApplyLoading">
             <div class="text-center py-12 text-fg-faint text-sm">
-              <div class="animate-spin inline-block w-6 h-6 border-2 border-accent border-t-transparent rounded-full mb-3"></div>
+              <div class="spinner-ring mb-3"></div>
               <p>Consultando Scryfall (puede tardar 10-30s)…</p>
             </div>
           </template>
@@ -1469,10 +1536,10 @@
 
   {# ============ MODAL DE TOKENS DEL MAZO ============ #}
   <template x-if="tokensOpen">
-    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+    <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="closeTokens()"
          @keydown.escape.window="closeTokens()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-5xl
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl
                   max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
 
@@ -1505,7 +1572,7 @@
           </div>
           <button @click="closeTokens()"
                   class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
-                  title="Cerrar (Esc)">
+                  title="{{ t.deck_close_esc }}">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
@@ -1625,7 +1692,7 @@
     <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
          @click="closeStats()"
          @keydown.escape.window="closeStats()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal w-full max-w-5xl
+      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl
                   max-h-[90vh] flex flex-col overflow-hidden"
            @click.stop>
         {# Header #}
@@ -2219,7 +2286,7 @@ function deckEditor(deckId) {
         if (!r.ok) throw new Error('Error cargando');
         this.allArts = await r.json();
       } catch (e) {
-        window.toast('Error cargando artes', e.message);
+        window.toast(window._t('deck_error_load_arts'), e.message);
       } finally {
         this.loadingPrints = false;
       }
@@ -2266,7 +2333,7 @@ function deckEditor(deckId) {
         // Guardar en cache (los drives se añaden después y también quedan cacheados)
         this._pickerCache[card.id] = this.pickerAllArts;
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.pickerLoading = false;
       }
@@ -2627,7 +2694,7 @@ function deckEditor(deckId) {
     async pickArt(art, remember) {
       if (art.__source === 'custom') {
         await this.chooseCustom({custom_art_id: art.custom_art_id, face: art.face});
-        window.toast('Arte actualizado', art.filename || 'Custom art');
+        window.toast(window._t('deck_art_updated_toast'), art.filename || 'Custom art');
         this.closeArtPicker();
       } else if (art.__source === 'drives') {
         // Descargar el arte del drive y asignarlo (como useDriveArt)
@@ -2644,16 +2711,16 @@ function deckEditor(deckId) {
           if (!r.ok) throw new Error((await r.json()).detail || 'Error');
           const data = await r.json();
           await this.chooseCustom({custom_art_id: data.id, face: 'front'});
-          window.toast(`Añadido desde ${art.set_name}`, art.filename);
+          window.toast(`${window._T.deck_added_from} ${art.set_name}`, art.filename);
           this.closeArtPicker();
         } catch (e) {
-          window.toast('Error añadiendo arte', e.message);
+          window.toast(window._t('deck_error_adding_art'), e.message);
         }
       } else {
         // Oficial de Scryfall
         await this.chooseArt(art.scryfall_id, remember);
         window.toast(
-          remember ? 'Arte recordado' : 'Arte actualizado',
+          remember ? window._t('deck_art_remembered') : window._t('deck_art_updated_toast'),
           `${art.set_code?.toUpperCase() || ''} #${art.collector_number || ''}`
         );
         this.closeArtPicker();
@@ -2675,12 +2742,12 @@ function deckEditor(deckId) {
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
-        window.toast('Arte añadido', data.filename || 'Custom art');
+        window.toast(window._t('deck_custom_added'), data.filename || 'Custom art');
         this.pickerAddUrl = '';
         // Recargar arts para incluir el nuevo
         await this.openArtPicker(this.pickerCard);
       } catch (e) {
-        window.toast('Error descargando', e.message);
+        window.toast(window._t('deck_error_download'), e.message);
       } finally {
         this.addingUrl = false;
       }
@@ -2722,11 +2789,11 @@ function deckEditor(deckId) {
         // Refrescar el panel para que aparezca en la sección Custom
         await this.selectCard(this.selectedCard);
         window.toast(
-          `Añadido desde ${hit.source_name}`,
-          `${hit.filename} — usado como ${face === 'front' ? 'frente' : 'reverso'}`
+          `${window._T.deck_added_from} ${hit.source_name}`,
+          `${hit.filename} — ${face}`
         );
       } catch (e) {
-        window.toast('Error añadiendo arte', e.message);
+        window.toast(window._t('deck_error_adding_art'), e.message);
       } finally {
         this.addingFromDrive = null;
       }
@@ -2772,16 +2839,16 @@ function deckEditor(deckId) {
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const added = await r.json();
         if (added.length === 0) {
-          window.toast('Sin novedades', 'Las cartas relacionadas ya están en el mazo.');
+          window.toast(window._t('deck_no_related'), window._t('deck_related_already'));
         } else {
           const names = added.map(c => c.name).join(', ');
-          window.toast(`Añadidas ${added.length} carta(s)`, names);
+          window.toast(window._t('deck_related_added').replace('{n}', added.length), names);
           // Auto-expandir el grupo tokens para que se vea
           this.expandedGroups.tokens = true;
         }
         await this.load();
       } catch (e) {
-        window.toast('Error añadiendo', e.message);
+        window.toast(window._t('deck_error_adding'), e.message);
       } finally {
         this.addingRelated = null;
       }
@@ -2793,13 +2860,13 @@ function deckEditor(deckId) {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deck_card_id: card.id, scryfall_id, face: 'front', remember_globally: remember})
       });
-      if (!r.ok) { window.toast('Error', 'No se pudo cambiar el arte'); return; }
+      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_art')); return; }
       const updated = await r.json();
       this._updateCard(updated);
       this.allArts = this.allArts.map(a => ({...a, is_chosen: a.kind === 'scryfall' && a.scryfall_id === scryfall_id}));
       // Invalidar cache del picker para esta carta — is_chosen ha cambiado
       delete this._pickerCache[card.id];
-      if (remember) window.toast('Recordado globalmente', card.name);
+      if (remember) window.toast(window._t('deck_art_remembered'), card.name);
     },
     async chooseCustom(art) {
       const card = this.selectedCard;
@@ -2808,7 +2875,7 @@ function deckEditor(deckId) {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deck_card_id: card.id, custom_art_id: art.custom_art_id, face: art.face})
       });
-      if (!r.ok) { window.toast('Error', 'No se pudo elegir el arte custom'); return; }
+      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_custom_art')); return; }
       const updated = await r.json();
       this._updateCard(updated);
       this.allArts = this.allArts.map(a => {
@@ -2829,24 +2896,24 @@ function deckEditor(deckId) {
           body: JSON.stringify({url: this.urlInput, card_name: card.name, face: this.urlFace, variant: this.urlVariant || null})
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast('Custom art añadido', card.name);
+        window.toast(window._t('deck_custom_added'), card.name);
         this.urlInput = ''; this.urlVariant = ''; this.showAddUrlForm = false;
         await this.selectCard(card);
         await this.load();
       } catch (e) {
-        window.toast('Error descargando', e.message);
+        window.toast(window._t('deck_error_download'), e.message);
       } finally {
         this.addingUrl = false;
       }
     },
     async deleteCustom(art) {
       if (!await window.confirmDialog(
-        'Eliminar arte custom',
-        `¿Seguro que quieres eliminar "${art.variant_label || art.filename}"?\n\nEl archivo se borra del disco.`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Eliminar' })) return;
+        window._t('deck_delete_art_title'),
+        `"${art.variant_label || art.filename}"`,
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/custom-art/${art.custom_art_id}`, {method: 'DELETE'});
       if (r.ok) {
-        window.toast('Eliminado', art.filename);
+        window.toast(window._t('common_delete'), art.filename);
         const card = this.selectedCard;
         await this.selectCard(card);
         await this.load();
@@ -2857,11 +2924,11 @@ function deckEditor(deckId) {
       try {
         const r = await fetch('/api/custom-art/rescan', {method: 'POST'});
         const data = await r.json();
-        window.toast('Re-escaneado', `${data.total} archivos (+${data.added} / -${data.removed})`);
+        window.toast(window._t('deck_rescanned'), `${data.total} ${window._T.deck_files_count} (+${data.added} / -${data.removed})`);
         if (this.selectedCard) await this.selectCard(this.selectedCard);
         await this.load();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.rescanning = false;
       }
@@ -2910,16 +2977,16 @@ function deckEditor(deckId) {
     },
     async deleteCard(card) {
       if (!await window.confirmDialog(
-        'Eliminar carta',
-        `¿Quitar "${card.name}" de este mazo?`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Quitar' })) return;
+        window._t('deck_card_delete'),
+        `"${card.name}"`,
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}`, {method: 'DELETE'});
       if (r.ok) {
-        window.toast('Eliminada', card.name);
+        window.toast(window._t('deck_card_deleted'), card.name);
         if (this.selectedCardId === card.id) { this.selectedCardId = null; this.allArts = []; }
         await this.load();
       } else {
-        window.toast('Error', 'No se pudo eliminar');
+        window.toast(window._t('common_error'), window._t('deck_error_delete'));
       }
     },
 
@@ -2941,9 +3008,9 @@ function deckEditor(deckId) {
         // load() aquí, ~50-80 KB en un mazo commander lleno.
         this._updateCard(updated);
         this._refreshValidation();
-        window.toast('Movida', `${card.name} → ${this.roleLabel(newRole)}`);
+        window.toast(window._t('deck_kind_moved') || card.name, `${card.name} → ${this.roleLabel(newRole)}`);
       } else {
-        window.toast('Error', 'No se pudo mover');
+        window.toast(window._t('common_error'), window._t('deck_error_move'));
       }
     },
 
@@ -2961,17 +3028,17 @@ function deckEditor(deckId) {
       if (!total) return;
       const label = this.roleLabel(role);
       if (!await window.confirmDialog(
-        `Vaciar ${label}`,
-        `¿Eliminar las ${total} cartas de "${label}"? Esto no se puede deshacer.`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Vaciar' })) return;
+        `${window._T.deck_group_clear} ${label}`,
+        `${label}: ${total} ${window._T.history_cards_count}`,
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('deck_group_clear') })) return;
       const r = await fetch(`/api/decks/${this.deckId}/role/${role}`, {method: 'DELETE'});
       if (r.ok) {
         const data = await r.json();
-        window.toast(`${label} vaciado`, `${data.deleted} cartas eliminadas`);
+        window.toast(`${label} ${window._T.deck_section_cleared}`, `${data.deleted} ${window._T.deck_cards_deleted}`);
         if (this.selectedCardId) { this.selectedCardId = null; this.allArts = []; }
         await this.load();
       } else {
-        window.toast('Error', 'No se pudo vaciar la sección');
+        window.toast(window._t('common_error'), window._t('deck_error_clear'));
       }
     },
     async addCard() {
@@ -2987,7 +3054,7 @@ function deckEditor(deckId) {
           })
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast('Añadida', this.newCardName);
+        window.toast(window._t('history_kind_added'), this.newCardName);
         this.newCardName = '';
         this.autoResults = [];
         this.autoOpen = false;
@@ -2995,7 +3062,7 @@ function deckEditor(deckId) {
         // Devolver foco al input para añadir varias en cadena
         this.$nextTick(() => this.$refs.newCardInput && this.$refs.newCardInput.focus());
       } catch (e) {
-        window.toast('Error añadiendo', e.message);
+        window.toast(window._t('deck_error_adding'), e.message);
       } finally {
         this.addingCard = false;
       }
@@ -3055,19 +3122,19 @@ function deckEditor(deckId) {
       if (r.ok) {
         this.deck = await r.json();
         document.title = v + ' · MPC Forge';
-        window.toast('Renombrado', v);
+        window.toast(window._t('history_kind_renamed'), v);
       } else {
-        window.toast('Error', 'No se pudo renombrar');
+        window.toast(window._t('common_error'), window._t('js_error_rename'));
       }
     },
     async deleteDeck() {
       if (!await window.confirmDialog(
-        'Eliminar mazo',
-        `¿Eliminar el mazo "${this.deck.name}"?\n\nSe perderán las cartas y elecciones de arte. Los archivos descargados NO se borran.`,
-        { danger: true, icon: 'trash-2', confirmLabel: 'Eliminar mazo' })) return;
+        window._t('deck_delete'),
+        window._t('js_delete_deck_confirm').replace('{name}', this.deck.name),
+        { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${this.deckId}`, {method: 'DELETE'});
       if (r.ok) { window.location.href = '/'; }
-      else window.toast('Error', 'No se pudo eliminar');
+      else window.toast(window._t('common_error'), window._t('deck_error_delete'));
     },
 
     // ================================================================
@@ -3087,7 +3154,7 @@ function deckEditor(deckId) {
         if (!r.ok) throw new Error('Error analizando tokens');
         this.tokensData = await r.json();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
         this.closeTokens();
       } finally {
         this.tokensLoading = false;
@@ -3123,7 +3190,7 @@ function deckEditor(deckId) {
         if (!r.ok) throw new Error('Error obteniendo preview');
         this.printRunsData = await r.json();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
         this.printRunsData = null;
       } finally {
         this.printRunsLoading = false;
@@ -3162,7 +3229,7 @@ function deckEditor(deckId) {
           this.loadBuildHistory();
         }
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.printRunsBuilding = false;
       }
@@ -3177,7 +3244,7 @@ function deckEditor(deckId) {
 
     async openSimilar(art) {
       if (!art.image_hash) {
-        window.toast('Sin hash', 'Este arte no tiene pHash calculado.');
+        window.toast('pHash', window._t('common_none'));
         return;
       }
       this.similarOpen = true;
@@ -3189,7 +3256,7 @@ function deckEditor(deckId) {
         if (!r.ok) throw new Error('Error buscando similares');
         this.similarData = await r.json();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.similarLoading = false;
         this.$nextTick(() => window.icons?.());
@@ -3221,14 +3288,14 @@ function deckEditor(deckId) {
       // Aquí podemos delegar en la lógica del picker o simplemente cerrar.
       // Preferimos: cerrar similar modal y dejar al usuario re-buscar.
       this.closeSimilar();
-      window.toast('Info', `Elige "${similar.filename}" del listado principal (source ${similar.source_id}).`);
+      window.toast(window._t('common_ok'), `"${similar.filename}" (source ${similar.source_id})`);
     },
 
     // ------ Extras · F3/T11: "Aplicar arte de X a N cartas" ------
 
     async openArtistApply(art) {
       if (!art.artist) {
-        window.toast('Sin artist', 'Este arte no expone artista.');
+        window.toast(window._t('common_none'), window._t('picker_sort_artist'));
         return;
       }
       this.artistApplyOpen = true;
@@ -3249,7 +3316,7 @@ function deckEditor(deckId) {
           this.artistApplyChecked[m.oracle_id] = true;
         }
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.artistApplyLoading = false;
         this.$nextTick(() => window.icons?.());
@@ -3278,7 +3345,7 @@ function deckEditor(deckId) {
       const matched = (this.artistApplyData.matched || [])
         .filter(m => this.artistApplyChecked[m.oracle_id]);
       if (matched.length === 0) {
-        window.toast('Nada seleccionado', 'Marca al menos una carta.');
+        window.toast(window._t('common_none'), window._t('deck_filter_placeholder'));
         return;
       }
       this.artistApplyApplying = true;
@@ -3297,8 +3364,8 @@ function deckEditor(deckId) {
             if (r.ok) ok++; else fail++;
           } catch { fail++; }
         }
-        window.toast(`${ok} arte${ok !== 1 ? 's' : ''} aplicado${ok !== 1 ? 's' : ''}`,
-                     fail > 0 ? `${fail} fallo(s). Recarga para ver los cambios.` : 'Recarga para ver los cambios.');
+        window.toast(`${ok} ${window._T.history_kind_art}`,
+                     fail > 0 ? `${fail} failed` : window._t('deck_art_updated_toast'));
         this.closeArtistApply();
         // Refrescar el mazo — el usuario verá los nuevos artes al recargar
         if (typeof this.reload === 'function') this.reload();
@@ -3316,16 +3383,16 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({scryfall_ids: [token.scryfall_id]})
         });
-        if (!r.ok) throw new Error('Error añadiendo');
+        if (!r.ok) throw new Error(window._t('deck_error_adding'));
         const added = await r.json();
         if (added.length > 0) {
-          window.toast('Token añadido', token.name);
+          window.toast(window._t('deck_tokens'), token.name);
           // Refrescar mazo y re-analizar (para actualizar el count del token)
           await this.load();
           await this.openTokens();
         }
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.tokensAdding = false;
       }
@@ -3340,16 +3407,16 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({scryfall_ids: missing})
         });
-        if (!r.ok) throw new Error('Error añadiendo tokens');
+        if (!r.ok) throw new Error(window._t('deck_error_adding'));
         const added = await r.json();
         window.toast(
-          `${added.length} ${added.length === 1 ? 'token añadido' : 'tokens añadidos'}`,
+          `${added.length} ${window._T.deck_tokens}`,
           added.map(c => c.name).slice(0, 3).join(', ') + (added.length > 3 ? '…' : '')
         );
         await this.load();
         await this.openTokens();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.tokensAdding = false;
       }
@@ -3373,7 +3440,7 @@ function deckEditor(deckId) {
           s.onerror = () => reject(new Error('No se pudo cargar Chart.js'));
           document.head.appendChild(s);
         }).catch(e => {
-          window.toast('Error cargando gráficos', e.message);
+          window.toast(window._t('common_error'), e.message);
           this.statsOpen = false;
         });
         if (!this.statsOpen) return;
@@ -3807,9 +3874,9 @@ function deckEditor(deckId) {
         const data = await r.json();
         const filename = data.xml_path.split(/[\\/]/).pop();
         this.lastXmlFilename = filename;
-        window.toast('XML generado', `${data.total_cards} cartas · ${data.estimated_cost_eur.toFixed(2)} €`);
+        window.toast(window._t('deck_xml'), `${data.total_cards} ${window._T.history_cards_count} · ${data.estimated_cost_eur.toFixed(2)} €`);
       } catch (e) {
-        window.toast('Error generando XML', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this._stopBuildPolling();
         this.buildProgress = null;
@@ -3832,9 +3899,9 @@ function deckEditor(deckId) {
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.detail || 'Error');
-        window.toast('MPC Autofill lanzado', `PID ${data.pid} · buscando el XML en la carpeta de exports`);
+        window.toast('MPC Autofill', `PID ${data.pid}`);
       } catch (e) {
-        window.toast('No se pudo lanzar autofill', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.launchingAutofill = false;
       }
@@ -3861,10 +3928,10 @@ function deckEditor(deckId) {
         });
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
-        window.toast('PDF generado', `${data.total_slots} cartas en ${data.total_pages} páginas`);
+        window.toast(window._t('deck_pdf_studio'), `${data.total_slots} ${window._T.history_cards_count} · ${data.total_pages} p.`);
         window.location.href = `/api/exports/${data.filename}`;
       } catch (e) {
-        window.toast('Error generando PDF', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this._stopBuildPolling();
         this.buildProgress = null;
@@ -3903,7 +3970,7 @@ function deckEditor(deckId) {
         }
         Alpine.store('ui').success(`Idioma → ${langLabel}`, msg);
       } catch (e) {
-        window.toast('Error localizando', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.localizing = false;
       }
@@ -3942,11 +4009,11 @@ function deckEditor(deckId) {
           document.body.removeChild(ta);
         }
         window.toast(
-          'Decklist copiada',
-          `${data.total_cards} entradas · formato ${data.format}`
+          window._t('deck_decklist_copy'),
+          `${data.total_cards} ${window._T.history_cards_count} · ${data.format}`
         );
       } catch (e) {
-        window.toast('Error copiando decklist', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         this.exportingDecklist = false;
       }
@@ -3962,7 +4029,7 @@ function deckEditor(deckId) {
         });
         window.location.href = `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`;
       } catch (e) {
-        window.toast('Error descargando decklist', e.message);
+        window.toast(window._t('common_error'), e.message);
       } finally {
         // El browser lanza la descarga y no bloquea el hilo — reseteamos ya.
         setTimeout(() => { this.exportingDecklist = false; }, 500);
@@ -3993,6 +4060,38 @@ function shortType(typeLine) {
     .replace(/^Snow\s+/, '')
     .replace(/^Elite\s+/, '')
     .replace(/^Host\s+/, '');
+}
+
+/** Borde izquierdo coloreado por rareza en la fila de carta. */
+function rarityBorderClass(rarity) {
+  const map = {
+    mythic:   'border-l-2 border-l-orange-500/60',
+    rare:     'border-l-2 border-l-amber-400/55',
+    uncommon: 'border-l-2 border-l-slate-400/45',
+    common:   'border-l-2 border-l-slate-600/25',
+    special:  'border-l-2 border-l-purple-500/55',
+    bonus:    'border-l-2 border-l-purple-500/55',
+  };
+  return map[rarity] || '';
+}
+
+/** Clases Tailwind para la píldora de rareza (letra inicial). */
+function rarityChipClass(rarity) {
+  const map = {
+    mythic:   'bg-orange-500/20 text-orange-300 border border-orange-500/40',
+    rare:     'bg-amber-400/20 text-amber-300 border border-amber-400/40',
+    uncommon: 'bg-slate-300/15 text-slate-300 border border-slate-400/35',
+    common:   'bg-slate-600/15 text-slate-400 border border-slate-500/25',
+    special:  'bg-purple-500/20 text-purple-300 border border-purple-500/40',
+    bonus:    'bg-purple-500/20 text-purple-300 border border-purple-500/40',
+  };
+  return map[rarity] || 'bg-slate-600/15 text-slate-400 border border-slate-500/25';
+}
+
+/** Letra inicial de rareza para la píldora. */
+function rarityLetter(rarity) {
+  const map = { mythic: 'M', rare: 'R', uncommon: 'U', common: 'C', special: 'S', bonus: 'B' };
+  return map[rarity] || '?';
 }
 
 /** Renderiza {2}{B}{B} usando mana-font (símbolos oficiales MTG con fondos coloreados).

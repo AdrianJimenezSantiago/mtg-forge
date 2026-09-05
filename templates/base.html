@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="{{ lang | default('es') }}" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -79,6 +79,132 @@
     svg.lucide {
       pointer-events: none;
     }
+
+    /* ==================== ANIMACIONES GLOBALES ====================
+       Sistema unificado de animaciones que se puede usar desde cualquier
+       vista sin depender de config Tailwind. Los spinners y estados de
+       carga deben usar estas clases para tener consistencia visual. */
+
+    /* Spinner "ring" — anillo giratorio: alternativa más visible que
+       el loader-2 de Lucide para overlays de página completa. */
+    .spinner-ring {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(212,175,55,0.15);
+      border-top-color: rgba(212,175,55,0.85);
+      border-radius: 50%;
+      animation: spinner-ring 750ms linear infinite;
+    }
+    .spinner-ring--sm { width: 16px; height: 16px; border-width: 2px; }
+    .spinner-ring--lg { width: 48px; height: 48px; border-width: 4px; }
+
+    @keyframes spinner-ring {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Barra de progreso indeterminada — para acciones cuya duración
+       no conocemos (fetch, procesado en backend, etc). Sustituto elegante
+       del típico spinner cuando queremos algo horizontal. */
+    .progress-indeterminate {
+      position: relative;
+      overflow: hidden;
+      background: rgba(212,175,55,0.08);
+    }
+    .progress-indeterminate::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(212,175,55,0.6) 50%,
+        transparent 100%);
+      width: 30%;
+      animation: progress-slide 1.4s ease-in-out infinite;
+    }
+    @keyframes progress-slide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
+    }
+
+    /* Skeleton loading — placeholder que "brilla" mientras cargan datos.
+       Aplícalo a divs con dimensiones fijas antes de que llegue el contenido
+       real. Ejemplo: <div class="skeleton h-6 w-32 rounded"></div> */
+    .skeleton {
+      background: linear-gradient(90deg,
+        rgba(47,57,77,0.4) 25%,
+        rgba(61,74,99,0.6) 50%,
+        rgba(47,57,77,0.4) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.4s ease-in-out infinite;
+      border-radius: 4px;
+    }
+    @keyframes skeleton-shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Loading dots — tres puntos que rebotan, útiles inline en texto
+       ("Cargando...") sin ocupar mucho espacio. */
+    .loading-dots {
+      display: inline-flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .loading-dots span {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
+      animation: dot-bounce 1.4s ease-in-out infinite;
+    }
+    .loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes dot-bounce {
+      0%,80%,100% { opacity: 0.4; transform: scale(0.8); }
+      40%         { opacity: 1;   transform: scale(1.1); }
+    }
+
+    /* Fondo pulsante suave — para spinners de overlay que cubren
+       secciones enteras mientras cargan. Reemplaza el `animate-pulse`
+       de Tailwind por algo menos agresivo. */
+    .pulse-soft {
+      animation: pulse-soft-kf 2s ease-in-out infinite;
+    }
+    @keyframes pulse-soft-kf {
+      0%,100% { opacity: 1; }
+      50%     { opacity: 0.55; }
+    }
+
+    /* Transiciones globales suaves ---------------------------------------
+       - button y a: transición al hover uniforme (no cambia visual, solo
+         garantiza que TODOS los hovers son suaves aunque no lleven `transition`
+         explícito en su clase). Ojo: no aplicamos a inputs porque genera
+         parpadeos molestos al escribir. */
+    button, a[role="button"], .btn-transition {
+      transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+      transition-duration: 150ms;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Reduced motion — respeta la preferencia del usuario. Si tiene
+       "reducir movimiento" activado en el SO, deshabilitamos animaciones
+       largas (mantenemos spinners porque son necesarios para feedback). */
+    @media (prefers-reduced-motion: reduce) {
+      .animate-fade-in,
+      .animate-slide-in-up,
+      .animate-slide-in-down,
+      .animate-scale-in,
+      .animate-toast-in {
+        animation-duration: 1ms !important;
+      }
+      .pulse-soft,
+      .animate-pulse-soft,
+      .skeleton {
+        animation: none !important;
+      }
+    }
   </style>
 
   <script>
@@ -134,8 +260,17 @@
             'modal':  '0 25px 60px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.10)',
           },
           animation: {
-            'shimmer':    'shimmer 2s linear infinite',
-            'toast-in':   'toast-in 220ms ease-out',
+            'shimmer':       'shimmer 2s linear infinite',
+            'toast-in':      'toast-in 220ms ease-out',
+            'fade-in':       'fade-in 200ms ease-out both',
+            'slide-in-up':   'slide-in-up 260ms cubic-bezier(0.22,1,0.36,1) both',
+            'slide-in-down': 'slide-in-down 260ms cubic-bezier(0.22,1,0.36,1) both',
+            'scale-in':      'scale-in 180ms cubic-bezier(0.22,1,0.36,1) both',
+            'pulse-soft':    'pulse-soft 2s ease-in-out infinite',
+            'skeleton':      'skeleton 1.4s ease-in-out infinite',
+            'spin-slow':     'spin 2s linear infinite',
+            'bounce-soft':   'bounce-soft 1.2s ease-in-out infinite',
+            'progress-bar':  'progress-bar 1.4s ease-in-out infinite',
           },
           keyframes: {
             shimmer: {
@@ -145,6 +280,38 @@
             'toast-in': {
               '0%':   { opacity: '0', transform: 'translateX(20px) scale(0.95)' },
               '100%': { opacity: '1', transform: 'translateX(0) scale(1)' },
+            },
+            'fade-in': {
+              '0%':   { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            'slide-in-up': {
+              '0%':   { opacity: '0', transform: 'translateY(12px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            'slide-in-down': {
+              '0%':   { opacity: '0', transform: 'translateY(-12px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            'scale-in': {
+              '0%':   { opacity: '0', transform: 'scale(0.94)' },
+              '100%': { opacity: '1', transform: 'scale(1)' },
+            },
+            'pulse-soft': {
+              '0%,100%': { opacity: '1' },
+              '50%':     { opacity: '0.55' },
+            },
+            'skeleton': {
+              '0%,100%': { opacity: '0.4' },
+              '50%':     { opacity: '0.8' },
+            },
+            'bounce-soft': {
+              '0%,100%': { transform: 'translateY(0)' },
+              '50%':     { transform: 'translateY(-3px)' },
+            },
+            'progress-bar': {
+              '0%':   { transform: 'translateX(-100%)' },
+              '100%': { transform: 'translateX(400%)' },
             },
           },
         }
@@ -179,9 +346,9 @@
       <nav class="flex-1 p-3 space-y-1 text-sm">
         {% set current = request.url.path %}
         {% set nav_items = [
-          ('/',         'layers',    'Mazos'),
-          ('/history',  'history',   'Historial'),
-          ('/settings', 'settings',  'Ajustes'),
+          ('/',         'layers',    t.nav_decks),
+          ('/history',  'history',   t.nav_history),
+          ('/settings', 'settings',  t.nav_settings),
         ] %}
         {% for path, icon, label in nav_items %}
           {% set active = (path == '/' and current == '/') or (path != '/' and current.startswith(path)) %}
@@ -207,13 +374,13 @@
              @keydown.escape.window="open = false">
           <div class="px-3 pb-1 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
             <i data-lucide="search" class="w-3 h-3"></i>
-            Buscar en mis mazos
+            {{ t.nav_search_label }}
           </div>
           <div class="relative px-1">
             <input type="search" x-model="query"
                    @input.debounce.300ms="search()"
                    @focus="if (results.length > 0) open = true"
-                   placeholder="Nombre de carta…"
+                   placeholder="{{ t.nav_search_placeholder }}"
                    class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-xs
                           focus:outline-none focus:border-accent transition">
             <i data-lucide="loader-2" x-show="loading"
@@ -229,7 +396,7 @@
             {# Sin resultados #}
             <template x-if="results.length === 0 && query.length >= 2 && !loading">
               <div class="p-4 text-center text-xs text-fg-faint">
-                Sin resultados para <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
+                {{ t.nav_search_no_results }} <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
               </div>
             </template>
 
@@ -242,7 +409,7 @@
                   <span class="text-fg" x-text="totalInstances"></span> instancias en
                   <span class="text-fg" x-text="totalDecks"></span> mazos
                 </span>
-                <button @click="clearSearch()" class="hover:text-fg transition">Limpiar</button>
+                <button @click="clearSearch()" class="hover:text-fg transition">{{ t.nav_search_clear }}</button>
               </div>
             </template>
 
@@ -301,6 +468,26 @@
           </div>
         </div>
       </nav>
+
+      
+      {# ============= SELECTOR DE IDIOMA ============= #}
+      <div class="px-3 pb-2 border-t border-border-subtle pt-3">
+        <form method="post" action="/set-lang" class="flex items-center gap-2">
+          <i data-lucide="globe" class="w-3.5 h-3.5 text-fg-faint shrink-0"></i>
+          {% for code, name in SUPPORTED_LANGS %}
+            <button type="submit" name="lang" value="{{ code }}"
+                    class="text-[11px] px-2 py-0.5 rounded transition font-medium
+                           {% if lang == code %}
+                             bg-accent/20 text-accent border border-accent/40
+                           {% else %}
+                             text-fg-faint hover:text-fg border border-transparent hover:border-border-subtle
+                           {% endif %}"
+                    title="{{ LANG_FLAGS[code] }} {{ name }}">
+              {{ LANG_FLAGS[code] }} {{ name }}
+            </button>
+          {% endfor %}
+        </form>
+      </div>
 
       <div class="p-3 border-t border-border-subtle">
         <div class="flex items-center gap-2 text-[10px] text-fg-faint">
@@ -409,6 +596,16 @@
       </div>
     </div>
   </div>
+
+  {# ============= I18N: inyectar traducciones en JS ============= #}
+  {# window._T  → dict completo de traducciones para Alpine.js / JS vanilla  #}
+  {# window._LANG → código de idioma activo ("es" | "en")                   #}
+  <script>
+    window._LANG = {{ lang | default('es') | tojson }};
+    window._T    = {{ _T | default({}) | tojson }};
+    /** Atajo global: _t('key') → traducción o '[key]' si no existe */
+    window._t = (key) => window._T[key] ?? `[${key}]`;
+  </script>
 
   <script src="/static/app.js?v={{ asset_v('app.js') }}"></script>
 

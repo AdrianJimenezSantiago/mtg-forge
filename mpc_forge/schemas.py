@@ -87,6 +87,11 @@ class BuildXMLRequest(BaseModel):
     foil: bool | None = None
     create_run: bool = True
     run_name: str | None = None
+    web_mode: bool = False
+    """Si True, el XML generado es compatible con mpcfill.com: el campo
+    ``<id>`` se deja vacío y MPCFill busca las imágenes por ``<query>``.
+    Si False (default), se incluyen rutas locales para el desktop client
+    de MPC Autofill."""
 
 
 class AddCustomArtFromUrlRequest(BaseModel):
