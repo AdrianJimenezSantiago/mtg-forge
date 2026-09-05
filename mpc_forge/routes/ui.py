@@ -187,6 +187,12 @@ async def history_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "history.html", _t_context(request))
 
 
+@router.get("/collection", response_class=HTMLResponse)
+async def collection_page(request: Request) -> HTMLResponse:
+    """Vista de colección — tracking de cartas por set."""
+    return templates.TemplateResponse(request, "collection.html", _t_context(request))
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "settings.html", _t_context(request))

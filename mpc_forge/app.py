@@ -16,6 +16,7 @@ from mpc_forge.clients.moxfield import MoxfieldClient
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import init_db, session_scope
 from mpc_forge.paths import diagnose as paths_diagnose, is_frozen, static_dir
+from mpc_forge.routes import collection as collection_routes
 from mpc_forge.routes import custom_art as custom_art_routes
 from mpc_forge.routes import debug as debug_routes
 from mpc_forge.routes import decks, export, integrations, settings as settings_routes, ui
@@ -225,6 +226,7 @@ def create_app() -> FastAPI:
     # como URLs `/local-source/{id}/{file_id}` (referenciadas directamente
     # desde el frontend como <img src>).
     app.include_router(integrations.local_source_router)
+    app.include_router(collection_routes.router)
     app.include_router(debug_routes.router)
     return app
 

@@ -427,6 +427,32 @@ class DFCPair(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class CollectionEntry(Base):
+    """Una carta que el usuario posee, indexada por set + collector_number.
+
+    Independiente de los mazos: tener una carta en un mazo no implica
+    poseerla físicamente, y poseerla no implica que esté en ningún mazo.
+    El objetivo es trackear colecciones por expansión oficial (checklist
+    al estilo "me faltan 12 cartas de Murders at Karlov Manor").
+
+    ``scryfall_id`` es la clave primaria: identifica unívocamente la
+    impresión exacta. Los índices en ``set_code`` y ``oracle_id`` aceleran
+    las queries "¿cuántas tengo de este set?" y "¿tengo alguna copia de
+    esta carta en cualquier set?".
+    """
+    __tablename__ = "collection_entries"
+
+    scryfall_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    oracle_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(256))
+    set_code: Mapped[str] = mapped_column(String(16), index=True)
+    set_name: Mapped[str] = mapped_column(String(128), default="")
+    collector_number: Mapped[str] = mapped_column(String(32), default="")
+    rarity: Mapped[str] = mapped_column(String(32), default="common")
+    image_small: Mapped[str | None] = mapped_column(Text, nullable=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class OracleArtistCache(Base):
     """Cache de (oracle_id, artist) para acelerar el recomendador.
 
