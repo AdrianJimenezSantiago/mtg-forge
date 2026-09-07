@@ -13,10 +13,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from mpc_forge import config as cfg
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import get_session, session_scope
 from mpc_forge.services import art_sources, dfc_pairs, gdrive_indexer, gdrive_search, mpc_autofill
+from mpc_forge.services.index_queue import get_queue as _get_index_queue
 
 log = logging.getLogger(__name__)
 
@@ -260,6 +263,157 @@ async def clear_index(source_id: int, db: DbDep) -> dict:
     return {"deleted": n}
 
 
+# ============================================================================
+# Indexado en batch con cola centralizada
+# ============================================================================
+# Reemplaza el patrón de N requests independientes que causaba "database is
+# locked" y excedía la cuota de Google Drive API. Un único worker procesa
+# los drives secuencialmente; el frontend hace polling de progreso.
+
+class IndexBatchRequest(BaseModel):
+    """Lista de source_ids a indexar en batch."""
+    source_ids: list[int] = Field(..., min_length=1)
+    mode: str = Field(
+        default="pending",
+        description=(
+            "'all': indexa todos los IDs recibidos. "
+            "'pending': solo los que no tienen indexed_at (skip ya indexados). "
+            "'pinned': solo los marcados como pinned."
+        ),
+    )
+
+
+class IndexBatchResponse(BaseModel):
+    batch_id: str
+    queued: int
+    skipped: int
+
+
+@router.post("/drives/index-batch", response_model=IndexBatchResponse)
+async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchResponse:
+    """Encola múltiples drives para indexado secuencial.
+
+    Ventajas sobre el endpoint individual (``POST /art-sources/{id}/index``):
+      - Una sola request HTTP en vez de N.
+      - Procesamiento secuencial (un drive a la vez) — cero contención
+        en SQLite ni en la cuota de Google Drive API.
+      - Progreso consultable vía ``GET /drives/index-progress``.
+      - Cancelación cooperativa vía ``POST /drives/index-cancel``.
+
+    Modos:
+      - ``all``: indexa todos los IDs recibidos (útil para reindexar).
+      - ``pending`` (default): salta los que ya tienen ``indexed_at``.
+      - ``pinned``: de los IDs recibidos, solo indexa los marcados como pinned.
+    """
+    from mpc_forge.models import ArtSource
+
+    queue = _get_index_queue()
+
+    # Si ya hay un batch corriendo, no permitir otro
+    if queue.is_running():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Ya hay un indexado en curso. Espera a que termine o cancélalo "
+            "con POST /drives/index-cancel.",
+        )
+
+    # Cargar los sources para filtrar según el modo y obtener nombres
+    sources_by_id: dict[int, ArtSource] = {}
+    for sid in payload.source_ids:
+        src = await db.get(ArtSource, sid)
+        if src:
+            sources_by_id[sid] = src
+
+    # Filtrar según modo
+    final_ids: list[int] = []
+    skipped = 0
+    for sid, src in sources_by_id.items():
+        if payload.mode == "pending" and src.indexed_at is not None:
+            skipped += 1
+            continue
+        if payload.mode == "pinned" and not src.pinned:
+            skipped += 1
+            continue
+        # No indexar sources tipo gdrive-file (archivos sueltos)
+        if src.source_type == "gdrive-file":
+            skipped += 1
+            continue
+        final_ids.append(sid)
+
+    if not final_ids:
+        return IndexBatchResponse(batch_id="", queued=0, skipped=skipped)
+
+    names = {sid: src.name for sid, src in sources_by_id.items()}
+    result = await queue.enqueue(final_ids, names=names)
+
+    return IndexBatchResponse(
+        batch_id=result["batch_id"],
+        queued=result["queued"],
+        skipped=skipped,
+    )
+
+
+@router.get("/drives/index-progress")
+async def index_progress() -> dict[str, Any]:
+    """Devuelve el estado completo del batch de indexado en curso.
+
+    Respuesta:
+    ```json
+    {
+      "batch_id": "a1b2c3d4e5f6",
+      "active": {                   // drive que se está indexando ahora
+        "source_id": 3,
+        "source_name": "MPCFill #03",
+        "status": "indexing",
+        "files_added": 1200,
+        "files_updated": 50,
+        "files_total": 1250,
+        "folders_visited": 15,
+        "elapsed_seconds": 12.3
+      },
+      "queued": [...],              // drives esperando turno
+      "completed": [...],           // drives terminados (done/error/skipped)
+      "total": 67,
+      "done_count": 5,
+      "all_done": false,
+      "cancelled": false,
+      "eta_seconds": 340.5,         // estimado basado en media de completados
+      "batch_elapsed_seconds": 65.2,
+      "percent": 7.5
+    }
+    ```
+
+    Cuando ``all_done=true`` o ``cancelled=true``, el frontend puede dejar de
+    hacer polling y mostrar el resumen final.
+    """
+    return _get_index_queue().progress()
+
+
+@router.post("/drives/index-cancel")
+async def index_cancel() -> dict[str, Any]:
+    """Cancela el batch de indexado en curso.
+
+    La cancelación es cooperativa: el drive que se está indexando ahora
+    termina su commit parcial actual, pero no se empieza ningún drive
+    nuevo. Los drives pendientes se marcan como ``cancelled``.
+    """
+    queue = _get_index_queue()
+    if not queue.is_running():
+        return {"cancelled": 0, "message": "No hay indexado en curso."}
+    return queue.cancel()
+
+
+@router.post("/drives/index-clear")
+async def index_clear() -> dict[str, str]:
+    """Limpia el historial de jobs completados del batch anterior.
+
+    El frontend lo llama tras mostrar el resumen final, para que el
+    próximo ``GET /drives/index-progress`` devuelva un estado limpio.
+    """
+    _get_index_queue().clear_completed()
+    return {"status": "ok"}
+
+
 class SearchHit(BaseModel):
     file_id: str
     filename: str
@@ -322,6 +476,43 @@ async def drives_search(
         tags_exclude=_parse_csv_list(tags_exclude),
         expansion_code=(expansion_code or None),
     )
+    return [
+        SearchHit(
+            file_id=r.file_id, filename=r.filename,
+            source_id=r.source_id, source_name=r.source_name,
+            folder_path=r.folder_path,
+            thumb_url=r.thumb_url, download_url=r.download_url,
+            score=r.score,
+            tags=r.tags,
+            is_full_art=r.is_full_art,
+            is_borderless=r.is_borderless,
+            is_extended=r.is_extended,
+            is_showcase=r.is_showcase,
+            is_retro=r.is_retro,
+            is_textless=r.is_textless,
+            is_promo=r.is_promo,
+            is_alt_art=r.is_alt_art,
+            expansion_code=r.expansion_code,
+            collector_number=r.collector_number,
+            image_hash=getattr(r, "image_hash", None),
+        )
+        for r in results
+    ]
+
+
+@router.get("/drives/cardbacks", response_model=list[SearchHit])
+async def drives_cardbacks(
+    db: DbDep,
+    limit: int = 100,
+    source_id: int | None = None,
+) -> list[SearchHit]:
+    """Devuelve todos los cardbacks indexados (tag ``back``) sin requerir query.
+
+    Útil para poblar el picker de cardbacks al abrirlo, sin que el usuario
+    necesite escribir nada en el buscador.
+    """
+    source_ids = [source_id] if source_id else None
+    results = await gdrive_search.list_cardbacks(db, limit=limit, source_ids=source_ids)
     return [
         SearchHit(
             file_id=r.file_id, filename=r.filename,

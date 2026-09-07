@@ -403,6 +403,14 @@ def _render_page(
     is_back_duplex = kind == "back" and opts.backs_layout == "duplex"
 
     # --- Imágenes ---
+    # Cuando hay bleed, la imagen se coloca en el área de trim (63×88mm),
+    # NO estirada al slot completo. Las imágenes de Scryfall y la mayoría
+    # de fuentes NO tienen bleed incorporado; estirarlas al slot haría que
+    # las marcas de corte quedaran dentro de la imagen.
+    img_x_off = g.bleed_mm      # 0 si no hay bleed
+    img_y_off = g.bleed_mm
+    img_w = g.slot_w_mm - 2 * g.bleed_mm   # CARD_WIDTH_MM  cuando hay bleed
+    img_h = g.slot_h_mm - 2 * g.bleed_mm   # CARD_HEIGHT_MM cuando hay bleed
     for i, slot in enumerate(chunk):
         if slot is None:
             continue
@@ -414,15 +422,15 @@ def _render_page(
         try:
             c.drawImage(
                 slot["path"],
-                x_mm * mm, y_mm * mm,
-                width=g.slot_w_mm * mm,
-                height=g.slot_h_mm * mm,
+                (x_mm + img_x_off) * mm, (y_mm + img_y_off) * mm,
+                width=img_w * mm,
+                height=img_h * mm,
                 preserveAspectRatio=False,
                 mask="auto",
             )
         except Exception as e:  # noqa: BLE001
             log.error("No se pudo pintar %s: %s", slot["path"], e)
-            _placeholder(c, x_mm, y_mm, g.slot_w_mm, g.slot_h_mm, slot["name"])
+            _placeholder(c, x_mm + img_x_off, y_mm + img_y_off, img_w, img_h, slot["name"])
 
     # --- Guías por carta (marcas de esquina o rectángulo) ---
     _draw_card_guides(c, g, opts, kind)

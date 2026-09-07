@@ -306,8 +306,8 @@ async def _search_fts5(
             source_id=row["source_id"],
             source_name=row["source_name"],
             folder_path=row.get("folder_path") or "",
-            thumb_url=_thumb_url(row["file_id"]),
-            download_url=_download_url(row["file_id"]),
+            thumb_url=row.get("thumb_url") or _thumb_url(row["file_id"]),
+            download_url=row.get("download_url") or _download_url(row["file_id"]),
             score=s,
             tags=tag_list,
             is_full_art=bool(row.get("is_full_art")),
@@ -446,8 +446,8 @@ async def search(
             source_id=art.source_id,
             source_name=source_name,
             folder_path=art.folder_path,
-            thumb_url=_thumb_url(art.file_id),
-            download_url=_download_url(art.file_id),
+            thumb_url=art.thumb_url or _thumb_url(art.file_id),
+            download_url=art.download_url or _download_url(art.file_id),
             score=s,
             tags=tag_list,
             is_full_art=bool(art.is_full_art),
@@ -465,6 +465,71 @@ async def search(
 
     scored.sort(key=lambda x: (-x[0], x[1].filename))
     return [r for _, r in scored[:limit]]
+
+
+async def list_cardbacks(
+    db: AsyncSession,
+    limit: int = 100,
+    source_ids: list[int] | None = None,
+) -> list[SearchResult]:
+    """Devuelve todos los artes indexados con ``card_type = 'CARDBACK'``.
+
+    No requiere query de búsqueda: simplemente filtra por ``card_type`` que
+    el indexador asigna basándose en la carpeta contenedora (``Cardbacks/``),
+    replicando la lógica de MPC Autofill. Esto excluye caras traseras de DFC
+    marcadas con ``(B)`` en el nombre (que solo tienen el tag ``back`` pero
+    ``card_type = 'CARD'``).
+
+    Ordena por source_name y luego filename para dar un listado estable.
+    """
+    from sqlalchemy import text as sa_text
+
+    where_parts = ["ia.card_type = 'CARDBACK'"]
+    params: dict = {"limit": limit}
+
+    if source_ids:
+        ids = ",".join(str(int(x)) for x in source_ids)
+        where_parts.append(f"ia.source_id IN ({ids})")
+
+    where_sql = " AND ".join(where_parts)
+
+    sql = f"""
+        SELECT ia.*, s.name AS source_name
+        FROM indexed_art AS ia
+        JOIN art_sources AS s ON s.id = ia.source_id
+        WHERE {where_sql}
+        ORDER BY s.name, ia.filename
+        LIMIT :limit
+    """
+    result = await db.execute(sa_text(sql), params)
+    rows = result.mappings().all()
+
+    out: list[SearchResult] = []
+    for row in rows:
+        tag_list = [t for t in (row.get("tags") or "").split(",") if t]
+        out.append(SearchResult(
+            file_id=row["file_id"],
+            filename=row["filename"],
+            source_id=row["source_id"],
+            source_name=row.get("source_name", ""),
+            folder_path=row.get("folder_path") or "",
+            thumb_url=row.get("thumb_url") or _thumb_url(row["file_id"]),
+            download_url=row.get("download_url") or _download_url(row["file_id"]),
+            score=100,
+            tags=tag_list,
+            is_full_art=bool(row.get("is_full_art")),
+            is_borderless=bool(row.get("is_borderless")),
+            is_extended=bool(row.get("is_extended")),
+            is_showcase=bool(row.get("is_showcase")),
+            is_retro=bool(row.get("is_retro")),
+            is_textless=bool(row.get("is_textless")),
+            is_promo=bool(row.get("is_promo")),
+            is_alt_art=bool(row.get("is_alt_art")),
+            expansion_code=row.get("expansion_code"),
+            collector_number=row.get("collector_number"),
+            image_hash=row.get("image_hash"),
+        ))
+    return out
 
 
 async def stats(db: AsyncSession) -> dict:

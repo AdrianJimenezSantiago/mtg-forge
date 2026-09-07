@@ -1,10 +1,18 @@
 """Cliente async para Scryfall.
 
 Respeta el rate limit recomendado (~100 ms entre llamadas) y devuelve datos crudos.
+
+Además, reintenta automáticamente en caso de 429 (Too Many Requests) o 5xx
+transitorios, honrando la cabecera ``Retry-After`` cuando está presente.
+Sin esto, un burst de peticiones (ej. abrir un mazo grande que dispara
+``/prints`` en cascada) puede recibir 429 esporádicos y romper la UX
+propagando 500s al frontend.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 from typing import Any
 
 import httpx
@@ -16,6 +24,10 @@ from mpc_forge.ssl_config import ssl_insecure
 log = logging.getLogger(__name__)
 
 _RATE_LIMIT_INTERVAL = 0.10  # 100 ms entre inicios de llamada — política recomendada por Scryfall.
+_RETRY_MAX_ATTEMPTS = 4       # 1 intento inicial + 3 reintentos
+_RETRY_BASE_DELAY = 0.5       # segundos; se dobla en cada reintento (exponencial)
+_RETRY_MAX_DELAY = 8.0        # tope duro para no colgar la request eternamente
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 class ScryfallClient:
@@ -34,9 +46,83 @@ class ScryfallClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> httpx.Response:
+        """Ejecuta una request pasando por el rate limiter y con reintentos.
+
+        Reintenta en 429 y 5xx transitorios (500/502/503/504). Para 429 usa
+        primero el ``Retry-After`` de la respuesta si está; si no, backoff
+        exponencial con jitter. Para 5xx, backoff sin honrar cabeceras.
+
+        Cualquier error de red (``httpx.RequestError``) también se reintenta.
+
+        Al agotar reintentos, propaga el último status vía ``raise_for_status``
+        o la última excepción de red.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(_RETRY_MAX_ATTEMPTS):
+            # Rate limiter global antes de cada intento (también antes de reintentos)
+            await self._limiter.acquire()
+            try:
+                resp = await self._client.request(method, url, params=params, json=json)
+            except httpx.RequestError as e:
+                last_exc = e
+                delay = self._backoff_delay(attempt)
+                log.warning(
+                    "Scryfall %s %s falló por red (intento %d/%d), reintento en %.1fs: %s",
+                    method, url, attempt + 1, _RETRY_MAX_ATTEMPTS, delay, e,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            # ¿Status reintentable?
+            if resp.status_code in _RETRYABLE_STATUS and attempt < _RETRY_MAX_ATTEMPTS - 1:
+                delay = self._retry_delay_from_response(resp, attempt)
+                log.warning(
+                    "Scryfall %s %s → %d (intento %d/%d), reintento en %.1fs",
+                    method, url, resp.status_code, attempt + 1, _RETRY_MAX_ATTEMPTS, delay,
+                )
+                await resp.aread()  # drenar el body para liberar la conexión
+                await asyncio.sleep(delay)
+                continue
+
+            return resp
+
+        # Se agotaron los reintentos por errores de red
+        if last_exc is not None:
+            raise last_exc
+        # No debería llegar aquí — el loop siempre devuelve o lanza
+        raise RuntimeError("Scryfall: reintentos agotados sin respuesta")
+
+    @staticmethod
+    def _backoff_delay(attempt: int) -> float:
+        """Delay exponencial con jitter para reintentos por red."""
+        base = min(_RETRY_BASE_DELAY * (2 ** attempt), _RETRY_MAX_DELAY)
+        return base + random.uniform(0, 0.25)
+
+    @staticmethod
+    def _retry_delay_from_response(resp: httpx.Response, attempt: int) -> float:
+        """Delay para reintentar tras 429/5xx.
+
+        Prioriza la cabecera ``Retry-After`` si Scryfall la envía. Si no,
+        usa backoff exponencial. En ambos casos aplica el tope ``_RETRY_MAX_DELAY``.
+        """
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return min(float(retry_after), _RETRY_MAX_DELAY)
+            except (TypeError, ValueError):
+                pass
+        return ScryfallClient._backoff_delay(attempt)
+
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        await self._limiter.acquire()
-        resp = await self._client.get(path, params=params)
+        resp = await self._request_with_retry("GET", path, params=params)
         if resp.status_code == 404:
             return {}
         resp.raise_for_status()
@@ -83,8 +169,7 @@ class ScryfallClient:
             next_url = page.get("next_page")
             if not next_url:
                 break
-            await self._limiter.acquire()
-            resp = await self._client.get(next_url)
+            resp = await self._request_with_retry("GET", next_url)
             resp.raise_for_status()
             page = resp.json()
         return results
@@ -94,9 +179,8 @@ class ScryfallClient:
         results: list[dict[str, Any]] = []
         for i in range(0, len(identifiers), 75):
             chunk = identifiers[i : i + 75]
-            await self._limiter.acquire()
-            resp = await self._client.post(
-                "/cards/collection", json={"identifiers": chunk}
+            resp = await self._request_with_retry(
+                "POST", "/cards/collection", json={"identifiers": chunk},
             )
             resp.raise_for_status()
             payload = resp.json()

@@ -803,12 +803,17 @@
           </p>
         </div>
 
-        {# --- Búsqueda en Google Drives --- #}
+        {# --- Cardbacks de Google Drives (precargados) + búsqueda --- #}
         <div>
           <div class="flex items-center justify-between mb-2">
             <div class="text-[10px] uppercase tracking-wider text-fg-faint">
-              Buscar en Google Drives indexados
+              Google Drives indexados
             </div>
+            <button @click="cbDefaultHits = []; _loadDefaultCardbacks()"
+                    x-show="!cbDriveQuery.trim()"
+                    class="text-[10px] text-accent hover:text-accent-glow">
+              Recargar
+            </button>
             <button @click="searchDrives(cbDriveQuery)" x-show="cbDriveQuery.trim()"
                     class="text-[10px] text-accent hover:text-accent-glow">
               Actualizar
@@ -816,14 +821,17 @@
           </div>
           <input type="text" x-model="cbDriveQuery"
                  @input.debounce.400ms="searchDrives(cbDriveQuery)"
-                 placeholder="ej: mtg cardback, retro back, japanese…"
+                 placeholder="Buscar por nombre… (vacío = todos los cardbacks)"
                  class="w-full bg-bg-subtle border border-border-subtle rounded
                         px-3 py-2 text-sm focus:outline-none focus:border-accent">
 
-          <div x-show="cbDriveSearching" class="text-center py-4 text-fg-faint text-xs">
-            Buscando…
+          {# --- Spinner de carga (búsqueda o default) --- #}
+          <div x-show="cbDriveSearching || cbDefaultLoading" class="text-center py-4 text-fg-faint text-xs">
+            Cargando cardbacks…
           </div>
-          <div x-show="!cbDriveSearching && cbDriveHits.length > 0"
+
+          {# --- Resultados de búsqueda (cuando hay query) --- #}
+          <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length > 0"
                class="grid grid-cols-4 gap-2 mt-3">
             <template x-for="hit in cbDriveHits" :key="hit.file_id">
               <button @click="pickDriveHit(hit)"
@@ -846,11 +854,51 @@
               </button>
             </template>
           </div>
+
+          {# --- Cardbacks por defecto (cuando NO hay query) --- #}
+          <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length > 0"
+               class="mt-3">
+            <div class="text-[10px] text-fg-muted mb-2">
+              <span x-text="cbDefaultHits.length"></span> cardbacks encontrados en los drives indexados
+            </div>
+            <div class="grid grid-cols-4 gap-2">
+              <template x-for="hit in cbDefaultHits" :key="hit.file_id">
+                <button @click="pickDriveHit(hit)"
+                        :disabled="cbPickingId === hit.file_id"
+                        class="group flex flex-col rounded overflow-hidden border border-border-subtle
+                               hover:border-accent transition disabled:opacity-50">
+                  <div class="aspect-[63/88] bg-bg-subtle overflow-hidden relative">
+                    <img :src="hit.thumb_url" :alt="hit.filename"
+                         class="w-full h-full object-cover group-hover:scale-105 transition"
+                         loading="lazy" referrerpolicy="no-referrer">
+                    <div x-show="cbPickingId === hit.file_id"
+                         class="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <i data-lucide="loader-2" class="w-6 h-6 text-white animate-spin"></i>
+                    </div>
+                  </div>
+                  <div class="p-1.5 text-left">
+                    <div class="text-[10px] font-medium truncate" x-text="hit.filename"></div>
+                    <div class="text-[9px] text-fg-faint truncate" x-text="hit.source_name"></div>
+                  </div>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          {# --- Sin resultados de búsqueda --- #}
           <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length === 0"
                class="text-center py-4 text-fg-faint text-xs">
             No results. Try another keyword, or check in
             <a href="/settings" class="text-accent hover:underline">{{ t.pdf_settings_link }}</a>
             that drives are indexed.
+          </div>
+
+          {# --- Sin cardbacks por defecto --- #}
+          <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length === 0"
+               class="text-center py-4 text-fg-faint text-xs">
+            No se encontraron cardbacks en los drives indexados. Verifica en
+            <a href="/settings" class="text-accent hover:underline">{{ t.pdf_settings_link }}</a>
+            que haya drives indexados con carpetas <code>Cardbacks/</code>.
           </div>
         </div>
 
@@ -1405,6 +1453,8 @@ function pdfStudio(deckId) { return {
   cbDriveQuery: '',
   cbDriveHits: [],
   cbDriveSearching: false,
+  cbDefaultHits: [],          // cardbacks precargados (tag "back") de drives indexados
+  cbDefaultLoading: false,    // true mientras se cargan los cardbacks por defecto
   cbLocalArts: [],
   cbPickingId: null,          // id que está siendo aplicado (spinner)
 
@@ -1731,10 +1781,21 @@ function pdfStudio(deckId) { return {
               `data-face="${esc(slot.face)}" style="cursor:pointer"`
             : '';
       if (slot.thumbnail) {
+        // Cuando hay bleed, la imagen se coloca en el área de trim (63×88),
+        // NO estirada al slot completo. Las imágenes de Scryfall y la mayoría
+        // de fuentes NO tienen bleed incorporado — estirarlas al slot haría
+        // que las marcas de corte quedaran dentro de la imagen en vez de en
+        // el borde visible de la carta.
+        // Si el arte sí tiene bleed real (MPC drives), la diferencia visual
+        // es mínima (solo se pierde la franja de bleed en el preview).
+        const imgX = slot.x_mm + g.bleed_mm;
+        const imgY = slot.y_mm + g.bleed_mm;
+        const imgW = g.slot_w_mm - 2 * g.bleed_mm;  // = 63.0 cuando hay bleed
+        const imgH = g.slot_h_mm - 2 * g.bleed_mm;  // = 88.0 cuando hay bleed
         parts.push(
           `<image href="${esc(slot.thumbnail)}" ` +
-          `x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
-          `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
+          `x="${n(imgX)}" y="${n(imgY)}" ` +
+          `width="${n(imgW)}" height="${n(imgH)}" ` +
           `preserveAspectRatio="none"${clickAttrs}/>`
         );
       } else {
@@ -2106,6 +2167,8 @@ function pdfStudio(deckId) { return {
     // Refresca estado por si algo cambió detrás
     await this._refreshCardbackSettings();
     await this._loadLocalArts();
+    // Cargar por defecto todos los cardbacks de los drives indexados
+    await this._loadDefaultCardbacks();
     // Re-render iconos del modal
     this.$nextTick(() => window.lucide && window.lucide.createIcons());
   },
@@ -2128,6 +2191,21 @@ function pdfStudio(deckId) { return {
     } catch (e) {
       this.cbLocalArts = [];
       console.error('loadLocalArts:', e);
+    }
+  },
+
+  async _loadDefaultCardbacks() {
+    if (this.cbDefaultHits.length > 0) return;  // ya cargados
+    this.cbDefaultLoading = true;
+    try {
+      const r = await fetch('/api/drives/cardbacks?limit=200');
+      if (r.ok) this.cbDefaultHits = await r.json();
+      else this.cbDefaultHits = [];
+    } catch (e) {
+      this.cbDefaultHits = [];
+      console.error('loadDefaultCardbacks:', e);
+    } finally {
+      this.cbDefaultLoading = false;
     }
   },
 

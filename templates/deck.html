@@ -993,6 +993,33 @@
               </div>
             </div>
 
+            {# Diagnóstico de la búsqueda en drives — banner pequeño         #}
+            {# Ayuda a distinguir 3 escenarios que antes eran indistinguibles: #}
+            {#   1. No hay drives indexados → indicar cómo indexar             #}
+            {#   2. Se buscó pero no hay resultados para ESTA carta            #}
+            {#   3. La búsqueda falló (error de red / backend)                  #}
+            <template x-if="!pickerLoading && driveIndexStats.total_files === 0">
+              <div class="text-[11px] text-fg-faint bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+                <i data-lucide="info" class="w-3.5 h-3.5 shrink-0"></i>
+                <span>Ningún drive indexado todavía. Ve a Ajustes → Gestionar drives → "Indexar todos" para que aparezcan artes de la comunidad aquí.</span>
+              </div>
+            </template>
+            <template x-if="!pickerLoading && driveIndexStats.total_files > 0 && driveSearchState.error">
+              <div class="text-[11px] text-warning bg-warning-bg/40 border border-warning-border rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5 shrink-0"></i>
+                <span>Búsqueda en drives falló: <span x-text="driveSearchState.error"></span></span>
+              </div>
+            </template>
+            <template x-if="!pickerLoading && driveIndexStats.total_files > 0 && driveSearchState.hits === 0 && !driveSearchState.error">
+              <div class="text-[11px] text-fg-faint bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+                <i data-lucide="search-x" class="w-3.5 h-3.5 shrink-0"></i>
+                <span>
+                  0 coincidencias en <span x-text="driveIndexStats.total_files.toLocaleString()"></span> archivos de <span x-text="driveIndexStats.sources_indexed"></span> drives.
+                  Esta carta no está en los drives indexados.
+                </span>
+              </div>
+            </template>
+
             {# Empty state #}
             <template x-if="!pickerLoading && pickerFilteredArts.length === 0">
               <div class="text-center py-16">
@@ -1875,22 +1902,23 @@ function deckEditor(deckId) {
     autoIndex: -1,
     autoAbort: null,
 
-    // Ordenación
-    sortMode: 'name',  // name | cmc | type | color
+    // Ordenación — persistido en localStorage
+    sortMode: localStorage.getItem('deckPref_sortMode') || 'name',  // name | cmc | type | color
 
     // Modo de agrupación de la lista de cartas:
-    //   'role' → grupos por Commander/Mainboard/Sideboard/Tokens/Maybeboard (por defecto).
+    //   'role' → grupos por Commander/Mainboard/Sideboard/Tokens/Maybeboard.
     //   'type' → mainboard subdividido por tipo (Creatures/Sorceries/Instants/…),
     //            estilo Moxfield. Commander y roles no-mainboard se mantienen como
     //            grupos aparte al final.
-    groupMode: 'role',
+    // Default: 'type' (más útil para ver la composición del mazo de un vistazo).
+    groupMode: localStorage.getItem('deckPref_groupMode') || 'type',
 
     // Layout de las columnas:
-    //   'list'    → una sola columna larga (comportamiento tradicional).
+    //   'list'    → una sola columna larga.
     //   'columns' → multi-columna CSS masonry (secciones distribuidas por
-    //               columnas al estilo Moxfield). Por defecto para aprovechar
-    //               el ancho de pantalla.
-    layoutMode: 'columns',
+    //               columnas al estilo Moxfield).
+    // Default: 'list' (más legible, especialmente con agrupación por tipo).
+    layoutMode: localStorage.getItem('deckPref_layoutMode') || 'list',
 
     // Add URL custom
     showAddUrlForm: false,
@@ -1949,6 +1977,12 @@ function deckEditor(deckId) {
     // Al elegir un arte (chooseArt/chooseCustom) se invalida esa entrada.
     // Se resetea al cambiar de mazo (la instancia Alpine es por-vista de mazo).
     _pickerCache: {},
+    // Estado del buscador de drives dentro del picker. Se pobla en
+    // _loadDrivesForPicker() y lo consume el pequeño indicador visible en
+    // el header del picker para explicar al usuario si hubo error, si no
+    // hay drives indexados, o cuántos resultados salieron. Sin esto, un
+    // fetch fallido o un índice vacío parecen "no hay arte" sin más pista.
+    driveSearchState: {loading: false, error: null, hits: null},
 
     // -- Precarga de prints en background --
     preload: {
@@ -2227,6 +2261,12 @@ function deckEditor(deckId) {
       this.deck = d;
       this.cards = d.cards;
       this.loadEstimate();
+
+      // Persistir preferencias de vista del mazo al cambiar
+      this.$watch('sortMode',   v => localStorage.setItem('deckPref_sortMode', v));
+      this.$watch('groupMode',  v => localStorage.setItem('deckPref_groupMode', v));
+      this.$watch('layoutMode', v => localStorage.setItem('deckPref_layoutMode', v));
+
       // Cargar defaults de settings si aún no lo hemos hecho
       if (!this._settingsLoaded) {
         try {
@@ -2306,6 +2346,17 @@ function deckEditor(deckId) {
       this.artPickerOpen = true;
       this.pickerVisibleCount = 60;
       this.driveHits = [];
+      // Estado de diagnóstico del buscador de drives (mostrado en la UI del picker)
+      this.driveSearchState = {loading: false, error: null, hits: null};
+
+      // Refrescar stats de drives ANTES de decidir si buscar en drives.
+      // Sin esto, si el user indexó drives desde Settings mientras el deck
+      // view seguía cargado, driveIndexStats se queda a 0 y nunca se buscan
+      // artes de drives — bug reportado tras añadir el batch indexing.
+      try {
+        const ds = await fetch('/api/drives/stats');
+        if (ds.ok) this.driveIndexStats = await ds.json();
+      } catch (e) { /* no crítico */ }
 
       // Cache hit: reabrir instantáneo, sin fetch (Plan C)
       const cached = this._pickerCache[card.id];
@@ -2344,6 +2395,7 @@ function deckEditor(deckId) {
     },
 
     async _loadDrivesForPicker(cardName) {
+      this.driveSearchState = {loading: true, error: null, hits: null};
       try {
         // Construir query string con los filtros de tag activos.
         const params = new URLSearchParams({
@@ -2359,9 +2411,13 @@ function deckEditor(deckId) {
         if (expCode) params.set('expansion_code', expCode);
 
         const r = await fetch(`/api/drives/search?${params.toString()}`);
-        if (!r.ok) return;
+        if (!r.ok) {
+          this.driveSearchState = {loading: false, error: `HTTP ${r.status}`, hits: 0};
+          return;
+        }
         const hits = await r.json();
         this.driveHits = hits;
+        this.driveSearchState = {loading: false, error: null, hits: hits.length};
         // Añadir cada hit al pickerAllArts como si fuera un "arte" más.
         // Pasamos los flags is_* y tags para que _preprocessArt los pueda
         // enseñar como badges en el thumbnail (junto a los ya existentes de
@@ -2404,7 +2460,9 @@ function deckEditor(deckId) {
         if (this.pickerCard) {
           this._pickerCache[this.pickerCard.id] = this.pickerAllArts;
         }
-      } catch (e) { /* silent */ }
+      } catch (e) {
+        this.driveSearchState = {loading: false, error: e.message || 'Error', hits: 0};
+      }
     },
 
     // Handler cuando el usuario cambia checkboxes de tags de drive.
