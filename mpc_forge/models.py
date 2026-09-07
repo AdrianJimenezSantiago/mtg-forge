@@ -397,6 +397,14 @@ class IndexedArt(Base):
     download_url: Mapped[str | None] = mapped_column(String(1024), default=None)
     thumb_url: Mapped[str | None] = mapped_column(String(1024), default=None)
 
+    # --- Tipo de carta: CARD, CARDBACK o TOKEN (Fase 3) ---
+    # Determinado exclusivamente por la carpeta contenedora, replicando la
+    # lógica de MPC Autofill: si el folder_path contiene un segmento
+    # "Cardbacks" → CARDBACK, "Tokens" → TOKEN, resto → CARD.
+    # Esto es independiente del tag "back" (que también se asigna a archivos
+    # con "(B)" en el nombre, que son caras traseras de DFC, no cardbacks).
+    card_type: Mapped[str] = mapped_column(String(16), default="CARD", index=True)
+
 
 class DFCPair(Base):
     """Par de nombres front → back de una carta doble-cara.

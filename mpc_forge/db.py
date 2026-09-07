@@ -128,6 +128,8 @@ async def init_db() -> None:
             # con el patrón del source_type (gdrive lo hace desde file_id).
             ("indexed_art", "download_url",     "VARCHAR(1024) DEFAULT NULL"),
             ("indexed_art", "thumb_url",        "VARCHAR(1024) DEFAULT NULL"),
+            # Fase 3: card_type (CARD, CARDBACK, TOKEN) determinado por carpeta.
+            ("indexed_art", "card_type",        "VARCHAR(16) DEFAULT 'CARD'"),
         ]
         for table, column, ddl in _add_column_if_missing:
             info = await conn.execute(text(f"PRAGMA table_info({table})"))
@@ -217,6 +219,9 @@ async def init_db() -> None:
             # NOT NULL antes del scan hamming en memoria.
             "CREATE INDEX IF NOT EXISTS ix_indexed_art_phash "
             "ON indexed_art(image_hash) WHERE image_hash IS NOT NULL",
+            # Fase 3: card_type para filtrar cardbacks/tokens rápidamente
+            "CREATE INDEX IF NOT EXISTS ix_indexed_art_card_type "
+            "ON indexed_art(card_type)",
         ]
         for stmt in extra_indexes:
             await conn.execute(text(stmt))

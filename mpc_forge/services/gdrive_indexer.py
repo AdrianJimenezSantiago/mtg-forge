@@ -55,7 +55,10 @@ log = logging.getLogger(__name__)
 #      rellena expansion_code / collector_number / canonical_source.
 #   5: extract_tags también matchea segmentos de folder sin brackets
 #      (Extras · F1/T4) y respeta overrides del vocabulario del usuario.
-NORMALIZATION_VERSION = 5
+#   6: añadido card_type (CARD, CARDBACK, TOKEN) basado en carpeta.
+#      Replica la lógica de MPC Autofill para distinguir cardbacks reales
+#      (en carpeta Cardbacks/) de caras traseras de DFC con (B) en el nombre.
+NORMALIZATION_VERSION = 6
 
 
 # Semáforo global: máximo 3 indexados concurrentes.
@@ -187,43 +190,407 @@ def normalize_filename(name: str) -> str:
 # Vocabulario canónico DEFAULT: canonical_tag → set de aliases lowercase.
 # Los aliases se comparan contra el contenido bruto de los brackets, permitiendo
 # múltiples formas de nombrar el mismo concepto ("FA" = "full art").
+#
+# Este diccionario replica el "official tag vocabulary" documentado por MPCFill
+# — la herramienta de la que provienen la mayoría de drives indexables. La
+# fuente son las guidelines que MPCFill publica sobre nombrado de archivos.
+# Referencia: https://mpcfill.com/ (sección de tags).
+#
+# ORGANIZACIÓN — canonical_tag → aliases:
+#   1. FRAME BÁSICOS: los 8 que además tienen columna en IndexedArt
+#      (full_art, borderless, extended, showcase, retro, textless, promo,
+#      alt_art). Estos son los únicos con is_* columns, por eso reciben
+#      filtrado SQL directo. Todos los demás viven en el CSV `tags`.
+#   2. FRAME MPCFILL: variantes de showcase por set (kaladesh_inventions,
+#      dominaria_stained_glass, phyrexia_oil, …), frames especiales
+#      (m15, modern_frame, futureshifted, planeshifted, …).
+#   3. ART: variantes de arte (altered, pixel_art, sketch_art, ai_art,
+#      artist_art, upscaled_scan).
+#   4. MISC: nickname, realistic, secret_lair, non_black_border variants.
+#   5. NSFW.
+#   6. UNIVERSE: temáticas cross-property (fallout, final_fantasy,
+#      warhammer_40k, lord_of_the_rings, dr_who, …).
+#   7. IDIOMA + META: japanese, foil, back.
 _DEFAULT_TAG_VOCABULARY: dict[str, frozenset[str]] = {
+
+    # ─── (1) Frames básicos con columna is_* propia ─────────────────────────
     "full_art": frozenset({
         "full art", "fullart", "full-art", "fa",
+        "full-art frame", "full art frame", "fullart frame",
     }),
     "borderless": frozenset({
         "borderless", "no border", "no-border", "bl",
+        "borderless art", "borderless frame",
     }),
     "extended": frozenset({
         "extended", "extended art", "extended-art", "ea",
+        "extended frame", "extended art frame",
     }),
     "showcase": frozenset({
         "showcase", "sc",
+        "showcase frame", "extension showcase frame", "extension frame",
     }),
     "retro": frozenset({
-        "retro", "retro frame", "old border", "old frame", "1993 frame", "old-frame",
+        "retro", "retro frame", "old border", "old frame",
+        "1993 frame", "old-frame",
+        "ancient frame", "ancient",
+        "original frame", "og frame",
+        "alpha", "beta", "unlimited", "abu", "classic",
     }),
     "textless": frozenset({
-        "textless", "no text", "no-text",
+        "textless", "no text", "no-text", "textless card",
     }),
     "promo": frozenset({
         "promo", "pre-release", "prerelease", "pre release", "release",
     }),
     "alt_art": frozenset({
         "alt art", "alt-art", "alternate art", "alternate", "alt",
-        "alternative art",
+        "alternative art", "custom art",
     }),
+
+    # ─── (2a) Frames MPCFill "top-level" (no showcase) ──────────────────────
+    "post_2023_borderless": frozenset({
+        "post-2023 borderless", "borderless 2023", "borderless alt",
+    }),
+    "custom_frame": frozenset({
+        "custom-made frame", "custom frame",
+    }),
+    "ai_frame": frozenset({
+        "ai frame",
+    }),
+    "kaladesh_dark": frozenset({
+        "kaladesh dark", "kaladesh dark frame",
+    }),
+    "minimalist": frozenset({
+        "minimalist", "minimalist frame", "min",
+    }),
+    "simple_inventions": frozenset({
+        "simple inventions", "simple inventions frame",
+    }),
+    "stonecutter": frozenset({
+        "stonecutter", "stonecutter frame",
+    }),
+    "fnm_promo": frozenset({
+        "fnm promo", "fnm promo frame", "fnm frame",
+        "universal promo frame", "universal promo",
+        "wpn promo frame", "wpn promo",
+    }),
+    "foil_etched": frozenset({
+        "foil-etched", "foil-etched frame", "etched frame", "etched",
+    }),
+    "full_text": frozenset({
+        "full text", "full text frame",
+    }),
+    "futureshifted": frozenset({
+        "futureshifted", "futureshifted frame",
+        "fut frame", "future sight frame", "future shifted frame", "future shifted",
+    }),
+    "m15": frozenset({
+        "m15", "m15 frame", "regular frame",
+    }),
+    "modern_frame": frozenset({
+        "modern", "modern frame",
+        "eighth edition frame", "8th edition frame",
+        "eighth edition", "8th edition", "8ed",
+    }),
+    "planeshifted": frozenset({
+        "planeshifted", "planeshifted frame",
+        "colorshifted frame", "planar chaos frame", "plc frame",
+    }),
+    "universes_beyond": frozenset({
+        "universes beyond", "ub frame", "universes beyond frame", "ub",
+    }),
+
+    # ─── (2b) Showcase MPCFill — variantes por set/tema ──────────────────────
+    # Todas se meten en el CSV `tags`. Búsqueda FTS5 las encuentra por texto.
+    "amonkhet_invocations": frozenset({
+        "amonkhet invocations", "akh invocations",
+    }),
+    "assassins_creed_memory_corridor": frozenset({
+        "assassins creed memory corridor",
+        "memory corridor frame", "memory corridor", "acn frame",
+    }),
+    "avatar_elemental": frozenset({
+        "avatar elemental", "avatar elemental frame", "elemental frame",
+    }),
+    "bloomburrow_borderless": frozenset({
+        "bloomburrow borderless", "bloomburrow borderless frame",
+    }),
+    "bloomburrow_woodland": frozenset({
+        "bloomburrow woodland", "woodland frame", "woodland",
+    }),
+    "capenna_art_deco": frozenset({
+        "capenna art deco", "snc art deco frame", "capenna art deco frame",
+        "new capenna art deco", "new capenna art deco frame",
+    }),
+    "capenna_golden_age": frozenset({
+        "capenna golden age", "snc golden age frame", "capenna golden age frame",
+        "new capenna golden age", "new capenna golden age frame",
+    }),
+    "capenna_skyscraper": frozenset({
+        "capenna skyscraper", "snc skyscraper frame", "capenna skyscraper frame",
+        "new capenna skyscraper", "new capenna skyscraper frame",
+    }),
+    "classicshifted": frozenset({
+        "classicshifted", "classicshifted frame",
+    }),
+    "commander_legends": frozenset({
+        "commander legends", "commander legends frame", "cmr frame",
+    }),
+    "dnd_module": frozenset({
+        "d&d module", "d&d module frame",
+    }),
+    "dnd_sourcebook": frozenset({
+        "d&d sourcebook", "d&d sourcebook frame",
+    }),
+    "doctor_who_tardis": frozenset({
+        "doctor who tardis", "doctor who tardis frame",
+        "who frame", "doctor who", "tardis", "tardis frame",
+    }),
+    "dominaria_stained_glass": frozenset({
+        "dominaria stained glass", "dmu frame",
+        "stained glass frame", "dominaria stained glass frame", "stained glass",
+    }),
+    "dragonstorm_ghostfire": frozenset({
+        "dragonstorm ghostfire", "ghostfire frame", "ghostfire",
+    }),
+    "duskmourn_paranormal": frozenset({
+        "duskmourn paranormal", "paranormal frame", "paranormal", "dsk frame",
+    }),
+    "eclipsed_fable": frozenset({
+        "eclipsed fable", "fable frame", "fable", "ecl frame",
+    }),
+    "edge_of_eternities_stellar_sights": frozenset({
+        "edge of eternities stellar sights",
+        "stellar sights frame", "stellar sights", "eos frame",
+    }),
+    "eldraine_enchanting_tales": frozenset({
+        "eldraine enchanting tales",
+        "wot frame", "enchanting tales frame", "enchanting tales",
+        "eldraine enchanting tales frame",
+    }),
+    "eldraine_storybook": frozenset({
+        "eldraine storybook",
+        "eld frame", "woe frame", "eldraine frame", "wilds of eldraine frame",
+        "storybook frame", "eldraine storybook frame",
+    }),
+    "english_mystical_archive": frozenset({
+        "english mystical archive", "en sta frame",
+    }),
+    "fca_showcase": frozenset({
+        "fca showcase", "fca showcase frame", "fca frame",
+        "final fantasy frame",
+        "borderless source material", "source material",
+    }),
+    "ikoria_crystal": frozenset({
+        "ikoria crystal", "ikoria crystal frame", "crystal frame",
+    }),
+    "innistrad_equinox": frozenset({
+        "innistrad equinox", "mid frame",
+        "innistrad equinox frame", "equinox frame", "midnight hunt frame",
+    }),
+    "innistrad_fang": frozenset({
+        "innistrad fang", "vow frame",
+        "fang frame", "crimson vow frame", "innistrad fang frame",
+    }),
+    "ixalan_coin": frozenset({
+        "ixalan coin", "ixalan coin frame", "coin frame",
+    }),
+    "japanese_mystical_archive": frozenset({
+        "japanese mystical archive", "jp sta frame",
+    }),
+    "japan_showcase": frozenset({
+        "japan showcase", "japan showcase frame",
+        "jp showcase", "jp showcase frame",
+    }),
+    "kaladesh_inventions": frozenset({
+        "kaladesh inventions", "kld inventions",
+    }),
+    "kaldheim_viking": frozenset({
+        "kaldheim viking", "khm frame",
+        "viking frame", "kaldheim frame", "kaldheim viking frame",
+    }),
+    "kamigawa_neon": frozenset({
+        "kamigawa neon", "neo neon frame",
+        "kamigawa neon frame", "neon dynasty neon frame", "neon frame",
+    }),
+    "kamigawa_ninja": frozenset({
+        "kamigawa ninja", "neo ninja frame",
+        "kamigawa ninja frame", "neon dynasty ninja frame", "ninja frame",
+    }),
+    "kamigawa_samurai": frozenset({
+        "kamigawa samurai", "neo samurai frame",
+        "kamigawa samurai frame", "neon dynasty samurai frame", "samurai frame",
+    }),
+    "karlov_dossier": frozenset({
+        "karlov dossier", "dossier frame", "dossier", "mkm frame",
+    }),
+    "lotr_ring": frozenset({
+        "lotr ring", "ltr frame", "lotr ring frame", "ring frame",
+    }),
+    "lotr_scrolls_of_middle_earth": frozenset({
+        "lotr scrolls of middle-earth", "lotr scrolls of middle-earth frame",
+        "scrolls of middle-earth frame", "scrolls of middle-earth",
+    }),
+    "m21_spellbook": frozenset({
+        "m21 spellbook", "m21 frame",
+        "signature spellbook frame", "signature spellbook", "m21 spellbook frame",
+    }),
+    "phyrexia_oil": frozenset({
+        "phyrexia oil", "one oil frame", "phyrexia oil frame",
+        "oil frame", "phyrexian oil", "phyrexian oil frame",
+    }),
+    "ravnica_architecture": frozenset({
+        "ravnica architecture", "ravnica architecture frame", "architecture frame",
+    }),
+    "sketch_frame": frozenset({
+        "sketch frame", "mh2 frame", "sketch",
+    }),
+    "tarkir_dragon_wing": frozenset({
+        "tarkir dragon wing", "tarkir dragon wing frame", "dragon wing frame",
+    }),
+    "theros_nyx": frozenset({
+        "theros nyx", "thb frame", "nyx frame",
+        "theros beyond death frame", "theros nyx frame",
+    }),
+    "thunder_junction_breaking_news": frozenset({
+        "thunder junction breaking news",
+        "breaking news frame", "breaking news", "otp frame",
+    }),
+    "thunder_junction_wanted_poster": frozenset({
+        "thunder junction wanted poster",
+        "wanted poster frame", "wanted poster", "otj frame",
+    }),
+    "zendikar_expeditions": frozenset({
+        "zendikar expeditions", "bfz expeditions", "exp frame",
+    }),
+    "zendikar_hedron": frozenset({
+        "zendikar hedron", "znr frame",
+        "hedron frame", "zendikar rising frame", "zendikar hedron frame",
+    }),
+    "zendikar_rising_expeditions": frozenset({
+        "zendikar rising expeditions", "znr expeditions", "zne frame",
+    }),
+
+    # ─── (3) Art — variantes de arte MPCFill ─────────────────────────────────
+    "altered_art": frozenset({
+        "altered art", "altered", "filtered",
+    }),
+    "pixel_art": frozenset({
+        "pixel art", "pixelated", "pixelized",
+    }),
+    "popout_art": frozenset({
+        "pop-out art", "popout art", "pop-out", "popout",
+    }),
+    "sketch_art": frozenset({
+        "sketch art", "sketchified",
+    }),
+    "ai_art": frozenset({
+        "ai art", "ai", "midjourney", "genai",
+    }),
+    "ai_remaster": frozenset({
+        "ai remaster",
+    }),
+    "artist_art": frozenset({
+        "artist art", "third party art", "3rd party art",
+    }),
+    "switched_art": frozenset({
+        "switched art",
+    }),
+    "upscaled_scan": frozenset({
+        "upscaled scan", "upscaled", "upscaled art",
+        "scryfall scan", "upscaled scryfall scan",
+    }),
+
+    # ─── (4) Misc ────────────────────────────────────────────────────────────
+    "nickname": frozenset({
+        "nickname", "godzilla nickname", "godzilla",
+    }),
+    "eternal_night": frozenset({
+        "eternal night card", "black & white card",
+    }),
+    "realistic": frozenset({
+        "realistic", "realistic wotc card", "realistic card",
+    }),
+    "secret_lair": frozenset({
+        "secret lair", "secret lair card", "sld", "sld card",
+    }),
+    "non_black_border": frozenset({
+        "non-black border", "non-black",
+        "special border", "unusual border",
+    }),
+    "gold_border": frozenset({
+        "gold border",
+        "commemorative border",
+        "collectors edition border",
+        "world championship deck border", "world championship border", "wc border",
+        "30th anniversary edition border", "30th anniversary border", "30a border",
+    }),
+    "silver_border": frozenset({
+        "silver border", "unset border",
+    }),
+    "white_border": frozenset({
+        "white border", "unlimited border",
+    }),
+
+    # ─── (5) NSFW ────────────────────────────────────────────────────────────
+    "nsfw": frozenset({
+        "nsfw", "nsfw art",
+        "not safe for work", "not safe for work art",
+        "nudity", "nudity art", "gore", "gore art",
+    }),
+
+    # ─── (6) Universe (cross-property themes) ────────────────────────────────
     "anime": frozenset({
         "anime", "manga",
     }),
+    "hatsune_miku": frozenset({
+        "hatsune miku", "miku",
+    }),
+    "avatar_tla": frozenset({
+        "avatar the last airbender", "avatar", "tla", "tle",
+    }),
+    "dr_who": frozenset({
+        "dr who", "who",
+    }),
+    "fallout": frozenset({
+        "fallout", "pip",
+    }),
+    "final_fantasy": frozenset({
+        "final fantasy", "fin", "ff",
+    }),
+    "in_multiverse": frozenset({
+        "in-multiverse", "mip", "uw", "universes within",
+        "magic ip", "om1", "through the omenpaths",
+    }),
+    "league_of_legends": frozenset({
+        "league of legends",
+    }),
+    "lord_of_the_rings": frozenset({
+        "lord of the rings", "ltr", "lotr",
+    }),
+    "my_little_pony": frozenset({
+        "my little pony", "mlp", "ponies the galloping",
+    }),
+    "spider_man": frozenset({
+        "spider-man", "spm", "spe",
+    }),
+    "warhammer_40k": frozenset({
+        "warhammer 40k", "40k", "warhammer",
+    }),
+
+    # ─── (7) Idioma + Meta ──────────────────────────────────────────────────
     "japanese": frozenset({
         "japanese", "jp", "jpn",
     }),
     "foil": frozenset({
-        "foil", "etched", "gilded",
+        "foil", "gilded",
     }),
     "back": frozenset({
-        "back", "b",
+        "back", "b", "cardback", "card back",
+    }),
+    "token": frozenset({
+        "token",
     }),
 }
 
@@ -332,6 +699,133 @@ _ALIAS_TO_CANONICAL = _LazyAliasMap()
 # recursivamente ni cruzar entre paréntesis — grupo simple con contenido no-anidado.
 _BRACKET_CONTENTS_RE = re.compile(r"[\(\[]([^\(\)\[\]]+)[\)\]]")
 
+# Regex para el prefijo de idioma MPCFill: ``{XX}`` al principio del filename,
+# donde XX es un código ISO 639-1 de 2 letras. Ejemplo: ``{DE} Sol Ring.png``.
+# También permite la variante ``{XX-YY}`` (locale extendido) por si aparece.
+# El match es case-insensitive; siempre devolvemos el código en minúsculas.
+_LANG_PREFIX_RE = re.compile(r"^\s*\{([A-Za-z]{2}(?:-[A-Za-z]{2})?)\}\s*")
+
+# Códigos ISO 639-1 de los idiomas que Scryfall reconoce oficialmente. Fuera
+# de este set no emitimos tag `lang_*` (evita basura de gente que meta
+# ``{XX}`` con dos letras aleatorias). Fuente: docs de Scryfall + MPCFill.
+_SUPPORTED_LANG_CODES = frozenset({
+    "en", "es", "fr", "de", "it", "pt", "ja", "ko", "ru",
+    "zh", "he", "la", "grc", "ar", "sa", "ph",
+    "jp",  # alias no-oficial pero muy usado por MPCFill (== "ja")
+})
+
+# Nombres de carpetas especiales según MPCFill. Se comparan case-insensitive
+# contra segmentos completos del folder_path.
+_SPECIAL_FOLDERS: dict[str, str] = {
+    "tokens": "token",       # carpeta "Tokens/" → tag `token`
+    "cardbacks": "back",     # carpeta "Cardbacks/" → tag `back`
+    "cardback": "back",      # variante singular tolerada
+}
+
+
+def extract_language(filename: str, folder_path: str = "") -> str | None:
+    """Extrae el código de idioma ISO 639-1 según convención MPCFill.
+
+    Formato: ``{XX}`` al PRINCIPIO del filename (o de algún segmento del
+    folder_path). Ejemplos:
+      "{DE} Sol Ring.png"                    → "de"
+      "{JP} Forest [Full Art].png"           → "jp"
+      "Opt.png" en "{ES}/Opt.png"            → "es"
+
+    Devuelve ``None`` si no hay match o si el código no está en el set de
+    idiomas soportados (para evitar aceptar cualquier basura).
+
+    El prefijo de folder tiene menor prioridad que el de filename — si un
+    archivo dentro de ``{ES}/`` tiene su propio ``{DE}`` al principio, gana
+    ``de`` (el filename). Consistente con las guidelines: "You may specify
+    a language in folder names. […] all images within the folder are
+    assumed to be that language unless specified otherwise."
+    """
+    # 1. Filename primero (mayor prioridad)
+    m = _LANG_PREFIX_RE.match(filename or "")
+    if m:
+        code = m.group(1).lower()
+        if code in _SUPPORTED_LANG_CODES:
+            return code
+
+    # 2. Folder segments (fallback)
+    if folder_path:
+        for seg in re.split(r"[/\\]", folder_path):
+            m = _LANG_PREFIX_RE.match(seg)
+            if m:
+                code = m.group(1).lower()
+                if code in _SUPPORTED_LANG_CODES:
+                    return code
+    return None
+
+
+def is_ignored_folder(folder_path: str) -> bool:
+    """True si algún segmento del folder_path empieza por ``!``.
+
+    MPCFill convención: prefijar el nombre de una carpeta con ``!`` la
+    excluye del índice. Ejemplo: ``!Misc``, ``!Work in Progress``. Se
+    aplica al segmento COMPLETO, no a subcadenas — ``Not!Me`` no cuenta.
+
+    Aplica a cualquier nivel de anidamiento: si la ruta es
+    ``Set1/!Backup/foo.png``, la carpeta está ignorada porque ``!Backup``
+    aparece en la ruta.
+    """
+    if not folder_path:
+        return False
+    for seg in re.split(r"[/\\]", folder_path):
+        if seg.strip().startswith("!"):
+            return True
+    return False
+
+
+def detect_special_folder_tag(folder_path: str) -> str | None:
+    """Devuelve un tag canónico si el folder_path contiene una carpeta
+    especial MPCFill (``Tokens/`` o ``Cardbacks/``).
+
+    Comparación case-insensitive de segmento completo. Devuelve el primer
+    match encontrado, o ``None``.
+
+    Ejemplos:
+      "Tokens/Angel.png"           → "token"
+      "MySet/Cardbacks/blue.png"   → "back"
+      "cardbacks/red.png"          → "back"
+      "MySet/Foo.png"              → None
+    """
+    if not folder_path:
+        return None
+    for seg in re.split(r"[/\\]", folder_path):
+        key = seg.strip().lower()
+        if key in _SPECIAL_FOLDERS:
+            return _SPECIAL_FOLDERS[key]
+    return None
+
+
+def detect_card_type(folder_path: str) -> str:
+    """Determina el card_type (CARD, CARDBACK, TOKEN) basándose **solo**
+    en la carpeta contenedora, replicando la lógica de MPC Autofill.
+
+    A diferencia de ``detect_special_folder_tag()``, esta función devuelve
+    el tipo final que se almacena en ``IndexedArt.card_type``. La distinción
+    es importante porque el tag ``back`` se asigna también a archivos con
+    ``(B)`` en el nombre (caras traseras de DFC), pero ``card_type`` solo
+    vale ``CARDBACK`` si el archivo está en una carpeta ``Cardbacks/``.
+
+    Ejemplos:
+      "Tokens/Angel.png"                → "TOKEN"
+      "MySet/Cardbacks/blue.png"        → "CARDBACK"
+      "MySet/Sol Ring (B).png"          → "CARD"  (no es un cardback real)
+      "Full Art/Forest.png"             → "CARD"
+    """
+    if not folder_path:
+        return "CARD"
+    for seg in re.split(r"[/\\]", folder_path):
+        key = seg.strip().lower()
+        if key in ("cardbacks", "cardback", "card backs"):
+            return "CARDBACK"
+        if key in ("tokens", "token"):
+            return "TOKEN"
+    return "CARD"
+
 
 def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, bool]]:
     """Extrae tags canónicos del filename y del folder_path.
@@ -393,6 +887,23 @@ def extract_tags(filename: str, folder_path: str = "") -> tuple[str, dict[str, b
             canon = alias_to_canonical.get(key)
             if canon:
                 seen.add(canon)
+
+    # (3) MPCFill · idioma con prefijo ``{XX}``. Se emite tag ``lang_XX``
+    # (ej. ``lang_de``, ``lang_jp``). No pasa por el vocabulario porque los
+    # códigos son un espacio abierto de 2-3 chars: los validamos contra el
+    # set de idiomas soportados por Scryfall. Con esto un archivo llamado
+    # ``{DE} Sol Ring.png`` queda taggeado con ``lang_de``, buscable por FTS5.
+    lang = extract_language(filename, folder_path)
+    if lang:
+        seen.add(f"lang_{lang}")
+
+    # (4) MPCFill · carpetas especiales ``Tokens/`` y ``Cardbacks/``. Estas
+    # son convención de la comunidad: todos los archivos dentro se
+    # consideran del tipo indicado. Añadimos el tag correspondiente para
+    # que el picker pueda filtrarlos (o excluirlos).
+    special = detect_special_folder_tag(folder_path)
+    if special:
+        seen.add(special)
 
     csv = ",".join(sorted(seen))
     # Flags derivados. Solo los que existen como columna en IndexedArt.
@@ -601,6 +1112,7 @@ async def _index_via_api(
     source: ArtSource,
     folder_id: str,
     api_key: str,
+    on_progress=None,
 ) -> IndexResult:
     """Indexa un drive recursivamente usando la API v3.
 
@@ -641,6 +1153,14 @@ async def _index_via_api(
         ) or 0)
         await db.commit()
         since_last_commit = 0
+        # Notificar progreso al caller (IndexQueue o quien sea)
+        if on_progress:
+            on_progress(
+                files_added=files_added,
+                files_updated=files_updated,
+                folders_visited=folders_visited,
+                files_total=source.indexed_files,
+            )
 
     async with httpx.AsyncClient(verify=not ssl_insecure()) as client:
         while queue:
@@ -689,6 +1209,12 @@ async def _index_via_api(
                     mime = target_mime
 
                 if mime == "application/vnd.google-apps.folder":
+                    # MPCFill · convención de exclusión: carpetas con prefijo
+                    # ``!`` no se indexan. Cortamos antes de encolarlas para
+                    # ahorrar la request de listing.
+                    if name.strip().startswith("!"):
+                        log.debug("Skip carpeta ignorada por prefijo '!': %s", name)
+                        continue
                     if item_id and item_id not in seen_folders:
                         seen_folders.add(item_id)
                         subpath = f"{current_path}/{name}" if current_path else name
@@ -714,6 +1240,7 @@ async def _index_via_api(
                     existing.expansion_code = exp_code
                     existing.collector_number = coll_num
                     existing.canonical_source = canon_source
+                    existing.card_type = detect_card_type(current_path)
                     for flag, value in tag_flags.items():
                         setattr(existing, flag, value)
                     files_updated += 1
@@ -730,6 +1257,7 @@ async def _index_via_api(
                         expansion_code=exp_code,
                         collector_number=coll_num,
                         canonical_source=canon_source,
+                        card_type=detect_card_type(current_path),
                         **tag_flags,
                     )
                     db.add(new_art)
@@ -769,6 +1297,7 @@ async def _index_via_scraping(
     db: AsyncSession,
     source: ArtSource,
     folder_id: str,
+    on_progress=None,
 ) -> IndexResult:
     """Modo pobre sin API key. Solo indexa el primer nivel (sin subcarpetas)
     y sin tamaño/mime fiable. Advierte al usuario en el error message si
@@ -819,6 +1348,7 @@ async def _index_via_scraping(
             existing.expansion_code = exp_code
             existing.collector_number = coll_num
             existing.canonical_source = canon_source
+            existing.card_type = detect_card_type("")
             for flag, value in tag_flags.items():
                 setattr(existing, flag, value)
             files_updated += 1
@@ -831,6 +1361,7 @@ async def _index_via_scraping(
                 expansion_code=exp_code,
                 collector_number=coll_num,
                 canonical_source=canon_source,
+                card_type=detect_card_type(""),
                 **tag_flags,
             )
             db.add(new_art)
@@ -843,6 +1374,11 @@ async def _index_via_scraping(
             "No se encontraron imágenes en la vista pública. "
             "Puede ser que el drive tenga estructura profunda (sin API key solo "
             "indexamos el primer nivel), o que la carpeta ya no sea pública."
+        )
+    if on_progress:
+        on_progress(
+            files_added=files_added, files_updated=files_updated,
+            folders_visited=1, files_total=files_added + files_updated,
         )
     return IndexResult(
         source_id=source.id, files_added=files_added, files_updated=files_updated,
@@ -862,7 +1398,11 @@ def _extract_folder_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
+async def index_source(
+    db: AsyncSession,
+    source_id: int,
+    on_progress=None,
+) -> IndexResult:
     """Indexa una source. El comportamiento depende del ``source_type``:
 
     - ``"gdrive"``: API v3 si hay API key, si no scraping HTML (legacy path).
@@ -877,6 +1417,12 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
 
     Es una operación potencialmente larga (segundos a minutos para drives
     grandes). Debe llamarse desde una BackgroundTask, no bloqueando la request.
+
+    Args:
+        on_progress: callback opcional invocado tras cada commit parcial.
+            Signatura: ``(files_added, files_updated, folders_visited, files_total) -> None``.
+            Permite que el caller (ej. ``IndexQueue``) actualice su estado
+            de progreso en tiempo real sin acoplar el indexer a la cola.
     """
     source = await db.get(ArtSource, source_id)
     if not source:
@@ -905,9 +1451,9 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
             log.info("▶ Empezando indexado de source %d (%s) vía %s",
                      source_id, source.name, mode)
             if api_key:
-                result = await _index_via_api(db, source, folder_id, api_key)
+                result = await _index_via_api(db, source, folder_id, api_key, on_progress=on_progress)
             else:
-                result = await _index_via_scraping(db, source, folder_id)
+                result = await _index_via_scraping(db, source, folder_id, on_progress=on_progress)
     elif stype == "gdrive-file":
         # File source individual — no se indexa (es un solo archivo, se usa
         # directo al añadir arte custom por URL).
@@ -930,7 +1476,7 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
             async with _INDEX_SEMAPHORE:
                 log.info("▶ Empezando indexado genérico de source %d (%s, tipo=%s)",
                          source_id, source.name, stype)
-                result = await _index_generic(db, source, type_cls)
+                result = await _index_generic(db, source, type_cls, on_progress=on_progress)
 
     # Actualizar estado del source. Contamos filas reales de IndexedArt.
     from sqlalchemy import func
@@ -950,7 +1496,7 @@ async def index_source(db: AsyncSession, source_id: int) -> IndexResult:
     return result
 
 
-async def _index_generic(db: AsyncSession, source: ArtSource, type_cls) -> IndexResult:
+async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progress=None) -> IndexResult:
     """Flujo de indexado genérico para tipos que exponen ``list_files()``.
 
     Consume el ``AsyncIterator[SourceFile]`` de ``type_cls`` y hace upsert en
@@ -1003,13 +1549,37 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls) -> Index
         except Exception as e:  # noqa: BLE001
             log.warning("Commit parcial de source %d falló: %s", source.id, e)
         since_last_commit = 0
+        if on_progress:
+            on_progress(
+                files_added=files_added, files_updated=files_updated,
+                folders_visited=0, files_total=files_added + files_updated,
+            )
 
     try:
         async for sf in type_cls.list_files(source):
+            # MPCFill · convención de exclusión: si algún segmento del
+            # folder_path empieza por ``!``, saltamos el archivo. Los tipos
+            # de source genéricos no conocen la convención, así que la
+            # aplicamos post-listing para uniformidad con el flujo de gdrive.
+            if is_ignored_folder(sf.folder_path):
+                continue
             existing = existing_by_file_id.get(sf.file_id)
 
             tags_csv, tag_flags = extract_tags(sf.filename, sf.folder_path)
             exp_code, coll_num, canon_source = extract_canonical(sf.filename, sf.folder_path)
+
+            # URLs específicas del tipo de source. Para gdrive las columnas
+            # quedan NULL (se generan al vuelo con _thumb_url/_download_url en
+            # gdrive_search). Para los demás tipos, se almacenan aquí para que
+            # gdrive_search las use en lugar del formato hardcodeado de Drive.
+            try:
+                _dl_url = type_cls.download_url(source, sf.file_id)
+            except (NotImplementedError, Exception):  # noqa: BLE001
+                _dl_url = None
+            try:
+                _th_url = type_cls.thumbnail_url(source, sf.file_id)
+            except (NotImplementedError, Exception):  # noqa: BLE001
+                _th_url = None
 
             if existing:
                 existing.filename = sf.filename
@@ -1022,6 +1592,9 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls) -> Index
                 existing.expansion_code = exp_code
                 existing.collector_number = coll_num
                 existing.canonical_source = canon_source
+                existing.card_type = detect_card_type(sf.folder_path)
+                existing.download_url = _dl_url
+                existing.thumb_url = _th_url
                 for flag, value in tag_flags.items():
                     setattr(existing, flag, value)
                 if phash_active and phash_client is not None and not existing.image_hash:
@@ -1044,6 +1617,9 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls) -> Index
                     expansion_code=exp_code,
                     collector_number=coll_num,
                     canonical_source=canon_source,
+                    card_type=detect_card_type(sf.folder_path),
+                    download_url=_dl_url,
+                    thumb_url=_th_url,
                     **tag_flags,
                 )
                 if phash_active and phash_client is not None:
@@ -1188,6 +1764,11 @@ async def backfill_normalized_names(db: AsyncSession) -> int:
                 row_changed = True
             if new_canon_source != (art.canonical_source or ""):
                 art.canonical_source = new_canon_source
+                row_changed = True
+            # card_type (v6): determinado por carpeta, no por tags del filename.
+            new_card_type = detect_card_type(art.folder_path)
+            if new_card_type != (art.card_type or "CARD"):
+                art.card_type = new_card_type
                 row_changed = True
             if row_changed:
                 updated += 1
