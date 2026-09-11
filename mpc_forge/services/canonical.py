@@ -121,6 +121,8 @@ async def validate_and_enrich(
             log.warning("Scryfall.collection batch falló, saltando: %s", e)
             continue
         # Los results de Scryfall vienen sin garantía de orden. Reindexar por (set, num).
+        from mpc_forge.services.deck_service import upsert_printings
+        cached = await upsert_printings(db, cards)
         found_keys: set[tuple[str, str]] = set()
         for c in cards:
             key = (
@@ -128,10 +130,7 @@ async def validate_and_enrich(
                 c.get("collector_number") or "",
             )
             found_keys.add(key)
-            # Poblar / actualizar PrintingCache
-            from mpc_forge.services.deck_service import upsert_printing
-            pc = await upsert_printing(db, c)
-            resolved[key] = pc
+            resolved[key] = cached[c["id"]]
             valid += 1
         # Marca los que NO aparecieron en la respuesta como inválidos
         for key in batch:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -15,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
-from mpc_forge.models import Deck, DeckCard, PrintingCache, PrintRun
+from mpc_forge.models import Deck, DeckCard, PrintingCache
 from mpc_forge.services.i18n import LANG_FLAGS, SUPPORTED_LANGS, detect_lang, get_translations
 
 log = logging.getLogger(__name__)
@@ -185,6 +184,41 @@ async def history_page(request: Request) -> HTMLResponse:
     """Vista de historial. Los datos (mazos, runs, timelines) se cargan vía
     fetch desde el frontend — el template no necesita context inicial."""
     return templates.TemplateResponse(request, "history.html", _t_context(request))
+
+
+@router.get("/print-planner", response_class=HTMLResponse)
+async def print_planner_page(request: Request) -> HTMLResponse:
+    """Planificador de tiradas: reparte varios mazos en pedidos de MPC.
+
+    Sin contexto inicial a propósito. La lista de mazos y el plan se piden por
+    fetch, porque el plan se recalcula cada vez que el usuario marca o desmarca
+    un mazo y no tendría sentido renderizar uno en servidor que quedaría
+    obsoleto al primer clic.
+    """
+    return templates.TemplateResponse(
+        request, "print_planner.html", _t_context(request)
+    )
+
+
+@router.get("/art-library", response_class=HTMLResponse)
+async def art_library_page(request: Request) -> HTMLResponse:
+    """Biblioteca de arte: explorador del índice de drives.
+
+    Sin contexto inicial: los filtros viven en la query string y la vista los
+    lee en el cliente, de forma que una búsqueda concreta se pueda guardar en
+    marcadores o compartir.
+    """
+    return templates.TemplateResponse(
+        request, "art_library.html", _t_context(request)
+    )
+
+
+@router.get("/calibrate", response_class=HTMLResponse)
+async def calibration_page(request: Request) -> HTMLResponse:
+    """Asistente de calibración de dúplex."""
+    return templates.TemplateResponse(
+        request, "calibration.html", _t_context(request)
+    )
 
 
 @router.get("/collection", response_class=HTMLResponse)

@@ -52,12 +52,13 @@ def _init_paths() -> Paths:
     exp = _TMP_ROOT / "exports"
     bk = _TMP_ROOT / "backups"
     cb = _TMP_ROOT / "cardbacks"
-    for d in (data, art, custom, exp, bk, cb):
+    th = _TMP_ROOT / "thumbs"
+    for d in (data, art, custom, exp, bk, cb, th):
         d.mkdir(parents=True, exist_ok=True)
     paths = Paths(
         data_dir=data, db_path=data / "db.sqlite3",
         art_dir=art, custom_art_dir=custom, exports_dir=exp,
-        backups_dir=bk, cardbacks_dir=cb,
+        backups_dir=bk, cardbacks_dir=cb, thumbs_dir=th,
     )
     _cfg.PATHS = paths
     return paths
@@ -175,6 +176,9 @@ def fake_scryfall():
     async def prints_by_oracle_id(oid: str):
         return []
 
+    async def prints_by_oracle_ids(oids):
+        return []
+
     async def autocomplete(q: str):
         return []
 
@@ -184,6 +188,7 @@ def fake_scryfall():
     fake.by_id = by_id
     fake.named = named
     fake.prints_by_oracle_id = prints_by_oracle_id
+    fake.prints_by_oracle_ids = prints_by_oracle_ids
     fake.autocomplete = autocomplete
     fake.aclose = AsyncMock()
     return fake

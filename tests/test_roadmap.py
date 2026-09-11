@@ -525,7 +525,6 @@ class TestExtrasBackend:
         from mpc_forge.db import session_scope
         from mpc_forge.models import DFCPair
         from mpc_forge.services.deck_service import _revert_dfc_backs_to_fronts
-        from mpc_forge.db import get_session
 
         # Seed un DFCPair con datos hipotéticos que podrían pisar
         async with session_scope() as s:

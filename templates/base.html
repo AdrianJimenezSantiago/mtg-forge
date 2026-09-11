@@ -8,322 +8,76 @@
   {# Favicon (mismo diseño que el .exe) #}
   <link rel="icon" type="image/png" href="/static/favicon.png">
 
-  {# Preconnect + dns-prefetch a los CDNs de assets: el navegador establece
-     TCP+TLS y resuelve DNS en paralelo al parseo del HTML, ahorrando
-     100-300 ms en primera carga. dns-prefetch como fallback para navegadores
-     que ignoran preconnect. #}
-  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preconnect" href="https://unpkg.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
-  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-  <link rel="dns-prefetch" href="https://unpkg.com">
+  {# ── Assets locales ────────────────────────────────────────────────────
+     Todo lo que la interfaz necesita vive en /static/vendor/ y viaja dentro
+     del .exe. Antes esto eran cinco peticiones a tres CDNs distintos
+     (cdn.tailwindcss.com, unpkg, jsdelivr, fonts.googleapis) y la app se veía
+     SIN ESTILOS cuando no había internet — un fallo grave en una herramienta
+     que se vende como local-first.
 
-  {# Tailwind CDN — síncrono a propósito: Tailwind procesa el HTML durante
-     parseo y aplica las clases. Con defer/async las primeras renders quedan
-     sin estilar (FOUC muy notable). Aceptamos el bloqueo (~200ms) a cambio
-     de UX correcta. #}
-  <script src="https://cdn.tailwindcss.com"></script>
+     Se regeneran con:  npm install && npm run vendor && npm run build:css
+     El resultado está versionado, así que clonar el repo no requiere Node. #}
 
-  {# Iconos oficiales de mana MTG — solo se usan en el modal de stats y en
-     algunos tooltips. Preload como estilo pero cargar async con onload trick:
-     no bloquea el render inicial. #}
-  <link rel="preload" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css"
-        as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@1.18.0/css/mana.min.css"></noscript>
+  {# Tailwind precompilado (~48 KB). Antes: 3 MB del runtime del CDN que
+     recompilaba las clases en el navegador y bloqueaba el render ~200 ms.
+     La configuración del tema vive ahora en /tailwind.config.js. #}
+  <link rel="stylesheet" href="/static/vendor/tailwind.css?v={{ asset_v('vendor/tailwind.css') }}">
 
-  {# Lucide icons: defer OK — se ejecuta al final. app.js llama createIcons()
-     tras DOMContentLoaded, así que no hay carrera. #}
-  <script defer src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  {# Símbolos de maná. Carga asíncrona: solo se usan en el modal de stats y en
+     algunos tooltips, no deben bloquear el primer render. #}
+  <link rel="preload" href="/static/vendor/mana.min.css" as="style"
+        onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/static/vendor/mana.min.css"></noscript>
 
-  {# Chart.js: solo se usa en el modal de estadísticas del deck editor.
-     Ahorra ~80KB del initial load en todas las páginas donde no se abre stats.
-     El modal comprueba si `window.Chart` existe antes de renderizar; si no,
-     inyecta el script y espera a que cargue. #}
-  {# (Chart.js NO se carga aquí — se hace lazy en deck.html openStats()) #}
+  {# Lucide: defer. app.js llama a createIcons() tras DOMContentLoaded. #}
+  <script defer src="/static/vendor/lucide.min.js"></script>
 
-  <style>
-    /* Símbolos de mana en línea con texto */
-    .mana-cost { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
-    .mana-cost i.ms { font-size: 14px; line-height: 1; }
-    .mana-cost i.ms.ms-cost { text-shadow: 0 1px 1px rgba(0,0,0,0.3); }
+  {# La configuración del tema de Tailwind (colores arcane, animaciones,
+     sombras) se movió a /tailwind.config.js — ahora se compila en el build en
+     vez de interpretarse en cada carga de página. #}
 
-    /* Scrollbar sutil que combina con el tema oscuro */
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2f394d; border-radius: 5px; }
-    ::-webkit-scrollbar-thumb:hover { background: #3d4a63; }
+  {# Cinzel (títulos "arcane") se servía desde Google Fonts. Eliminado: era la
+     última dependencia de red del render, y no compensa una petición
+     bloqueante a un tercero por un detalle tipográfico. La familia cae a
+     Georgia/serif, que ya estaba declarada como fallback en la config. Para
+     recuperarla, vendoriza el woff2 en static/vendor/fonts/ y declara un
+     @font-face local. #}
 
-    /* Barra de progreso del toast (animación pura CSS) */
-    @keyframes toast-progress {
-      from { transform: scaleX(1); }
-      to   { transform: scaleX(0); }
-    }
-    .toast-progress {
-      transform-origin: left;
-      animation: toast-progress linear forwards;
-    }
+  {# Alpine y sus plugins. ORDEN OBLIGATORIO: los plugins deben cargarse ANTES
+     del core, o Alpine arranca sin ellos y x-collapse / x-trap quedan inertes
+     sin dar ningún error visible. #}
+  <script defer src="/static/vendor/alpine-collapse.min.js"></script>
+  {# Focus aporta x-trap: atrapa el foco del teclado dentro de un modal
+     abierto. Sin él, Tab se escapa a los controles del fondo. #}
+  <script defer src="/static/vendor/alpine-focus.min.js"></script>
+  {# Cliente API centralizado. Script clásico con `defer`, cargado antes de
+     Alpine porque los componentes usan `window.api` en su init().
 
-    /* Fondo mágico para el header/sidebar: sutil resplandor dorado en gradiente radial */
-    .bg-arcane-panel {
-      background:
-        radial-gradient(circle at 20% 0%, rgba(212,175,55,0.05), transparent 40%),
-        #141821;
-    }
+     No es un módulo ES a propósito: ver la nota extensa al principio de
+     api.js. En resumen, `defer` en orden de documento tiene una semántica de
+     orden trivial y además se puede ejecutar en jsdom, lo que permite validar
+     el arranque real de las páginas en CI. #}
+  <script defer src="/static/js/api.js?v={{ asset_v('js/api.js') }}"></script>
 
-    /* Iconos Lucide: no capturan clicks — el evento va al elemento padre (botón/link).
-       Sin esto, click justo sobre el icono no siempre burbujea bien y "no hace nada". */
-    [data-lucide],
-    svg.lucide {
-      pointer-events: none;
-    }
+  {# ── Módulo de la vista ────────────────────────────────────────────────
+     TIENE que ir aquí, ANTES de Alpine, y no al final del body.
 
-    /* ==================== ANIMACIONES GLOBALES ====================
-       Sistema unificado de animaciones que se puede usar desde cualquier
-       vista sin depender de config Tailwind. Los spinners y estados de
-       carga deben usar estas clases para tener consistencia visual. */
+     La build CDN de Alpine termina con `queueMicrotask(() => Alpine.start())`:
+     arranca en el microtask inmediatamente posterior a su propio script. Los
+     scripts `defer` y los `type="module"` se ejecutan en ORDEN DE DOCUMENTO,
+     así que un módulo colocado más abajo en la página se ejecuta DESPUÉS de
+     que Alpine haya empezado a recorrer el DOM — y entonces las funciones de
+     `x-data` todavía no existen en `window`. El síntoma es
+     "Alpine Expression Error: xxx is not defined" y la vista en blanco.
 
-    /* Spinner "ring" — anillo giratorio: alternativa más visible que
-       el loader-2 de Lucide para overlays de página completa. */
-    .spinner-ring {
-      display: inline-block;
-      width: 28px;
-      height: 28px;
-      border: 3px solid rgba(212,175,55,0.15);
-      border-top-color: rgba(212,175,55,0.85);
-      border-radius: 50%;
-      animation: spinner-ring 750ms linear infinite;
-    }
-    .spinner-ring--sm { width: 16px; height: 16px; border-width: 2px; }
-    .spinner-ring--lg { width: 48px; height: 48px; border-width: 4px; }
+     Antes esto no pasaba porque el JavaScript vivía en un `<script>` inline
+     sin defer, que se ejecutaba durante el parseo del HTML y por tanto antes
+     que el `defer` de Alpine.
 
-    @keyframes spinner-ring {
-      to { transform: rotate(360deg); }
-    }
+     Cada plantilla hija rellena este bloque con su módulo. #}
+  {% block view_module %}{% endblock %}
 
-    /* Barra de progreso indeterminada — para acciones cuya duración
-       no conocemos (fetch, procesado en backend, etc). Sustituto elegante
-       del típico spinner cuando queremos algo horizontal. */
-    .progress-indeterminate {
-      position: relative;
-      overflow: hidden;
-      background: rgba(212,175,55,0.08);
-    }
-    .progress-indeterminate::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(212,175,55,0.6) 50%,
-        transparent 100%);
-      width: 30%;
-      animation: progress-slide 1.4s ease-in-out infinite;
-    }
-    @keyframes progress-slide {
-      0%   { transform: translateX(-100%); }
-      100% { transform: translateX(400%); }
-    }
-
-    /* Skeleton loading — placeholder que "brilla" mientras cargan datos.
-       Aplícalo a divs con dimensiones fijas antes de que llegue el contenido
-       real. Ejemplo: <div class="skeleton h-6 w-32 rounded"></div> */
-    .skeleton {
-      background: linear-gradient(90deg,
-        rgba(47,57,77,0.4) 25%,
-        rgba(61,74,99,0.6) 50%,
-        rgba(47,57,77,0.4) 75%);
-      background-size: 200% 100%;
-      animation: skeleton-shimmer 1.4s ease-in-out infinite;
-      border-radius: 4px;
-    }
-    @keyframes skeleton-shimmer {
-      0%   { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-
-    /* Loading dots — tres puntos que rebotan, útiles inline en texto
-       ("Cargando...") sin ocupar mucho espacio. */
-    .loading-dots {
-      display: inline-flex;
-      gap: 3px;
-      align-items: center;
-    }
-    .loading-dots span {
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: currentColor;
-      opacity: 0.4;
-      animation: dot-bounce 1.4s ease-in-out infinite;
-    }
-    .loading-dots span:nth-child(2) { animation-delay: 0.15s; }
-    .loading-dots span:nth-child(3) { animation-delay: 0.3s; }
-    @keyframes dot-bounce {
-      0%,80%,100% { opacity: 0.4; transform: scale(0.8); }
-      40%         { opacity: 1;   transform: scale(1.1); }
-    }
-
-    /* Fondo pulsante suave — para spinners de overlay que cubren
-       secciones enteras mientras cargan. Reemplaza el `animate-pulse`
-       de Tailwind por algo menos agresivo. */
-    .pulse-soft {
-      animation: pulse-soft-kf 2s ease-in-out infinite;
-    }
-    @keyframes pulse-soft-kf {
-      0%,100% { opacity: 1; }
-      50%     { opacity: 0.55; }
-    }
-
-    /* Transiciones globales suaves ---------------------------------------
-       - button y a: transición al hover uniforme (no cambia visual, solo
-         garantiza que TODOS los hovers son suaves aunque no lleven `transition`
-         explícito en su clase). Ojo: no aplicamos a inputs porque genera
-         parpadeos molestos al escribir. */
-    button, a[role="button"], .btn-transition {
-      transition-property: background-color, border-color, color, box-shadow, transform, opacity;
-      transition-duration: 150ms;
-      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    /* Reduced motion — respeta la preferencia del usuario. Si tiene
-       "reducir movimiento" activado en el SO, deshabilitamos animaciones
-       largas (mantenemos spinners porque son necesarios para feedback). */
-    @media (prefers-reduced-motion: reduce) {
-      .animate-fade-in,
-      .animate-slide-in-up,
-      .animate-slide-in-down,
-      .animate-scale-in,
-      .animate-toast-in {
-        animation-duration: 1ms !important;
-      }
-      .pulse-soft,
-      .animate-pulse-soft,
-      .skeleton {
-        animation: none !important;
-      }
-    }
-  </style>
-
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            bg: {
-              base:     '#0a0d13',   /* casi negro con tinte azulado (arcane) */
-              elevated: '#141821',
-              subtle:   '#1c2230',
-              inset:    '#0f131b',
-            },
-            border: {
-              subtle: '#232a3a',
-              strong: '#3a4358',
-            },
-            /* Paleta MTG-inspired ---------------------------------------- */
-            accent: {
-              /* Oro de las cartas mythic-rare: cálido y llamativo sin ser chillón */
-              DEFAULT: '#d4af37',
-              soft:    '#a58524',
-              glow:    '#e9c86a',
-            },
-            mtg: {
-              white: '#f5f0d8',
-              blue:  '#5b9bd5',
-              black: '#3a3a4a',
-              red:   '#d9534f',
-              green: '#5cb85c',
-              gold:  '#d4af37',
-            },
-            /* Colores semánticos alineados con las tierras básicas ------- */
-            success: { DEFAULT: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.30)' },
-            warning: { DEFAULT: '#fb923c', bg: 'rgba(251,146,60,0.10)', border: 'rgba(251,146,60,0.30)' },
-            danger:  { DEFAULT: '#f87171', bg: 'rgba(248,113,113,0.10)', border: 'rgba(248,113,113,0.30)' },
-            info:    { DEFAULT: '#60a5fa', bg: 'rgba(96,165,250,0.10)', border: 'rgba(96,165,250,0.30)' },
-            fg: {
-              DEFAULT: '#e8e6dd',    /* ligero cálido, no gris frío */
-              muted:   '#a8a8b8',
-              faint:   '#6a6a80',
-            },
-          },
-          fontFamily: {
-            sans:    ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-            mono:    ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-            display: ['Cinzel', 'Georgia', 'serif'], /* para títulos "arcane" opcional */
-          },
-          boxShadow: {
-            'card':   '0 1px 2px 0 rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,0.02)',
-            'glow':   '0 0 24px 0 rgba(212,175,55,0.15)',
-            'modal':  '0 25px 60px -12px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.10)',
-          },
-          animation: {
-            'shimmer':       'shimmer 2s linear infinite',
-            'toast-in':      'toast-in 220ms ease-out',
-            'fade-in':       'fade-in 200ms ease-out both',
-            'slide-in-up':   'slide-in-up 260ms cubic-bezier(0.22,1,0.36,1) both',
-            'slide-in-down': 'slide-in-down 260ms cubic-bezier(0.22,1,0.36,1) both',
-            'scale-in':      'scale-in 180ms cubic-bezier(0.22,1,0.36,1) both',
-            'pulse-soft':    'pulse-soft 2s ease-in-out infinite',
-            'skeleton':      'skeleton 1.4s ease-in-out infinite',
-            'spin-slow':     'spin 2s linear infinite',
-            'bounce-soft':   'bounce-soft 1.2s ease-in-out infinite',
-            'progress-bar':  'progress-bar 1.4s ease-in-out infinite',
-          },
-          keyframes: {
-            shimmer: {
-              '0%':   { backgroundPosition: '-200% 0' },
-              '100%': { backgroundPosition: '200% 0' },
-            },
-            'toast-in': {
-              '0%':   { opacity: '0', transform: 'translateX(20px) scale(0.95)' },
-              '100%': { opacity: '1', transform: 'translateX(0) scale(1)' },
-            },
-            'fade-in': {
-              '0%':   { opacity: '0' },
-              '100%': { opacity: '1' },
-            },
-            'slide-in-up': {
-              '0%':   { opacity: '0', transform: 'translateY(12px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            'slide-in-down': {
-              '0%':   { opacity: '0', transform: 'translateY(-12px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' },
-            },
-            'scale-in': {
-              '0%':   { opacity: '0', transform: 'scale(0.94)' },
-              '100%': { opacity: '1', transform: 'scale(1)' },
-            },
-            'pulse-soft': {
-              '0%,100%': { opacity: '1' },
-              '50%':     { opacity: '0.55' },
-            },
-            'skeleton': {
-              '0%,100%': { opacity: '0.4' },
-              '50%':     { opacity: '0.8' },
-            },
-            'bounce-soft': {
-              '0%,100%': { transform: 'translateY(0)' },
-              '50%':     { transform: 'translateY(-3px)' },
-            },
-            'progress-bar': {
-              '0%':   { transform: 'translateX(-100%)' },
-              '100%': { transform: 'translateX(400%)' },
-            },
-          },
-        }
-      }
-    }
-  </script>
-
-  {# Fuente decorativa opcional para títulos MTG-style. Precargamos discreto. #}
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&display=swap" rel="stylesheet">
-
-  <script defer src="https://unpkg.com/@alpinejs/collapse@3.13.5/dist/cdn.min.js"></script>
-  <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_v('app.css') }}">
 </head>
 
@@ -348,6 +102,9 @@
         {% set nav_items = [
           ('/',           'layers',       t.nav_decks),
           ('/collection', 'library',      t.nav_collection),
+          ('/art-library',   'images',    t.nav_library),
+          ('/print-planner', 'package',   t.nav_planner),
+          ('/calibrate',     'crosshair', t.nav_calibrate),
           ('/history',    'history',      t.nav_history),
           ('/settings',   'settings',     t.nav_settings),
         ] %}

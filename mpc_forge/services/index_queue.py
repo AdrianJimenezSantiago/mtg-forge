@@ -26,7 +26,7 @@ import asyncio
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -310,7 +310,6 @@ class IndexQueue:
                 if not result.error:
                     try:
                         async with session_scope() as db:
-                            from sqlalchemy import select, func
                             from mpc_forge.models import ArtSource
                             src = await db.get(ArtSource, sid)
                             if src:

@@ -57,27 +57,10 @@ async def _fetch_paginated(scryfall: ScryfallClient, query: str) -> list[dict[st
     """Recorre todas las páginas del search API para el query dado.
 
     Scryfall pagina de 175 en 175. Un ``is:dfc`` devuelve ~1500 resultados.
+    La paginación pasa por el rate limiter del cliente (``/cards/search`` es un
+    endpoint de 2 peticiones/s).
     """
-    results: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"q": query, "unique": "cards"}
-    page = await scryfall._get("/cards/search", params=params)  # type: ignore[attr-defined]
-    while page:
-        data = page.get("data", []) or []
-        results.extend(data)
-        if not page.get("has_more"):
-            break
-        next_url = page.get("next_page")
-        if not next_url:
-            break
-        # Usamos el path relativo si el next_url es del mismo host.
-        # Scryfall siempre devuelve URL absoluta — nos aprovechamos del cliente httpx
-        # que tiene base_url configurado. La llamada directa a self._client evita
-        # doble base_url.
-        async with scryfall._lock:  # type: ignore[attr-defined]
-            resp = await scryfall._client.get(next_url)  # type: ignore[attr-defined]
-        resp.raise_for_status()
-        page = resp.json()
-    return results
+    return await scryfall.search_all(query, unique="cards")
 
 
 def _dfc_pair_from_card(card: dict[str, Any]) -> DFCPair | None:

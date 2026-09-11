@@ -282,7 +282,6 @@ def _detect_source_type(url: str) -> tuple[str, str]:
     URL no termine en .json).
     """
     from mpc_forge.services.source_types import resolve
-    from pathlib import Path
     raw = (url or "").strip()
 
     # 1-2) Google Drive

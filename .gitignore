@@ -1,60 +1,84 @@
-# -------- Python --------
+# =============================================================================
+# MPC Forge
+# =============================================================================
+
+# ----------------------------------------------------------------------------
+# User data — never commit
+# ----------------------------------------------------------------------------
+# Portable data folder created next to the executable / project root:
+# database, downloaded art, thumbnails, exports, backups and logs.
+/user-settings/
+
+# Any stray database, backup or log produced while developing.
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.db-journal
+*.log
+logs/
+
+# ----------------------------------------------------------------------------
+# Python
+# ----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
 *.egg
 *.egg-info/
 .eggs/
-develop-eggs/
-dist/
 build/
-sdist/
+dist/
 wheels/
-share/python-wheels/
+pip-wheel-metadata/
 MANIFEST
-*.manifest
-*.spec.bak
 
-# Entornos virtuales
+# Virtual environments
 .venv/
 venv/
-ENV/
 env/
+ENV/
+.python-version
+
+# Local environment files
 .env
-.env.local
+.env.*
 
-# -------- PyInstaller --------
-# La spec la commiteamos, pero los outputs no
-/packaging/dist/
+# ----------------------------------------------------------------------------
+# Packaging (PyInstaller)
+# ----------------------------------------------------------------------------
+# The .spec file is committed; its outputs are not.
 /packaging/build/
+/packaging/dist/
 /packaging/icon-previews/
-*.spec.log
+*.spec.bak
 
-# -------- Testing / linting / type checking --------
+# ----------------------------------------------------------------------------
+# Testing, linting and type checking
+# ----------------------------------------------------------------------------
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .nox/
-coverage.xml
-*.cover
-*.py,cover
 
-# -------- Datos de usuario (NUNCA subir a git) --------
-# Bases de datos, artes descargadas, logs, exports
-*.sqlite3
-*.sqlite3-wal
-*.sqlite3-shm
-*.db
-data/
-logs/
+# ----------------------------------------------------------------------------
+# Node (frontend asset build only)
+# ----------------------------------------------------------------------------
+# node_modules is not committed. static/vendor/ IS committed on purpose: it is
+# the build output and lets the app run from a clone without Node installed.
+# package-lock.json is committed so `npm ci` is reproducible in CI.
+node_modules/
+npm-debug.log*
 
-# -------- IDEs --------
+# ----------------------------------------------------------------------------
+# Editors and operating systems
+# ----------------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
@@ -64,14 +88,14 @@ logs/
 Thumbs.db
 Desktop.ini
 
-# -------- Notebooks / temporales --------
+# ----------------------------------------------------------------------------
+# Scratch files
+# ----------------------------------------------------------------------------
+*.patch
+*.diff
+*.orig
+*.rej
+*.bak
+*.tmp
 .ipynb_checkpoints/
 *.ipynb
-
-# -------- Node (por si algún día compilamos assets) --------
-node_modules/
-package-lock.json
-
-# -------- Archivos de entorno propios --------
-.local/
-.cache/

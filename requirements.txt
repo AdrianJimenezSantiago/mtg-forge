@@ -19,3 +19,6 @@ rapidfuzz>=3.9
 # afectar al resto de la app. Instalar con:  pip install Pillow imagehash
 Pillow>=10.0
 imagehash>=4.3
+# Opcional — acelera el parseo del bulk data de Scryfall (modo offline).
+# Sin ella se usa un parser incremental propio, más lento pero funcional.
+ijson>=3.3

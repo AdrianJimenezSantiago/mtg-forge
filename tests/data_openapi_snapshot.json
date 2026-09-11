@@ -1,0 +1,664 @@
+{
+  "DELETE /api/art-sources/{source_id}": [
+    [
+      "source_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/art-sources/{source_id}/index": [
+    [
+      "source_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/custom-art/{custom_art_id}": [
+    [
+      "custom_art_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/decks/{deck_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/decks/{deck_id}/cardback-settings": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/decks/{deck_id}/cards/{card_id}": [
+    [
+      "card_id",
+      "path",
+      true
+    ],
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/decks/{deck_id}/role/{role}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "role",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/runs/{run_id}": [
+    [
+      "run_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /": [],
+  "GET /api/art-sources/": [],
+  "GET /api/art-sources/catalog-info": [],
+  "GET /api/bulk/check": [
+    [
+      "kind",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/bulk/progress": [],
+  "GET /api/bulk/status": [],
+  "GET /api/cardback": [],
+  "GET /api/collection/recent-decks": [],
+  "GET /api/collection/sets": [],
+  "GET /api/collection/sets/{set_code}/cards": [
+    [
+      "set_code",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/collection/sidebar-stats": [],
+  "GET /api/collection/stats": [],
+  "GET /api/custom-art/": [
+    [
+      "card_name",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/debug/log/download": [],
+  "GET /api/debug/log/info": [],
+  "GET /api/debug/log/tail": [
+    [
+      "n",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/": [],
+  "GET /api/decks/_/autocomplete": [
+    [
+      "q",
+      "query",
+      true
+    ]
+  ],
+  "GET /api/decks/_/search-cards": [
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      true
+    ]
+  ],
+  "GET /api/decks/_/supported-langs": [],
+  "GET /api/decks/_/undoable-kinds": [],
+  "GET /api/decks/_/with-activity": [],
+  "GET /api/decks/import/supported-sites": [],
+  "GET /api/decks/{deck_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/activity": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "kinds",
+      "query",
+      false
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/build-progress": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/cardback-settings": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/cards/{card_id}/prints": [
+    [
+      "card_id",
+      "path",
+      true
+    ],
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "offset",
+      "query",
+      false
+    ],
+    [
+      "only",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      false
+    ],
+    [
+      "sort",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/decklist": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "format",
+      "query",
+      false
+    ],
+    [
+      "include_headers",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/decklist.txt": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "format",
+      "query",
+      false
+    ],
+    [
+      "include_headers",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/estimate": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/preload-progress": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/print-runs/preview": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "max_tier",
+      "query",
+      false
+    ],
+    [
+      "optimize",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/tokens-analysis": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/validation": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/dfc-pairs/lookup": [
+    [
+      "names",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/dfc-pairs/stats": [],
+  "GET /api/drives/canonical/details": [
+    [
+      "collector_number",
+      "query",
+      true
+    ],
+    [
+      "expansion_code",
+      "query",
+      true
+    ]
+  ],
+  "GET /api/drives/cardbacks": [
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "source_id",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/drives/index-progress": [],
+  "GET /api/drives/phash/similar/{file_id}": [
+    [
+      "file_id",
+      "path",
+      true
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "threshold",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/drives/phash/stats": [],
+  "GET /api/drives/search": [
+    [
+      "expansion_code",
+      "query",
+      false
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      true
+    ],
+    [
+      "source_id",
+      "query",
+      false
+    ],
+    [
+      "tags_exclude",
+      "query",
+      false
+    ],
+    [
+      "tags_include",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/drives/stats": [],
+  "GET /api/exports/{filename}": [
+    [
+      "filename",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/mpc-autofill/status": [],
+  "GET /api/runs": [],
+  "GET /api/settings/": [],
+  "GET /api/settings/paths": [],
+  "GET /api/tag-vocabulary/current": [],
+  "GET /api/thumb/{art_path}": [
+    [
+      "art_path",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/thumbs/stats": [],
+  "GET /collection": [],
+  "GET /decks/{deck_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /decks/{deck_id}/pdf": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /decks/{deck_id}/proof": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /history": [],
+  "GET /local-source/{source_id}/{file_id}": [
+    [
+      "file_id",
+      "path",
+      true
+    ],
+    [
+      "source_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /settings": [],
+  "HEAD /api/cardback": [],
+  "PATCH /api/art-sources/{source_id}": [
+    [
+      "source_id",
+      "path",
+      true
+    ]
+  ],
+  "PATCH /api/decks/{deck_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "PATCH /api/decks/{deck_id}/cards/{card_id}": [
+    [
+      "card_id",
+      "path",
+      true
+    ],
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/art-sources/": [],
+  "POST /api/art-sources/restore-catalog": [],
+  "POST /api/art-sources/validate": [],
+  "POST /api/art-sources/{source_id}/index": [
+    [
+      "source_id",
+      "path",
+      true
+    ],
+    [
+      "wait",
+      "query",
+      false
+    ]
+  ],
+  "POST /api/backup": [],
+  "POST /api/bulk/cancel": [],
+  "POST /api/bulk/sync": [
+    [
+      "force",
+      "query",
+      false
+    ],
+    [
+      "kind",
+      "query",
+      false
+    ]
+  ],
+  "POST /api/collection/batch-toggle": [],
+  "POST /api/collection/toggle-owned": [],
+  "POST /api/custom-art/from-url": [],
+  "POST /api/custom-art/rescan": [],
+  "POST /api/decks/import/moxfield": [],
+  "POST /api/decks/import/text": [],
+  "POST /api/decks/import/url": [],
+  "POST /api/decks/{deck_id}/activity/{event_id}/undo": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "event_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/build-pdf": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/build-split-xml": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/build-xml": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/cards": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/cards/change-art": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/cards/{card_id}/add-related": [
+    [
+      "card_id",
+      "path",
+      true
+    ],
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/cards/{card_id}/toggle": [
+    [
+      "card_id",
+      "path",
+      true
+    ],
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/duplicate": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/export-images": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/localize": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/preload-cancel": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/preload-prints": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/recommend-by-artist": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/recommend-by-style": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/tokens-add-many": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/dfc-pairs/sync": [
+    [
+      "force",
+      "query",
+      false
+    ],
+    [
+      "wait",
+      "query",
+      false
+    ]
+  ],
+  "POST /api/drives/canonical/validate": [
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "source_id",
+      "query",
+      false
+    ]
+  ],
+  "POST /api/drives/index-batch": [],
+  "POST /api/drives/index-cancel": [],
+  "POST /api/drives/index-clear": [],
+  "POST /api/drives/phash/compute": [
+    [
+      "wait",
+      "query",
+      false
+    ]
+  ],
+  "POST /api/drives/phash/compute-all": [],
+  "POST /api/drives/rebuild-fts5": [],
+  "POST /api/mpc-autofill/launch": [],
+  "POST /api/tag-vocabulary/reload": [],
+  "POST /api/thumbs/clear": [],
+  "POST /set-lang": [],
+  "PUT /api/decks/{deck_id}/cardback-settings": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "PUT /api/settings/": []
+}

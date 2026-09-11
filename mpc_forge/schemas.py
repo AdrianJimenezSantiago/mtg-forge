@@ -130,6 +130,10 @@ class ArtOption(BaseModel):
     # Ambos:
     face: str = "front"
     image_small: str | None = None  # URL para thumbnail (scryfall CDN o /custom_art/…)
+    # Miniatura WebP local de 160 px, si el arte ya está descargado. Pesa ~6 KB
+    # frente a los ~90 KB del `small` de Scryfall y se sirve desde localhost.
+    # NULL = usar `image_small`. Ver services/thumbnails.py.
+    thumb_url: str | None = None
 
     # Estado UI:
     is_chosen: bool = False
@@ -226,3 +230,25 @@ class ImportResult(BaseModel):
     unresolved: list[UnresolvedEntry] = []
     resolved_count: int = 0
     total_entries: int = 0
+
+
+class ArtOptionsPage(BaseModel):
+    """Una página de opciones de arte.
+
+    El endpoint devolvía antes la lista completa sin paginar: para una carta
+    muy reimpresa eran 900 elementos y ~400 KB en una sola respuesta, que el
+    frontend luego troceaba en cliente. Ahora se pagina de verdad.
+
+    Los artes custom del usuario van SIEMPRE completos en la primera página
+    (campo aparte) porque son pocos, son los más relevantes, y trocearlos
+    obligaría a paginar dos colecciones heterogéneas a la vez.
+    """
+    items: list[ArtOption] = Field(default_factory=list)
+    custom: list[ArtOption] = Field(default_factory=list)
+    total: int = 0
+    offset: int = 0
+    limit: int = 60
+    has_more: bool = False
+    # Facetas para pintar los contadores de los filtros sin pedir todo el
+    # conjunto: {"full_art": 12, "borderless": 3, ...}
+    facets: dict[str, int] = Field(default_factory=dict)

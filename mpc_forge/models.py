@@ -13,7 +13,6 @@ Diseño:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import (
     Boolean,
@@ -97,6 +96,10 @@ class LocalArt(Base):
     face: Mapped[str] = mapped_column(String(16), default="front")  # front|back
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Ruta relativa (bajo PATHS.thumbs_dir) del thumbnail WebP de 160px que
+    # sirve el art picker. NULL = aún no generado; se crea perezosamente la
+    # primera vez que alguien pide la miniatura. Ver services/thumbnails.py.
+    thumb_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("scryfall_id", "face", name="uq_local_art_scryfall_face"),
@@ -499,3 +502,95 @@ class OracleArtistCache(Base):
     # Cuándo se pobló esta fila. Usado para invalidar por TTL.
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
+
+
+class DeckSnapshot(Base):
+    """Foto congelada de un mazo en un momento dado.
+
+    ``DeckActivity`` ya registra evento a evento y permite deshacer uno
+    concreto, pero no responde a "vuelve a como estaba antes del torneo".
+    Un snapshot serializa la lista completa (cartas, cantidades, roles, artes
+    elegidos) en ``payload_json`` y permite restaurarla o diffearla contra
+    otra.
+
+    ``auto=True`` marca los snapshots que crea la app sola (antes de una
+    operación masiva como localizar el mazo entero o aplicar un tema de arte).
+    Se podan automáticamente; los que crea el usuario a mano, no.
+    """
+    __tablename__ = "deck_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    deck_id: Mapped[int | None] = mapped_column(
+        ForeignKey("decks.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    label: Mapped[str] = mapped_column(String(256), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    card_count: Mapped[int] = mapped_column(Integer, default=0)
+    auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+
+
+class ArtTheme(Base):
+    """Conjunto de elecciones de arte guardado con un nombre.
+
+    Quien imprime proxies suele tener un estilo (todo anime, todo retro frame,
+    todo del mismo artista). ``ArtPreference`` ya guarda la elección por
+    ``oracle_id``, pero es un espacio global único: no puedes tener "mi set
+    anime" y "mi set retro" a la vez, ni aplicar uno a un mazo nuevo.
+
+    Un tema agrupa N entradas (oracle_id → arte) y se puede aplicar en bloque
+    a cualquier mazo: las cartas que coincidan por oracle_id adoptan el arte
+    del tema, el resto se queda como está.
+    """
+    __tablename__ = "art_themes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Desnormalizado a propósito: la lista de temas se pinta con el contador y
+    # no queremos un COUNT correlacionado por fila en cada carga.
+    entry_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    entries: Mapped[list["ArtThemeEntry"]] = relationship(
+        back_populates="theme", cascade="all, delete-orphan"
+    )
+
+
+class ArtThemeEntry(Base):
+    """Una elección de arte concreta dentro de un tema."""
+    __tablename__ = "art_theme_entries"
+    __table_args__ = (
+        UniqueConstraint("theme_id", "oracle_id", name="ux_art_theme_entry"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    theme_id: Mapped[int] = mapped_column(
+        ForeignKey("art_themes.id", ondelete="CASCADE"), index=True
+    )
+    oracle_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Snapshot legible: si el arte desaparece, el usuario sigue viendo de qué
+    # carta se trataba al inspeccionar el tema.
+    card_name: Mapped[str] = mapped_column(String(256), default="")
+    scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    custom_art_front_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    custom_art_back_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    theme: Mapped["ArtTheme"] = relationship(back_populates="entries")
+
+
+class BulkSyncState(Base):
+    """Estado de la última sincronización del bulk data de Scryfall.
+
+    Scryfall publica volcados completos de su base de datos con un campo
+    ``updated_at``. Guardamos el que importamos para no volver a descargar
+    120 MB si no ha cambiado nada.
+    """
+    __tablename__ = "bulk_sync_state"
+
+    kind: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # El ``updated_at`` que traía el manifiesto de Scryfall, tal cual.
+    updated_at: Mapped[str] = mapped_column(String(64), default="")
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rows_imported: Mapped[int] = mapped_column(Integer, default=0)
+    bytes_downloaded: Mapped[int] = mapped_column(Integer, default=0)

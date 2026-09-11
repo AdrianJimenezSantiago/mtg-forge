@@ -13,8 +13,26 @@ permissions:
   contents: write   # necesario para crear la release y subir assets
 
 jobs:
+  # Gate de calidad: una release nunca debe publicarse con los tests en rojo.
+  # Antes este workflow compilaba y publicaba sin ejecutar ni un test.
+  test:
+    name: Tests antes de publicar
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+      - run: pytest -q
+
   build-windows:
     name: Build Windows executable
+    needs: test
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -31,6 +49,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
+
+      - name: Setup Node (para los assets vendorizados)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Compilar assets locales
+        # static/vendor/ está versionado, pero lo regeneramos aquí para
+        # garantizar que el .exe lleva un CSS coherente con los templates
+        # actuales aunque alguien olvidara recompilarlo al hacer el commit.
+        run: |
+          npm ci
+          npm run vendor
+          npm run build:css
 
       - name: Build with PyInstaller
         # Usamos "python -m PyInstaller" (misma razón que en build.ps1):

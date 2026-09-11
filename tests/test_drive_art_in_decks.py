@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -470,9 +469,14 @@ class TestDeckArtPickerDriveIntegration:
             f"/api/decks/{deck['id']}/cards/{sol_ring['id']}/prints"
         )
         assert r.status_code == 200
-        prints = r.json()
-        # Los prints son solo Scryfall + custom local, no drives
-        drive_in_prints = [p for p in prints if p.get("kind") == "drive"]
+        page = r.json()
+        # /prints devuelve un sobre paginado: {items, custom, total, facets…}.
+        # Los artes de drives NO entran aquí — tienen su propia búsqueda.
+        assert "items" in page and "total" in page, (
+            "El endpoint de prints debe devolver un sobre paginado"
+        )
+        all_options = page["items"] + page["custom"]
+        drive_in_prints = [p for p in all_options if p.get("kind") == "drive"]
         assert len(drive_in_prints) == 0, (
             "Los drives NO deben aparecer en /prints — tienen su propia búsqueda"
         )

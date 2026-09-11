@@ -14,8 +14,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from mpc_forge import config as cfg
 from mpc_forge.clients.scryfall import ScryfallClient
-from mpc_forge.config import DEFAULT_CARDBACK_NAME, DEFAULT_CARDSTOCK, PATHS
+from mpc_forge.config import DEFAULT_CARDSTOCK, PATHS
 from mpc_forge.db import get_session
 from mpc_forge.models import Deck, DeckCard, PrintRun
 from mpc_forge.schemas import BuildXMLRequest

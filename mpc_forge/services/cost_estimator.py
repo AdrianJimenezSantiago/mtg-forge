@@ -9,7 +9,7 @@ en cada llamada, así los ajustes runtime que el usuario cambie desde
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from mpc_forge import config as cfg
 

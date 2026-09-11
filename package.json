@@ -1,0 +1,21 @@
+{
+  "name": "mpc-forge-assets",
+  "private": true,
+  "description": "Build de los assets locales. La app NO depende de npm en runtime: el CSS compilado y los ficheros de static/vendor/ se versionan en el repo para que el .exe funcione sin internet ni toolchain de Node.",
+  "scripts": {
+    "build:css": "tailwindcss -i static/src/tailwind.css -o static/vendor/tailwind.css --minify",
+    "watch:css": "tailwindcss -i static/src/tailwind.css -o static/vendor/tailwind.css --watch",
+    "vendor": "node scripts/vendor-assets.mjs",
+    "check:api": "node scripts/check_api_client.mjs"
+  },
+  "devDependencies": {
+    "@alpinejs/collapse": "3.13.5",
+    "@alpinejs/focus": "3.13.5",
+    "alpinejs": "3.13.5",
+    "chart.js": "4.4.7",
+    "jsdom": "^30.0.1",
+    "lucide": "0.469.0",
+    "mana-font": "1.18.0",
+    "tailwindcss": "3.4.17"
+  }
+}

@@ -25,13 +25,14 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A3, A4, LETTER, landscape
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from mpc_forge.services.xml_generator import DeckCardResolved, default_cardback_path
@@ -41,6 +42,48 @@ log = logging.getLogger(__name__)
 # Tamaño exacto de una carta MTG en mm (área visible; MPC añade bleed a 66.75×91.75).
 CARD_WIDTH_MM = 63.0
 CARD_HEIGHT_MM = 88.0
+
+class _ImageReaderCache:
+    """Reutiliza el mismo ``ImageReader`` para rutas repetidas.
+
+    ReportLab deduplica los bytes en el PDF final SOLO si se le pasa el mismo
+    objeto ``ImageReader``. Si se le pasa la ruta como cadena, abre, decodifica
+    e incrusta la imagen otra vez por cada llamada.
+
+    En un Commander típico con 35 tierras básicas del mismo arte, eso eran 35
+    decodificaciones y 35 copias de los mismos bytes dentro del PDF. Con la
+    caché se decodifica una vez y el fichero resultante encoge en proporción
+    directa al número de cartas repetidas.
+
+    La caché vive durante UNA generación de PDF y se descarta al terminar:
+    mantenerla entre generaciones dejaría imágenes obsoletas si el usuario
+    cambia un arte custom entre dos exportaciones.
+    """
+
+    def __init__(self) -> None:
+        self._readers: dict[str, ImageReader] = {}
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, path: str) -> ImageReader:
+        reader = self._readers.get(path)
+        if reader is None:
+            reader = ImageReader(path)
+            self._readers[path] = reader
+            self.misses += 1
+        else:
+            self.hits += 1
+        return reader
+
+    def summary(self) -> str:
+        total = self.hits + self.misses
+        if not total:
+            return "sin imágenes"
+        return (
+            f"{self.misses} imágenes únicas, {self.hits} reutilizaciones "
+            f"({100 * self.hits // total}% de ahorro)"
+        )
+
 
 PageSize = Literal["a4", "letter", "a3"]
 Orientation = Literal["portrait", "landscape"]
@@ -371,17 +414,25 @@ def build_pdf(
         f"{CARD_WIDTH_MM}×{CARD_HEIGHT_MM} mm"
     )
 
+    # Una caché por generación: se descarta al terminar para no servir un arte
+    # obsoleto si el usuario cambia una imagen entre dos exportaciones.
+    image_cache = _ImageReaderCache()
+
     total_pages_rendered = 0
     for page_idx, (kind, chunk_idx, chunk) in enumerate(pages_to_render):
         # Geometría específica de la cara (front vs back → offsets distintos).
         g = g_front if kind == "front" else compute_geometry(opts, page_kind="back")
-        _render_page(c, g, opts, kind, chunk)
+        _render_page(c, g, opts, kind, chunk, image_cache)
         if opts.show_footer:
             _draw_footer(c, g, page_idx + 1, len(pages_to_render), kind, chunk_idx)
         c.showPage()
         total_pages_rendered += 1
 
     c.save()
+    log.info(
+        "PDF generado: %d páginas, %d slots. Imágenes: %s",
+        total_pages_rendered, len(fronts), image_cache.summary(),
+    )
     return PDFBuildResult(
         pdf_path=output_path,
         total_pages=total_pages_rendered,
@@ -397,6 +448,7 @@ def _render_page(
     opts: PDFOptions,
     kind: str,
     chunk: list[dict | None],
+    image_cache: "_ImageReaderCache | None" = None,
 ) -> None:
     """Pinta una hoja. En modo backs+duplex, espejo horizontal para alinear
     con el frente al voltear el papel (long-edge flip)."""
@@ -420,8 +472,10 @@ def _render_page(
             col = g.cols - 1 - col
         x_mm, y_mm = _slot_position_mm(g, col, row)
         try:
+            # Se pasa el ImageReader cacheado, no la ruta: es lo que permite a
+            # ReportLab reconocer que es la misma imagen y no reincrustarla.
             c.drawImage(
-                slot["path"],
+                image_cache.get(slot["path"]) if image_cache else slot["path"],
                 (x_mm + img_x_off) * mm, (y_mm + img_y_off) * mm,
                 width=img_w * mm,
                 height=img_h * mm,

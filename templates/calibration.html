@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block view_module %}
+  {# La lógica de esta vista vive en /static/js/calibration.js.
+     Se declara aquí porque base.html renderiza este bloque en el <head>, antes
+     de Alpine. Ver la nota en base.html. #}
+  <script defer src="/static/js/calibration.js?v={{ asset_v('js/calibration.js') }}"></script>
+{% endblock %}
+
+{% block title %}{{ t.calibration_title }} · MPC Forge{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto" x-data="calibrationWizard()">
+  <div class="max-w-3xl mx-auto px-8 py-8">
+
+    <header class="mb-8">
+      <h1 class="text-2xl font-display font-semibold tracking-tight text-fg flex items-center gap-3">
+        <i data-lucide="crosshair" class="w-6 h-6 text-accent"></i>
+        {{ t.calibration_title }}
+      </h1>
+      <p class="text-sm text-fg-muted mt-2 max-w-2xl">{{ t.calibration_intro }}</p>
+    </header>
+
+    {# Indicador de pasos #}
+    <ol class="flex items-center gap-2 mb-8 text-xs">
+      <template x-for="n in [1, 2, 3]" :key="n">
+        <li class="flex items-center gap-2">
+          <span :class="step >= n ? 'bg-accent text-bg-base' : 'bg-bg-subtle text-fg-faint'"
+                class="w-6 h-6 rounded-full flex items-center justify-center font-mono transition"
+                x-text="n"></span>
+          <span :class="step >= n ? 'text-fg' : 'text-fg-faint'"
+                x-text="n === 1 ? '{{ t.calibration_step_print }}'
+                       : n === 2 ? '{{ t.calibration_step_measure }}'
+                       : '{{ t.calibration_step_apply }}'"></span>
+          <span x-show="n < 3" class="w-8 h-px bg-border-subtle"></span>
+        </li>
+      </template>
+    </ol>
+
+    {# ============ PASO 1: IMPRIMIR ============ #}
+    <section x-show="step === 1" x-collapse class="space-y-5">
+      <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
+        <h2 class="text-sm font-semibold text-fg">{{ t.calibration_print_heading }}</h2>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+              {{ t.calibration_page_size }}
+            </label>
+            <select x-model="pageSize"
+                    class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
+              <option value="a4">A4</option>
+              <option value="letter">Letter</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+              {{ t.calibration_flip_edge }}
+            </label>
+            <select x-model="flipEdge"
+                    class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
+              <option value="long">{{ t.calibration_flip_long }}</option>
+              <option value="short">{{ t.calibration_flip_short }}</option>
+            </select>
+          </div>
+        </div>
+
+        {# El borde de volteo determina sobre qué eje se espeja el reverso, así
+           que elegir mal aquí invierte el signo de la corrección. #}
+        <p class="text-[12px] text-fg-muted">{{ t.calibration_flip_hint }}</p>
+
+        <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
+          <li>{{ t.calibration_print_1 }}</li>
+          <li>{{ t.calibration_print_2 }}</li>
+          <li>{{ t.calibration_print_3 }}</li>
+        </ol>
+
+        <div class="flex gap-3 pt-1">
+          <a :href="sheetUrl" target="_blank" rel="noopener"
+             class="px-4 py-2 rounded bg-accent text-bg-base text-sm font-medium hover:opacity-90 transition flex items-center gap-2">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            {{ t.calibration_download_sheet }}
+          </a>
+          <button @click="goTo(2)"
+                  class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
+            {{ t.calibration_already_printed }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    {# ============ PASO 2: MEDIR ============ #}
+    <section x-show="step === 2" x-collapse class="space-y-5">
+      <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
+        <h2 class="text-sm font-semibold text-fg">{{ t.calibration_measure_heading }}</h2>
+        <p class="text-sm text-fg-muted">{{ t.calibration_measure_intro }}</p>
+
+        <div class="p-4 rounded bg-info-bg border border-info-border text-[13px] text-fg">
+          <p class="flex items-start gap-2">
+            <i data-lucide="info" class="w-4 h-4 text-info shrink-0 mt-0.5"></i>
+            <span>{{ t.calibration_sign_hint }}</span>
+          </p>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+              {{ t.calibration_measured_x }}
+            </label>
+            <input type="number" step="0.5" x-model.number="measuredX"
+                   class="w-full bg-bg-subtle border border-border rounded px-3 py-2 text-sm font-mono">
+            <p class="text-[11px] text-fg-faint mt-1">{{ t.calibration_measured_x_hint }}</p>
+          </div>
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+              {{ t.calibration_measured_y }}
+            </label>
+            <input type="number" step="0.5" x-model.number="measuredY"
+                   class="w-full bg-bg-subtle border border-border rounded px-3 py-2 text-sm font-mono">
+            <p class="text-[11px] text-fg-faint mt-1">{{ t.calibration_measured_y_hint }}</p>
+          </div>
+        </div>
+
+        <template x-if="error">
+          <div class="p-3 rounded bg-danger-bg border border-danger-border text-danger text-sm"
+               x-text="error"></div>
+        </template>
+
+        <div class="flex gap-3 pt-1">
+          <button @click="calculate()" :disabled="loading"
+                  class="px-4 py-2 rounded bg-accent text-bg-base text-sm font-medium hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2">
+            <i x-show="loading" data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            {{ t.calibration_calculate }}
+          </button>
+          <button @click="goTo(1)"
+                  class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
+            {{ t.common_back }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    {# ============ PASO 3: APLICAR ============ #}
+    {# `x-show` oculta el elemento pero Alpine SIGUE evaluando las expresiones
+       de dentro, así que un `x-text="fmt(result.x)"` revienta mientras
+       `result` es null — es decir, nada más cargar la página.
+
+       `template x-if` no crea el DOM hasta que la condición se cumple, que es
+       lo que hace falta aquí. El `x-show` exterior se conserva solo para la
+       animación de despliegue. #}
+    <section x-show="step === 3" x-collapse class="space-y-5">
+     <template x-if="result">
+      <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
+        <h2 class="text-sm font-semibold text-fg">{{ t.calibration_result_heading }}</h2>
+
+        <template x-if="warningKey === 'calibration_already_aligned'">
+          <div class="p-3 rounded bg-success-bg border border-success-border text-success text-sm">
+            {{ t.calibration_already_aligned }}
+          </div>
+        </template>
+
+        <template x-if="warningKey === 'calibration_offset_suspicious'">
+          <div class="p-3 rounded bg-warning-bg border border-warning-border text-warning text-sm">
+            {{ t.calibration_offset_suspicious }}
+          </div>
+        </template>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="p-4 rounded bg-bg-subtle text-center">
+            <div class="text-2xl font-mono font-semibold text-accent"
+                 x-text="fmt(result.back_offset_x_mm)"></div>
+            <div class="text-[11px] uppercase tracking-wider text-fg-faint mt-1">
+              back_offset_x_mm
+            </div>
+          </div>
+          <div class="p-4 rounded bg-bg-subtle text-center">
+            <div class="text-2xl font-mono font-semibold text-accent"
+                 x-text="fmt(result.back_offset_y_mm)"></div>
+            <div class="text-[11px] uppercase tracking-wider text-fg-faint mt-1">
+              back_offset_y_mm
+            </div>
+          </div>
+        </div>
+
+        <p class="text-sm text-fg-muted">{{ t.calibration_where_to_apply }}</p>
+
+        <div class="flex flex-wrap gap-3 pt-1">
+          <button @click="copyValues()"
+                  class="px-4 py-2 rounded bg-accent/15 text-accent hover:bg-accent/25 text-sm transition flex items-center gap-2">
+            <i :data-lucide="copied ? 'check' : 'clipboard'" class="w-4 h-4"></i>
+            <span x-text="copied ? '{{ t.calibration_copied }}' : '{{ t.calibration_copy }}'"></span>
+          </button>
+          <a :href="sheetUrl" target="_blank" rel="noopener"
+             class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
+            {{ t.calibration_verify_again }}
+          </a>
+          <button @click="restart()"
+                  class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
+            {{ t.calibration_restart }}
+          </button>
+        </div>
+      </div>
+     </template>
+
+      {# Segunda pasada: la forma de comprobar que la corrección es correcta es
+         volver a imprimir y ver que la deriva ha desaparecido. #}
+      <div class="p-4 rounded-lg bg-bg-subtle/50 border border-border-subtle text-[13px] text-fg-muted">
+        <p class="flex items-start gap-2">
+          <i data-lucide="repeat" class="w-4 h-4 text-fg-faint shrink-0 mt-0.5"></i>
+          <span>{{ t.calibration_second_pass }}</span>
+        </p>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

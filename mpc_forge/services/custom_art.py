@@ -22,7 +22,6 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 import httpx
-from slugify import slugify
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -82,6 +82,9 @@ class Paths:
     exports_dir: Path
     backups_dir: Path
     cardbacks_dir: Path
+    # Miniaturas WebP generadas a partir de art_dir. Derivadas y regenerables:
+    # se pueden borrar en cualquier momento sin perder nada.
+    thumbs_dir: Path
 
     @classmethod
     def default(cls) -> "Paths":
@@ -120,7 +123,8 @@ class Paths:
         exports = root / "exports"
         backups = root / "backups"
         cardbacks = root / "cardbacks"
-        for d in (root, art, custom_art, exports, backups, cardbacks):
+        thumbs = root / "thumbs"
+        for d in (root, art, custom_art, exports, backups, cardbacks, thumbs):
             d.mkdir(parents=True, exist_ok=True)
         return cls(
             data_dir=root,
@@ -130,6 +134,7 @@ class Paths:
             exports_dir=exports,
             backups_dir=backups,
             cardbacks_dir=cardbacks,
+            thumbs_dir=thumbs,
         )
 
     def with_overrides(
@@ -139,6 +144,7 @@ class Paths:
         exports_dir: str | Path | None = None,
         backups_dir: str | Path | None = None,
         cardbacks_dir: str | Path | None = None,
+        thumbs_dir: str | Path | None = None,
     ) -> "Paths":
         """Devuelve una nueva Paths con los overrides aplicados.
 
@@ -172,6 +178,7 @@ class Paths:
             exports_dir=_pick(exports_dir, self.exports_dir),
             backups_dir=_pick(backups_dir, self.backups_dir),
             cardbacks_dir=_pick(cardbacks_dir, self.cardbacks_dir),
+            thumbs_dir=_pick(thumbs_dir, self.thumbs_dir),
         )
 
 

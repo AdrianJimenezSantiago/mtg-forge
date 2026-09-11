@@ -1,7 +1,7 @@
 [project]
 name = "mpc-forge"
 version = "0.1.0"
-description = "Local MTG proxy printing workflow — Moxfield → art picker → MPC-Autofill XML"
+description = "Local-first Magic: The Gathering proxy printing workflow — decklist to print-ready PDF or MPC Autofill XML"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -19,6 +19,12 @@ dependencies = [
     "python-slugify>=8.0",
     "truststore>=0.10",
     "reportlab>=4.2",
+    "rapidfuzz>=3.9",
+    "Pillow>=10.0",
+    # Optional at runtime (features degrade gracefully without them), but
+    # installed by default to match requirements.txt.
+    "imagehash>=4.3",   # cross-drive perceptual-hash dedupe
+    "ijson>=3.3",       # faster Scryfall bulk-data parsing
 ]
 
 [project.optional-dependencies]

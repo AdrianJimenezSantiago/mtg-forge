@@ -19,7 +19,6 @@ la carta aparece 4 veces en el mazo.
 """
 from __future__ import annotations
 
-import io
 import logging
 import re
 import zipfile

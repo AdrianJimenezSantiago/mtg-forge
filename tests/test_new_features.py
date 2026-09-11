@@ -2,7 +2,6 @@
 deshacer eventos y progreso de build."""
 from __future__ import annotations
 
-import pytest
 
 
 # =============================================================================
@@ -353,7 +352,6 @@ class TestPathOverrides:
     async def test_paths_default_uses_install_root_when_writable(self):
         """Cuando la carpeta de instalación es escribible, el default apunta
         a install_root()/user-settings/ (modo portable)."""
-        from mpc_forge.config import Paths
         from mpc_forge.paths import install_root
         # En el entorno de test, install_root() apunta a /home/claude/work
         # (dev mode) y es escribible.

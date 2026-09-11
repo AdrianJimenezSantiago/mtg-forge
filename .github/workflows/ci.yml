@@ -1,0 +1,134 @@
+name: CI
+
+# Se ejecuta en cada push y en cada PR. Hasta ahora el único workflow era
+# `release.yml`, que solo compilaba el .exe: la suite de tests existía pero
+# nunca corría automáticamente, así que una regresión solo se detectaba cuando
+# un usuario la sufría.
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Un push nuevo sobre la misma rama cancela el run anterior: no tiene sentido
+  # gastar minutos validando un commit que ya está obsoleto.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint y tipos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Instalar herramientas
+        run: pip install ruff mypy
+      - name: Ruff
+        run: ruff check mpc_forge tests
+      - name: Formato
+        run: ruff format --check mpc_forge tests
+        # No bloqueante todavía: el formateo del código existente se está
+        # normalizando de forma gradual para no ensuciar el historial con un
+        # commit gigante de reformateo.
+        continue-on-error: true
+      - name: Mypy
+        run: mypy mpc_forge --ignore-missing-imports
+        # Igual que arriba: `strict` está desactivado y se va endureciendo
+        # módulo a módulo. Ver la sección de tipos en el README.
+        continue-on-error: true
+
+  test:
+    name: Tests (${{ matrix.os }} · py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows es la plataforma de release, Ubuntu es la de desarrollo.
+        # Ambas se prueban porque el proyecto toca rutas del sistema de
+        # ficheros y nombres de archivo, que es justo donde divergen.
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+      - name: Ejecutar tests
+        run: pytest -q --cov=mpc_forge --cov-report=xml --cov-report=term-missing
+      - name: Subir cobertura
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  assets:
+    name: Assets vendorizados al día
+    runs-on: ubuntu-latest
+    # La app carga sus CSS/JS desde static/vendor/, que está versionado. Si
+    # alguien cambia tailwind.config.js o los templates y olvida recompilar, la
+    # release saldría con estilos obsoletos o clases purgadas de más. Este job
+    # reconstruye y comprueba que no hay diferencias.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run vendor
+      - run: npm run build:css
+      - name: Comprobar que no hay cambios sin commitear
+        run: |
+          if ! git diff --quiet -- static/vendor; then
+            echo "::error::static/vendor está desactualizado."
+            echo "Ejecuta 'npm run vendor && npm run build:css' y commitea el resultado."
+            git diff --stat -- static/vendor
+            exit 1
+          fi
+          echo "static/vendor está al día."
+
+  browser:
+    name: Las páginas arrancan en un navegador
+    runs-on: ubuntu-latest
+    # La suite de Python comprueba la estructura del frontend, pero no ejecuta
+    # los scripts. Este job carga las páginas de verdad y falla si Alpine no
+    # resuelve alguna expresión — la clase de fallo que dejó las vistas en
+    # blanco pese a tener todos los tests en verde.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: pip install -r requirements.txt
+      - run: npm ci
+      - name: Arrancar el servidor
+        run: |
+          python -m uvicorn mpc_forge.app:app --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/ >/dev/null && break
+            sleep 1
+          done
+      - name: Cliente API
+        # Cubre la lógica JavaScript que adapta contratos de la API, que la
+        # suite de Python no puede ejecutar.
+        run: node scripts/check_api_client.mjs
+
+      - name: Humo de arranque de la interfaz
+        run: node scripts/check_pages_in_browser.mjs http://127.0.0.1:8000

@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block view_module %}
+  {# La lógica de esta vista vive en /static/js/print-planner.js.
+
+     Se declara en este bloque, y no en el cuerpo, porque base.html lo
+     renderiza en el <head> ANTES de Alpine. Alpine arranca en el microtask
+     siguiente a su propio script diferido, así que un script declarado más
+     abajo se ejecutaría demasiado tarde y las funciones de x-data no
+     existirían todavía. Ver la nota en base.html. #}
+  <script defer src="/static/js/print-planner.js?v={{ asset_v('js/print-planner.js') }}"></script>
+{% endblock %}
+
+{% block title %}{{ t.planner_title }} · MPC Forge{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col overflow-hidden"
+     x-data="printPlanner()" x-init="init()">
+
+  {# ===================== CABECERA ===================== #}
+  <div class="shrink-0 px-8 pt-6 pb-4 border-b border-border-subtle/60">
+    <div class="flex items-end justify-between gap-4 max-w-[1800px] mx-auto">
+      <div>
+        <h1 class="text-2xl font-display font-semibold tracking-tight text-fg flex items-center gap-3">
+          <i data-lucide="package" class="w-6 h-6 text-accent"></i>
+          {{ t.planner_title }}
+        </h1>
+        <p class="text-sm text-fg-muted mt-1">{{ t.planner_subtitle }}</p>
+      </div>
+
+      {# Totales. `effective_unit_usd` es la cifra que de verdad compara
+         opciones: MPC cobra por tier, así que un pedido medio vacío sale
+         mucho más caro por carta útil que su precio nominal. #}
+      <template x-if="plan">
+        <div class="flex items-center gap-6 text-sm">
+          <div class="text-right">
+            <div class="text-lg font-mono font-semibold text-fg"
+                 x-text="plan.totals.cards"></div>
+            <div class="text-[10px] text-fg-faint uppercase tracking-wider">{{ t.planner_cards }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-mono font-semibold text-fg"
+                 x-text="plan.totals.runs"></div>
+            <div class="text-[10px] text-fg-faint uppercase tracking-wider">{{ t.planner_orders }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-mono font-semibold text-warning"
+                 x-text="plan.totals.wasted_slots"></div>
+            <div class="text-[10px] text-fg-faint uppercase tracking-wider">{{ t.planner_wasted }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-mono font-semibold text-accent"
+                 x-text="usd(plan.totals.subtotal_usd)"></div>
+            <div class="text-[10px] text-fg-faint uppercase tracking-wider">{{ t.planner_total }}</div>
+          </div>
+          <div class="text-right border-l border-border-subtle pl-6">
+            <div class="text-lg font-mono font-semibold text-accent"
+                 x-text="unit(plan.totals.effective_unit_usd)"></div>
+            <div class="text-[10px] text-fg-faint uppercase tracking-wider">{{ t.planner_per_card }}</div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div class="flex-1 overflow-hidden flex max-w-[1800px] mx-auto w-full">
+
+    {# ===================== IZQUIERDA: MAZOS ===================== #}
+    <aside class="w-80 shrink-0 border-r border-border-subtle/60 flex flex-col">
+      <div class="shrink-0 px-4 py-3 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+          {{ t.planner_pick_decks }}
+        </h2>
+        <div class="flex gap-2 text-[11px]">
+          <button @click="selectAll()" class="text-accent hover:underline">{{ t.planner_all }}</button>
+          <button @click="clearSelection()" class="text-fg-faint hover:underline">{{ t.planner_none }}</button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+        <template x-if="loading">
+          <div class="p-4 text-sm text-fg-faint flex items-center gap-2">
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            {{ t.common_loading }}
+          </div>
+        </template>
+
+        <template x-if="!loading && decks.length === 0">
+          <div class="p-4 text-sm text-fg-faint">
+            {{ t.planner_no_decks }}
+            <a href="/" class="text-accent hover:underline block mt-2">{{ t.planner_import_one }}</a>
+          </div>
+        </template>
+
+        <template x-for="deck in decks" :key="deck.id">
+          <button @click="toggle(deck.id)"
+                  :class="isSelected(deck.id)
+                    ? 'bg-accent/10 border-accent/40'
+                    : 'border-transparent hover:bg-bg-subtle'"
+                  class="w-full text-left px-3 py-2 rounded-lg border transition flex items-center gap-3">
+            <div :class="isSelected(deck.id) ? 'bg-accent border-accent' : 'border-border'"
+                 class="w-4 h-4 rounded border shrink-0 flex items-center justify-center">
+              <i x-show="isSelected(deck.id)" data-lucide="check"
+                 class="w-3 h-3 text-bg-base"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm text-fg truncate" x-text="deck.name"></div>
+              <div class="text-[11px] text-fg-faint"
+                   x-text="(deck.card_count || 0) + ' {{ t.planner_cards_lower }}'"></div>
+            </div>
+          </button>
+        </template>
+      </div>
+
+      {# Opciones del plan #}
+      <div class="shrink-0 border-t border-border-subtle/60 p-4 space-y-3 text-sm">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" x-model="keepTogether" @change="buildPlan()"
+                 class="mt-0.5 accent-accent">
+          <span>
+            <span class="text-fg">{{ t.planner_keep_together }}</span>
+            {# Los pedidos de MPC llegan con semanas de diferencia: recibir
+               medio mazo no sirve para jugar. #}
+            <span class="block text-[11px] text-fg-faint">{{ t.planner_keep_together_hint }}</span>
+          </span>
+        </label>
+
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" x-model="subtractCollection" @change="buildPlan()"
+                 class="mt-0.5 accent-accent">
+          <span>
+            <span class="text-fg">{{ t.planner_subtract_collection }}</span>
+            <span class="block text-[11px] text-fg-faint">{{ t.planner_subtract_hint }}</span>
+          </span>
+        </label>
+
+        <div x-show="subtractCollection" x-collapse class="pl-6 space-y-2">
+          <label class="flex items-center gap-2 text-[12px] cursor-pointer">
+            <input type="radio" value="oracle" x-model="matchMode" @change="buildPlan()"
+                   class="accent-accent">
+            <span class="text-fg-muted">{{ t.planner_match_oracle }}</span>
+          </label>
+          <label class="flex items-center gap-2 text-[12px] cursor-pointer">
+            <input type="radio" value="exact" x-model="matchMode" @change="buildPlan()"
+                   class="accent-accent">
+            <span class="text-fg-muted">{{ t.planner_match_exact }}</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="block text-[11px] text-fg-faint uppercase tracking-wider mb-1">
+            {{ t.planner_ceiling }}
+          </label>
+          <select x-model.number="maxTier" @change="buildPlan()"
+                  class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
+            <option :value="null">{{ t.planner_ceiling_auto }}</option>
+            <template x-for="tier in tiers" :key="tier.size">
+              <option :value="tier.size" x-text="tier.size + ' {{ t.planner_cards_lower }}'"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+    </aside>
+
+    {# ===================== DERECHA: PLAN ===================== #}
+    <main class="flex-1 overflow-y-auto p-6 space-y-5">
+
+      <template x-if="error">
+        <div class="p-4 rounded-lg bg-danger-bg border border-danger-border text-danger text-sm"
+             x-text="error"></div>
+      </template>
+
+      <template x-if="!plan && !planning && !error">
+        <div class="h-full flex flex-col items-center justify-center text-center text-fg-faint gap-3 py-20">
+          <i data-lucide="package-open" class="w-12 h-12 opacity-40"></i>
+          <p class="text-sm max-w-sm">{{ t.planner_empty_hint }}</p>
+        </div>
+      </template>
+
+      <template x-if="planning">
+        <div class="flex items-center gap-2 text-sm text-fg-faint">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          {{ t.planner_calculating }}
+        </div>
+      </template>
+
+      <template x-if="plan">
+        <div class="space-y-5">
+
+          {# Aviso de ahorro. Es el consejo más valioso de la vista: repartir
+             en dos pedidos medianos puede salir más barato por carta que uno
+             grande medio vacío, y eso es contraintuitivo. #}
+          <template x-if="savingsAvailable">
+            <div class="p-4 rounded-lg bg-info-bg border border-info-border flex items-start gap-3">
+              <i data-lucide="lightbulb" class="w-5 h-5 text-info shrink-0 mt-0.5"></i>
+              <div class="flex-1 text-sm">
+                <p class="text-fg">
+                  {{ t.planner_saving_prefix }}
+                  <strong x-text="usd(savingsAvailable.saving)"></strong>
+                  {{ t.planner_saving_suffix }}
+                  <strong x-text="savingsAvailable.option.runs"></strong>
+                  {{ t.planner_saving_orders_of }}
+                  <strong x-text="savingsAvailable.option.ceiling"></strong>.
+                </p>
+                <button @click="applyCheapest()"
+                        class="mt-2 text-xs px-3 py-1.5 rounded bg-info/20 hover:bg-info/30 text-info transition">
+                  {{ t.planner_apply_cheapest }}
+                </button>
+              </div>
+            </div>
+          </template>
+
+          {# Resumen del descuento de colección #}
+          <template x-if="plan.subtracted_collection && plan.needs_summary">
+            <div class="p-4 rounded-lg bg-bg-subtle border border-border-subtle text-sm flex flex-wrap gap-6">
+              <div>
+                <div class="text-fg-faint text-[11px] uppercase tracking-wider">{{ t.planner_in_decks }}</div>
+                <div class="font-mono text-fg" x-text="plan.needs_summary.total_quantity"></div>
+              </div>
+              <div>
+                <div class="text-fg-faint text-[11px] uppercase tracking-wider">{{ t.planner_already_owned }}</div>
+                <div class="font-mono text-success" x-text="plan.needs_summary.total_owned"></div>
+              </div>
+              <div>
+                <div class="text-fg-faint text-[11px] uppercase tracking-wider">{{ t.planner_to_print }}</div>
+                <div class="font-mono text-accent" x-text="plan.needs_summary.total_needed"></div>
+              </div>
+              <div>
+                <div class="text-fg-faint text-[11px] uppercase tracking-wider">{{ t.planner_of_which_basics }}</div>
+                <div class="font-mono text-fg-muted" x-text="plan.needs_summary.basics_needed"></div>
+              </div>
+            </div>
+          </template>
+
+          {# Pedidos #}
+          <div class="space-y-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+              {{ t.planner_orders }}
+            </h2>
+
+            <template x-for="run in plan.runs" :key="run.index">
+              <div class="rounded-lg border border-border-subtle bg-bg-elevated overflow-hidden">
+                <button @click="toggleRun(run.index)"
+                        class="w-full px-4 py-3 flex items-center gap-4 hover:bg-bg-subtle/50 transition text-left">
+                  <div class="w-8 h-8 rounded bg-accent/15 text-accent flex items-center justify-center font-mono text-sm shrink-0"
+                       x-text="run.index + 1"></div>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm text-fg truncate" x-text="run.deck_names.join(' · ')"></div>
+                    <div class="text-[11px] text-fg-faint">
+                      <span x-text="run.card_count"></span> / <span x-text="run.tier_size"></span>
+                      {{ t.planner_slots }}
+                    </div>
+                  </div>
+
+                  {# Barra de llenado: cada hueco vacío se paga igual. #}
+                  <div class="w-32 shrink-0">
+                    <div class="h-1.5 rounded-full bg-bg-subtle overflow-hidden">
+                      <div class="h-full transition-all"
+                           :class="barClass(run.fill_percent)"
+                           :style="`width: ${Math.min(100, run.fill_percent)}%`"></div>
+                    </div>
+                    <div class="text-[10px] mt-1 text-right font-mono"
+                         :class="fillClass(run.fill_percent)"
+                         x-text="percent(run.fill_percent)"></div>
+                  </div>
+
+                  <div class="text-right shrink-0 w-24">
+                    <div class="font-mono text-sm text-fg" x-text="usd(run.subtotal_usd)"></div>
+                    <div class="text-[10px] text-fg-faint font-mono"
+                         x-text="unit(run.effective_unit_usd) + ' /u'"></div>
+                  </div>
+
+                  <i data-lucide="chevron-down"
+                     class="w-4 h-4 text-fg-faint transition-transform shrink-0"
+                     :class="expandedRun === run.index && 'rotate-180'"></i>
+                </button>
+
+                <div x-show="expandedRun === run.index" x-collapse
+                     class="px-4 pb-4 pt-1 border-t border-border-subtle/50 text-sm space-y-2">
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-3">
+                    <div>
+                      <div class="text-[11px] text-fg-faint uppercase tracking-wider">{{ t.planner_tier }}</div>
+                      <div class="font-mono text-fg" x-text="run.tier_size"></div>
+                    </div>
+                    <div>
+                      <div class="text-[11px] text-fg-faint uppercase tracking-wider">{{ t.planner_wasted }}</div>
+                      <div class="font-mono text-warning" x-text="run.wasted_slots"></div>
+                    </div>
+                    <div>
+                      <div class="text-[11px] text-fg-faint uppercase tracking-wider">{{ t.planner_unit_nominal }}</div>
+                      <div class="font-mono text-fg-muted" x-text="unit(run.unit_usd)"></div>
+                    </div>
+                    <div>
+                      <div class="text-[11px] text-fg-faint uppercase tracking-wider">{{ t.planner_unit_real }}</div>
+                      <div class="font-mono text-accent" x-text="unit(run.effective_unit_usd)"></div>
+                    </div>
+                  </div>
+
+                  <template x-for="entry in (plan.filler.per_run || []).filter(p => p.run_index === run.index)"
+                            :key="entry.run_index">
+                    <div class="pt-2 text-[12px] text-fg-muted space-y-1">
+                      {# Los huecos ya están pagados: llenarlos con tierras
+                         básicas no cuesta nada más. #}
+                      <p>
+                        <i data-lucide="plus-circle" class="w-3 h-3 inline text-success"></i>
+                        {{ t.planner_filler_free_prefix }}
+                        <strong x-text="entry.free_cards_available"></strong>
+                        {{ t.planner_filler_free_suffix }}
+                      </p>
+                      <template x-if="entry.downgrade_option">
+                        <p>
+                          <i data-lucide="minus-circle" class="w-3 h-3 inline text-info"></i>
+                          {{ t.planner_filler_downgrade_prefix }}
+                          <strong x-text="entry.downgrade_option.remove_cards"></strong>
+                          {{ t.planner_filler_downgrade_middle }}
+                          <strong x-text="entry.downgrade_option.tier_size"></strong>
+                          {{ t.planner_filler_downgrade_save }}
+                          <strong x-text="usd(entry.downgrade_option.saving_usd)"></strong>.
+                        </p>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          {# Comparativa de estrategias #}
+          <div class="space-y-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+              {{ t.planner_alternatives }}
+            </h2>
+            <div class="rounded-lg border border-border-subtle overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-bg-subtle text-[11px] uppercase tracking-wider text-fg-faint">
+                  <tr>
+                    <th class="text-left px-4 py-2 font-medium">{{ t.planner_ceiling }}</th>
+                    <th class="text-right px-4 py-2 font-medium">{{ t.planner_orders }}</th>
+                    <th class="text-right px-4 py-2 font-medium">{{ t.planner_wasted }}</th>
+                    <th class="text-right px-4 py-2 font-medium">{{ t.planner_total }}</th>
+                    <th class="text-right px-4 py-2 font-medium">{{ t.planner_per_card }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="option in plan.alternatives" :key="option.ceiling">
+                    <tr class="border-t border-border-subtle/50"
+                        :class="option.is_cheapest && 'bg-success-bg/40'">
+                      <td class="px-4 py-2 font-mono">
+                        <span x-text="option.ceiling"></span>
+                        <span x-show="option.is_cheapest"
+                              class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success uppercase tracking-wider">
+                          {{ t.planner_cheapest }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-2 text-right font-mono" x-text="option.runs"></td>
+                      <td class="px-4 py-2 text-right font-mono text-warning"
+                          x-text="option.wasted_slots"></td>
+                      <td class="px-4 py-2 text-right font-mono" x-text="usd(option.subtotal_usd)"></td>
+                      <td class="px-4 py-2 text-right font-mono"
+                          :class="option.is_cheapest ? 'text-success' : 'text-fg-muted'"
+                          x-text="unit(option.effective_unit_usd)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-[11px] text-fg-faint">{{ t.planner_price_note }}</p>
+          </div>
+        </div>
+      </template>
+    </main>
+  </div>
+</div>
+{% endblock %}
