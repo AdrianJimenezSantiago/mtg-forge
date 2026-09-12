@@ -177,7 +177,14 @@ jobs:
         # PyInstaller es compilar bien y morir al abrir por un hiddenimport
         # que falta: eso solo se ve ejecutándolo.
         shell: bash
+        env:
+          # Cinturón y tirantes: el launcher acepta --port, pero también
+          # respeta esta variable. Si alguien vuelve a tocar el parseo de
+          # argumentos, el puerto sigue siendo el correcto y el fallo se ve
+          # como lo que es en vez de como "no responde".
+          MPC_FORGE_PORT: '8791'
         run: |
+          set -u
           if [ "${{ runner.os }}" = "Windows" ]; then
             BIN="packaging/dist/MPC-Forge/MPC-Forge.exe"
           elif [ -d "packaging/dist/MPC Forge.app" ]; then
@@ -185,19 +192,42 @@ jobs:
           else
             BIN="packaging/dist/MPC-Forge/MPC-Forge"
           fi
-          "$BIN" --no-browser --port 8791 &
+
+          # `--no-browser` importa: sin él el launcher abre el navegador del
+          # sistema, que en un runner headless es ruido y en macOS puede
+          # tardar en dar el control.
+          "$BIN" --no-browser --port 8791 > smoke.log 2>&1 &
           PID=$!
-          for _ in $(seq 1 45); do
-            if curl -sf http://127.0.0.1:8791/ >/dev/null; then
-              echo "El binario responde correctamente."
-              kill $PID || true
-              exit 0
+
+          OK=0
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              echo "::error::El binario terminó antes de aceptar conexiones."
+              break
+            fi
+            if curl -sf "http://127.0.0.1:8791/" >/dev/null; then
+              echo "El binario responde correctamente en el puerto 8791."
+              OK=1
+              break
             fi
             sleep 1
           done
-          echo "::error::El binario no respondió en 45s"
-          kill $PID || true
-          exit 1
+
+          kill "$PID" 2>/dev/null || true
+          wait "$PID" 2>/dev/null || true
+
+          # El log del binario SIEMPRE se vuelca. Sin esto, un arranque fallido
+          # solo dejaba "no respondió en 45s", que no dice nada: la primera
+          # versión de este paso pasaba --port a un launcher que ni siquiera
+          # parseaba argumentos, así que el servidor escuchaba en 8765 y el
+          # curl fallaba para siempre sin ninguna pista en el log.
+          echo "--- salida del binario ---"
+          cat smoke.log || true
+
+          if [ "$OK" != "1" ]; then
+            echo "::error::El binario no respondió en 60s en el puerto 8791"
+            exit 1
+          fi
 
       - name: Upload as workflow artifact (siempre disponible)
         uses: actions/upload-artifact@v4

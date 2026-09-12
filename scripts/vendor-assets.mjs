@@ -17,8 +17,14 @@ import {
   mkdirSync, copyFileSync, existsSync, statSync, readFileSync, writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+// `fileURLToPath`, NO `.pathname`. En Windows, el pathname de una file:// URL
+// es "/C:/ruta/..." — con una barra inicial de más y separadores POSIX—, así
+// que al pasarlo por `join` sale una ruta que no existe y el script reportaba
+// "FALTA" para los ocho assets justo después de un `npm ci` correcto.
+// `fileURLToPath` devuelve la forma nativa de la plataforma.
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const OUT = join(ROOT, 'static', 'vendor')
 
 /** [origen en node_modules, destino relativo a static/vendor] */

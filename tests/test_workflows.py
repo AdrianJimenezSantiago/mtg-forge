@@ -156,3 +156,69 @@ class TestNodeVersion:
         npmrc = WORKFLOWS.parent.parent / ".npmrc"
         assert npmrc.exists(), "Falta .npmrc con engine-strict=true"
         assert "engine-strict=true" in npmrc.read_text(encoding="utf-8")
+
+
+class TestNodeScriptsArePortable:
+    """Los scripts de Node deben funcionar también en Windows.
+
+    `new URL(...).pathname` de una file:// URL devuelve "/C:/ruta/..." en
+    Windows: con una barra inicial de más y separadores POSIX. Pasado por
+    `path.join` produce una ruta inexistente, y el script de vendorizado
+    reportaba "FALTA" para los ocho assets justo después de un `npm ci`
+    correcto. La forma correcta es `fileURLToPath`.
+
+    El job de assets de CI solo corre en Ubuntu, así que esto no lo detecta
+    nadie salvo la release de Windows — y allí el síntoma es confuso.
+    """
+
+    SCRIPTS = sorted((WORKFLOWS.parent.parent / "scripts").glob("*.mjs"))
+
+    @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
+    def test_no_pathname_on_file_urls(self, script):
+        text = script.read_text(encoding="utf-8")
+        assert "import.meta.url).pathname" not in text.replace(" ", ""), (
+            f"{script.name} usa `.pathname` sobre una file:// URL. En Windows "
+            f"eso da '/C:/...' y rompe cualquier path.join posterior. "
+            f"Usa `fileURLToPath(new URL(...))`."
+        )
+
+
+class TestFrozenLauncher:
+    """El ejecutable empaquetado debe aceptar los mismos flags que el módulo.
+
+    El launcher no parseaba argumentos: leía host y puerto solo de variables
+    de entorno. El `--port` del smoke test se ignoraba en silencio, el binario
+    escuchaba en 8765 y el curl al puerto pedido fallaba eternamente con un
+    "no respondió" que no apuntaba a nada.
+    """
+
+    def _launcher(self):
+        import importlib.util
+        path = WORKFLOWS.parent.parent / "packaging" / "launcher.py"
+        spec = importlib.util.spec_from_file_location("mpcforge_launcher", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_accepts_port_and_no_browser(self):
+        args = self._launcher()._parse_args(["--no-browser", "--port", "8791"])
+        assert args.port == 8791
+        assert args.no_browser is True
+
+    def test_defaults_match_the_documented_port(self):
+        assert self._launcher()._parse_args([]).port == 8765
+
+    def test_env_var_still_works_but_flag_wins(self, monkeypatch):
+        """Compatibilidad: quien ya usara MPC_FORGE_PORT no debe romperse."""
+        monkeypatch.setenv("MPC_FORGE_PORT", "9000")
+        launcher = self._launcher()
+        assert launcher._parse_args([]).port == 9000
+        assert launcher._parse_args(["--port", "7777"]).port == 7777
+
+    def test_smoke_test_uses_flags_the_launcher_understands(self):
+        """El paso de CI y el launcher no pueden divergir en silencio."""
+        text = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+        assert "--no-browser" in text and "--port 8791" in text
+        launcher = self._launcher()
+        # No lanza: son flags válidos.
+        launcher._parse_args(["--no-browser", "--port", "8791"])
