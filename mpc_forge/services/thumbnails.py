@@ -34,6 +34,7 @@ Diseño
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 
@@ -106,6 +107,33 @@ def pillow_available() -> bool:
         return False
 
 
+def _relative_to_art_dir(source: Path) -> Path | None:
+    """``source`` relativo a ``art_dir``, o None si está fuera.
+
+    Se intenta primero con las rutas tal cual (el caso normal, sin coste) y,
+    si falla, con ambas resueltas.
+
+    El segundo intento no es paranoia: ``relative_to`` compara cadenas, y en
+    Windows la MISMA carpeta se puede escribir de dos formas. El endpoint de
+    miniaturas resuelve la ruta pedida para impedir el escape de directorio, y
+    ``resolve()`` expande los nombres cortos 8.3
+    (la forma ``RUNNER~1`` pasa a ser ``runneradmin``). Si
+    ``art_dir`` estaba guardado en la forma corta, la comparación fallaba y
+    TODAS las miniaturas acababan en el cajón ``_external`` — perdiendo el
+    reparto por subdirectorios y, peor, colisionando entre sí (dos
+    "Sol Ring.png" de carpetas distintas compartían miniatura, así que la
+    rejilla mostraba el arte equivocado).
+    """
+    try:
+        return source.relative_to(PATHS.art_dir)
+    except ValueError:
+        pass
+    try:
+        return source.resolve().relative_to(PATHS.art_dir.resolve())
+    except (ValueError, OSError):
+        return None
+
+
 def thumb_path_for(source: Path) -> Path:
     """Ruta en disco donde vive (o vivirá) la miniatura de un arte.
 
@@ -113,12 +141,21 @@ def thumb_path_for(source: Path) -> Path:
     decenas de miles de ficheros en una sola carpeta — algunos sistemas de
     ficheros se degradan mucho con directorios así de grandes.
     """
-    try:
-        relative = source.relative_to(PATHS.art_dir)
-    except ValueError:
+    relative = _relative_to_art_dir(source)
+    if relative is None:
         # El arte está fuera de art_dir (arte custom, carpeta local del
-        # usuario). Se agrupa por la inicial del nombre para repartir.
-        relative = Path("_external") / source.name[:2].lower() / source.name
+        # usuario). Se agrupa por la inicial del nombre para repartir, y se
+        # incluye un hash corto de la carpeta de origen: sin él, dos ficheros
+        # con el mismo nombre en carpetas distintas —algo habitual en los
+        # drives de arte, donde "Sol Ring.png" aparece en varias— escribirían
+        # sobre la misma miniatura.
+        digest = hashlib.sha256(
+            str(source.parent).encode("utf-8", "surrogateescape")
+        ).hexdigest()[:8]
+        stem = Path(source.name).stem
+        relative = (
+            Path("_external") / source.name[:2].lower() / f"{stem}-{digest}.webp"
+        )
     return (PATHS.thumbs_dir / relative).with_suffix(".webp")
 
 

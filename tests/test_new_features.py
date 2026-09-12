@@ -444,9 +444,11 @@ class TestPathOverrides:
         from pathlib import Path
         assert Path(cfg.PATHS.art_dir).resolve() == Path(custom_dir).resolve()
 
-        # El endpoint /paths también lo devuelve
+        # El endpoint /paths también lo devuelve. Misma normalización que
+        # arriba: la comparación de cadenas falla en Windows por la forma
+        # corta 8.3, no porque la ruta sea distinta.
         r = await client.get("/api/settings/paths")
-        assert r.json()["art_dir"] == custom_dir
+        assert Path(r.json()["art_dir"]).resolve() == Path(custom_dir).resolve()
 
         # Reset: vaciar override para no afectar tests siguientes
         r = await client.put("/api/settings/", json={

@@ -279,3 +279,59 @@ class TestDeckPricing:
         assert price["eur"] == 0.0
         assert price["unpriced_cards"] == 3
         assert price["priced_cards"] == 0
+
+
+class TestThumbPathNormalization:
+    """`thumb_path_for` debe dar la misma ruta para la misma carpeta.
+
+    En Windows la misma ruta se puede escribir de dos formas (corta 8.3 y
+    larga). El endpoint resuelve lo que pide el cliente para impedir el escape
+    de directorio, y `resolve()` devuelve la larga; si `art_dir` estaba
+    guardado en la corta, `relative_to` fallaba y TODAS las miniaturas caían al
+    cajón `_external`. Eso rompía el reparto por subdirectorios y provocaba
+    colisiones: dos "Sol Ring.png" de carpetas distintas compartían miniatura,
+    así que la rejilla mostraba el arte equivocado.
+
+    Aquí se reproduce con un enlace simbólico, que produce exactamente el mismo
+    desajuste (dos cadenas distintas, la misma carpeta real) y funciona en
+    cualquier plataforma.
+    """
+
+    def test_same_dir_written_two_ways_gives_the_same_thumb(self, tmp_path, monkeypatch):
+        real = tmp_path / "real_art"
+        real.mkdir()
+        alias = tmp_path / "alias_art"
+        try:
+            alias.symlink_to(real, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("El sistema no permite crear enlaces simbólicos")
+
+        paths_via_alias = thumbnails.PATHS.with_overrides(art_dir=str(alias))
+        monkeypatch.setattr(thumbnails, "PATHS", paths_via_alias)
+
+        # La misma imagen, nombrada por la ruta real y por el alias.
+        via_alias = thumbnails.thumb_path_for(alias / "sub" / "Sol Ring.png")
+        via_real = thumbnails.thumb_path_for(real / "sub" / "Sol Ring.png")
+
+        assert "_external" not in via_alias.parts
+        assert "_external" not in via_real.parts, (
+            "La ruta real no se reconoció como interna a art_dir: volvería a "
+            "caer al cajón _external, que es el bug de Windows."
+        )
+        assert via_alias == via_real
+
+    def test_external_arts_with_the_same_name_do_not_collide(self, tmp_path, monkeypatch):
+        """Dos ficheros homónimos en carpetas distintas necesitan miniaturas distintas.
+
+        "Sol Ring.png" aparece en muchas carpetas de un drive de arte, así que
+        agrupar solo por nombre hacía que la última generada pisara a las
+        demás.
+        """
+        paths = thumbnails.PATHS.with_overrides(art_dir=str(tmp_path / "arte"))
+        monkeypatch.setattr(thumbnails, "PATHS", paths)
+
+        a = thumbnails.thumb_path_for(tmp_path / "drive_a" / "Sol Ring.png")
+        b = thumbnails.thumb_path_for(tmp_path / "drive_b" / "Sol Ring.png")
+
+        assert "_external" in a.parts and "_external" in b.parts
+        assert a != b, "Dos artes distintos comparten fichero de miniatura"
