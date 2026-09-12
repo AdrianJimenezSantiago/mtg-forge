@@ -66,6 +66,13 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - name: Instalar dependencias
+        # `shell: bash` explícito: este job corre también en windows-latest, y
+        # allí el shell por defecto es PowerShell, que no aborta ante el fallo
+        # de un comando intermedio de un bloque multilínea (solo cuenta el
+        # código de salida del último). Sin esto, un fallo instalando
+        # requirements.txt saldría en verde y reaparecería más tarde como un
+        # ModuleNotFoundError confuso durante los tests.
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
