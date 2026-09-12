@@ -111,3 +111,48 @@ def test_lockfile_carries_environment_markers():
         "uvloop aparece sin marcador de plataforma: el lockfile se generó para "
         "una sola plataforma. Regenéralo con `uv pip compile --universal`."
     )
+
+
+class TestNodeVersion:
+    """La versión de Node de CI debe cumplir el `engines` de package.json.
+
+    jsdom 30 exige Node >= 22.22 y undici 8 exige >= 22.19, pero los workflows
+    fijaban Node 20. `npm ci` solo AVISA sobre `engines`, así que instalaba
+    igualmente y el fallo aparecía mucho después en tiempo de ejecución, como
+    un `webidl.util.markAsUncloneable is not a function` dentro de undici —
+    imposible de relacionar con la causa a simple vista.
+    """
+
+    def _required_major(self) -> int:
+        import json
+        pkg = json.loads(
+            (WORKFLOWS.parent.parent / "package.json").read_text(encoding="utf-8")
+        )
+        spec = (pkg.get("engines") or {}).get("node", "")
+        assert spec, "package.json debe declarar engines.node"
+        import re
+        match = re.search(r"(\d+)", spec)
+        assert match, f"No se pudo leer un major de engines.node={spec!r}"
+        return int(match.group(1))
+
+    @pytest.mark.parametrize("workflow", ALL_WORKFLOWS)
+    def test_setup_node_satisfies_engines(self, workflow):
+        required = self._required_major()
+        for job_name, job in _load(workflow)["jobs"].items():
+            for step in job.get("steps", []):
+                if "setup-node" not in str(step.get("uses", "")):
+                    continue
+                declared = str((step.get("with") or {}).get("node-version", ""))
+                assert declared, f"{workflow}::{job_name}: setup-node sin node-version"
+                major = int(declared.strip().strip("'\"").split(".")[0])
+                assert major >= required, (
+                    f"{workflow}::{job_name} usa Node {declared} pero "
+                    f"package.json exige >= {required}. npm ci no falla por esto: "
+                    f"el error aparece luego en tiempo de ejecución."
+                )
+
+    def test_engine_strict_is_enabled(self):
+        """`engine-strict` convierte el aviso de npm en un fallo inmediato."""
+        npmrc = WORKFLOWS.parent.parent / ".npmrc"
+        assert npmrc.exists(), "Falta .npmrc con engine-strict=true"
+        assert "engine-strict=true" in npmrc.read_text(encoding="utf-8")

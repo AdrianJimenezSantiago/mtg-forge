@@ -96,7 +96,7 @@ jobs:
       - name: Setup Node (para los assets vendorizados)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Compilar assets locales
         # static/vendor/ está versionado, pero lo regeneramos aquí para

@@ -60,7 +60,12 @@ async def indexed_local_source(client, tmp_path):
         "Sol Ring [C21 263].png",
         "Sol Ring (Extended).png",
         "Sol Ring (Showcase).png",
-        "Sol Ring | Fan Art.jpg",
+        # OJO: aquí NO se puede usar "|" como separador aunque sea un patrón
+        # real en Drive. Windows lo prohíbe en nombres de fichero (junto con
+        # < > : " / \\ ? *) y `write_bytes` falla con EINVAL. La normalización
+        # de "|" se sigue cubriendo en el test de normalize_filename, que
+        # trabaja con cadenas y no toca el sistema de ficheros.
+        "Sol Ring ~ Fan Art.jpg",
         # Subcarpeta
         "Sol Ring (Promo).png",
         # Otras cartas (no deben matchear Sol Ring)
@@ -69,6 +74,15 @@ async def indexed_local_source(client, tmp_path):
         "Command Tower.png",
         "Cursed Sol Ring.png",   # nombre distinto, no debería ser match 100
     ]
+    # Caracteres que Windows prohíbe en nombres de fichero. Comprobarlo aquí
+    # da un error legible en lugar de un EINVAL a veinte líneas de
+    # profundidad dentro de pathlib. Los tests corren en windows-latest.
+    illegal = set('<>:"|?*')
+    for f in files:
+        assert not (illegal & set(f)), (
+            f"El fixture usa {f!r}, con un carácter ilegal en Windows."
+        )
+
     for f in files:
         p = tmp_path / f
         p.parent.mkdir(parents=True, exist_ok=True)

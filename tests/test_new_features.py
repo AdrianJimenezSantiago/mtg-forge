@@ -376,15 +376,27 @@ class TestPathOverrides:
         from mpc_forge import config as cfg
         original_data_dir = cfg.PATHS.data_dir
         original_db_path = cfg.PATHS.db_path
+        # Rutas construidas con Path y el tempdir del sistema, no literales
+        # POSIX: "/tmp/x" en Windows se resuelve contra la unidad actual y
+        # acaba como "D:\\tmp\\x", así que comparar la cadena tal cual
+        # fallaba allí. Los tests corren también en windows-latest.
+        import tempfile
+        from pathlib import Path
+        new_art = Path(tempfile.gettempdir()) / "mtg_new_art"
+        new_custom = Path(tempfile.gettempdir()) / "mtg_new_custom"
+
         # Intentamos override, pero data_dir y db_path deben ignorar el intento
         new_paths = cfg.PATHS.with_overrides(
-            art_dir="/tmp/mtg_new_art",
-            custom_art_dir="/tmp/mtg_new_custom",
+            art_dir=str(new_art),
+            custom_art_dir=str(new_custom),
         )
         assert new_paths.data_dir == original_data_dir
         assert new_paths.db_path == original_db_path
-        assert str(new_paths.art_dir) == "/tmp/mtg_new_art"
-        assert str(new_paths.custom_art_dir) == "/tmp/mtg_new_custom"
+        # Comparación entre Path resueltos: en Windows el tempdir puede llegar
+        # en forma corta 8.3 ("RUNNER~1") y la config guardarlo en la larga
+        # ("runneradmin"). Son la misma carpeta.
+        assert Path(new_paths.art_dir).resolve() == new_art.resolve()
+        assert Path(new_paths.custom_art_dir).resolve() == new_custom.resolve()
         # Restauramos cfg.PATHS por si el test siguiente lo lee
         # (with_overrides devuelve nuevo objeto, no muta el original)
 
@@ -425,8 +437,12 @@ class TestPathOverrides:
         })
         assert r.status_code == 200
 
-        # Ahora cfg.PATHS.art_dir refleja el override
-        assert str(cfg.PATHS.art_dir) == custom_dir
+        # Ahora cfg.PATHS.art_dir refleja el override.
+        # `.resolve()` en ambos lados: en Windows `mkdtemp` devuelve la ruta
+        # corta 8.3 (C:\\Users\\RUNNER~1\\...) mientras la config almacena la
+        # larga (C:\\Users\\runneradmin\\...). Apuntan a la misma carpeta.
+        from pathlib import Path
+        assert Path(cfg.PATHS.art_dir).resolve() == Path(custom_dir).resolve()
 
         # El endpoint /paths también lo devuelve
         r = await client.get("/api/settings/paths")

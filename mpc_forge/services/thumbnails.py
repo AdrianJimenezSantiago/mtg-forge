@@ -122,20 +122,37 @@ def thumb_path_for(source: Path) -> Path:
     return (PATHS.thumbs_dir / relative).with_suffix(".webp")
 
 
+class SourceTooLargeError(Exception):
+    """La imagen declara más píxeles de los que estamos dispuestos a decodificar."""
+
+
 def _generate_sync(source: Path, target: Path) -> bool:
     """Genera la miniatura. Bloqueante: llamar siempre vía ``to_thread``."""
     from PIL import Image, ImageOps
-
-    # Pillow avisa por encima de MAX_IMAGE_PIXELS y aborta al doble de ese
-    # valor. Lo fijamos explícitamente en lugar de confiar en el default, que
-    # depende de la versión instalada.
-    Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 
     target.parent.mkdir(parents=True, exist_ok=True)
     # Fichero temporal + rename atómico: si el proceso muere a mitad, no queda
     # un WebP truncado que luego se sirva corrupto para siempre.
     tmp = target.with_suffix(".webp.tmp")
     with Image.open(source) as im:
+        # Guardia contra bombas de descompresión.
+        #
+        # NO se toca `Image.MAX_IMAGE_PIXELS`: es un global de todo el proceso,
+        # así que fijarlo aquí lo cambiaba para cualquier otro código que use
+        # Pillow (el cálculo de pHash, por ejemplo) y, en los tests, se filtraba
+        # de un test a otro dejando el límite bajísimo para el resto de la
+        # sesión.
+        #
+        # `Image.open` solo lee la cabecera —los píxeles se decodifican de forma
+        # perezosa en el primer acceso—, así que comprobar `im.size` aquí ocurre
+        # ANTES de reservar memoria. Que es justo lo que hace falta: una bomba
+        # es un fichero de pocos KB que declara 50.000×50.000.
+        width, height = im.size
+        if width * height > MAX_SOURCE_PIXELS:
+            raise SourceTooLargeError(
+                f"{source.name}: {width}x{height} px supera el límite de "
+                f"{MAX_SOURCE_PIXELS} px"
+            )
         # exif_transpose respeta la orientación EXIF; algunos escaneos de arte
         # custom vienen rotados y sin esto la miniatura no coincide con la
         # imagen grande.

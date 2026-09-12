@@ -141,6 +141,29 @@ class TestThumbnailGeneration:
         # Degrada limpiamente a None; el endpoint cae a la imagen original.
         assert await thumbnails.ensure_thumb(source) is None
 
+    async def test_size_guard_does_not_leak_to_other_code(self, tmp_path, monkeypatch):
+        """Bajar el límite aquí no debe afectar a nada más del proceso.
+
+        La primera versión de este guardia asignaba `Image.MAX_IMAGE_PIXELS`,
+        que es un global de TODO el proceso: el límite se quedaba puesto para
+        cualquier otro código que usara Pillow y, entre tests, contaminaba la
+        sesión entera. Se detectó porque el cálculo de pHash empezó a emitir
+        DecompressionBombWarning con imágenes de 32x32.
+        """
+        pytest.importorskip("PIL")
+        from PIL import Image
+
+        before = Image.MAX_IMAGE_PIXELS
+        monkeypatch.setattr(thumbnails, "MAX_SOURCE_PIXELS", 1000)
+
+        source = tmp_path / "grande.png"
+        Image.new("RGB", (200, 200), "green").save(source)
+        await thumbnails.ensure_thumb(source)
+
+        assert before == Image.MAX_IMAGE_PIXELS, (
+            "La generación de miniaturas modificó el límite global de Pillow"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Legalidades y precio

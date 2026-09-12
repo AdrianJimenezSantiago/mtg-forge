@@ -12,6 +12,7 @@ suite siga siendo rápida:
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from datetime import UTC
 
@@ -20,12 +21,30 @@ import pytest
 
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 
-# Escala de tiempos: 1/5 de los valores reales. A escalas menores el jitter
-# del event loop (pocos ms) se come el margen de seguridad del cliente y el
-# test mediría el scheduler de Python, no la lógica de reserva.
-HEAVY = 0.10       # real: 0.5 s
-GENERAL = 0.02     # real: 0.1 s
-COOLDOWN = 0.3     # real: 30 s
+# Escala de tiempos: fracción de los valores reales. A escalas menores el
+# jitter del event loop (pocos ms) se come el margen de seguridad del cliente y
+# el test mediría el scheduler de Python, no la lógica de reserva.
+#
+# En Windows hay que multiplicar la escala. El temporizador por defecto del
+# sistema tiene una granularidad de ~15,6 ms, así que con GENERAL = 20 ms y un
+# 5 % de tolerancia el margen real era de UN milisegundo: dos peticiones
+# separadas correctamente podían aterrizar en el mismo tick del reloj y el
+# servidor falso las contaba como violación, devolviendo 429 y haciendo fallar
+# el test por un problema de resolución del reloj, no del código.
+#
+# Con x5 los huecos quedan muy por encima de esa granularidad. Cuesta unos
+# segundos más en Windows y es el único sitio de la suite donde la plataforma
+# cambia una constante.
+# x5 en Windows (granularidad del temporizador ~15,6 ms) y x2 en el resto.
+# El x2 no es cosmético: con GENERAL a 20 ms el margen absoluto eran 2 ms, y
+# el test fallaba de forma intermitente al ejecutarse dentro de la suite
+# completa —donde hay contención de CPU— aunque pasara siempre en aislado.
+# Un test que solo falla acompañado es peor que uno lento.
+_SCALE = 5 if sys.platform == "win32" else 2
+
+HEAVY = 0.10 * _SCALE       # real: 0.5 s
+GENERAL = 0.02 * _SCALE     # real: 0.1 s
+COOLDOWN = 0.3 * _SCALE     # real: 30 s
 
 
 class FakeScryfall:
@@ -58,14 +77,17 @@ class FakeScryfall:
             self.force_429 -= 1
             self.blocked_until = now + self.cooldown
             return self._limited()
-        # 5 % de tolerancia para el jitter del scheduler.
+        # 15 % de tolerancia para el jitter del scheduler. Con el 5 % original
+        # el margen absoluto sobre el hueco general era de un milisegundo,
+        # por debajo de la resolución del reloj. Sigue detectando las
+        # violaciones reales, que son de espaciado ~0, no del 14 %.
         if path in HEAVY_PATHS:
-            if now - self.last_heavy < self.heavy * 0.95:
+            if now - self.last_heavy < self.heavy * 0.85:
                 self.violations += 1
                 self.blocked_until = now + self.cooldown
                 return self._limited()
             self.last_heavy = now
-        if now - self.last_general < self.general * 0.95:
+        if now - self.last_general < self.general * 0.85:
             self.violations += 1
             self.blocked_until = now + self.cooldown
             return self._limited()
