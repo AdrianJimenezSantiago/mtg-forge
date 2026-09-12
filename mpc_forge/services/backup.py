@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import shutil
 import zipfile
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mpc_forge.config import PATHS
-
 
 # Cuántos backups automáticos (los que llevan tag) se conservan. Los backups
 # manuales del usuario nunca se podan.
@@ -32,7 +31,8 @@ def create_backup(
     """
     out = output_dir or PATHS.backups_dir
     out.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local: el nombre del backup lo lee una persona en su carpeta.
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     suffix = f"-{tag}" if tag else ""
     zip_path = out / f"mpc-forge-backup-{stamp}{suffix}.zip"
 
@@ -89,7 +89,7 @@ def prune_tagged_backups(
         try:
             old.unlink()
             removed += 1
-        except OSError:  # noqa: PERF203
+        except OSError:
             # Un backup que no se puede borrar (bloqueado por el antivirus,
             # permisos) no es motivo para romper nada. Se reintentará.
             pass
@@ -108,7 +108,9 @@ def list_backups(directory: Path | None = None) -> list[dict]:
             "filename": f.name,
             "path": str(f),
             "bytes_size": stat.st_size,
-            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "created_at": datetime.fromtimestamp(
+                stat.st_mtime, tz=UTC
+            ).isoformat(),
             "automatic": "-pre-migration" in f.name,
         })
     items.sort(key=lambda d: d["created_at"], reverse=True)

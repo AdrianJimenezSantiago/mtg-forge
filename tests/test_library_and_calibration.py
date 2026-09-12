@@ -7,11 +7,9 @@ de arreglarlas.
 """
 from __future__ import annotations
 
-
 import pytest
 
 from mpc_forge.services import art_library, calibration
-
 
 # ===========================================================================
 # Calibración: derivación de offsets

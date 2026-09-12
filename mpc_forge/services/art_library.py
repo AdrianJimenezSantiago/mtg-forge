@@ -40,6 +40,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import ArtSource, IndexedArt
+
 # Se reutilizan los constructores de URL del buscador en vez de duplicarlos:
 # son la fuente de verdad de cómo se piden miniaturas y descargas a Drive, y
 # tenerlos en dos sitios garantiza que algún día diverjan.

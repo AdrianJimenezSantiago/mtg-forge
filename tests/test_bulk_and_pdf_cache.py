@@ -13,7 +13,6 @@ import pytest
 from mpc_forge.services import bulk_data
 from mpc_forge.services.pdf_generator import _ImageReaderCache
 
-
 # --------------------------------------------------------------------------
 # Fixtures de datos con la forma exacta que devuelve Scryfall
 # --------------------------------------------------------------------------

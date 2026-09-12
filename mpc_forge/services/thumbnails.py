@@ -56,6 +56,42 @@ WEBP_METHOD = 4
 
 _SUPPORTED_SOURCES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
+# Límite de píxeles descomprimidos que aceptamos decodificar.
+#
+# Una "decompression bomb" es un PNG de pocos KB que declara 50000×50000 px:
+# al decodificarlo, Pillow intenta reservar decenas de GB y el proceso muere.
+# No es un ataque teórico aquí: `custom_art/` es una carpeta donde el usuario
+# suelta ficheros que a menudo ha descargado de sitios de terceros.
+#
+# 80 Mpx deja sitio de sobra para cualquier escaneo legítimo de una carta
+# (un 1200 dpi de una carta entera ronda los 12 Mpx) y corta el abuso.
+MAX_SOURCE_PIXELS = 80_000_000
+
+# Generaciones simultáneas. Cada una ocupa un hilo del executor por defecto de
+# asyncio (`min(32, cpu+4)`), así que sin tope una rejilla con 300 artes sin
+# cachear lo agota entero: el resto de `to_thread` de la app (exports a PDF,
+# escaneo de custom art) se queda esperando detrás.
+_GENERATION_CONCURRENCY = 4
+_semaphore: asyncio.Semaphore | None = None
+
+# Generaciones en vuelo, indexadas por ruta de destino. Sin esto, 40 tarjetas
+# de la rejilla que comparten arte disparan 40 generaciones idénticas del
+# mismo fichero, compitiendo por el mismo `.tmp`.
+_inflight: dict[Path, asyncio.Task] = {}
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Semáforo perezoso, creado dentro del event loop que lo va a usar.
+
+    Instanciarlo a nivel de módulo lo ataría al loop que estuviera activo en el
+    import, que no tiene por qué ser el de la app (en los tests hay uno por
+    test).
+    """
+    global _semaphore
+    if _semaphore is None:
+        _semaphore = asyncio.Semaphore(_GENERATION_CONCURRENCY)
+    return _semaphore
+
 
 def pillow_available() -> bool:
     """¿Está Pillow instalado?
@@ -89,6 +125,11 @@ def thumb_path_for(source: Path) -> Path:
 def _generate_sync(source: Path, target: Path) -> bool:
     """Genera la miniatura. Bloqueante: llamar siempre vía ``to_thread``."""
     from PIL import Image, ImageOps
+
+    # Pillow avisa por encima de MAX_IMAGE_PIXELS y aborta al doble de ese
+    # valor. Lo fijamos explícitamente en lugar de confiar en el default, que
+    # depende de la versión instalada.
+    Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 
     target.parent.mkdir(parents=True, exist_ok=True)
     # Fichero temporal + rename atómico: si el proceso muere a mitad, no queda
@@ -130,14 +171,39 @@ async def ensure_thumb(source: Path) -> Path | None:
     if not pillow_available():
         return None
 
+    # Si ya hay una generación en curso para este mismo destino, esperamos a
+    # esa en vez de lanzar otra. Es el mismo patrón de deduplicación en vuelo
+    # que usa `ScryfallClient._inflight`.
+    existing = _inflight.get(target)
+    if existing is not None:
+        try:
+            return await asyncio.shield(existing)
+        except Exception:
+            return None
+
+    async def _generate() -> Path | None:
+        async with _get_semaphore():
+            # Puede haberla generado otro esperando en el semáforo.
+            if target.exists():
+                return target
+            try:
+                await asyncio.to_thread(_generate_sync, source, target)
+                return target
+            except Exception:
+                # Una imagen corrupta, una bomba de descompresión o un formato
+                # exótico no deben romper la carga de la rejilla entera. Se
+                # registra y se cae a la imagen original.
+                log.warning(
+                    "No se pudo generar la miniatura de %s", source.name, exc_info=True
+                )
+                return None
+
+    task = asyncio.ensure_future(_generate())
+    _inflight[target] = task
     try:
-        await asyncio.to_thread(_generate_sync, source, target)
-        return target
-    except Exception:  # noqa: BLE001
-        # Una imagen corrupta o un formato exótico no debe romper la carga de
-        # la rejilla entera. Se registra y se cae a la imagen original.
-        log.warning("No se pudo generar la miniatura de %s", source.name, exc_info=True)
-        return None
+        return await task
+    finally:
+        _inflight.pop(target, None)
 
 
 def thumb_url(source: Path) -> str | None:

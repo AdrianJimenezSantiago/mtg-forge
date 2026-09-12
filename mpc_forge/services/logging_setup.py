@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import re
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -24,6 +25,78 @@ log = logging.getLogger(__name__)
 # Handler global (guardamos la referencia para poder cerrarlo/borrarlo en shutdown)
 _FILE_HANDLER: logging.Handler | None = None
 _LOG_PATH: Path | None = None
+
+
+# ---------------------------------------------------------------------------
+# Redacción de secretos
+# ---------------------------------------------------------------------------
+# El log se escribe a disco y se puede descargar desde la UI
+# (GET /log/download), así que cualquier credencial que llegue a un mensaje
+# de log sale del equipo en cuanto el usuario comparte el fichero para pedir
+# ayuda.
+#
+# El caso concreto que motivó esto: httpx incluye la URL completa en el
+# ``str()`` de sus excepciones, y las peticiones a la API de Drive llevan la
+# API key como query param (``?key=AIza…``). Un simple
+# ``log.warning("…: %s", e)`` bastaba para filtrarla.
+#
+# Este filtro es la última línea de defensa: se aplica al mensaje ya
+# formateado, así que da igual por qué ruta haya llegado el secreto.
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # Query params de credenciales: ?key=…, &access_token=…, &api_key=…
+    (re.compile(r"(?i)\b(key|api_key|apikey|access_token|token|password|secret)"
+                r"=([^&\s\"'<>]+)"), r"\1=[REDACTED]"),
+    # Cabecera Authorization, con o sin esquema delante ("Bearer", "Basic").
+    # Sin contemplar el esquema, el `\S+` se comía la palabra "Bearer" y dejaba
+    # la credencial intacta justo detrás.
+    (re.compile(r"(?i)(authorization\s*[:=]\s*)(bearer\s+|basic\s+|token\s+)?(\S+)"),
+     r"\1\2[REDACTED]"),
+    # API keys de Google sueltas, por si aparecen fuera de un query param.
+    # La longitud no se fija: las claves reales tienen 35 caracteres tras el
+    # prefijo, pero atarse a esa cifra hace que el patrón falle en cuanto
+    # Google cambie el formato, que es justo cuando más falta haría.
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{20,}"), "[REDACTED]"),
+]
+
+
+def redact(text: str) -> str:
+    """Sustituye credenciales conocidas por ``[REDACTED]``.
+
+    Pública para poder testearla y para usarla en respuestas de error que
+    viajan a la UI (no solo en el log).
+    """
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+class RedactSecretsFilter(logging.Filter):
+    """Filtro de logging que redacta secretos del mensaje ya formateado.
+
+    Se aplica sobre ``record.getMessage()`` (mensaje + args interpolados) y
+    también sobre el texto de la excepción, que es justo donde httpx mete la
+    URL con la key.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        cleaned = redact(message)
+        if cleaned != message:
+            # Reemplazamos msg por el texto ya interpolado y limpio, y
+            # vaciamos args para que el formatter no vuelva a interpolar.
+            record.msg = cleaned
+            record.args = ()
+        if record.exc_info:
+            # La traza se formatea aparte; la dejamos redactada en cache para
+            # que el formatter use la versión limpia.
+            import traceback
+            record.exc_text = redact(
+                "".join(traceback.format_exception(*record.exc_info))
+            )
+        return True
 
 
 def setup_file_logging(logs_dir: Path) -> Path:
@@ -42,7 +115,7 @@ def setup_file_logging(logs_dir: Path) -> Path:
         try:
             logging.getLogger().removeHandler(_FILE_HANDLER)
             _FILE_HANDLER.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         _FILE_HANDLER = None
 
@@ -66,11 +139,21 @@ def setup_file_logging(logs_dir: Path) -> Path:
         "%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     ))
+    handler.addFilter(RedactSecretsFilter())
 
     # Adjuntar al root para capturar todo (uvicorn, sqlalchemy, httpx, ...)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
+
+    # El filtro va también en los handlers ya montados (el StreamHandler de
+    # uvicorn): la consola se pega en issues de GitHub tan a menudo como el
+    # fichero.
+    for existing in root.handlers:
+        if existing is handler:
+            continue
+        if not any(isinstance(f, RedactSecretsFilter) for f in existing.filters):
+            existing.addFilter(RedactSecretsFilter())
 
     _FILE_HANDLER = handler
     _LOG_PATH = log_path
@@ -90,7 +173,7 @@ def teardown_file_logging(delete: bool = True) -> None:
         try:
             logging.getLogger().removeHandler(_FILE_HANDLER)
             _FILE_HANDLER.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         _FILE_HANDLER = None
 

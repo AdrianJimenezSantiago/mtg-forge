@@ -235,7 +235,7 @@ async def optimize_db() -> None:
             await conn.execute(text("PRAGMA optimize"))
             await conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
         log.info("Mantenimiento de BD completado (optimize + wal checkpoint)")
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("El mantenimiento de cierre de la BD falló (no es crítico)")
 
 
@@ -250,7 +250,7 @@ async def analyze_table(table: str) -> None:
         async with engine.begin() as conn:
             await conn.execute(text(f"ANALYZE {table}"))
         log.info("ANALYZE %s completado", table)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("ANALYZE %s falló (no es crítico)", table)
 
 
@@ -281,7 +281,7 @@ async def _try_setup_fts5(conn) -> bool:
             "  tokenize='unicode61 remove_diacritics 2'"
             ")"
         ))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning(
             "FTS5 no disponible en esta build de SQLite (%s). La búsqueda usará "
             "el modo LIKE. Actualiza el runtime si tienes muchos drives — "

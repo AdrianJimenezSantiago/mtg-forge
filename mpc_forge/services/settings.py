@@ -48,6 +48,24 @@ class SettingDef:
     min_value: float | None = None
     max_value: float | None = None
     choices: list[str] | None = None
+    secret: bool = False
+    """Credencial: nunca sale de la app en claro.
+
+    ``GET /api/settings/`` devuelve ``""`` en su lugar y añade la clave a
+    ``secrets_set`` para que la UI pueda pintar "configurada" sin conocer el
+    valor. La UI la manda solo cuando el usuario escribe una nueva; una cadena
+    vacía en un PUT significa "no tocar", no "borrar" (para borrarla se usa el
+    centinela :data:`SECRET_CLEAR`).
+
+    Importa porque el servidor escucha en localhost y un atacante que consiga
+    hablar con él (DNS rebinding, otra app del equipo) podría leerse las
+    credenciales de un simple GET.
+    """
+
+
+# Centinela para vaciar un secreto explícitamente desde la UI. Hace falta
+# porque "" ya significa "el usuario no ha tocado el campo".
+SECRET_CLEAR = "__CLEAR__"  # noqa: S105 — centinela, no una credencial
 
 
 # Registry de settings expuestos en la UI.
@@ -153,6 +171,7 @@ DEFINITIONS: list[SettingDef] = [
         type="str",
         group="Red y conexión",
         default="",
+        secret=True,
         description=(
             "Opcional pero recomendado. Se usa para indexar los Google Drives comunitarios "
             "y hacer búsqueda fuzzy de artes. Gratis en console.cloud.google.com "
@@ -359,6 +378,17 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
             continue
         if sd.choices and str(value) not in sd.choices:
             raise ValueError(f"Valor no válido para {key}: {value!r}. Opciones: {sd.choices}")
+        if sd.secret:
+            text = str(value or "").strip()
+            if text == SECRET_CLEAR:
+                value = ""
+            elif not text:
+                # Cadena vacía = "el usuario no tocó el campo". La UI recibe
+                # "" al leer, así que un PUT ingenuo del formulario completo
+                # borraría la credencial sin querer.
+                continue
+            else:
+                value = text
         if sd.type in {"float", "int"}:
             fv = float(value)
             if sd.min_value is not None and fv < sd.min_value:
@@ -462,5 +492,26 @@ def definitions_dump() -> list[dict[str, Any]]:
             "min_value": sd.min_value,
             "max_value": sd.max_value,
             "choices": sd.choices,
+            "secret": sd.secret,
         })
     return out
+
+
+SECRET_KEYS: frozenset[str] = frozenset(sd.key for sd in DEFINITIONS if sd.secret)
+
+
+def redact_values(values: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Versión de ``values`` apta para salir por la API.
+
+    Devuelve ``(valores_redactados, claves_con_valor)``. Los secretos se
+    sustituyen por ``""`` y su clave aparece en la segunda lista, que es lo que
+    la UI necesita para distinguir "sin configurar" de "ya configurada" sin
+    llegar a conocer el valor.
+    """
+    redacted = dict(values)
+    configured: list[str] = []
+    for key in SECRET_KEYS:
+        if str(redacted.get(key) or "").strip():
+            configured.append(key)
+        redacted[key] = ""
+    return redacted, sorted(configured)

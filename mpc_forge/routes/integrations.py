@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
 from mpc_forge.clients.scryfall import ScryfallClient
@@ -66,7 +66,7 @@ async def autofill_launch(payload: AutofillLaunchRequest) -> dict[str, Any]:
     try:
         xml_path.relative_to(exports_dir)
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ruta inválida")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ruta inválida") from None
 
     if not xml_path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"XML no encontrado: {payload.xml_filename}")
@@ -74,7 +74,7 @@ async def autofill_launch(payload: AutofillLaunchRequest) -> dict[str, Any]:
     try:
         pid = mpc_autofill.launch(xml_path)
     except RuntimeError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     return {"launched": True, "pid": pid, "xml_path": str(xml_path)}
 
 
@@ -95,7 +95,7 @@ class ArtSourceView(BaseModel):
     index_error: str = ""
 
     @classmethod
-    def from_model(cls, s) -> "ArtSourceView":
+    def from_model(cls, s) -> ArtSourceView:
         return cls(
             id=s.id, name=s.name, url=s.url, source_type=s.source_type,
             description=s.description,
@@ -139,7 +139,7 @@ async def create_art_source(payload: CreateArtSourceRequest, db: DbDep) -> ArtSo
             pinned=payload.pinned,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     return ArtSourceView.from_model(src)
 
 
@@ -211,16 +211,17 @@ async def _run_index_task(source_id: int) -> None:
     try:
         async with session_scope() as db:
             await gdrive_indexer.index_source(db, source_id)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("Fallo indexando source %d", source_id)
         # Segundo intento: marcar el source con el error en su propia sesión.
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             from mpc_forge.models import ArtSource
             async with session_scope() as db:
                 src = await db.get(ArtSource, source_id)
                 if src:
-                    src.indexed_at = datetime.now(timezone.utc)
+                    src.indexed_at = datetime.now(UTC)
                     src.index_error = f"Fallo interno: {type(e).__name__}: {str(e)[:200]}"
         except Exception:
             log.exception("Además no se pudo marcar el error en source %d", source_id)
@@ -577,6 +578,7 @@ async def serve_local_source_file(
     thumbnails de artes de un local-folder se sirven desde aquí.
     """
     from fastapi.responses import FileResponse
+
     from mpc_forge.models import ArtSource
     from mpc_forge.services.source_types import resolve
     from mpc_forge.services.source_types.base import ArtSourceTypeError
@@ -592,7 +594,7 @@ async def serve_local_source_file(
     try:
         path = cls.resolve_path(source, file_id)  # type: ignore[attr-defined]
     except ArtSourceTypeError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
     return FileResponse(path)
 
 
@@ -658,7 +660,7 @@ async def _run_dfc_sync_task(scryfall: ScryfallClient) -> None:
     try:
         async with session_scope() as db:
             await dfc_pairs.sync_if_stale(db, scryfall)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("Sync manual de DFC pairs falló")
 
 
@@ -746,6 +748,7 @@ class SimilarArtsResponse(BaseModel):
 async def phash_stats(db: DbDep) -> PHashStatsResponse:
     """Estado global del pHash: disponibilidad, cobertura del índice."""
     from sqlalchemy import func
+
     from mpc_forge.models import IndexedArt
     from mpc_forge.services import phash
 
@@ -769,6 +772,7 @@ async def _phash_compute_task(source_id: int, limit: int) -> None:
         async with session_scope() as db:
             # httpx client dedicado (sin depender del art_cache)
             import httpx
+
             from mpc_forge.ssl_config import ssl_insecure
             async with httpx.AsyncClient(
                 timeout=15.0,
@@ -779,7 +783,7 @@ async def _phash_compute_task(source_id: int, limit: int) -> None:
                     db, client, source_id=source_id, limit=limit,
                 )
                 log.info("pHash retrofit source=%d: %s", source_id, stats)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("phash_compute_task falló para source %d", source_id)
 
 
@@ -811,6 +815,7 @@ async def phash_compute(
 
     # Inline execution — solo recomendable para limit pequeño.
     import httpx
+
     from mpc_forge.ssl_config import ssl_insecure
     async with httpx.AsyncClient(
         timeout=15.0,
@@ -834,9 +839,10 @@ async def _phash_compute_all_task(limit_per_source: int) -> None:
     sus artes sin hash. Un `AsyncClient` compartido entre todos los
     sources para reutilizar conexiones.
     """
-    from mpc_forge.services import phash
-    from mpc_forge.models import ArtSource
     import httpx as _httpx
+
+    from mpc_forge.models import ArtSource
+    from mpc_forge.services import phash
     from mpc_forge.ssl_config import ssl_insecure
 
     try:
@@ -857,10 +863,10 @@ async def _phash_compute_all_task(limit_per_source: int) -> None:
                         )
                         log.info("pHash retrofit source=%d (%s): %s",
                                  src.id, src.name, stats)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     log.exception("pHash retrofit falló para source %d", src.id)
                     continue
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("_phash_compute_all_task falló")
 
 
@@ -898,6 +904,7 @@ async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
     ('rebuild')`). Para 100k artes tarda ~5-10s.
     """
     from sqlalchemy import text as sa_text
+
     from mpc_forge.models import KeyValue
 
     # Verificar que FTS5 está disponible primero
@@ -912,12 +919,12 @@ async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
             "INSERT INTO indexed_art_fts(indexed_art_fts) VALUES ('rebuild')"
         ))
         await db.commit()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("Rebuild FTS5 falló")
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             f"Rebuild FTS5 falló: {e}",
-        )
+        ) from e
     return {"status": "ok", "message": "FTS5 rebuild completo"}
 
 
@@ -1008,7 +1015,7 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
     antes de hacer el POST real.
     """
     from mpc_forge.services import art_sources as _asources
-    from mpc_forge.services.source_types import resolve, list_registered
+    from mpc_forge.services.source_types import list_registered, resolve
 
     raw = (payload.url or "").strip()
     if not raw:
@@ -1043,7 +1050,7 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
     # Auto-detect
     try:
         detected_type, canonical = _asources._detect_source_type(raw)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return ValidateSourceResponse(
             valid=False, detected_type="",
             canonical_url=raw, label="",

@@ -9,18 +9,21 @@ import logging
 from datetime import datetime
 
 from fastapi import (
-    HTTPException, Response, status,
+    HTTPException,
+    Response,
+    status,
 )
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from mpc_forge.models import (
-    Deck, DeckCard, PrintingCache,
+    Deck,
+    DeckCard,
+    PrintingCache,
 )
 from mpc_forge.services import (
     deck_activity,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +31,8 @@ log = logging.getLogger(__name__)
 # --- Import / CRUD -------------------------------------------------------
 
 from mpc_forge.routes.decks._common import (
-    DbDep, make_router,
+    DbDep,
+    make_router,
 )
 
 router = make_router()
@@ -258,7 +262,7 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
         result = await undo_svc.undo_event(db, event)
     except undo_svc.UndoNotSupported as e:
         # Estado en BD no permite el undo (409 Conflict es semánticamente correcto)
-        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
 
     return UndoResponse(ok=True, summary=result["summary"], deck_id=deck_id)
 

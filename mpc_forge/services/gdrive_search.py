@@ -164,7 +164,7 @@ async def _fts5_available(db: AsyncSession) -> bool:
         from mpc_forge.models import KeyValue
         kv = await db.get(KeyValue, "fts5_available")
         _fts5_available_cache = bool(kv and kv.value == "1")
-    except Exception:  # noqa: BLE001
+    except Exception:
         _fts5_available_cache = False
     return _fts5_available_cache
 
@@ -365,7 +365,7 @@ async def search(
             return await _search_fts5(
                 db, q_norm, limit, source_ids, tags_include, tags_exclude, expansion_code,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # Si FTS5 falla por cualquier motivo (query mal parseada, índice
             # corrupto), caemos al modo LIKE. Loguearemos como warning para
             # que se investigue pero el usuario NO ve un error.

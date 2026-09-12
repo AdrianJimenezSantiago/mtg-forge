@@ -9,6 +9,7 @@ import webbrowser
 
 import uvicorn
 
+log = logging.getLogger(__name__)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -68,7 +69,7 @@ def main() -> None:
                 log_level="info",
             )
         except KeyboardInterrupt:
-            logging.info("Cerrando MPC Forge…")
+            log.info("Cerrando MPC Forge…")
 
 
 if __name__ == "__main__":

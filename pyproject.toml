@@ -45,6 +45,85 @@ mpc-forge = "mpc_forge.__main__:main"
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+# Sin un `select` explícito, ruff solo aplica su set por defecto (E4, E7, E9,
+# F): errores de sintaxis y nombres sin definir. Útil, pero deja pasar
+# justamente las familias que más nos han costado en este proyecto:
+#
+#   DTZ — datetimes naive. Es la clase de bug que motivó `models.TZDateTime`.
+#   LOG — llamadas al root logger y f-strings dentro de log, que rompen el
+#         filtro de redacción de secretos (el mensaje llega ya interpolado).
+#   S   — subconjunto de bandit: try/except/pass que se tragan errores.
+#   B   — bugbears clásicos (mutable default args, etc.).
+#   PERF, C4, SIM — rendimiento y legibilidad.
+#
+# Se activan todas y se listan abajo las excepciones que no compensan.
+select = [
+    "E", "W",     # pycodestyle
+    "F",          # pyflakes
+    "I",          # isort
+    "UP",         # pyupgrade
+    "B",          # flake8-bugbear
+    "C4",         # comprehensions
+    "DTZ",        # datetimes con zona
+    "LOG", "G",   # logging correcto
+    "S",          # seguridad (bandit)
+    "SIM",        # simplificaciones
+    "PERF",       # rendimiento
+    "RUF",        # reglas propias de ruff
+]
+
+ignore = [
+    # `assert` es la forma normal de escribir un test.
+    "S101",
+    # Las excepciones amplias son deliberadas en los servicios opcionales:
+    # que falle el pHash o una miniatura no debe tumbar la petición. Cada una
+    # lleva su `log` al lado.
+    "BLE001",
+    # Los `except … : pass` que quedan son limpiezas en `finally` donde
+    # cualquier fallo es irrelevante (cerrar un handler ya cerrado).
+    "S110",
+    # Línea larga: hay tablas y URLs en comentarios que quedan peor partidas.
+    "E501",
+    # `random` se usa para jitter de reintentos, no para nada criptográfico.
+    "S311",
+    # El código y los comentarios están en español y usan —, · y ñ. Ruff los
+    # marca como "caracteres ambiguos"; aquí son simplemente el idioma.
+    "RUF001", "RUF002", "RUF003",
+    # Los imports diferidos dentro de funciones son deliberados: rompen ciclos
+    # entre routes/ y services/ y aligeran el arranque del .exe.
+    "E402",
+    # Las queries construidas con f-string son DDL de índices con nombres de
+    # tabla literales del propio código, nunca entrada del usuario.
+    "S608",
+]
+
+# Reglas que quedan por limpiar. Se listan de una en una (no familias enteras)
+# para que la lista sea un backlog visible que encoge, no una alfombra. Todo lo
+# demás es bloqueante en CI a partir de ahora.
+#
+# SIM105  — try/except/pass → contextlib.suppress. Mecánico, 5 sitios.
+# PERF401 — bucles que podrían ser comprehensions. 8 sitios.
+# SIM102  — ifs anidados colapsables. 2 sitios.
+# S318    — parseo XML con la stdlib. El único XML que se parsea es el que
+#           genera la propia app y vuelve a leer para previsualizar, no entrada
+#           de terceros. Migrar a defusedxml igualmente sería lo correcto.
+# B007    — variable de bucle sin usar en xml_generator.
+[tool.ruff.lint.extend-per-file-ignores]
+"mpc_forge/**" = ["SIM105", "PERF401", "SIM102", "S318", "B007"]
+
+[tool.ruff.lint.per-file-ignores]
+# Los tests no necesitan la misma severidad que el código de producción:
+# rutas /tmp hardcodeadas, subprocess con rutas parciales y atributos de clase
+# mutables son patrones normales en una suite.
+"tests/*" = [
+    "S105", "S106", "S108", "S603", "S607",
+    "DTZ001", "DTZ005", "PERF", "B", "RUF012", "RUF007", "F841",
+]
+# El registro de traducciones son 1500 líneas de literales alineados a mano;
+# la alineación es intencional y ruff la quiere deshacer.
+"mpc_forge/services/i18n.py" = ["E241", "RUF001"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = false

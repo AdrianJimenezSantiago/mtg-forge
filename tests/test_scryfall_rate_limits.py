@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import UTC
 
 import httpx
 import pytest
@@ -281,7 +282,7 @@ class TestCacheFirstImport:
         assert len(counting.collection_calls) == 1
 
     async def test_stale_cache_rows_are_refreshed(self, counting):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         from sqlalchemy import update
 
@@ -290,7 +291,7 @@ class TestCacheFirstImport:
         await self._import(counting)
         async with session_scope() as db:
             await db.execute(update(PrintingCache).values(
-                fetched_at=datetime.now(timezone.utc) - timedelta(days=30)))
+                fetched_at=datetime.now(UTC) - timedelta(days=30)))
             await db.commit()
         await self._import(counting)
         assert len(counting.collection_calls) == 2

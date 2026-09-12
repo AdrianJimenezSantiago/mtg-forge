@@ -65,7 +65,7 @@ async def start(deck_id: int, scryfall: ScryfallClient) -> PreloadState:
         prev.task.cancel()
         try:
             await prev.task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        except (asyncio.CancelledError, Exception):
             pass
 
     state = PreloadState(deck_id=deck_id, in_progress=True)
@@ -84,7 +84,7 @@ async def cancel(deck_id: int) -> None:
         state.task.cancel()
         try:
             await state.task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        except (asyncio.CancelledError, Exception):
             pass
     if state:
         state.in_progress = False
@@ -158,7 +158,7 @@ async def _run(state: PreloadState, scryfall: ScryfallClient) -> None:
                     await _fetch(batch)
                 except asyncio.CancelledError:
                     raise
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     log.debug("Preload de %d oracles falló: %s", len(batch), e)
                 finally:
                     state.done += len(batch)
@@ -166,7 +166,7 @@ async def _run(state: PreloadState, scryfall: ScryfallClient) -> None:
         await asyncio.gather(*(_one(b) for b in batches))
     except asyncio.CancelledError:
         log.debug("Preload del mazo %s cancelado", state.deck_id)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("Preload del mazo %s falló: %s", state.deck_id, e)
     finally:
         state.in_progress = False

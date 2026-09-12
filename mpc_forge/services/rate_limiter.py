@@ -58,7 +58,7 @@ class TieredRateLimiter:
     rápidas.
     """
 
-    __slots__ = ("_general", "_heavy", "_slots", "_next_heavy")
+    __slots__ = ("_general", "_heavy", "_next_heavy", "_slots")
 
     def __init__(self, general: float, heavy: float) -> None:
         self._general = general

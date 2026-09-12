@@ -8,7 +8,12 @@ Uso desde JavaScript (inyectado en base.html como window._T):
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Diccionario maestro de traducciones
@@ -479,6 +484,32 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- Settings -------------------------------------------------------
         "settings_title":             "Ajustes",
         "settings_saved":             "Ajustes guardados",
+
+        # --- Modo offline (bulk data de Scryfall) --------------------------
+        "settings_nav_offline":       "Modo offline",
+        "settings_offline_title":     "Datos de cartas en local",
+        "settings_offline_desc":      (
+            "Importa el volcado completo de Scryfall (~1 GB en disco) para que "
+            "resolver cartas y buscar impresiones no toque la red. Tarda unos "
+            "minutos y se puede cancelar: lo ya importado se conserva."
+        ),
+        "settings_offline_printings": "Impresiones en local",
+        "settings_offline_unique":    "Cartas únicas",
+        "settings_offline_sync":      "Importar datos",
+        "settings_offline_resync":    "Volver a importar",
+        "settings_offline_ijson_hint": (
+            "Instala «ijson» (pip install ijson) para que la importación sea "
+            "bastante más rápida."
+        ),
+        "bulk_started":               "Importación arrancada",
+        "bulk_started_desc":          "Puedes seguir usando la app mientras tanto",
+        "bulk_cancelled":             "Importación cancelada",
+        "bulk_cancelled_desc":        "Se conserva lo que ya se había importado",
+        "bulk_done":                  "Importación completada",
+        "bulk_done_desc":             "Las cartas ya se resuelven sin conexión",
+        "settings_secret_stored":     "Guardada — escribe para sustituirla",
+        "settings_secret_empty":      "Sin configurar",
+        "settings_secret_clear":      "Borrar",
         "settings_save":              "Guardar ajustes",
         "settings_paths":             "Rutas",
         "settings_art_dir":           "Directorio de arte",
@@ -763,6 +794,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_cards_deleted":         "cartas eliminadas",
         "deck_error_clear":           "No se pudo vaciar la sección",
         "deck_card_deleted":          "Eliminada",
+        "deck_kind_moved":            "Movida",
         "deck_error_delete":          "No se pudo eliminar",
         "deck_rescanned":             "Re-escaneado",
         "deck_files_count":           "archivos",
@@ -1265,6 +1297,32 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         # --- Settings -------------------------------------------------------
         "settings_title":             "Settings",
         "settings_saved":             "Settings saved",
+
+        # --- Offline mode (Scryfall bulk data) -----------------------------
+        "settings_nav_offline":       "Offline mode",
+        "settings_offline_title":     "Local card data",
+        "settings_offline_desc":      (
+            "Import Scryfall's full bulk data (~1 GB on disk) so card lookups "
+            "and printing searches never touch the network. It takes a few "
+            "minutes and can be cancelled: whatever was imported is kept."
+        ),
+        "settings_offline_printings": "Printings stored",
+        "settings_offline_unique":    "Unique cards",
+        "settings_offline_sync":      "Import data",
+        "settings_offline_resync":    "Re-import",
+        "settings_offline_ijson_hint": (
+            "Install \"ijson\" (pip install ijson) to make importing "
+            "considerably faster."
+        ),
+        "bulk_started":               "Import started",
+        "bulk_started_desc":          "You can keep using the app meanwhile",
+        "bulk_cancelled":             "Import cancelled",
+        "bulk_cancelled_desc":        "Whatever was already imported is kept",
+        "bulk_done":                  "Import complete",
+        "bulk_done_desc":             "Cards now resolve without a connection",
+        "settings_secret_stored":     "Stored — type to replace it",
+        "settings_secret_empty":      "Not set",
+        "settings_secret_clear":      "Clear",
         "settings_save":              "Save settings",
         "settings_paths":             "Paths",
         "settings_art_dir":           "Art directory",
@@ -1549,6 +1607,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_cards_deleted":         "cards deleted",
         "deck_error_clear":           "Could not clear the section",
         "deck_card_deleted":          "Removed",
+        "deck_kind_moved":            "Moved",
         "deck_error_delete":          "Could not delete",
         "deck_rescanned":             "Rescanned",
         "deck_files_count":           "files",
@@ -1601,27 +1660,65 @@ LANG_FLAGS: dict[str, str] = {
 }
 
 
+# Idioma base: el que se usa como respaldo cuando a otro le falta una clave.
+BASE_LANG = "es"
+
+
 class Translations:
     """Wrapper que permite acceder a las traducciones como atributos (``t.nav_decks``)
-    o como dict (``t['nav_decks']``). Devuelve la clave entre corchetes como
-    fallback si no existe, para que sea fácil detectar cadenas sin traducir."""
+    o como dict (``t['nav_decks']``).
+
+    Cadena de respaldo
+    ------------------
+    Antes, una clave ausente en inglés devolvía ``[deck_foo]``, que en la
+    interfaz se ve como texto roto. Ahora se cae al idioma base (español) y
+    solo se devuelve ``[clave]`` si tampoco existe allí —es decir, si la clave
+    está mal escrita, que es el único caso en que ese marcador ayuda.
+
+    Un texto en español dentro de la interfaz en inglés es un fallo cosmético;
+    un ``[deck_confirmdelete_msg]`` en un diálogo de confirmación hace que el
+    usuario no entienda qué va a borrar. El test de paridad de
+    ``tests/test_i18n_parity.py`` evita que esto ocurra, pero el respaldo sigue
+    siendo la red por si una clave se añade sin pasar por CI.
+    """
 
     def __init__(self, lang: str) -> None:
         self._lang = lang
-        self._data: dict[str, str] = _TRANSLATIONS.get(lang, _TRANSLATIONS["es"])
+        self._data: dict[str, str] = _TRANSLATIONS.get(lang, _TRANSLATIONS[BASE_LANG])
+        self._fallback: dict[str, str] = _TRANSLATIONS[BASE_LANG]
+
+    def _lookup(self, key: str) -> str:
+        value = self._data.get(key)
+        if value is not None:
+            return value
+        value = self._fallback.get(key)
+        if value is not None:
+            log.warning(
+                "Falta la traducción de %r en '%s'; se usa '%s'.",
+                key, self._lang, BASE_LANG,
+            )
+            return value
+        return f"[{key}]"
 
     def __getattr__(self, key: str) -> str:
-        return self._data.get(key, f"[{key}]")
+        return self._lookup(key)
 
     def __getitem__(self, key: str) -> str:
-        return self._data.get(key, f"[{key}]")
+        return self._lookup(key)
 
     def get(self, key: str, default: str = "") -> str:
-        return self._data.get(key, default)
+        value = self._data.get(key) or self._fallback.get(key)
+        return value if value is not None else default
 
     def as_dict(self) -> dict[str, str]:
-        """Devuelve el dict completo (para inyectar en window._T desde JS)."""
-        return dict(self._data)
+        """Dict completo con el respaldo ya resuelto.
+
+        Es lo que se sirve como ``window._T``, así que las claves ausentes en
+        el idioma activo llegan al navegador ya rellenas con el idioma base.
+        """
+        merged = dict(self._fallback)
+        merged.update(self._data)
+        return merged
 
 
 def get_translations(lang: str) -> Translations:
@@ -1641,3 +1738,54 @@ def detect_lang(request_or_cookie: Any) -> str:
     else:
         cookie = "es"
     return cookie if cookie in _TRANSLATIONS else "es"
+
+
+# ---------------------------------------------------------------------------
+# Bundle JS de traducciones
+# ---------------------------------------------------------------------------
+# Antes, las ~740 cadenas se serializaban dentro de un <script> inline en CADA
+# página: unos 25 KB de JSON repetidos en cada navegación, imposibles de
+# cachear porque van dentro del HTML. Sirviéndolas como un fichero JS aparte
+# con una URL versionada, el navegador las descarga una vez y las reutiliza
+# hasta que cambian las traducciones.
+
+_BUNDLE_CACHE: dict[str, str] = {}
+_VERSION_CACHE: str | None = None
+
+
+def bundle_version() -> str:
+    """Hash corto del contenido de TODAS las traducciones.
+
+    Sirve como query param de cache-busting: cambia solo si cambian las
+    cadenas, así que el navegador puede cachear el bundle de forma agresiva
+    sin quedarse con texto obsoleto tras una actualización.
+    """
+    global _VERSION_CACHE
+    if _VERSION_CACHE is None:
+        payload = json.dumps(_TRANSLATIONS, sort_keys=True, ensure_ascii=False)
+        _VERSION_CACHE = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    return _VERSION_CACHE
+
+
+def bundle_js(lang: str) -> str:
+    """Cuerpo del fichero ``/i18n/<lang>.js``.
+
+    Define exactamente lo mismo que definía el bloque inline: ``window._LANG``,
+    ``window._T`` y el atajo ``window._t``. Se cachea en memoria porque el
+    contenido solo depende del idioma.
+    """
+    lang = lang if lang in _TRANSLATIONS else BASE_LANG
+    cached = _BUNDLE_CACHE.get(lang)
+    if cached is not None:
+        return cached
+
+    data = get_translations(lang).as_dict()
+    body = (
+        "/* Generado por mpc_forge.services.i18n — no editar a mano. */\n"
+        f"window._LANG = {json.dumps(lang)};\n"
+        f"window._T = {json.dumps(data, ensure_ascii=False)};\n"
+        "/** Atajo global: _t('key') -> traduccion o '[key]' si no existe */\n"
+        "window._t = (key) => window._T[key] ?? `[${key}]`;\n"
+    )
+    _BUNDLE_CACHE[lang] = body
+    return body

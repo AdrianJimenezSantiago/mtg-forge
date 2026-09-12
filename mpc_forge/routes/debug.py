@@ -45,7 +45,9 @@ async def log_download():
     if p is None or not p.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay log activo")
     # Nombre con timestamp para poder guardar varios
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local a propósito: es el nombre del fichero que descarga el
+    # usuario. `.astimezone()` lo hace aware sin cambiar lo que se ve.
+    ts = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     filename = f"mpc-forge-{ts}.log"
     return FileResponse(
         path=str(p),

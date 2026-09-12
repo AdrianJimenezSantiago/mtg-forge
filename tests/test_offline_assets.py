@@ -97,7 +97,7 @@ class TestVendorBundleIsComplete:
         """Ningún template puede apuntar a un /static/... que no exista."""
         pattern = re.compile(r'["\'](/static/[^"\']+)["\']')
         missing = []
-        for path in _html_files() + [STATIC / "app.js"]:
+        for path in [*_html_files(), STATIC / "app.js"]:
             text = path.read_text(encoding="utf-8")
             for ref in pattern.findall(text):
                 # Se ignoran las rutas con interpolación de plantilla.

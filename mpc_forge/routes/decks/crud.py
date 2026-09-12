@@ -10,7 +10,9 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import (
-    Depends, HTTPException, status,
+    Depends,
+    HTTPException,
+    status,
 )
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -18,32 +20,40 @@ from sqlalchemy.orm import selectinload
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import (
-    ArtPreference, Deck, DeckCard,
+    ArtPreference,
+    Deck,
+    DeckCard,
+    PrintingCache,
 )
 from mpc_forge.schemas import (
     AddCardRequest,
     DeckCardView,
     DeckValidation,
     DeckView,
+    IllegalCardView,
     UpdateCardRequest,
     UpdateDeckRequest,
 )
 from mpc_forge.services import (
-    deck_activity, deck_service, deck_validation,
+    deck_activity,
+    deck_service,
+    deck_validation,
 )
 from mpc_forge.services.deck_activity import DeckActivityKind as K
-
 
 log = logging.getLogger(__name__)
 
 
 # --- Import / CRUD -------------------------------------------------------
 
-from mpc_forge.routes.decks._views import (
-    _deck_to_view, _deckcard_to_view,
-)
 from mpc_forge.routes.decks._common import (
-    DbDep, _get_scryfall, make_router,
+    DbDep,
+    _get_scryfall,
+    make_router,
+)
+from mpc_forge.routes.decks._views import (
+    _deck_to_view,
+    _deckcard_to_view,
 )
 
 router = make_router()
@@ -133,7 +143,27 @@ async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
             .where(DeckCard.deck_id == deck_id)
         )
     ).all()
-    val = deck_validation.validate_deck(deck.format, list(rows))
+    # Legalidades: un LEFT JOIN contra el cache de printings. Las cartas sin
+    # printing cacheado salen con legalities vacío y `check_legalities` las
+    # ignora, que es el comportamiento correcto (no inventar un veredicto).
+    legality_rows = (
+        await db.execute(
+            select(
+                DeckCard.name,
+                DeckCard.role,
+                PrintingCache.legalities,
+                DeckCard.include,
+            )
+            .outerjoin(PrintingCache, PrintingCache.scryfall_id == DeckCard.scryfall_id)
+            .where(DeckCard.deck_id == deck_id)
+        )
+    ).all()
+    illegal = deck_validation.check_legalities(
+        deck.format,
+        [(name, role, legalities or "", include)
+         for name, role, legalities, include in legality_rows],
+    )
+    val = deck_validation.validate_deck(deck.format, list(rows), illegal)
     return DeckValidation(
         format=val.format,
         expected=val.expected,
@@ -142,6 +172,10 @@ async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
         message=val.message,
         level=val.level,
         breakdown=val.breakdown,
+        illegal=[
+            IllegalCardView(name=c.name, status=c.status, role=c.role)
+            for c in val.illegal
+        ],
     )
 
 

@@ -425,15 +425,16 @@
     </div>
   </div>
 
-  {# ============= I18N: inyectar traducciones en JS ============= #}
-  {# window._T  → dict completo de traducciones para Alpine.js / JS vanilla  #}
-  {# window._LANG → código de idioma activo ("es" | "en")                   #}
-  <script>
-    window._LANG = {{ lang | default('es') | tojson }};
-    window._T    = {{ _T | default({}) | tojson }};
-    /** Atajo global: _t('key') → traducción o '[key]' si no existe */
-    window._t = (key) => window._T[key] ?? `[${key}]`;
-  </script>
+  {# ============= I18N: traducciones para JS ============= #}
+  {# Define window._LANG, window._T y window._t — igual que antes, pero desde
+     un fichero externo cacheable en vez de ~25 KB de JSON inline repetidos en
+     cada página. La URL lleva el hash del contenido, así que al cambiar las
+     traducciones el navegador descarga la versión nueva automáticamente.
+
+     Es un <script> clásico (sin defer/async) en el mismo punto del documento
+     que ocupaba el bloque inline: el orden de ejecución respecto a app.js y a
+     los módulos de cada página no cambia. #}
+  <script src="/i18n/{{ lang | default('es') }}.js?v={{ i18n_v() }}"></script>
 
   <script src="/static/app.js?v={{ asset_v('app.js') }}"></script>
 

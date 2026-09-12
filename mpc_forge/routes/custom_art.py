@@ -37,9 +37,9 @@ async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict:
             variant=payload.variant,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Error descargando: {e}")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    except Exception as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Error descargando: {e}") from e
     return {
         "id": art.id,
         "filename": art.filename,

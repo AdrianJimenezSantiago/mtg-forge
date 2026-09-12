@@ -12,15 +12,106 @@ la original sin cambios.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
+from typing import TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import CustomArt, Deck, DeckCard, PrintingCache
-from mpc_forge.schemas import DeckCardView, DeckValidation, DeckView
+from mpc_forge.schemas import (
+    DeckCardView,
+    DeckPriceView,
+    DeckValidation,
+    DeckView,
+    IllegalCardView,
+)
 from mpc_forge.services import custom_art, deck_validation, history
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# Máximo de valores por cláusula ``IN``. SQLite compila cada elemento como un
+# parámetro y tiene un tope (`SQLITE_MAX_VARIABLE_NUMBER`, históricamente 999);
+# pasarse lanza "too many SQL variables" en tiempo de ejecución.
+#
+# Con un mazo normal da igual, pero un cubo importado de CubeCobra pasa de 540
+# cartas y un mazo con muchas impresiones distintas se acerca rápido. Mismo
+# valor que ``deck_service._IN_CHUNK`` para no tener dos criterios distintos.
+_IN_CHUNK = 500
+
+
+def _chunks(items: Iterable[T], size: int = _IN_CHUNK) -> Iterable[list[T]]:
+    seq = list(items)
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
+async def _printings_by_id(
+    db: AsyncSession, scryfall_ids: Iterable[str]
+) -> dict[str, PrintingCache]:
+    """Printings indexados por scryfall_id, troceando el ``IN``."""
+    out: dict[str, PrintingCache] = {}
+    for chunk in _chunks(scryfall_ids):
+        if not chunk:
+            continue
+        rows = (await db.scalars(
+            select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk))
+        )).all()
+        out.update({p.scryfall_id: p for p in rows})
+    return out
+
+
+async def _customs_by_id(
+    db: AsyncSession, custom_ids: Iterable[int]
+) -> dict[int, CustomArt]:
+    out: dict[int, CustomArt] = {}
+    for chunk in _chunks(custom_ids):
+        if not chunk:
+            continue
+        rows = (await db.scalars(
+            select(CustomArt).where(CustomArt.id.in_(chunk))
+        )).all()
+        out.update({ca.id: ca for ca in rows})
+    return out
+
+
+async def _prints_count_by_oracle(
+    db: AsyncSession, oracle_ids: Iterable[str]
+) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for chunk in _chunks(oracle_ids):
+        if not chunk:
+            continue
+        rows = (await db.execute(
+            select(PrintingCache.oracle_id, func.count(PrintingCache.scryfall_id))
+            .where(PrintingCache.oracle_id.in_(chunk))
+            .group_by(PrintingCache.oracle_id)
+        )).all()
+        for oid, n in rows:
+            out[oid] = out.get(oid, 0) + int(n)
+    return out
+
+
+async def _custom_count_by_name(
+    db: AsyncSession, name_norms: Iterable[str]
+) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for chunk in _chunks(name_norms):
+        if not chunk:
+            continue
+        rows = (await db.execute(
+            select(CustomArt.card_name_normalized, func.count(CustomArt.id))
+            .where(
+                CustomArt.card_name_normalized.in_(chunk),
+                CustomArt.face == "front",
+            )
+            .group_by(CustomArt.card_name_normalized)
+        )).all()
+        for name, c in rows:
+            out[name] = out.get(name, 0) + int(c)
+    return out
 
 
 async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[DeckCardView]:
@@ -36,52 +127,19 @@ async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[D
 
     # --- BATCH 1: printings ---
     scryfall_ids = {c.scryfall_id for c in cards}
-    printings_by_id: dict[str, PrintingCache] = {
-        p.scryfall_id: p for p in (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
-            )
-        ).all()
-    }
+    printings_by_id = await _printings_by_id(db, scryfall_ids)
 
     # --- BATCH 2: custom arts frontales ---
     custom_ids = {c.custom_art_front_id for c in cards if c.custom_art_front_id}
-    customs_by_id: dict[int, CustomArt] = {}
-    if custom_ids:
-        customs_by_id = {
-            ca.id: ca for ca in (
-                await db.scalars(select(CustomArt).where(CustomArt.id.in_(custom_ids)))
-            ).all()
-        }
+    customs_by_id = await _customs_by_id(db, custom_ids)
 
     # --- BATCH 3: nº total de impresiones por oracle_id ---
     oracle_ids = {c.oracle_id for c in cards if c.oracle_id}
-    prints_count_by_oracle: dict[str, int] = {}
-    if oracle_ids:
-        rows = (
-            await db.execute(
-                select(PrintingCache.oracle_id, func.count(PrintingCache.scryfall_id))
-                .where(PrintingCache.oracle_id.in_(oracle_ids))
-                .group_by(PrintingCache.oracle_id)
-            )
-        ).all()
-        prints_count_by_oracle = {oid: int(n) for oid, n in rows}
+    prints_count_by_oracle = await _prints_count_by_oracle(db, oracle_ids)
 
     # --- BATCH 4: nº de custom arts disponibles por nombre normalizado ---
     name_norms = {custom_art.normalize_card_name(c.name) for c in cards}
-    custom_count_by_name: dict[str, int] = {}
-    if name_norms:
-        rows = (
-            await db.execute(
-                select(CustomArt.card_name_normalized, func.count(CustomArt.id))
-                .where(
-                    CustomArt.card_name_normalized.in_(name_norms),
-                    CustomArt.face == "front",
-                )
-                .group_by(CustomArt.card_name_normalized)
-            )
-        ).all()
-        custom_count_by_name = {n: int(c) for n, c in rows}
+    custom_count_by_name = await _custom_count_by_name(db, name_norms)
 
     # --- BATCH 5: history agregado ---
     stats_map = await history.stats_for_oracle_ids(db, list(oracle_ids))
@@ -233,51 +291,20 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
 
     # --- BATCH 1: printings de las cartas del deck ---
     scryfall_ids = {c.scryfall_id for c in cards_list}
-    printings_rows = (
-        await db.scalars(
-            select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
-        )
-    ).all()
-    printings_by_id: dict[str, PrintingCache] = {p.scryfall_id: p for p in printings_rows}
+    printings_by_id = await _printings_by_id(db, scryfall_ids)
 
     # --- BATCH 2: custom arts frontales (para thumbnails) ---
     custom_ids = {c.custom_art_front_id for c in cards_list if c.custom_art_front_id}
-    customs_by_id: dict[int, CustomArt] = {}
-    if custom_ids:
-        rows = (
-            await db.scalars(select(CustomArt).where(CustomArt.id.in_(custom_ids)))
-        ).all()
-        customs_by_id = {ca.id: ca for ca in rows}
+    customs_by_id = await _customs_by_id(db, custom_ids)
 
     # --- BATCH 3: nº total de impresiones (Scryfall) por oracle_id ---
     oracle_ids = {c.oracle_id for c in cards_list if c.oracle_id}
-    prints_count_by_oracle: dict[str, int] = {}
-    if oracle_ids:
-        rows = (
-            await db.execute(
-                select(PrintingCache.oracle_id, func.count(PrintingCache.scryfall_id))
-                .where(PrintingCache.oracle_id.in_(oracle_ids))
-                .group_by(PrintingCache.oracle_id)
-            )
-        ).all()
-        prints_count_by_oracle = {oid: int(n) for oid, n in rows}
+    prints_count_by_oracle = await _prints_count_by_oracle(db, oracle_ids)
 
     # --- BATCH 4: nº de custom arts disponibles (por card_name normalizado) ---
     from mpc_forge.services.custom_art import normalize_card_name
     name_norms = {normalize_card_name(c.name) for c in cards_list}
-    custom_count_by_name: dict[str, int] = {}
-    if name_norms:
-        rows = (
-            await db.execute(
-                select(CustomArt.card_name_normalized, func.count(CustomArt.id))
-                .where(
-                    CustomArt.card_name_normalized.in_(name_norms),
-                    CustomArt.face == "front",
-                )
-                .group_by(CustomArt.card_name_normalized)
-            )
-        ).all()
-        custom_count_by_name = {n: int(c) for n, c in rows}
+    custom_count_by_name = await _custom_count_by_name(db, name_norms)
 
     # --- BATCH 5: historial de impresiones agregado (una sola llamada) ---
     stats_map = await history.stats_for_oracle_ids(db, list(oracle_ids))
@@ -339,9 +366,26 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             related_parts=related_parts,
         ))
 
-    val = deck_validation.validate_deck(
-        deck.format, [(c.role, c.quantity, c.include) for c in cards_list]
+    # Legalidad: se resuelve con los printings que ya tenemos en memoria del
+    # BATCH 1, así que no cuesta ni una query extra.
+    illegal = deck_validation.check_legalities(
+        deck.format,
+        [
+            (
+                c.name,
+                c.role,
+                getattr(printings_by_id.get(c.scryfall_id), "legalities", "") or "",
+                c.include,
+            )
+            for c in cards_list
+        ],
     )
+    val = deck_validation.validate_deck(
+        deck.format,
+        [(c.role, c.quantity, c.include) for c in cards_list],
+        illegal,
+    )
+    price = _deck_price(cards_list, printings_by_id)
     return DeckView(
         id=deck.id,
         name=deck.name,
@@ -360,8 +404,54 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             message=val.message,
             level=val.level,
             breakdown=val.breakdown,
+            illegal=[
+                IllegalCardView(name=c.name, status=c.status, role=c.role)
+                for c in val.illegal
+            ],
         ),
+        price=price,
     )
+
+
+def _deck_price(
+    cards: list[DeckCard], printings_by_id: dict[str, PrintingCache]
+) -> DeckPriceView:
+    """Suma el precio de mercado de las cartas del mazo.
+
+    Solo cuenta lo que se juega de verdad (mainboard, commander, companion,
+    sideboard): el maybeboard es una lista de ideas y meterlo inflaría el
+    total sin que el usuario entienda por qué.
+
+    Las cartas sin precio se cuentan aparte en vez de tratarse como 0, para
+    que la interfaz pueda decir "al menos X €" y no dar una cifra falsamente
+    precisa.
+    """
+    total_eur = 0.0
+    total_usd = 0.0
+    priced = 0
+    unpriced = 0
+    for card in cards:
+        if not card.include or card.role not in _PRICED_ROLES:
+            continue
+        printing = printings_by_id.get(card.scryfall_id)
+        eur = getattr(printing, "price_eur", None) if printing else None
+        usd = getattr(printing, "price_usd", None) if printing else None
+        if eur is None and usd is None:
+            unpriced += card.quantity
+            continue
+        priced += card.quantity
+        total_eur += (eur or 0.0) * card.quantity
+        total_usd += (usd or 0.0) * card.quantity
+    return DeckPriceView(
+        eur=round(total_eur, 2),
+        usd=round(total_usd, 2),
+        priced_cards=priced,
+        unpriced_cards=unpriced,
+    )
+
+
+# Roles que cuentan para el precio del mazo (ver `_deck_price`).
+_PRICED_ROLES = {"commander", "mainboard", "companion", "sideboard"}
 
 
 # ---- Recomendador de artes por artista canónico (Fase 3 · T11) --------------

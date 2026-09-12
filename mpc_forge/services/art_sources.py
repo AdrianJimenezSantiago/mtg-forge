@@ -298,7 +298,7 @@ def _detect_source_type(url: str) -> tuple[str, str]:
             if local_cls:
                 canonical = local_cls.validate_url(raw)
                 return "local-folder", canonical
-        except (ValueError, Exception):  # noqa: BLE001
+        except (ValueError, Exception):
             # Ruta parece local pero no válida — cae a "other" para que el
             # usuario vea el warning en la UI y corrija.
             pass
@@ -310,7 +310,7 @@ def _detect_source_type(url: str) -> tuple[str, str]:
             if http_cls:
                 canonical = http_cls.validate_url(raw)
                 return "http-listing", canonical
-        except (ValueError, Exception):  # noqa: BLE001
+        except (ValueError, Exception):
             pass
 
     # 5) S3 / R2 (Extras · F3/T7). Heurística por prefijo o hostname.
@@ -326,7 +326,7 @@ def _detect_source_type(url: str) -> tuple[str, str]:
             if s3_cls:
                 canonical = s3_cls.validate_url(raw)
                 return "s3", canonical
-        except (ValueError, Exception):  # noqa: BLE001
+        except (ValueError, Exception):
             pass
 
     return "other", raw

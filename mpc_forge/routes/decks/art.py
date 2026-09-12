@@ -9,7 +9,10 @@ import logging
 from typing import Annotated
 
 from fastapi import (
-    Depends, HTTPException, Query, status,
+    Depends,
+    HTTPException,
+    Query,
+    status,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,7 +22,12 @@ from sqlalchemy.orm import selectinload
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import get_session
 from mpc_forge.models import (
-    ArtPreference, CustomArt, Deck, DeckCard, LocalArt, PrintingCache,
+    ArtPreference,
+    CustomArt,
+    Deck,
+    DeckCard,
+    LocalArt,
+    PrintingCache,
 )
 from mpc_forge.schemas import (
     ArtOption,
@@ -28,22 +36,27 @@ from mpc_forge.schemas import (
     DeckCardView,
 )
 from mpc_forge.services import (
-    custom_art, deck_activity, deck_service, history,
-    preloader, thumbnails,
+    custom_art,
+    deck_activity,
+    deck_service,
+    history,
+    preloader,
+    thumbnails,
 )
 from mpc_forge.services.deck_activity import DeckActivityKind as K
-
 
 log = logging.getLogger(__name__)
 
 
 # --- Import / CRUD -------------------------------------------------------
 
+from mpc_forge.routes.decks._common import (
+    DbDep,
+    _get_scryfall,
+    make_router,
+)
 from mpc_forge.routes.decks._views import (
     _deckcard_to_view,
-)
-from mpc_forge.routes.decks._common import (
-    DbDep, _get_scryfall, make_router,
 )
 
 router = make_router()

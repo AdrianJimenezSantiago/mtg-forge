@@ -20,6 +20,12 @@ DbDep = Annotated[AsyncSession, Depends(get_session)]
 class SettingsResponse(BaseModel):
     definitions: list[dict[str, Any]]
     values: dict[str, Any]
+    secrets_set: list[str] = []
+    """Claves marcadas como ``secret`` que tienen un valor guardado.
+
+    Los secretos salen vacíos en ``values``; esta lista permite a la UI pintar
+    "configurada" sin que la credencial viaje al navegador.
+    """
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -46,9 +52,13 @@ class PathsResponse(BaseModel):
 
 @router.get("/", response_model=SettingsResponse)
 async def get_settings(db: DbDep) -> SettingsResponse:
+    values, secrets_set = settings_service.redact_values(
+        await settings_service.get_all(db)
+    )
     return SettingsResponse(
         definitions=settings_service.definitions_dump(),
-        values=await settings_service.get_all(db),
+        values=values,
+        secrets_set=secrets_set,
     )
 
 
@@ -75,10 +85,12 @@ async def get_paths() -> PathsResponse:
 @router.put("/", response_model=SettingsResponse)
 async def update_settings(payload: UpdateSettingsRequest, db: DbDep) -> SettingsResponse:
     try:
-        values = await settings_service.set_many(db, payload.values)
+        updated = await settings_service.set_many(db, payload.values)
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    values, secrets_set = settings_service.redact_values(updated)
     return SettingsResponse(
         definitions=settings_service.definitions_dump(),
         values=values,
+        secrets_set=secrets_set,
     )

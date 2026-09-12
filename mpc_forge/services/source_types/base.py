@@ -33,13 +33,14 @@ Ver ``gdrive.py`` como referencia canónica.
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator, ClassVar
+from typing import ClassVar
 
 from mpc_forge.models import ArtSource
 
 # Registry poblado por ``__init_subclass__`` en cada subclase.
-_REGISTRY: dict[str, type["ArtSourceType"]] = {}
+_REGISTRY: dict[str, type[ArtSourceType]] = {}
 
 
 @dataclass

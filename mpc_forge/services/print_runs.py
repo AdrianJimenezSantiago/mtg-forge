@@ -94,7 +94,7 @@ class SplitResult:
         # recalculan tras construir la lista completa via ``finalize()``.
         pass
 
-    def finalize(self) -> "SplitResult":
+    def finalize(self) -> SplitResult:
         self.total_runs = len(self.runs)
         self.total_cards = sum(r.total_cards for r in self.runs)
         self.total_wasted_slots = sum(r.wasted_slots for r in self.runs)
@@ -289,7 +289,7 @@ def suggest_tier_combination(
             if runs_left > 1 and t < remaining:
                 sub = _best_below(remaining - t, runs_left - 1)
                 if sub:
-                    combo = [t] + sub
+                    combo = [t, *sub]
                     sc = _score(combo)
                     if best is None or sc < best_score:
                         best, best_score = combo, sc

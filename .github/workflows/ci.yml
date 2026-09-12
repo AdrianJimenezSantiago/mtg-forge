@@ -29,6 +29,12 @@ jobs:
       - name: Instalar herramientas
         run: pip install ruff mypy
       - name: Ruff
+        # Bloqueante. El ruleset de pyproject.toml ya no es el set por defecto:
+        # incluye DTZ (datetimes naive), LOG/G (logging correcto, que es de lo
+        # que depende el filtro de redacción de secretos), S (bandit) y B.
+        # Las reglas que quedan por limpiar están listadas como ignores
+        # explícitos en pyproject.toml, así que esto pasa en verde y cualquier
+        # regresión nueva lo pone en rojo.
         run: ruff check mpc_forge tests
       - name: Formato
         run: ruff format --check mpc_forge tests

@@ -21,13 +21,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from mpc_forge.routes.decks import search
-from mpc_forge.routes.decks import activity
-from mpc_forge.routes.decks import localize
-from mpc_forge.routes.decks import imports
-from mpc_forge.routes.decks import tokens
-from mpc_forge.routes.decks import art
-from mpc_forge.routes.decks import crud
+from mpc_forge.routes.decks import activity, art, crud, imports, localize, search, tokens
 
 router = APIRouter()
 

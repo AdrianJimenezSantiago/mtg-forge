@@ -49,7 +49,8 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Any, AsyncIterator, ClassVar
+from collections.abc import AsyncIterator
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 import httpx
@@ -100,7 +101,7 @@ class HTTPListingSourceType(ArtSourceType):
     def download_url(cls, source: ArtSource, file_id: str) -> str:
         try:
             return _decode_url(file_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ""
 
     @classmethod

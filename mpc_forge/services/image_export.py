@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 # Caracteres inseguros en nombres de fichero cross-platform. Windows es el más
 # restrictivo, así que respetamos su lista. También añadimos control chars.
 _FORBIDDEN = set('/\\?*|"<>:')
-_CONTROL = set(chr(i) for i in range(0, 32))
+_CONTROL = {chr(i) for i in range(0, 32)}
 
 
 def _safe_filename(name: str, max_len: int = 120) -> str:

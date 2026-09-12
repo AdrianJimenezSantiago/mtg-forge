@@ -27,7 +27,8 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from enum import Enum
+from datetime import UTC
+from enum import StrEnum
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ log = logging.getLogger(__name__)
 # Modelo de estado por drive
 # ---------------------------------------------------------------------------
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     QUEUED = "queued"
     INDEXING = "indexing"
     DONE = "done"
@@ -314,10 +315,10 @@ class IndexQueue:
                             src = await db.get(ArtSource, sid)
                             if src:
                                 job.files_total = src.indexed_files or 0
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         pass
 
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.exception("IndexQueue: fallo indexando source %d", sid)
                 job.status = JobStatus.ERROR
                 job.error = f"{type(e).__name__}: {str(e)[:200]}"
@@ -325,13 +326,14 @@ class IndexQueue:
                 # Intentar marcar el error en BD
                 try:
                     async with session_scope() as db:
+                        from datetime import datetime
+
                         from mpc_forge.models import ArtSource
-                        from datetime import datetime, timezone
                         src = await db.get(ArtSource, sid)
                         if src:
-                            src.indexed_at = datetime.now(timezone.utc)
+                            src.indexed_at = datetime.now(UTC)
                             src.index_error = job.error or ""
-                except Exception:  # noqa: BLE001
+                except Exception:
                     log.exception("IndexQueue: no se pudo marcar error en BD para source %d", sid)
 
             finally:

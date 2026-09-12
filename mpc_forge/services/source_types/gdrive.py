@@ -12,7 +12,8 @@ de Google Drive es funcional y su interfaz interna es específica de Drive
 """
 from __future__ import annotations
 
-from typing import AsyncIterator, ClassVar
+from collections.abc import AsyncIterator
+from typing import ClassVar
 
 from mpc_forge.models import ArtSource
 

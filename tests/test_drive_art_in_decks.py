@@ -22,7 +22,6 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -270,8 +269,9 @@ class TestFTS5SearchPath:
 
     async def test_fts5_synced_after_indexing(self, client, indexed_local_source):
         """Después de indexar, FTS5 debe tener las mismas filas que indexed_art."""
-        from mpc_forge.db import session_scope
         from sqlalchemy import text
+
+        from mpc_forge.db import session_scope
 
         async with session_scope() as db:
             real_count = (await db.execute(text(
@@ -292,8 +292,9 @@ class TestFTS5SearchPath:
 
     async def test_fts5_match_sol_ring(self, client, indexed_local_source):
         """Consulta FTS5 directa para 'Sol Ring'."""
-        from mpc_forge.db import session_scope
         from sqlalchemy import text
+
+        from mpc_forge.db import session_scope
 
         async with session_scope() as db:
             try:
@@ -317,8 +318,9 @@ class TestFTS5SearchPath:
         tokens), así que solo verificamos que HAY resultados con filename y
         source_name. El scoring posterior filtra los falsos positivos.
         """
-        from mpc_forge.db import session_scope
         from sqlalchemy import text
+
+        from mpc_forge.db import session_scope
 
         async with session_scope() as db:
             try:
@@ -616,9 +618,10 @@ class TestSearchURLsForNonGdriveSources:
         """Verificación directa: las URLs del search result deben coincidir
         con las almacenadas en IndexedArt, no con las generadas por _thumb_url().
         """
+        from sqlalchemy import select
+
         from mpc_forge.db import session_scope
         from mpc_forge.models import IndexedArt
-        from sqlalchemy import select
 
         # Leer las URLs almacenadas directamente de la BD
         async with session_scope() as db:
@@ -646,7 +649,7 @@ class TestSearchURLsForNonGdriveSources:
         """Para sources gdrive (thumb_url=NULL), se debe seguir generando
         la URL de Google Drive como fallback.
         """
-        from mpc_forge.services.gdrive_search import _thumb_url, _download_url
+        from mpc_forge.services.gdrive_search import _download_url, _thumb_url
 
         # Simular un file_id de Google Drive
         gdrive_file_id = "1abc123XYZ_test"

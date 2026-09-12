@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ============================================================================
 # FASE 1
 # ============================================================================
@@ -233,7 +232,8 @@ class TestSourceTypes:
     def test_local_folder_file_id_roundtrip(self):
         """El file_id codifica la relpath en base64 URL-safe."""
         from mpc_forge.services.source_types.local_folder import (
-            _encode_relpath, _decode_relpath,
+            _decode_relpath,
+            _encode_relpath,
         )
         for path in ("simple.png", "sub/dir/file.jpg", "áccéntéd (special) [tag].png"):
             assert _decode_relpath(_encode_relpath(path)) == path
@@ -396,6 +396,7 @@ class TestPrintRuns:
     def test_summary_dict_json_serializable(self):
         """summary_dict debe ser un dict friendly-JSON sin dataclasses ni Paths."""
         import json
+
         from mpc_forge.services.print_runs import split_into_runs, summary_dict
         cards = [self._mock(f"C{i}", 1) for i in range(50)]
         plan = split_into_runs(cards)
@@ -588,6 +589,7 @@ class TestExtrasBackend:
     def test_vocab_user_override(self, tmp_path, monkeypatch):
         """Si existe tag_vocabulary.json en data_dir, se mergea al default."""
         import json
+
         from mpc_forge import config as _cfg
         # Simular data_dir en tmp
         old_paths = _cfg.PATHS
@@ -599,7 +601,8 @@ class TestExtrasBackend:
                 "aliases": {"gold_border": ["gold border", "gld"]}
             }))
             from mpc_forge.services.gdrive_indexer import (
-                reload_tag_vocabulary, extract_tags,
+                extract_tags,
+                reload_tag_vocabulary,
             )
             reload_tag_vocabulary()
             csv, _ = extract_tags("Card (gold border).png")
@@ -667,11 +670,13 @@ class TestExtrasBackend:
     def test_dp_solver_borderline_case(self):
         """620 cartas: greedy = 612+18=630 (10 waste), optimized debe ser
         ≤ 630 slots totales."""
+        from pathlib import Path
+
         from mpc_forge.services.print_runs import (
-            split_into_runs, split_into_runs_optimized,
+            split_into_runs,
+            split_into_runs_optimized,
         )
         from mpc_forge.services.xml_generator import DeckCardResolved
-        from pathlib import Path
         cards = [
             DeckCardResolved(name=f"C{i}", quantity=1, scryfall_id=f"x{i}",
                              front_path=Path("/t.png"), query="")
@@ -688,9 +693,10 @@ class TestExtrasBackend:
     # --- Extras · F3/T11 · Cache artists ---
     async def test_oracle_artist_cache_persists(self, client, deck):
         """Al llamar al recomendador se persiste el cache local."""
+        from sqlalchemy import select as _sel
+
         from mpc_forge.db import session_scope
         from mpc_forge.models import OracleArtistCache
-        from sqlalchemy import select as _sel
 
         # Llamada 1
         r1 = await client.post(

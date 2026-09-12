@@ -6,7 +6,6 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-
 APP_NAME = "MPC-Forge"
 # False evita el nivel intermedio "local\" en Windows AppData.
 APP_AUTHOR: str | bool = False
@@ -87,7 +86,7 @@ class Paths:
     thumbs_dir: Path
 
     @classmethod
-    def default(cls) -> "Paths":
+    def default(cls) -> Paths:
         """Rutas por defecto: modo portable (junto al .exe) con fallback.
 
         Prioridad:
@@ -145,7 +144,7 @@ class Paths:
         backups_dir: str | Path | None = None,
         cardbacks_dir: str | Path | None = None,
         thumbs_dir: str | Path | None = None,
-    ) -> "Paths":
+    ) -> Paths:
         """Devuelve una nueva Paths con los overrides aplicados.
 
         Los overrides son las rutas que el usuario ha personalizado desde la UI

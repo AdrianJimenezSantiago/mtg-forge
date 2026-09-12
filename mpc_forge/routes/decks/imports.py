@@ -9,7 +9,9 @@ import logging
 from typing import Annotated
 
 from fastapi import (
-    Depends, HTTPException, status,
+    Depends,
+    HTTPException,
+    status,
 )
 
 from mpc_forge.clients.moxfield import MoxfieldClient, MoxfieldError
@@ -23,21 +25,24 @@ from mpc_forge.schemas import (
     UnresolvedEntry,
 )
 from mpc_forge.services import (
-    deck_activity, deck_service,
+    deck_activity,
+    deck_service,
 )
 from mpc_forge.services.deck_activity import DeckActivityKind as K
-
 
 log = logging.getLogger(__name__)
 
 
 # --- Import / CRUD -------------------------------------------------------
 
+from mpc_forge.routes.decks._common import (
+    DbDep,
+    _get_moxfield,
+    _get_scryfall,
+    make_router,
+)
 from mpc_forge.routes.decks._views import (
     _deck_to_view,
-)
-from mpc_forge.routes.decks._common import (
-    DbDep, _get_moxfield, _get_scryfall, make_router,
 )
 
 router = make_router()
@@ -56,7 +61,7 @@ async def import_moxfield(
             include_extras=payload.include_extras,
         )
     except MoxfieldError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
     # Registro del import en el timeline del propio mazo — el usuario lo verá
@@ -144,9 +149,9 @@ async def import_url(
             include_extras=payload.include_extras,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     except ImportSiteError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e))
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
 
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)

@@ -34,10 +34,10 @@ from mpc_forge.ssl_config import ssl_insecure
 log = logging.getLogger(__name__)
 
 # Poblado por __init_subclass__ en cada subclase declarada.
-_REGISTRY: list[type["ImportSite"]] = []
+_REGISTRY: list[type[ImportSite]] = []
 
 
-def get_registry() -> list[type["ImportSite"]]:
+def get_registry() -> list[type[ImportSite]]:
     """Devuelve una copia del registro actual — usado por el dispatcher."""
     return list(_REGISTRY)
 

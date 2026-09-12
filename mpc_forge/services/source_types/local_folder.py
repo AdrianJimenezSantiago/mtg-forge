@@ -25,10 +25,12 @@ para que los thumbnails funcionen en el picker igual que con Drive.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, ClassVar
+from typing import ClassVar
 
 from mpc_forge.models import ArtSource
 
@@ -38,6 +40,11 @@ log = logging.getLogger(__name__)
 
 # Extensiones aceptadas — mismo criterio que el gdrive_indexer.
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+# Ficheros que se recogen por cada salto al hilo de I/O. Bastante grande para
+# que el coste del cambio de contexto sea despreciable, bastante pequeño para
+# que el event loop no se quede sin atender más de unos milisegundos.
+_SCAN_BATCH = 200
 
 
 def _encode_relpath(relpath: str) -> str:
@@ -120,7 +127,7 @@ class LocalFolderSourceType(ArtSourceType):
         base = Path(source.url).resolve()
         try:
             relpath = _decode_relpath(file_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise ArtSourceTypeError(f"file_id inválido: {e}") from e
         candidate = (base / relpath).resolve()
         # Path traversal defense: candidate.is_relative_to(base) requiere 3.9+.
@@ -142,32 +149,53 @@ class LocalFolderSourceType(ArtSourceType):
                 f"La carpeta del source '{source.name}' no existe: {base}"
             )
 
-        # rglob es síncrono pero es la operación más natural. Para carpetas
-        # muy grandes (>50k archivos) esto puede bloquear el event loop
-        # unos segundos; aceptable dado que el indexado se lanza en
-        # background (asyncio.create_task). En una iteración futura se
-        # puede envolver con `asyncio.to_thread`.
-        for entry in base.rglob("*"):
-            # Filtrar dirs ignoradas — chequeo por segmentos del path.
-            if any(seg in cls._IGNORE_DIRS for seg in entry.parts):
-                continue
-            if entry.name.startswith("."):
-                continue
-            if not entry.is_file():
-                continue
-            if entry.suffix.lower() not in _IMAGE_EXTENSIONS:
-                continue
+        # `rglob` y los `stat()` que lleva detrás son I/O síncrona: sobre una
+        # carpeta grande (un NAS con 50k imágenes, o peor, uno montado por
+        # red) bloquean el event loop varios segundos. Durante ese rato la app
+        # entera deja de responder, incluido el endpoint de progreso que la UI
+        # consulta para pintar la barra del indexado.
+        #
+        # Se recorre por lotes en un hilo: el escaneo avanza fuera del loop y
+        # entre lote y lote el loop recupera el control para atender
+        # peticiones. El generador sigue siendo perezoso, así que la memoria no
+        # crece con el tamaño de la carpeta.
+        def _scan_batch(iterator, size: int) -> list[SourceFile]:
+            out: list[SourceFile] = []
+            for entry in iterator:
+                # Filtrar dirs ignoradas — chequeo por segmentos del path.
+                if any(seg in cls._IGNORE_DIRS for seg in entry.parts):
+                    continue
+                if entry.name.startswith("."):
+                    continue
+                if not entry.is_file():
+                    continue
+                if entry.suffix.lower() not in _IMAGE_EXTENSIONS:
+                    continue
 
-            relpath = entry.relative_to(base).as_posix()
-            folder_path = "/".join(entry.relative_to(base).parts[:-1])
-            try:
-                size = entry.stat().st_size
-            except OSError:
-                size = 0
-            yield SourceFile(
-                file_id=_encode_relpath(relpath),
-                filename=entry.name,
-                folder_path=folder_path,
-                size_bytes=size,
-                mime_type=f"image/{entry.suffix.lower().lstrip('.').replace('jpg', 'jpeg')}",
-            )
+                relpath = entry.relative_to(base).as_posix()
+                folder_path = "/".join(entry.relative_to(base).parts[:-1])
+                try:
+                    size = entry.stat().st_size
+                except OSError:
+                    size = 0
+                out.append(SourceFile(
+                    file_id=_encode_relpath(relpath),
+                    filename=entry.name,
+                    folder_path=folder_path,
+                    size_bytes=size,
+                    mime_type=(
+                        f"image/{entry.suffix.lower().lstrip('.').replace('jpg', 'jpeg')}"
+                    ),
+                ))
+                if len(out) >= size_limit:
+                    break
+            return out
+
+        size_limit = _SCAN_BATCH
+        iterator = base.rglob("*")
+        while True:
+            batch = await asyncio.to_thread(_scan_batch, iterator, size_limit)
+            if not batch:
+                break
+            for source_file in batch:
+                yield source_file

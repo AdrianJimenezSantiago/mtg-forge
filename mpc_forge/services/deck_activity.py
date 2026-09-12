@@ -119,7 +119,7 @@ async def log_event(
         db.add(row)
         await db.flush()
         return row
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("Fallo registrando actividad %r del mazo %s: %s", kind, deck_id, e)
         return None
 

@@ -198,6 +198,21 @@ MIGRATIONS: list[Migration] = [
             """,
         ],
     ),
+    Migration(
+        version=12,
+        description="Precios de mercado y legalidades por formato en printings",
+        statements=[
+            # Anulables y sin default: NULL significa "aún no lo sabemos".
+            # Las filas ya cacheadas se rellenan cuando Scryfall vuelva a
+            # devolver esa carta (el upsert escribe todos los campos), y
+            # `legalities` vacío hace que la validación caiga a "unknown",
+            # que es el comportamiento actual.
+            "ALTER TABLE printings ADD COLUMN price_usd FLOAT",
+            "ALTER TABLE printings ADD COLUMN price_usd_foil FLOAT",
+            "ALTER TABLE printings ADD COLUMN price_eur FLOAT",
+            "ALTER TABLE printings ADD COLUMN legalities TEXT NOT NULL DEFAULT ''",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
@@ -355,7 +370,7 @@ async def _execute_tolerant(conn, stmt: str) -> None:
     """
     try:
         await conn.execute(text(stmt))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         msg = str(e).lower()
         if "duplicate column name" in msg or "already exists" in msg:
             return
@@ -379,7 +394,7 @@ def _safe_backup(on_backup) -> str | None:
         path = on_backup()
         log.info("Backup previo a migración creado: %s", path)
         return str(path)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception(
             "No se pudo crear el backup previo a la migración. Se continúa, "
             "pero revisa el espacio en disco y los permisos."

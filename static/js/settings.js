@@ -22,6 +22,8 @@ function settingsShell() {
     // Estado principal
     loading: true,
     definitions: [],
+    secretsSet: [],
+    secretInputs: {},
     values: {},
     saving: false,
     backingUp: false,
@@ -126,6 +128,7 @@ function settingsShell() {
         { key: 'network',      label: _t('settings_nav_network'),      icon: 'wifi',          group: 'Red y conexión' },
         { key: 'autofill',     label: _t('settings_nav_autofill'),     icon: 'zap',           group: 'MPC Autofill' },
         { key: 'art-sources',  label: _t('settings_nav_art_sources'),  icon: 'image',         group: null },
+        { key: 'offline',      label: _t('settings_nav_offline'),      icon: 'cloud-download', group: null },
         { key: 'custom-art',   label: _t('settings_nav_custom_art'),   icon: 'folder',        group: null },
         { key: 'backup',       label: _t('settings_nav_backup'),       icon: 'archive',       group: null },
         { key: 'log',          label: _t('settings_nav_log'),          icon: 'file-text',     group: null },
@@ -139,6 +142,10 @@ function settingsShell() {
         const data = await r.json();
         this.definitions = data.definitions;
         this.values = data.values;
+        // Los settings marcados como `secret` llegan vacíos por diseño: el
+        // backend nunca los devuelve en claro. `secretsSet` dice cuáles ya
+        // tienen valor guardado, que es lo único que la UI necesita saber.
+        this.secretsSet = data.secrets_set || [];
         // Rutas efectivas + overrides — se pintan en la sección Backup y datos.
         // Fire-and-forget: si falla, la sección muestra "..." pero no rompe
         // el resto de settings.
@@ -215,7 +222,31 @@ function settingsShell() {
     },
 
     isDefault(def) {
+      if (def.secret) return !this.isSecretSet(def.key);
       return this.values[def.key] === def.default;
+    },
+
+    /** ¿Hay una credencial guardada para esta clave? */
+    isSecretSet(key) {
+      return (this.secretsSet || []).includes(key);
+    },
+
+    /**
+     * Guarda una credencial. El input está siempre vacío al cargar, así que
+     * solo mandamos lo que el usuario acaba de escribir; una cadena vacía el
+     * backend la interpreta como "no tocar".
+     */
+    async updateSecret(key, value) {
+      const text = String(value || '').trim();
+      if (!text) return;
+      await this.update(key, text);
+      this.secretInputs[key] = '';
+    },
+
+    /** Borra una credencial guardada (centinela que el backend entiende). */
+    async clearSecret(key) {
+      await this.update(key, '__CLEAR__');
+      this.secretInputs[key] = '';
     },
 
     // ------- Actualización de un setting -------
@@ -232,6 +263,7 @@ function settingsShell() {
         if (!r.ok) throw new Error((await r.json()).detail || 'Error');
         const data = await r.json();
         this.values = data.values;
+        this.secretsSet = data.secrets_set || [];
         window.toast(window._t('settings_saved'), key);
       } catch (e) {
         window.toast(window._t('common_error'), e.message);
@@ -245,7 +277,12 @@ function settingsShell() {
         window._t('common_reset') + '?',
         { danger: true, icon: 'rotate-ccw', confirmLabel: window._t('common_reset') })) return;
       const updates = {};
-      for (const d of this.definitions) updates[d.key] = d.default;
+      // Los secretos se excluyen del reset masivo: un "restaurar valores por
+      // defecto" no debería borrar silenciosamente la API key del usuario.
+      for (const d of this.definitions) {
+        if (d.secret) continue;
+        updates[d.key] = d.default;
+      }
       try {
         const r = await fetch('/api/settings/', {
           method: 'PUT',
@@ -254,6 +291,7 @@ function settingsShell() {
         });
         const data = await r.json();
         this.values = data.values;
+        this.secretsSet = data.secrets_set || [];
         window.toast(window._t('settings_saved'), window._t('common_reset'));
       } catch (e) {
         window.toast('Error', e.message);
@@ -349,9 +387,42 @@ function settingsShell() {
     // llama a $data.update(...). x-html + eventos delegados funciona bien
     // dentro de Alpine porque el HTML se procesa por Alpine tras insertarse.
 
+    /**
+     * Control para credenciales.
+     *
+     * El input arranca SIEMPRE vacío: el backend no devuelve el valor, ni
+     * siquiera enmascarado. Si ya hay una guardada, el placeholder lo indica y
+     * aparece un botón para borrarla. Escribir algo y salir del campo la
+     * sustituye.
+     */
+    renderSecretInput(def) {
+      const isSet = this.isSecretSet(def.key);
+      const placeholder = isSet
+        ? window._t('settings_secret_stored')
+        : window._t('settings_secret_empty');
+      const clearBtn = isSet
+        ? `<button type="button" @click="clearSecret('${def.key}')"
+                   class="text-xs text-fg-muted hover:text-danger px-2 py-1 rounded
+                          border border-border-subtle hover:border-danger/50 shrink-0"
+                   title="${window._t('settings_secret_clear')}">
+             ${window._t('settings_secret_clear')}
+           </button>`
+        : '';
+      return `
+        <div class="flex items-center gap-2">
+          <input type="password" autocomplete="off" spellcheck="false" value=""
+                 placeholder="${placeholder}"
+                 @change="updateSecret('${def.key}', $event.target.value)"
+                 class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
+                        focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">
+          ${clearBtn}
+        </div>`;
+    },
+
     renderInput(def) {
       const val = this.values[def.key];
       const escLabel = String(val ?? '').replace(/"/g, '&quot;');
+      if (def.secret) return this.renderSecretInput(def);
       if (def.type === 'bool') {
         return `
           <label class="relative inline-flex items-center cursor-pointer">
@@ -403,10 +474,18 @@ function settingsShell() {
 
     renderRow(def) {
       const desc = def.description || '';
-      const isDefault = this.values[def.key] === def.default;
-      const defaultBadge = !isDefault
-        ? `<div class="text-[11px] text-accent/80 mt-1">≠ default (${String(def.default)})</div>`
-        : '';
+      // Para un secreto no se pinta el badge "≠ default (valor)": imprimiría
+      // la credencial en el DOM, que es justo lo que estamos evitando.
+      const isDefault = def.secret
+        ? !this.isSecretSet(def.key)
+        : this.values[def.key] === def.default;
+      const defaultBadge = def.secret
+        ? (this.isSecretSet(def.key)
+            ? `<div class="text-[11px] text-accent/80 mt-1">${window._t('settings_secret_stored')}</div>`
+            : '')
+        : (!isDefault
+            ? `<div class="text-[11px] text-accent/80 mt-1">≠ default (${String(def.default)})</div>`
+            : '');
       return `
         <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 md:gap-4 items-center">
           <div class="min-w-0">
@@ -416,6 +495,99 @@ function settingsShell() {
           </div>
           <div>${this.renderInput(def)}</div>
         </div>`;
+    },
+  };
+}
+
+// ============================================================================
+// SUB-COMPONENTE: modo offline (bulk data de Scryfall)
+//
+// Hasta ahora esta funcionalidad solo se podía arrancar con un POST manual a
+// /api/bulk/sync desde la documentación interactiva de la API. Era la opción
+// más potente de la app (deja de depender de la red para resolver cartas) y
+// estaba escondida detrás de Swagger.
+// ============================================================================
+function bulkData() {
+  return {
+    // Forma por defecto en lugar de `null`: la plantilla puede leer
+    // `status.printings` desde el primer render sin protecciones, y evita que
+    // `status` cuente como propiedad anulable del módulo (lo que obligaría a
+    // blindar también el componente de autofill, que comparte el nombre).
+    status: { printings: 0, unique_cards: 0, ijson_available: true, progress: {} },
+    checking: false,
+    starting: false,
+    _pollTimer: null,
+
+    async init() {
+      await this.refresh();
+      // Si al abrir Ajustes ya hay una importación en curso (arrancada antes
+      // de navegar aquí), retomamos el polling en lugar de mostrar un estado
+      // congelado.
+      if (this.active) this._startPolling();
+    },
+
+    get progress() { return this.status.progress || {}; },
+    get active()   { return !!this.progress.active; },
+    get percent()  { return Math.round(this.progress.percent || 0); },
+
+    /** Texto del tiempo restante, si el backend lo estima. */
+    get eta() {
+      const s = this.progress.eta_seconds;
+      if (!s || s <= 0) return '';
+      const m = Math.floor(s / 60);
+      return m > 0 ? `~${m} min` : `~${Math.round(s)} s`;
+    },
+
+    async refresh() {
+      try {
+        const r = await fetch('/api/bulk/status');
+        if (r.ok) this.status = await r.json();
+      } catch (e) { /* la sección simplemente no se pinta */ }
+    },
+
+    async start(force = false) {
+      this.starting = true;
+      try {
+        const r = await fetch(`/api/bulk/sync?force=${force ? 'true' : 'false'}`, {
+          method: 'POST',
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || window._t('common_error'));
+        }
+        window.toast(window._t('bulk_started'), window._t('bulk_started_desc'));
+        this._startPolling();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.message);
+      } finally {
+        this.starting = false;
+      }
+    },
+
+    async cancel() {
+      try {
+        await fetch('/api/bulk/cancel', { method: 'POST' });
+        window.toast(window._t('bulk_cancelled'), window._t('bulk_cancelled_desc'));
+      } catch (e) {
+        window.toast(window._t('common_error'), e.message);
+      }
+      await this.refresh();
+    },
+
+    _startPolling() {
+      if (this._pollTimer) return;
+      this._pollTimer = setInterval(async () => {
+        await this.refresh();
+        if (!this.active) {
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+          window.toast(window._t('bulk_done'), window._t('bulk_done_desc'));
+        }
+      }, 1500);
+    },
+
+    destroy() {
+      if (this._pollTimer) clearInterval(this._pollTimer);
     },
   };
 }
@@ -839,5 +1011,6 @@ function debugLogPanel() {
 // global, así que estas funciones tienen que estar en `window`.
 window.artSourcesPanel = artSourcesPanel
 window.autofillStatus = autofillStatus
+window.bulkData = bulkData
 window.debugLogPanel = debugLogPanel
 window.settingsShell = settingsShell

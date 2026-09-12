@@ -9,34 +9,39 @@ import logging
 from typing import Annotated
 
 from fastapi import (
-    Depends, HTTPException, status,
+    Depends,
+    HTTPException,
+    status,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import (
-    DeckCard, PrintingCache,
+    DeckCard,
+    PrintingCache,
 )
 from mpc_forge.schemas import (
     DeckCardView,
 )
 from mpc_forge.services import (
-    deck_activity, deck_service,
+    deck_activity,
+    deck_service,
 )
 from mpc_forge.services.deck_activity import DeckActivityKind as K
-
 
 log = logging.getLogger(__name__)
 
 
 # --- Import / CRUD -------------------------------------------------------
 
+from mpc_forge.routes.decks._common import (
+    DbDep,
+    _get_scryfall,
+    make_router,
+)
 from mpc_forge.routes.decks._views import (
     _deckcards_to_views,
-)
-from mpc_forge.routes.decks._common import (
-    DbDep, _get_scryfall, make_router,
 )
 
 router = make_router()
@@ -153,7 +158,7 @@ async def tokens_analysis(
             if raw:
                 cached = await deck_service.upsert_printing(db, raw)
                 token_meta_by_id[sfid] = cached
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("No se pudo cachear metadata de token %s: %s", sfid, e)
     if missing_meta:
         await db.commit()
@@ -212,13 +217,11 @@ async def tokens_add_many(
         return []
 
     # ¿Qué scryfall_ids ya están?
-    existing_ids = {
-        r for r in (
+    existing_ids = set((
             await db.scalars(
                 select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id)
             )
-        ).all()
-    }
+        ).all())
 
     # --- OPTIMIZACIÓN: batch prefetch de printings ya cacheados ---
     # Antes: db.get(PrintingCache, sfid) por cada id (N queries).
@@ -299,11 +302,9 @@ async def add_related_cards(
         return []
 
     # ¿Qué scryfall_ids ya tiene el mazo?
-    existing_ids = {
-        r for r in (
+    existing_ids = set((
             await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))
-        ).all()
-    }
+        ).all())
 
     # --- OPTIMIZACIÓN: batch prefetch de printings ---
     # Antes: db.get(PrintingCache, sfid) por cada part (N queries en el bucle).

@@ -18,13 +18,12 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-
 
 # --- Redirigir directorios de datos ANTES de importar la app ---
 # La app lee PATHS al importar; si no reasignamos antes, escribiría en la
@@ -40,8 +39,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from mpc_forge import config as _cfg  # noqa: E402
-from mpc_forge.config import Paths  # noqa: E402
+from mpc_forge import config as _cfg
+from mpc_forge.config import Paths
 
 
 def _init_paths() -> Paths:
@@ -67,8 +66,10 @@ def _init_paths() -> Paths:
 PATHS = _init_paths()
 
 # Reload de db.py para que capture el path nuevo (el engine se crea al import).
-import importlib  # noqa: E402
-import mpc_forge.db as _db_mod  # noqa: E402
+import importlib
+
+import mpc_forge.db as _db_mod
+
 importlib.reload(_db_mod)
 
 
@@ -204,6 +205,7 @@ async def client(fake_scryfall) -> AsyncIterator:
     puros y no dependemos del lifespan).
     """
     from httpx import ASGITransport, AsyncClient
+
     from mpc_forge.app import create_app
     from mpc_forge.clients.moxfield import MoxfieldClient
     from mpc_forge.db import Base, engine, init_db
@@ -220,7 +222,12 @@ async def client(fake_scryfall) -> AsyncIterator:
     app.state.art_cache = ArtCache()
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    # base_url con un host real (no "http://test"): `LocalhostGuardMiddleware`
+    # valida la cabecera Host para cerrar el DNS rebinding, y un host inventado
+    # se rechaza con 400 — igual que lo haría en producción. Mantener aquí un
+    # host permitido hace que los tests ejerciten el mismo camino que el
+    # navegador del usuario.
+    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8765") as ac:
         yield ac
 
 

@@ -12,7 +12,7 @@ Diseño:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -24,12 +24,57 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 
 def _utcnow() -> datetime:
     """Timestamp aware en UTC. Usamos default Python en lugar de server_default
     para evitar lazy-loads sincrónicos post-commit con aiosqlite."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+class TZDateTime(TypeDecorator):
+    """``DateTime`` que siempre devuelve valores *aware* en UTC.
+
+    El problema que resuelve
+    ------------------------
+    SQLite no tiene tipo fecha: almacena la cadena que le da SQLAlchemy, y el
+    formato por defecto no incluye el offset. Así que escribir un datetime
+    aware y volver a leerlo devolvía uno **naive**, con la zona perdida por el
+    camino. Cualquier comparación posterior contra ``datetime.now(timezone.utc)``
+    lanzaba ``TypeError: can't compare offset-naive and offset-aware datetimes``.
+
+    Hasta ahora eso se parcheaba en cada sitio de consumo, de tres formas
+    distintas (``deck_service._as_aware``, un ``replace(tzinfo=…)`` inline en
+    ``recommender``, otro en ``dfc_pairs``). Funcionaba, pero dejaba la
+    siguiente comparación que alguien escribiera expuesta al mismo fallo.
+
+    Cómo funciona
+    -------------
+    - **Al escribir**: un valor aware se convierte a UTC y se guarda naive
+      (misma representación en disco que antes — no hay migración de datos).
+      Un valor naive se asume ya en UTC, que es lo que hacía todo el código.
+    - **Al leer**: se le pega ``tzinfo=timezone.utc``. Las filas escritas antes
+      de este cambio se leen igual de bien: ya estaban en UTC, solo les faltaba
+      decirlo.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is not None:
+            return value.astimezone(UTC).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):
@@ -75,10 +120,25 @@ class PrintingCache(Base):
     artist: Mapped[str | None] = mapped_column(String(128), nullable=True)
     released_at: Mapped[str | None] = mapped_column(String(16), nullable=True)
     finishes: Mapped[str] = mapped_column(String(64), default="nonfoil")  # csv
+    # Precios de mercado que publica Scryfall, en la moneda indicada. Se
+    # guardan como float anulable: `None` significa "Scryfall no tiene precio
+    # para esta impresión" (habitual en promos y cartas muy antiguas), que es
+    # distinto de 0.
+    #
+    # Son el dato que permite responder a la pregunta por la que alguien usa
+    # esta herramienta: cuánto costaría el mazo en cartas reales frente a lo
+    # que cuesta proxearlo.
+    price_usd: Mapped[float | None] = mapped_column(nullable=True)
+    price_usd_foil: Mapped[float | None] = mapped_column(nullable=True)
+    price_eur: Mapped[float | None] = mapped_column(nullable=True)
+    # Legalidad por formato, como JSON compacto {"commander": "legal", ...}.
+    # Scryfall ya lo devuelve en cada carta; no guardarlo obligaba a que
+    # `deck_validation` solo supiera de Commander.
+    legalities: Mapped[str] = mapped_column(Text, default="")
     # Partes relacionadas: JSON compacto con [{"id":"...", "name":"...", "component":"token|meld_result|meld_part"}, ...]
     # Antes: solo tokens. Ahora: también meld results/parts para automatizar la adición al mazo.
     related_parts: Mapped[str] = mapped_column(Text, default="")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
 class LocalArt(Base):
@@ -95,7 +155,7 @@ class LocalArt(Base):
     scryfall_id: Mapped[str] = mapped_column(String(64), index=True)
     face: Mapped[str] = mapped_column(String(16), default="front")  # front|back
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     # Ruta relativa (bajo PATHS.thumbs_dir) del thumbnail WebP de 160px que
     # sirve el art picker. NULL = aún no generado; se crea perezosamente la
     # primera vez que alguien pide la miniatura. Ver services/thumbnails.py.
@@ -113,7 +173,7 @@ class ArtPreference(Base):
     oracle_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     scryfall_id: Mapped[str] = mapped_column(String(64))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow, onupdate=_utcnow
+        TZDateTime, default=_utcnow, onupdate=_utcnow
     )
 
 
@@ -137,7 +197,7 @@ class CustomArt(Base):
     variant_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
     face: Mapped[str] = mapped_column(String(16), default="front")  # front|back
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
-    indexed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
 class Deck(Base):
@@ -158,12 +218,12 @@ class Deck(Base):
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
     # --- Post-processing config (Fase 3 · T9) ---
-    imported_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    imported_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow, onupdate=_utcnow
+        TZDateTime, default=_utcnow, onupdate=_utcnow
     )
 
-    cards: Mapped[list["DeckCard"]] = relationship(
+    cards: Mapped[list[DeckCard]] = relationship(
         back_populates="deck", cascade="all, delete-orphan"
     )
 
@@ -191,7 +251,7 @@ class DeckCard(Base):
     role: Mapped[str] = mapped_column(String(32), default="mainboard")
     include: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    deck: Mapped["Deck"] = relationship(back_populates="cards")
+    deck: Mapped[Deck] = relationship(back_populates="cards")
 
 
 class PrintRun(Base):
@@ -199,7 +259,7 @@ class PrintRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(256))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     cardstock: Mapped[str] = mapped_column(String(64), default="(S30) Standard Smooth")
     foil: Mapped[bool] = mapped_column(Boolean, default=False)
     total_cards: Mapped[int] = mapped_column(Integer, default=0)
@@ -208,7 +268,7 @@ class PrintRun(Base):
     xml_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    items: Mapped[list["PrintRunItem"]] = relationship(
+    items: Mapped[list[PrintRunItem]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
 
@@ -227,7 +287,7 @@ class PrintRunItem(Base):
     card_name: Mapped[str] = mapped_column(String(256))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
 
-    run: Mapped["PrintRun"] = relationship(back_populates="items")
+    run: Mapped[PrintRun] = relationship(back_populates="items")
 
 
 class PhysicalInventory(Base):
@@ -242,7 +302,7 @@ class PhysicalInventory(Base):
     )
     status: Mapped[str] = mapped_column(String(32), default="ready")  # ready|cut|sleeved|lost
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow, onupdate=_utcnow
+        TZDateTime, default=_utcnow, onupdate=_utcnow
     )
 
 
@@ -272,7 +332,7 @@ class DeckActivity(Base):
     # Snapshot del nombre del mazo — persiste si se borra el mazo, para poder
     # mantener eventos "huérfanos" en un futuro "historial global".
     deck_name_snapshot: Mapped[str] = mapped_column(String(256), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, index=True)
     # Tipo de evento. Ver DeckActivityKind en services/deck_activity.py para
     # el listado canónico. Es string libre a propósito (no Enum) para permitir
     # extender sin migración.
@@ -313,9 +373,9 @@ class ArtSource(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[str] = mapped_column(String(256), default="")  # csv (ej. "commander,proxy")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)  # aparece destacado en editor
-    added_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    added_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     # Estado de indexación (fuzzy search interno):
-    indexed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     indexed_files: Mapped[int] = mapped_column(Integer, default=0)
     index_error: Mapped[str] = mapped_column(Text, default="")
 
@@ -341,7 +401,7 @@ class IndexedArt(Base):
     folder_path: Mapped[str] = mapped_column(String(1024), default="")  # subruta dentro del drive
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     mime_type: Mapped[str] = mapped_column(String(64), default="")
-    indexed_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     # Tags extraídos del filename y de la ruta de carpeta (CSV, sin espacios en
     # los tags individuales). Ejemplo: "full_art,retro,anime" para un archivo
     # llamado "Forest (Full Art) (Retro) [Anime].png".
@@ -435,7 +495,7 @@ class DFCPair(Base):
     front_name: Mapped[str] = mapped_column(String(256), unique=True, index=True)
     back_name: Mapped[str] = mapped_column(String(256))
     kind: Mapped[str] = mapped_column(String(24), default="transform")
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
 class CollectionEntry(Base):
@@ -461,7 +521,7 @@ class CollectionEntry(Base):
     collector_number: Mapped[str] = mapped_column(String(32), default="")
     rarity: Mapped[str] = mapped_column(String(32), default="common")
     image_small: Mapped[str | None] = mapped_column(Text, nullable=True)
-    added_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    added_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
 class OracleArtistCache(Base):
@@ -500,7 +560,7 @@ class OracleArtistCache(Base):
     # Nombre display del artist (con casing/acentos originales) — para UI.
     artist_display: Mapped[str] = mapped_column(String(128), default="")
     # Cuándo se pobló esta fila. Usado para invalidar por TTL.
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
 
@@ -524,7 +584,7 @@ class DeckSnapshot(Base):
         ForeignKey("decks.id", ondelete="CASCADE"), nullable=True, index=True
     )
     label: Mapped[str] = mapped_column(String(256), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, index=True)
     card_count: Mapped[int] = mapped_column(Integer, default=0)
     auto: Mapped[bool] = mapped_column(Boolean, default=False)
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
@@ -547,12 +607,12 @@ class ArtTheme(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     # Desnormalizado a propósito: la lista de temas se pinta con el contador y
     # no queremos un COUNT correlacionado por fila en cada carga.
     entry_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    entries: Mapped[list["ArtThemeEntry"]] = relationship(
+    entries: Mapped[list[ArtThemeEntry]] = relationship(
         back_populates="theme", cascade="all, delete-orphan"
     )
 
@@ -576,7 +636,7 @@ class ArtThemeEntry(Base):
     custom_art_front_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_art_back_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    theme: Mapped["ArtTheme"] = relationship(back_populates="entries")
+    theme: Mapped[ArtTheme] = relationship(back_populates="entries")
 
 
 class BulkSyncState(Base):
@@ -591,6 +651,6 @@ class BulkSyncState(Base):
     kind: Mapped[str] = mapped_column(String(32), primary_key=True)
     # El ``updated_at`` que traía el manifiesto de Scryfall, tal cual.
     updated_at: Mapped[str] = mapped_column(String(64), default="")
-    synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    synced_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     rows_imported: Mapped[int] = mapped_column(Integer, default=0)
     bytes_downloaded: Mapped[int] = mapped_column(Integer, default=0)

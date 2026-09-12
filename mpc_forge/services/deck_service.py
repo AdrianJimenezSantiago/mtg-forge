@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -80,10 +81,32 @@ def _memo_lookup(name: str) -> str | None:
     return sfid
 
 
+def _as_price(raw: Any) -> float | None:
+    """Convierte un precio de Scryfall a float.
+
+    Scryfall los manda como cadena ("12.34") o `null`. Una cadena vacía o un
+    valor no numérico se tratan como "sin precio" en vez de reventar el
+    import: un precio ausente nunca debe impedir añadir una carta al mazo.
+    """
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _as_aware(dt: datetime | None) -> datetime | None:
+    """Red de seguridad para datetimes que no vienen de la BD.
+
+    Las columnas usan ``models.TZDateTime``, que ya devuelve valores aware en
+    UTC, así que para filas leídas del ORM esto es un no-op. Se mantiene para
+    los datetimes que llegan de fuera (parseo de JSON de Scryfall, valores
+    construidos en tests) y que sí pueden venir naive.
+    """
     if dt is None:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _chunks(items: list[Any], size: int = _IN_CHUNK) -> Iterable[list[Any]]:
@@ -120,6 +143,7 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
             back_name = faces[1].get("name")
 
     related_parts = related_parts_from_card(card)
+    prices = card.get("prices") or {}
     return {
         "oracle_id": card.get("oracle_id") or "",
         "name": card.get("name", ""),
@@ -150,8 +174,15 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
         "artist": card.get("artist"),
         "released_at": card.get("released_at"),
         "finishes": ",".join(card.get("finishes", []) or []),
+        "price_usd": _as_price(prices.get("usd")),
+        "price_usd_foil": _as_price(prices.get("usd_foil")),
+        "price_eur": _as_price(prices.get("eur")),
+        "legalities": (
+            json.dumps(card.get("legalities") or {}, ensure_ascii=False)
+            if card.get("legalities") else ""
+        ),
         "related_parts": json.dumps(related_parts, ensure_ascii=False) if related_parts else "",
-        "fetched_at": datetime.now(timezone.utc),
+        "fetched_at": datetime.now(UTC),
     }
 
 
@@ -250,7 +281,7 @@ async def _resolve_from_cache(
     Devuelve ``(cards_by_key, indices_resueltos)``.
     """
     bulk = await _bulk_synced(db)
-    cutoff = datetime.now(timezone.utc) - RESOLVE_CACHE_TTL
+    cutoff = datetime.now(UTC) - RESOLVE_CACHE_TTL
 
     def fresh(row: PrintingCache) -> bool:
         if not row.oracle_id:
@@ -462,7 +493,7 @@ async def create_deck_from_entries(
                 .where(ArtPreference.oracle_id.in_(oracle_ids_needed))
             )
         ).all()
-        prefs_by_oracle = {oid: sfid for oid, sfid in rows}
+        prefs_by_oracle = dict(rows)
 
     for e in entries:
         if not e.get("resolved"):
@@ -679,6 +710,7 @@ async def _revert_dfc_backs_to_fronts(
     usuario los verá y sabrá corregir manualmente.
     """
     from sqlalchemy import func, select
+
     from mpc_forge.models import DFCPair
 
     # Recolectamos los names únicos (case-insensitive) que necesitamos verificar.
@@ -764,7 +796,7 @@ async def import_from_url(
         #    retrieve_card_list (sin segundo fetch) cuando el sitio lo soporta.
         try:
             site_name = await site_cls.retrieve_deck_name(url)
-        except Exception:  # noqa: BLE001
+        except Exception:
             site_name = None
 
         if site_name:
@@ -835,7 +867,7 @@ async def try_localize_card(
 
     try:
         raw = await scryfall.by_set_and_number(base.set_code, base.collector_number, lang=lang)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.debug("Localización de %s/%s a %s falló: %s",
                   base.set_code, base.collector_number, lang, e)
         return None

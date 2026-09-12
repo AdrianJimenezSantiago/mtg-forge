@@ -263,7 +263,7 @@ async def resolve_deck_for_xml(
         if on_progress is not None:
             try:
                 on_progress(dc.name)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.debug("Progress callback falló: %s", e)
 
     return resolved

@@ -53,6 +53,7 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
         return _SETS_CACHE
 
     import httpx
+
     from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
     from mpc_forge.ssl_config import ssl_insecure
 
@@ -227,9 +228,10 @@ async def set_cards(
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> list[SetCardInfo]:
     """Devuelve las cartas de un set con el flag de si el usuario las tiene."""
-    from mpc_forge.services.rate_limiter import AsyncRateLimiter
     import httpx
+
     from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
+    from mpc_forge.services.rate_limiter import AsyncRateLimiter
     from mpc_forge.ssl_config import ssl_insecure
 
     all_cards: list[dict] = []

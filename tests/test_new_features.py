@@ -2,8 +2,6 @@
 deshacer eventos y progreso de build."""
 from __future__ import annotations
 
-
-
 # =============================================================================
 # Duplicar mazo
 # =============================================================================
@@ -417,6 +415,7 @@ class TestPathOverrides:
         """El flujo completo: PUT /api/settings/ con un paths.* válido lo
         guarda y aplica a cfg.PATHS via apply_to_config."""
         import tempfile
+
         from mpc_forge import config as cfg
 
         custom_dir = tempfile.mkdtemp(prefix="mtgforge_path_test_")

@@ -176,5 +176,8 @@ def launch(xml_path: Path) -> int:
     else:
         kwargs["start_new_session"] = True
 
-    proc = subprocess.Popen(cmd, **kwargs)
+    # `cmd` lo construimos nosotros a partir de una ruta ya validada en
+    # disco, y va como lista (sin shell): no hay interpolación de entrada
+    # del usuario que pueda inyectar argumentos.
+    proc = subprocess.Popen(cmd, **kwargs)  # noqa: S603
     return proc.pid

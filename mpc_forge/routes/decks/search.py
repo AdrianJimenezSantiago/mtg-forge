@@ -11,9 +11,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from mpc_forge.models import (
-    Deck, DeckCard, PrintingCache,
+    Deck,
+    DeckCard,
+    PrintingCache,
 )
-
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ log = logging.getLogger(__name__)
 # --- Import / CRUD -------------------------------------------------------
 
 from mpc_forge.routes.decks._common import (
-    DbDep, make_router,
+    DbDep,
+    make_router,
 )
 
 router = make_router()

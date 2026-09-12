@@ -5,7 +5,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-
 # ---- Requests ------------------------------------------------------------
 
 class ImportFromMoxfieldRequest(BaseModel):
@@ -180,6 +179,13 @@ class DeckCardView(BaseModel):
     related_parts: list[dict[str, str]] = []
 
 
+class IllegalCardView(BaseModel):
+    """Carta baneada, restringida o no legal en el formato del mazo."""
+    name: str
+    status: str   # 'banned' | 'restricted' | 'not_legal'
+    role: str
+
+
 class DeckValidation(BaseModel):
     """Validación por formato. Para commander: mainboard+commander = 100."""
     format: str
@@ -189,6 +195,22 @@ class DeckValidation(BaseModel):
     message: str
     level: str  # 'ok' | 'warn' | 'error'
     breakdown: dict[str, int] = {}  # role → count
+    illegal: list[IllegalCardView] = []
+
+
+class DeckPriceView(BaseModel):
+    """Lo que costaría el mazo en cartas reales.
+
+    Es la comparación que da sentido a proxear: al lado del coste estimado de
+    impresión, pone en contexto la diferencia. Los precios salen de Scryfall y
+    son orientativos.
+    """
+    eur: float = 0.0
+    usd: float = 0.0
+    priced_cards: int = 0
+    """Cartas con precio conocido."""
+    unpriced_cards: int = 0
+    """Cartas sin precio en Scryfall — el total es una cota inferior."""
 
 
 class DeckView(BaseModel):
@@ -202,6 +224,7 @@ class DeckView(BaseModel):
     updated_at: datetime
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
+    price: DeckPriceView | None = None
 
 
 class UnresolvedEntry(BaseModel):

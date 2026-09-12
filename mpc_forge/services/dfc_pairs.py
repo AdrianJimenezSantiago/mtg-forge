@@ -30,7 +30,7 @@ Adaptamos aquí a nuestro cliente `ScryfallClient` y a nuestra BD.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -165,7 +165,7 @@ async def _fetch_all_pairs(scryfall: ScryfallClient) -> list[DFCPair]:
 
 
 async def _mark_synced(db: AsyncSession) -> None:
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     kv = await db.get(KeyValue, _LAST_SYNC_KEY)
     if kv:
         kv.value = now_iso
@@ -184,8 +184,8 @@ async def _is_stale(db: AsyncSession) -> bool:
     except ValueError:
         return True
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - last) > SYNC_TTL
+        last = last.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - last) > SYNC_TTL
 
 
 async def _count(db: AsyncSession) -> int:
@@ -211,7 +211,7 @@ async def sync_if_stale(db: AsyncSession, scryfall: ScryfallClient) -> dict[str,
              existing_count, stale)
     try:
         pairs = await _fetch_all_pairs(scryfall)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Si Scryfall no responde y ya tenemos datos, mantenemos los actuales.
         if existing_count > 0:
             log.warning("Fallo al sincronizar DFC pairs pero la tabla actual sigue viva: %s", e)

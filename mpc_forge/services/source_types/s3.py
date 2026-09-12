@@ -43,7 +43,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import AsyncIterator, ClassVar
+from collections.abc import AsyncIterator
+from typing import ClassVar
 from urllib.parse import urlparse
 
 import httpx
@@ -149,7 +150,7 @@ class S3SourceType(ArtSourceType):
     @classmethod
     def validate_url(cls, url: str) -> str:
         # Aprovechamos _parse_s3_url para la validación completa.
-        bucket, prefix, endpoint = _parse_s3_url(url)
+        bucket, prefix, _endpoint = _parse_s3_url(url)
         # Devolver una forma canónica s3:// para almacenamiento consistente.
         if prefix:
             return f"s3://{bucket}/{prefix}"

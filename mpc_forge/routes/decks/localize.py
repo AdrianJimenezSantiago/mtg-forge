@@ -9,7 +9,10 @@ import logging
 from typing import Annotated
 
 from fastapi import (
-    Depends, HTTPException, Response, status,
+    Depends,
+    HTTPException,
+    Response,
+    status,
 )
 from pydantic import BaseModel
 
@@ -18,10 +21,10 @@ from mpc_forge.models import (
     Deck,
 )
 from mpc_forge.services import (
-    deck_activity, deck_service,
+    deck_activity,
+    deck_service,
 )
 from mpc_forge.services.deck_activity import DeckActivityKind as K
-
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +32,9 @@ log = logging.getLogger(__name__)
 # --- Import / CRUD -------------------------------------------------------
 
 from mpc_forge.routes.decks._common import (
-    DbDep, _get_scryfall, make_router,
+    DbDep,
+    _get_scryfall,
+    make_router,
 )
 
 router = make_router()
@@ -144,7 +149,7 @@ async def autocomplete_card(
         return []
     try:
         return await scryfall.autocomplete(q)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         import logging
         logging.getLogger(__name__).warning("Autocomplete falló para %r: %s", q, e)
         return []

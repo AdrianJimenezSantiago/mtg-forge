@@ -66,7 +66,7 @@ def configure_ssl() -> str:
             "Si estás en una red corporativa, instala: pip install truststore"
         )
         return "certifi (default)"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("No se pudo inyectar truststore (%s). Usando certifi.", e)
         return "certifi (fallback)"
 

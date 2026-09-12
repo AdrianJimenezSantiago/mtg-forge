@@ -4,17 +4,17 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-
-from mpc_forge.paths import static_dir, template_dir
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
 from mpc_forge.models import Deck, DeckCard, PrintingCache
+from mpc_forge.paths import static_dir, template_dir
+from mpc_forge.services import i18n as i18n_service
 from mpc_forge.services.i18n import LANG_FLAGS, SUPPORTED_LANGS, detect_lang, get_translations
 
 log = logging.getLogger(__name__)
@@ -53,6 +53,9 @@ def _asset_v(filename: str) -> int:
 # {% extends %} o {% include %}).
 templates.env.globals["asset_v"] = _asset_v
 
+# Versión del bundle de traducciones, para el cache-busting de /i18n/<lang>.js.
+templates.env.globals["i18n_v"] = i18n_service.bundle_version
+
 # Exponer constantes i18n a todos los templates
 templates.env.globals["SUPPORTED_LANGS"] = SUPPORTED_LANGS
 templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
@@ -74,6 +77,34 @@ def _t_context(request: Request) -> dict:
     return {"t": tr, "lang": lang, "_T": tr.as_dict()}
 
 
+# Cache de un año: la URL lleva el hash del contenido (`?v=`), así que un
+# cambio en las traducciones genera una URL distinta. `immutable` evita incluso
+# la petición condicional al refrescar.
+_I18N_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+@router.get("/i18n/{lang}.js")
+async def i18n_bundle(lang: str) -> Response:
+    """Sirve las traducciones como JavaScript cacheable.
+
+    Antes esto era un bloque ``<script>`` inline en ``base.html``: las ~740
+    cadenas (unos 25 KB) viajaban dentro del HTML en CADA navegación, y al ir
+    embebidas en el documento el navegador no podía cachearlas por separado.
+
+    Como fichero aparte con URL versionada se descarga una sola vez. Sigue
+    definiendo exactamente los mismos globales (``window._T``, ``window._LANG``,
+    ``window._t``) y en el mismo punto del documento, así que el orden de
+    ejecución respecto al resto de scripts no cambia.
+    """
+    if lang not in dict(SUPPORTED_LANGS):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Idioma no soportado: {lang}")
+    return Response(
+        content=i18n_service.bundle_js(lang),
+        media_type="application/javascript; charset=utf-8",
+        headers={"Cache-Control": _I18N_CACHE_CONTROL},
+    )
+
+
 @router.post("/set-lang", response_class=HTMLResponse)
 async def set_language(
     request: Request,
@@ -81,12 +112,20 @@ async def set_language(
     next_url: str = Form(default="/"),
 ) -> Response:
     """Cambia el idioma de la UI guardándolo en una cookie de larga duración."""
+    from mpc_forge.middleware import is_same_origin
     from mpc_forge.services.i18n import _TRANSLATIONS
     if lang not in _TRANSLATIONS:
         lang = "es"
-    # Redirect al referer o a la home — mantiene al usuario en la página actual
-    referer = request.headers.get("referer", next_url)
-    response = RedirectResponse(url=referer, status_code=303)
+    # Redirect al referer o a la home — mantiene al usuario en la página actual.
+    #
+    # El destino se valida: `Referer` lo controla el cliente, así que sin
+    # comprobarlo esto sería un redirect abierto (alguien enlaza a
+    # /set-lang con un Referer a su web y el usuario acaba allí creyendo que
+    # sigue en la app).
+    target = request.headers.get("referer") or next_url
+    if not is_same_origin(request, target):
+        target = "/"
+    response = RedirectResponse(url=target, status_code=303)
     response.set_cookie(
         key="lang",
         value=lang,

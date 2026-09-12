@@ -448,7 +448,7 @@ def _render_page(
     opts: PDFOptions,
     kind: str,
     chunk: list[dict | None],
-    image_cache: "_ImageReaderCache | None" = None,
+    image_cache: _ImageReaderCache | None = None,
 ) -> None:
     """Pinta una hoja. En modo backs+duplex, espejo horizontal para alinear
     con el frente al voltear el papel (long-edge flip)."""
@@ -482,7 +482,7 @@ def _render_page(
                 preserveAspectRatio=False,
                 mask="auto",
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.error("No se pudo pintar %s: %s", slot["path"], e)
             _placeholder(c, x_mm + img_x_off, y_mm + img_y_off, img_w, img_h, slot["name"])
 

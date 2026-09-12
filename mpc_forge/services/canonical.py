@@ -117,7 +117,7 @@ async def validate_and_enrich(
         ]
         try:
             cards = await scryfall.collection(idents)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("Scryfall.collection batch falló, saltando: %s", e)
             continue
         # Los results de Scryfall vienen sin garantía de orden. Reindexar por (set, num).

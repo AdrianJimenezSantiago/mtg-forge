@@ -21,7 +21,13 @@ from mpc_forge.db import get_session
 from mpc_forge.models import Deck, DeckCard, PrintRun
 from mpc_forge.schemas import BuildXMLRequest
 from mpc_forge.services import backup as backup_service
-from mpc_forge.services import build_progress, cost_estimator, deck_activity, decklist_export, history
+from mpc_forge.services import (
+    build_progress,
+    cost_estimator,
+    deck_activity,
+    decklist_export,
+    history,
+)
 from mpc_forge.services.art_cache import ArtCache
 from mpc_forge.services.deck_activity import DeckActivityKind as K
 from mpc_forge.services.pdf_generator import PDFOptions, build_pdf
@@ -134,7 +140,7 @@ async def build_xml_endpoint(
             db, scryfall, art_cache, deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         build_progress.finish(deck_id, error=str(e))
         raise
     if not resolved:
@@ -143,7 +149,8 @@ async def build_xml_endpoint(
 
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
     foil = bool(payload.foil) if payload.foil is not None else False
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local: forma parte del nombre del fichero exportado.
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.xml"
 
     cardback = default_cardback_path()
@@ -252,7 +259,9 @@ async def preview_print_runs(
     "tu mazo son 700 cartas → 2 runs (612 + 88)" al instante.
     """
     from mpc_forge.services.print_runs import (
-        split_into_runs, split_into_runs_optimized, summary_dict,
+        split_into_runs,
+        split_into_runs_optimized,
+        summary_dict,
     )
     from mpc_forge.services.xml_generator import plan_deck_slots
 
@@ -325,7 +334,8 @@ async def build_split_xml_endpoint(
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
     foil = payload.foil
     cardback = await _resolve_deck_cardback(db, deck)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local: forma parte del nombre del fichero exportado.
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
 
     xml_paths: list[str] = []
     run_ids: list[int] = []
@@ -731,14 +741,15 @@ async def build_pdf_endpoint(
             db, scryfall, art_cache, deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         build_progress.finish(deck_id, error=str(e))
         raise
     if not resolved:
         build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local: forma parte del nombre del fichero exportado.
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.pdf"
 
     # --- Traducción legacy → nuevo modelo ---
@@ -883,7 +894,7 @@ async def export_images_endpoint(
             db, scryfall, art_cache, deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         build_progress.finish(deck_id, error=str(e))
         raise
     if not resolved:
@@ -896,7 +907,8 @@ async def export_images_endpoint(
         db, deck_id, fmt=fmt, include_headers=True,  # type: ignore[arg-type]
     )
 
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Hora local: forma parte del nombre del fichero exportado.
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}-images.zip"
     cardback = await _resolve_deck_cardback(db, deck)
     result = await asyncio.to_thread(

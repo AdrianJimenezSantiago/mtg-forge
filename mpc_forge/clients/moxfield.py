@@ -88,7 +88,7 @@ def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
             r = scraper.get(f"{base}/decks/all/{deck_id}", timeout=30)
             if r.status_code == 200:
                 return r.json()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.debug("cloudscraper %s falló: %s", base, e)
     raise MoxfieldError(
         f"No se pudo obtener el mazo {deck_id!r}. "
@@ -131,7 +131,7 @@ def normalize_deck(payload: dict[str, Any]) -> dict[str, Any]:
     for board_key, role in board_roles.items():
         board = boards.get(board_key) or {}
         cards_dict = board.get("cards") or {}
-        for _card_key, entry in cards_dict.items():
+        for entry in cards_dict.values():
             qty = entry.get("quantity", 1)
             card = entry.get("card") or {}
             info = {

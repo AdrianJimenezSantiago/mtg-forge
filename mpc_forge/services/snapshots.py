@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -112,7 +112,7 @@ async def create(
 
 
 def _default_label(auto: bool) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
+    stamp = datetime.now(UTC).strftime("%d/%m/%Y %H:%M")
     return f"Automático {stamp}" if auto else f"Guardado {stamp}"
 
 

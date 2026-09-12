@@ -71,5 +71,5 @@ class CubeCobraSite(ImportSite):
             payload = resp.json()
             name = (payload.get("name") or "").strip()
             return name if name else None
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None

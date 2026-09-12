@@ -32,7 +32,7 @@ import asyncio
 import logging
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -180,7 +180,7 @@ async def _lookup_cache(
     """
     if not oracle_ids:
         return set(), []
-    stale_cutoff = datetime.now(timezone.utc) - CACHE_TTL
+    stale_cutoff = datetime.now(UTC) - CACHE_TTL
 
     # Traer todas las filas del cache para estos oracles.
     rows = (await db.execute(
@@ -203,11 +203,9 @@ async def _lookup_cache(
             need_fetch.append(oid)
             continue
         # ¿Alguna fila está stale? Si sí, refresh completo.
-        # Nota: `fetched_at` puede ser naive (SQLite lo guarda sin tz).
-        any_stale = any(
-            (f.replace(tzinfo=timezone.utc) if f.tzinfo is None else f) < stale_cutoff
-            for _, f in cached
-        )
+        # `fetched_at` llega aware gracias a `models.TZDateTime`; ya no hace
+        # falta reponer el tzinfo a mano en cada punto de comparación.
+        any_stale = any(f < stale_cutoff for _, f in cached)
         if any_stale:
             need_fetch.append(oid)
             continue
@@ -245,7 +243,7 @@ async def _persist_cache(
     await db.execute(
         delete(OracleArtistCache).where(OracleArtistCache.oracle_id == oracle_id)
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for folded, display in artists:
         db.add(OracleArtistCache(
             oracle_id=oracle_id, artist_folded=folded,
@@ -265,7 +263,7 @@ async def recommend_by_artist(
     oracle_ids: list[str],
     artist: str,
     db: AsyncSession | None = None,
-) -> "RecommendResult":
+) -> RecommendResult:
     """Para cada oracle_id, busca impresiones por ``artist`` y devuelve la
     mejor cover encontrada.
 
@@ -302,7 +300,7 @@ async def recommend_by_artist(
         for oid, prints in fetched_prints.items():
             try:
                 await _persist_cache(db, oid, prints)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.warning("persist_cache(%s) falló: %s", oid, e)
         await db.commit()
 
@@ -531,7 +529,7 @@ async def _fetch_prints_parallel(
         async with semaphore:
             try:
                 return oid, await scryfall.prints_by_oracle_id(oid)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.warning("prints_by_oracle_id(%s) falló: %s", oid, e)
                 return oid, []
 

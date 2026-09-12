@@ -40,7 +40,11 @@ async def create_print_run_from_deck(
     ).all()
     total = sum(c.quantity for c in cards)
     run = PrintRun(
-        name=run_name or f"{deck.name} — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        # Hora local: este nombre se muestra tal cual en el historial.
+        name=run_name or (
+            f"{deck.name} — "
+            f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}"
+        ),
         cardstock=cardstock,
         foil=foil,
         total_cards=total,

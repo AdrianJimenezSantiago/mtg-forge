@@ -29,7 +29,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import delete, select
@@ -614,6 +614,7 @@ def _load_user_vocab_overrides() -> dict[str, frozenset[str]]:
     ayuda al usuario a debuggear su JSON.
     """
     import json
+
     from mpc_forge import config as _cfg
     path = _cfg.PATHS.data_dir / "tag_vocabulary.json"
     if not path.exists():
@@ -772,10 +773,7 @@ def is_ignored_folder(folder_path: str) -> bool:
     """
     if not folder_path:
         return False
-    for seg in re.split(r"[/\\]", folder_path):
-        if seg.strip().startswith("!"):
-            return True
-    return False
+    return any(seg.strip().startswith("!") for seg in re.split(r"[/\\]", folder_path))
 
 
 def detect_special_folder_tag(folder_path: str) -> str | None:
@@ -1190,7 +1188,16 @@ async def _index_via_api(
                         error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
                         used_api_key=True,
                     )
-                log.warning("Saltando subcarpeta %s (%s): %s", current_id, current_path, e)
+                # No se interpola `e`: su ``str()`` incluye la URL completa de
+                # la petición, y esa URL lleva la API key como query param
+                # (``?key=AIza…``). El log se puede descargar desde la UI, así
+                # que loguear la excepción entera filtraba la credencial.
+                # `logging_setup.RedactSecretsFilter` es la red de seguridad;
+                # aquí simplemente no la generamos.
+                log.warning(
+                    "Saltando subcarpeta %s (%s): HTTP %s",
+                    current_id, current_path, e.response.status_code,
+                )
                 continue
 
             for item in items:
@@ -1235,7 +1242,7 @@ async def _index_via_api(
                     existing.folder_path = current_path
                     existing.size_bytes = size
                     existing.mime_type = mime
-                    existing.indexed_at = datetime.now(timezone.utc)
+                    existing.indexed_at = datetime.now(UTC)
                     existing.tags = tags_csv
                     existing.expansion_code = exp_code
                     existing.collector_number = coll_num
@@ -1315,10 +1322,13 @@ async def _index_via_scraping(
             r.raise_for_status()
             html = r.text
         except (httpx.HTTPError, httpx.HTTPStatusError) as e:
+            # `redact` porque el str() de una excepción httpx incluye la URL
+            # completa, y este mensaje se muestra en la UI y se persiste.
+            from mpc_forge.services.logging_setup import redact
             return IndexResult(
                 source_id=source.id, files_added=0, files_updated=0,
                 folders_visited=0,
-                error=f"No se pudo cargar embedded view: {e}",
+                error=redact(f"No se pudo cargar embedded view: {e}"),
             )
 
     matches = _EMBED_ITEM_RE.findall(html)
@@ -1343,7 +1353,7 @@ async def _index_via_scraping(
             existing.filename = name
             existing.name_normalized = normalize_filename(name)
             existing.mime_type = mime
-            existing.indexed_at = datetime.now(timezone.utc)
+            existing.indexed_at = datetime.now(UTC)
             existing.tags = tags_csv
             existing.expansion_code = exp_code
             existing.collector_number = coll_num
@@ -1440,7 +1450,7 @@ async def index_source(
                 folders_visited=0,
                 error="La URL no parece un folder de Google Drive",
             )
-            source.indexed_at = datetime.now(timezone.utc)
+            source.indexed_at = datetime.now(UTC)
             source.index_error = result.error or ""
             await db.commit()
             return result
@@ -1480,7 +1490,7 @@ async def index_source(
 
     # Actualizar estado del source. Contamos filas reales de IndexedArt.
     from sqlalchemy import func
-    source.indexed_at = datetime.now(timezone.utc)
+    source.indexed_at = datetime.now(UTC)
     source.indexed_files = int(await db.scalar(
         select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source.id)
     ) or 0)
@@ -1521,8 +1531,9 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progr
     phash_client = None
     if phash_active:
         import httpx
-        from mpc_forge.ssl_config import ssl_insecure
+
         from mpc_forge import config as _cfg
+        from mpc_forge.ssl_config import ssl_insecure
         phash_client = httpx.AsyncClient(
             timeout=15.0,
             verify=not ssl_insecure(),
@@ -1546,7 +1557,7 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progr
         nonlocal since_last_commit
         try:
             await db.commit()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning("Commit parcial de source %d falló: %s", source.id, e)
         since_last_commit = 0
         if on_progress:
@@ -1574,11 +1585,11 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progr
             # gdrive_search las use en lugar del formato hardcodeado de Drive.
             try:
                 _dl_url = type_cls.download_url(source, sf.file_id)
-            except (NotImplementedError, Exception):  # noqa: BLE001
+            except (NotImplementedError, Exception):
                 _dl_url = None
             try:
                 _th_url = type_cls.thumbnail_url(source, sf.file_id)
-            except (NotImplementedError, Exception):  # noqa: BLE001
+            except (NotImplementedError, Exception):
                 _th_url = None
 
             if existing:
@@ -1587,7 +1598,7 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progr
                 existing.folder_path = sf.folder_path
                 existing.size_bytes = sf.size_bytes
                 existing.mime_type = sf.mime_type
-                existing.indexed_at = datetime.now(timezone.utc)
+                existing.indexed_at = datetime.now(UTC)
                 existing.tags = tags_csv
                 existing.expansion_code = exp_code
                 existing.collector_number = coll_num
@@ -1637,7 +1648,7 @@ async def _index_generic(db: AsyncSession, source: ArtSource, type_cls, on_progr
 
         if since_last_commit > 0:
             await _partial_commit()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("Error indexando source %d (%s) via tipo genérico",
                       source.id, source.name)
         return IndexResult(

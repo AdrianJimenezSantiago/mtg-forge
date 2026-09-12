@@ -62,7 +62,7 @@ class MoxfieldSite(ImportSite):
                 resp = await cls.request(f"{base}/decks/all/{deck_id}")
                 payload = resp.json()
                 break
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 last_err = e
                 log.debug("Moxfield %s falló: %s", base, e)
 
@@ -121,7 +121,7 @@ def _payload_to_text(payload: dict) -> str:
         if not cards:
             return
         out.append(f"//{label}")
-        for _key, entry in cards.items():
+        for entry in cards.values():
             qty = entry.get("quantity", 1)
             card = entry.get("card") or {}
             name = card.get("name", "")

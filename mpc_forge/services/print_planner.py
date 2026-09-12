@@ -298,7 +298,7 @@ def plan_runs(
             buckets.append([deck])
             loads.append(deck.card_count)
 
-    for index, (bucket, load) in enumerate(zip(buckets, loads)):
+    for index, (bucket, load) in enumerate(zip(buckets, loads, strict=False)):
         tier = smallest_tier_for(load)
         runs.append(RunPlan(
             index=index,

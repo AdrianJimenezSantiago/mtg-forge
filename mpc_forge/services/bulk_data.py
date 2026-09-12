@@ -41,9 +41,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterator
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from sqlalchemy import func, select
@@ -96,7 +97,7 @@ class BulkProgress:
     def to_dict(self) -> dict[str, Any]:
         elapsed = 0.0
         if self.started_at:
-            end = self.finished_at or datetime.now(timezone.utc)
+            end = self.finished_at or datetime.now(UTC)
             elapsed = (end - self.started_at).total_seconds()
         percent = 0.0
         if self.bytes_total:
@@ -169,7 +170,7 @@ async def needs_sync(db: AsyncSession, kind: str = DEFAULT_KIND) -> tuple[bool, 
     state = await get_state(db, kind)
     try:
         manifest = await fetch_manifest(kind)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return (False, f"No se pudo consultar el catálogo de Scryfall: {e}")
     remote = manifest.get("updated_at", "")
     if state is None or not state.updated_at:
@@ -348,7 +349,7 @@ def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
         "released_at": card.get("released_at"),
         "finishes": ",".join(card.get("finishes") or []),
         "related_parts": json.dumps(related, ensure_ascii=False) if related else "",
-        "fetched_at": datetime.now(timezone.utc),
+        "fetched_at": datetime.now(UTC),
     }
 
 
@@ -390,7 +391,7 @@ async def sync(
     """
     global _progress
     _progress = BulkProgress(kind=kind, phase="manifest",
-                             started_at=datetime.now(timezone.utc))
+                             started_at=datetime.now(UTC))
 
     try:
         manifest = await fetch_manifest(kind)
@@ -400,7 +401,7 @@ async def sync(
         state = await get_state(db, kind)
         if not force and state and state.updated_at == remote_updated:
             _progress.phase = "done"
-            _progress.finished_at = datetime.now(timezone.utc)
+            _progress.finished_at = datetime.now(UTC)
             return {
                 "skipped": True,
                 "reason": "El volcado local ya está al día",
@@ -419,7 +420,7 @@ async def sync(
                             _progress.bytes_downloaded)
 
         _progress.phase = "done"
-        _progress.finished_at = datetime.now(timezone.utc)
+        _progress.finished_at = datetime.now(UTC)
         log.info("Volcado %s importado: %d impresiones", kind, written)
         return {
             "skipped": False,
@@ -432,12 +433,12 @@ async def sync(
         _progress.phase = "error"
         _progress.cancelled = True
         _progress.error = "Cancelado por el usuario"
-        _progress.finished_at = datetime.now(timezone.utc)
+        _progress.finished_at = datetime.now(UTC)
         raise
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _progress.phase = "error"
         _progress.error = str(e)
-        _progress.finished_at = datetime.now(timezone.utc)
+        _progress.finished_at = datetime.now(UTC)
         log.exception("La importación del volcado %s falló", kind)
         raise
 
@@ -455,48 +456,47 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
         timeout=httpx.Timeout(60.0, read=300.0),
         follow_redirects=True,
         verify=not ssl_insecure(),
-    ) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
+    ) as client, client.stream("GET", url) as response:
+        response.raise_for_status()
 
-            async def handle(card: dict[str, Any]) -> None:
-                nonlocal written
-                _progress.rows_seen += 1
-                row = card_to_row(card)
-                if row is None:
-                    return
-                # El volcado no repite ids, pero un fallo de red que provoque
-                # un reintento parcial sí podría. Insertar dos veces la misma
-                # PK en un solo lote rompe el upsert de SQLite.
-                if row["scryfall_id"] in seen_ids:
-                    return
-                seen_ids.add(row["scryfall_id"])
-                batch.append(row)
-                if len(batch) >= BATCH_SIZE:
-                    written += await _flush(db, batch)
-                    batch.clear()
-                    seen_ids.clear()
-                    _progress.rows_written = written
-                    # Cede el control: sin esto el event loop se queda
-                    # bloqueado y la interfaz deja de responder al polling
-                    # de progreso durante toda la importación.
-                    await asyncio.sleep(0)
+        async def handle(card: dict[str, Any]) -> None:
+            nonlocal written
+            _progress.rows_seen += 1
+            row = card_to_row(card)
+            if row is None:
+                return
+            # El volcado no repite ids, pero un fallo de red que provoque
+            # un reintento parcial sí podría. Insertar dos veces la misma
+            # PK en un solo lote rompe el upsert de SQLite.
+            if row["scryfall_id"] in seen_ids:
+                return
+            seen_ids.add(row["scryfall_id"])
+            batch.append(row)
+            if len(batch) >= BATCH_SIZE:
+                written += await _flush(db, batch)
+                batch.clear()
+                seen_ids.clear()
+                _progress.rows_written = written
+                # Cede el control: sin esto el event loop se queda
+                # bloqueado y la interfaz deja de responder al polling
+                # de progreso durante toda la importación.
+                await asyncio.sleep(0)
 
-            if use_ijson:
-                import ijson
+        if use_ijson:
+            import ijson
 
-                async def byte_chunks():
-                    async for chunk in response.aiter_bytes(chunk_size=1 << 20):
-                        _progress.bytes_downloaded += len(chunk)
-                        yield chunk
+            async def byte_chunks():
+                async for chunk in response.aiter_bytes(chunk_size=1 << 20):
+                    _progress.bytes_downloaded += len(chunk)
+                    yield chunk
 
-                async for card in ijson.items_async(byte_chunks(), "item"):
+            async for card in ijson.items_async(byte_chunks(), "item"):
+                await handle(card)
+        else:
+            async for chunk in response.aiter_text(chunk_size=1 << 20):
+                _progress.bytes_downloaded += len(chunk.encode("utf-8"))
+                for card in parser.feed(chunk):
                     await handle(card)
-            else:
-                async for chunk in response.aiter_text(chunk_size=1 << 20):
-                    _progress.bytes_downloaded += len(chunk.encode("utf-8"))
-                    for card in parser.feed(chunk):
-                        await handle(card)
 
     written += await _flush(db, batch)
     _progress.rows_written = written
@@ -511,7 +511,7 @@ async def _record_state(
         state = BulkSyncState(kind=kind)
         db.add(state)
     state.updated_at = updated_at
-    state.synced_at = datetime.now(timezone.utc)
+    state.synced_at = datetime.now(UTC)
     state.rows_imported = rows
     state.bytes_downloaded = size
     await db.commit()

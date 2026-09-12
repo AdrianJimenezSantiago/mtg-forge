@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sqlite3
 import sys
 from contextlib import asynccontextmanager
@@ -15,14 +16,17 @@ from mpc_forge import config as cfg
 from mpc_forge.clients.moxfield import MoxfieldClient
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import init_db, optimize_db, session_scope
-from mpc_forge.paths import diagnose as paths_diagnose, is_frozen, static_dir
+from mpc_forge.middleware import DEFAULT_ALLOWED_HOSTS, LocalhostGuardMiddleware
+from mpc_forge.paths import diagnose as paths_diagnose
+from mpc_forge.paths import is_frozen, static_dir
+from mpc_forge.routes import bulk as bulk_routes
 from mpc_forge.routes import collection as collection_routes
 from mpc_forge.routes import custom_art as custom_art_routes
 from mpc_forge.routes import debug as debug_routes
-from mpc_forge.routes import decks, export, integrations, settings as settings_routes, ui
-from mpc_forge.routes import bulk as bulk_routes
+from mpc_forge.routes import decks, export, integrations, ui
 from mpc_forge.routes import library as library_routes
 from mpc_forge.routes import planner as planner_routes
+from mpc_forge.routes import settings as settings_routes
 from mpc_forge.routes import thumbs as thumbs_routes
 from mpc_forge.services import art_sources as art_sources_service
 from mpc_forge.services import custom_art as custom_art_service
@@ -36,12 +40,23 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+# Logger propio del módulo en lugar de llamar al root directamente. Importa
+# más de lo que parece aquí: el filtro de redacción de secretos
+# (`logging_setup.RedactSecretsFilter`) se engancha a los handlers, y tener un
+# logger con nombre hace que el mensaje sea rastreable hasta su origen en vez
+# de aparecer como "root".
+log = logging.getLogger(__name__)
+
 # Configuramos SSL ANTES de crear cualquier cliente HTTPX — así truststore
 # inyecta el contexto SSL del sistema (con la CA corporativa si aplica) antes
 # de que se instancien conexiones.
 _SSL_MODE = configure_ssl()
 
 STATIC_DIR = static_dir()
+
+# Hosts extra permitidos, separados por comas. Solo hace falta si el usuario
+# arranca con `--host 0.0.0.0` para entrar desde otro equipo de su LAN.
+_EXTRA_HOSTS_ENV = "MPC_FORGE_ALLOWED_HOSTS"
 
 
 def _preload_path_overrides() -> None:
@@ -74,12 +89,12 @@ def _preload_path_overrides() -> None:
                 overrides[short] = value.strip()
         if overrides:
             cfg.PATHS = cfg.Paths.default().with_overrides(**overrides)
-            logging.info("Aplicados %d overrides de paths desde BD", len(overrides))
+            log.info("Aplicados %d overrides de paths desde BD", len(overrides))
     except sqlite3.OperationalError:
         # Tabla kv_store aún no existe (primera ejecución sin init_db previo).
         pass
-    except Exception as e:  # noqa: BLE001
-        logging.warning("Preload de path overrides falló: %s", e)
+    except Exception as e:
+        log.warning("Preload de path overrides falló: %s", e)
 
 
 # Se ejecuta al importar el módulo — antes de create_app() se ejecute abajo.
@@ -118,7 +133,7 @@ class BackgroundTasks:
             # Sin esto, una excepción en una tarea de background solo aparece
             # como un "Task exception was never retrieved" al salir del
             # proceso, sin contexto sobre qué tarea era.
-            logging.error(
+            log.error(
                 "La tarea de background %r terminó con excepción",
                 task.get_name(), exc_info=exc,
             )
@@ -128,15 +143,15 @@ class BackgroundTasks:
         pending = [t for t in self._tasks if not t.done()]
         if not pending:
             return
-        logging.info("Cancelando %d tareas de background…", len(pending))
+        log.info("Cancelando %d tareas de background…", len(pending))
         for task in pending:
             task.cancel()
         try:
             await asyncio.wait_for(
                 asyncio.gather(*pending, return_exceptions=True), timeout
             )
-        except asyncio.TimeoutError:
-            logging.warning(
+        except TimeoutError:
+            log.warning(
                 "%d tareas no respondieron a la cancelación en %.0fs; "
                 "se continúa con el cierre.", len(pending), timeout,
             )
@@ -166,7 +181,7 @@ def _silence_windows_connection_resets(loop: asyncio.AbstractEventLoop) -> None:
 
     def handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
         if _is_benign_connection_reset(context):
-            logging.debug("Conexión cerrada por el cliente: %s", context.get("exception"))
+            log.debug("Conexión cerrada por el cliente: %s", context.get("exception"))
             return
         if previous is not None:
             previous(loop, context)
@@ -184,16 +199,16 @@ async def lifespan(app: FastAPI):
     logs_dir = cfg.PATHS.data_dir / "logs"
     try:
         log_path = logging_setup.setup_file_logging(logs_dir)
-        logging.info("Logging a archivo activo: %s", log_path)
-    except Exception as e:  # noqa: BLE001
-        logging.warning("No se pudo configurar file logging: %s", e)
+        log.info("Logging a archivo activo: %s", log_path)
+    except Exception as e:
+        log.warning("No se pudo configurar file logging: %s", e)
 
     # Si estamos en frozen (release .exe), pinta un dump de las rutas resueltas.
     # Muy útil para diagnosticar problemas de assets/templates que solo aparecen
     # en release y no en dev.
     if is_frozen():
         for line in paths_diagnose().splitlines():
-            logging.info(line)
+            log.info(line)
 
     await init_db()
     # Cargar settings persistidos y aplicarlos a config.py antes de instanciar
@@ -202,8 +217,8 @@ async def lifespan(app: FastAPI):
         async with session_scope() as db:
             values = await settings_service.get_all(db)
         settings_service.apply_to_config(values)
-    except Exception as e:  # noqa: BLE001
-        logging.warning("No se pudieron cargar settings: %s", e)
+    except Exception as e:
+        log.warning("No se pudieron cargar settings: %s", e)
 
     app.state.scryfall = ScryfallClient()
     app.state.moxfield = MoxfieldClient()
@@ -211,21 +226,21 @@ async def lifespan(app: FastAPI):
     try:
         async with session_scope() as db:
             stats = await custom_art_service.rescan(db)
-        logging.info(
+        log.info(
             "Custom art indexado: %d archivos (+%d nuevos, -%d borrados)",
             stats["total"], stats["added"], stats["removed"],
         )
-    except Exception as e:  # noqa: BLE001
-        logging.warning("Rescan de custom art falló: %s", e)
+    except Exception as e:
+        log.warning("Rescan de custom art falló: %s", e)
 
     # Sembrar sources iniciales (drives de MPCFill) si el usuario no tiene ninguno.
     try:
         async with session_scope() as db:
             seeded = await art_sources_service.seed_initial_if_empty(db)
         if seeded:
-            logging.info("Sembrados %d art sources iniciales", seeded)
-    except Exception as e:  # noqa: BLE001
-        logging.warning("Seed de art sources falló: %s", e)
+            log.info("Sembrados %d art sources iniciales", seeded)
+    except Exception as e:
+        log.warning("Seed de art sources falló: %s", e)
 
     # Backfill de nombres normalizados: si hemos actualizado el normalizador
     # (nueva NORMALIZATION_VERSION en gdrive_indexer), recalcula
@@ -238,8 +253,8 @@ async def lifespan(app: FastAPI):
             from mpc_forge.services import gdrive_indexer
             async with session_scope() as db:
                 await gdrive_indexer.backfill_normalized_names(db)
-        except Exception as e:  # noqa: BLE001
-            logging.warning("Backfill de normalización falló: %s", e)
+        except Exception as e:
+            log.warning("Backfill de normalización falló: %s", e)
     app.state.background = BackgroundTasks()
     app.state.background.spawn(_run_backfill(), name="normalization-backfill")
 
@@ -252,12 +267,12 @@ async def lifespan(app: FastAPI):
             from mpc_forge.services import dfc_pairs
             async with session_scope() as db:
                 await dfc_pairs.sync_if_stale(db, app.state.scryfall)
-        except Exception as e:  # noqa: BLE001
-            logging.warning("Sync de DFC pairs falló: %s", e)
+        except Exception as e:
+            log.warning("Sync de DFC pairs falló: %s", e)
     app.state.background.spawn(_run_dfc_sync(), name="dfc-pairs-sync")
 
-    logging.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
-    logging.info("SSL: %s", _SSL_MODE)
+    log.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
+    log.info("SSL: %s", _SSL_MODE)
     try:
         yield
     finally:
@@ -273,7 +288,7 @@ async def lifespan(app: FastAPI):
         # aquí, el log queda para diagnóstico post-mortem.
         try:
             logging_setup.teardown_file_logging(delete=True)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 
@@ -303,12 +318,35 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # -- Guardia de localhost --
+    # Va ANTES que el resto: valida la cabecera Host (DNS rebinding) y el
+    # origen de las peticiones que modifican estado (CSRF). Ver
+    # `mpc_forge.middleware` para el razonamiento completo.
+    #
+    # Como Starlette ejecuta los middlewares en orden inverso al de registro,
+    # añadirlo el último hace que sea el primero en ver la petición.
+    extra_hosts = {
+        h.strip().lower()
+        for h in os.environ.get(_EXTRA_HOSTS_ENV, "").split(",")
+        if h.strip()
+    }
+    if extra_hosts:
+        log.info(
+            "Hosts adicionales permitidos vía %s: %s",
+            _EXTRA_HOSTS_ENV, sorted(extra_hosts),
+        )
+
     # -- GZip middleware --
     # Comprime responses >1KB. Impacto real:
     #   GET /api/decks/{id} con 100 cartas: 60-80 KB → 8-12 KB (~85% menos)
     #   GET /api/decks/{id}/prints con 900+ prints: 400 KB → 40 KB
     # No comprime imágenes (ya están comprimidas). Cero contra.
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+    app.add_middleware(
+        LocalhostGuardMiddleware,
+        allowed_hosts=frozenset(DEFAULT_ALLOWED_HOSTS | extra_hosts),
+    )
 
     # Assets con cache aggressive. Un day para /static (JS/CSS que podríamos
     # cambiar entre versiones), un mes para /art y /custom_art (nombres con
