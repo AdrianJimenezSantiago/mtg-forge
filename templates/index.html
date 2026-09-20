@@ -96,9 +96,11 @@
       </form>
     </div>
 
-    {# Plain text #}
-    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
-                hover:border-accent/30 transition">
+    {# Plain text. `id` = destino del enlace "pégala en Mazos" de la landing;
+       motion.css lo resalta con :target al llegar. #}
+    <div id="import-text"
+         class="fx-target bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
+                hover:border-accent/30 transition scroll-mt-6">
       <div class="flex items-center gap-2 mb-3">
         <div class="w-8 h-8 rounded-lg bg-fg-faint/10 text-fg-muted flex items-center justify-center">
           <i data-lucide="file-text" class="w-4 h-4"></i>
@@ -131,80 +133,7 @@
     </div>
 
     {# ==== Modal: reporte de cartas no importadas ==== #}
-    <template x-if="unresolvedModal.open">
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-           @keydown.escape.window="unresolvedModal.open = false"
-           x-transition.opacity>
-        <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal animate-scale-in max-w-2xl w-full
-                    max-h-[85vh] flex flex-col"
-             @click.outside="unresolvedModal.open = false">
-          {# Header #}
-          <div class="flex items-start gap-3 p-5 border-b border-border-subtle">
-            <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-              <i data-lucide="alert-triangle" class="w-5 h-5"></i>
-            </div>
-            <div class="min-w-0 flex-1">
-              <h3 class="font-semibold text-fg">{{ t.home_unresolved_title }}</h3>
-              <p class="text-xs text-fg-muted mt-1">
-                <span class="text-amber-400 font-medium" x-text="unresolvedModal.unresolved.length"></span>
-                <span x-text="unresolvedModal.unresolved.length === 1 ? ' {{ t.home_unresolved_not_resolved }}' : ' {{ t.home_unresolved_not_resolved_pl }}'"></span>
-                contra Scryfall. El mazo <span class="text-fg font-medium" x-text="'“' + unresolvedModal.deckName + '”'"></span>
-                {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
-              </p>
-            </div>
-            <button @click="unresolvedModal.open = false"
-                    class="p-1 rounded hover:bg-bg-subtle text-fg-muted hover:text-fg">
-              <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
-          </div>
-
-          {# Body: lista de fallos con línea original + motivo probable #}
-          <div class="flex-1 overflow-y-auto p-5 space-y-2">
-            <p class="text-xs text-fg-muted mb-2">
-              {{ t.home_unresolved_hint }}
-            </p>
-            <div class="rounded-lg border border-border-subtle bg-bg-subtle/40 divide-y divide-border-subtle/60">
-              <template x-for="(entry, i) in unresolvedModal.unresolved" :key="i">
-                <div class="p-3 flex items-start gap-3">
-                  <span class="text-[10px] font-mono text-fg-faint mt-0.5 w-6 text-right shrink-0" x-text="i + 1"></span>
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm font-mono text-fg break-words"
-                         x-text="entry.raw_line || (entry.quantity + ' ' + entry.name)"></div>
-                    <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span x-show="entry.set">Set: <span class="font-mono uppercase" x-text="entry.set"></span></span>
-                      <span x-show="entry.number">Nº: <span class="font-mono" x-text="entry.number"></span></span>
-                      <span x-show="entry.role && entry.role !== 'mainboard'">Role: <span x-text="entry.role"></span></span>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          {# Footer: acciones #}
-          <div class="border-t border-border-subtle p-4 flex flex-wrap items-center gap-2 justify-end">
-            <button @click="copyUnresolved()"
-                    class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
-                           px-3 py-2 rounded-md transition flex items-center gap-1.5">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              {{ t.home_unresolved_copy }}
-            </button>
-            <div class="flex-1"></div>
-            <button @click="closeUnresolvedAndReload()"
-                    class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
-                           px-3 py-2 rounded-md transition">
-              {{ t.common_close }}
-            </button>
-            <button @click="continueToDeck()"
-                    class="text-xs bg-accent hover:bg-accent-soft text-black font-medium
-                           px-3 py-2 rounded-md transition flex items-center gap-1.5">
-              <span>{{ t.home_unresolved_continue }}</span>
-              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-    </template>
+    {% include "_unresolved_modal.html" %}
 
   </div>
 
@@ -226,19 +155,26 @@
         <p class="text-xs text-fg-faint mt-1">{{ t.home_empty_subtitle }}</p>
       </div>
     {% else %}
-      <div x-data="deckListActions()" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {# data-deal: las portadas se reparten como cartas al entrar (motion.js).
+         data-tilt: cada mazo se inclina bajo el cursor con reflejo foil. #}
+      <div x-data="deckListActions()" data-deal
+           class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {% for deck in decks %}
-          <div class="group relative bg-bg-elevated border border-border-subtle hover:border-accent/40
-                      rounded-xl shadow-card transition hover:-translate-y-0.5 hover:shadow-glow overflow-hidden">
+          <div data-tilt="foil" data-tilt-max="8"
+               class="group relative bg-bg-elevated border border-border-subtle hover:border-accent/40
+                      rounded-xl shadow-card hover:shadow-glow overflow-hidden">
             <a href="/decks/{{ deck.id }}" class="block">
               {# Arte del commander recortado 63:88 (mismo patrón que /history). #}
               {# Cargamos con loading="lazy" porque en un usuario con muchos     #}
               {# mazos la mayoría estarán fuera del viewport inicial.            #}
               <div class="relative aspect-[63/88] bg-bg-inset overflow-hidden">
                 {% if deck.commander_image_url %}
+                  {# data-deck-cover: el script del <head> le da view-transition-name
+                     al navegar, y la portada vuela hasta la cabecera del editor. #}
                   <img src="{{ deck.commander_image_url }}"
                        alt="{{ deck.commander_name or deck.name }}"
-                       class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                       data-deck-cover="{{ deck.id }}"
+                       class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                        loading="lazy">
                 {% else %}
                   <div class="w-full h-full flex items-center justify-center text-fg-faint">
@@ -281,7 +217,7 @@
             </a>
 
             {# Menú de acciones — flotante arriba-derecha, siempre encima de la imagen #}
-            <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition"
+            <div class="fx-above absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition"
                  x-data="{ open: false }" @click.outside="open = false">
               <button @click="open = !open"
                       class="p-1.5 rounded bg-bg-elevated/90 backdrop-blur-sm border border-border-subtle
@@ -289,7 +225,7 @@
                       title="{{ t.common_actions }}">
                 <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
-              <div x-show="open" x-transition
+              <div x-show="open" x-transition.origin.top.right
                    class="absolute right-0 top-9 z-10 bg-bg-elevated border border-border-strong
                           rounded-lg shadow-modal py-1 min-w-[180px]">
                 <button @click="rename({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"

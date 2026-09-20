@@ -346,6 +346,11 @@
       false
     ],
     [
+      "offset",
+      "query",
+      false
+    ],
+    [
       "q",
       "query",
       true

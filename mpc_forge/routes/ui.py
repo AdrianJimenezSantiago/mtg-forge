@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
-from mpc_forge.models import Deck, DeckCard, PrintingCache
+from mpc_forge.models import Deck, DeckCard
 from mpc_forge.paths import static_dir, template_dir
+from mpc_forge.services import deck_covers
 from mpc_forge.services import i18n as i18n_service
 from mpc_forge.services.i18n import LANG_FLAGS, SUPPORTED_LANGS, detect_lang, get_translations
 
@@ -136,45 +137,167 @@ async def set_language(
     return response
 
 
-@router.get("/", response_class=HTMLResponse)
-async def home(request: Request, db: DbDep) -> HTMLResponse:
-    # Optimización: en vez de traer TODAS las cartas de TODOS los mazos solo
-    # para contar el len (lo que hacía selectinload(Deck.cards)), hacemos un
-    # JOIN con COUNT. Con 20 mazos × 100 cartas pasamos de traer 2000 rows
-    # a solo 20 filas con el count agregado.
-    result = await db.execute(
+# ---------------------------------------------------------------------------
+# Datos compartidos por la landing y la biblioteca
+# ---------------------------------------------------------------------------
+
+async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[Deck]:
+    """Mazos ordenados por última edición, con recuento y portada del commander.
+
+    En vez de traer TODAS las cartas de TODOS los mazos solo para contarlas
+    (lo que hacía ``selectinload(Deck.cards)``), un JOIN con COUNT: con 20
+    mazos de 100 cartas pasamos de 2000 filas a 20.
+
+    La portada es el arte que el mazo usa para su commander (ver
+    ``services/deck_covers``), resuelta por lotes para todos los mazos.
+    """
+    stmt = (
         select(Deck, func.count(DeckCard.id).label("card_count"))
         .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
         .group_by(Deck.id)
         .order_by(Deck.updated_at.desc())
     )
-    deck_rows = result.all()
-
-    # Batch: printings de los commanders para pintar la card con su arte.
-    # Mismo patrón que list_decks_with_activity — WHERE ... IN (?) en una sola
-    # query en lugar de N gets individuales.
-    commander_ids = {d.commander_scryfall_id for d, _ in deck_rows if d.commander_scryfall_id}
-    printings_by_id: dict[str, PrintingCache] = {}
-    if commander_ids:
-        rows = (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(commander_ids))
-            )
-        ).all()
-        printings_by_id = {p.scryfall_id: p for p in rows}
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    deck_rows = (await db.execute(stmt)).all()
+    covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
 
     decks = []
     for deck, count in deck_rows:
-        deck.card_count = count  # atributo runtime, disponible en el template
-        # Arte del commander (o None si no hay commander / printing sin cache).
-        printing = printings_by_id.get(deck.commander_scryfall_id) if deck.commander_scryfall_id else None
-        deck.commander_image_url = printing.image_normal if printing else None
-        deck.commander_name = printing.name if printing else None
+        cover = covers.get(deck.id, deck_covers.EMPTY)
+        deck.card_count = count  # atributos runtime, disponibles en el template
+        deck.commander_image_url = cover.image_url
+        deck.commander_name = cover.name
         decks.append(deck)
+    return decks
+
+
+async def _workshop_status(db: AsyncSession) -> dict:
+    """Cifras del panel "Estado del taller" de la landing.
+
+    Cada bloque va por separado y con su propio respaldo: la landing es la
+    puerta de entrada de la app y no puede caerse porque, por ejemplo, el
+    índice de arte esté a medio migrar.
+    """
+    from mpc_forge.models import CollectionEntry
+    from mpc_forge.services import bulk_data, gdrive_search
+
+    status = {
+        "printings": 0, "offline": False,
+        "art_files": 0, "art_sources": 0,
+        "decks": 0, "collection": 0,
+    }
+    try:
+        local = await bulk_data.local_stats(db)
+        status["printings"] = int(local.get("printings") or 0)
+        status["offline"] = bool(local.get("syncs"))
+    except Exception:  # la landing nunca debe caerse por una cifra
+        log.warning("No se pudo leer el estado del volcado de Scryfall", exc_info=True)
+    try:
+        art = await gdrive_search.stats(db)
+        status["art_files"] = int(art.get("total_files") or 0)
+        status["art_sources"] = int(art.get("sources_indexed") or 0)
+    except Exception:
+        log.warning("No se pudo leer el estado del índice de arte", exc_info=True)
+    try:
+        status["decks"] = int(await db.scalar(select(func.count()).select_from(Deck)) or 0)
+        status["collection"] = int(
+            await db.scalar(select(func.count()).select_from(CollectionEntry)) or 0
+        )
+    except Exception:
+        log.warning("No se pudieron contar mazos y colección", exc_info=True)
+    return status
+
+
+# Colores de maná de las cartas de ejemplo de la landing, en el orden en que
+# aparecen las traducciones ``landing_card_N_*``.
+_SAMPLE_CARD_COLORS = ("w", "u", "b", "r", "g")
+
+# Posición en abanico de cada carta según su rango de antigüedad: el mazo más
+# reciente va en el centro y los demás se reparten alternando a los lados.
+_HAND_POSITIONS = (0, -1, 1, -2, 2)
+
+
+def _build_hand(decks: list[Deck], t) -> list[dict]:
+    """Las cinco cartas del abanico de la landing.
+
+    Primero las portadas de los mazos recientes que tienen commander; los
+    huecos se rellenan con cartas de ejemplo dibujadas en CSS (sin arte de
+    terceros).
+    """
+    covers = [d for d in decks if d.commander_image_url][: len(_HAND_POSITIONS)]
+    slots = []
+    for rank, pos in enumerate(_HAND_POSITIONS):
+        slot = {"i": pos, "ia": abs(pos), "z": 10 - abs(pos), "rank": rank}
+        if rank < len(covers):
+            slot["deck"] = covers[rank]
+        else:
+            n = rank + 1
+            slot["color"] = _SAMPLE_CARD_COLORS[rank]
+            slot["name"] = t[f"landing_card_{n}_name"]
+            slot["type"] = t[f"landing_card_{n}_type"]
+        slots.append(slot)
+    # Orden de pintado de izquierda a derecha; el z-index resuelve el solape.
+    return sorted(slots, key=lambda s: s["i"])
+
+
+def _format_number(value: int, lang: str = "es") -> str:
+    """Separador de miles según idioma (``12.345`` en español)."""
+    text = f"{int(value or 0):,}"
+    return text.replace(",", ".") if lang == "es" else text
+
+
+templates.env.filters["num"] = _format_number
+
+
+def render_not_found(request: Request, kind: str = "page") -> HTMLResponse:
+    """Página 404 con el estilo de la app.
+
+    ``kind`` ajusta el texto: ``"deck"`` cuando la URL es de un mazo que ya
+    no existe, ``"page"`` para cualquier otra ruta desconocida. La usan las
+    vistas de mazo y el manejador global de ``app.py``.
+    """
+    return templates.TemplateResponse(
+        request,
+        "404.html",
+        {
+            "missing_kind": kind,
+            "missing_path": request.url.path,
+            **_t_context(request),
+        },
+        status_code=404,
+    )
+
+
+@router.get("/", response_class=HTMLResponse)
+async def home(request: Request, db: DbDep) -> HTMLResponse:
+    """Landing: importación rápida, mazos recientes y resumen del taller."""
+    from mpc_forge.clients.import_sites import list_supported_sites
+
+    ctx = _t_context(request)
+    recent = await _decks_with_covers(db, limit=8)
+    return templates.TemplateResponse(
+        request,
+        "landing.html",
+        {
+            "hand": _build_hand(recent, ctx["t"]),
+            "has_covers": any(d.commander_image_url for d in recent),
+            "recent_decks": recent[:4],
+            "latest_deck": recent[0] if recent else None,
+            "workshop": await _workshop_status(db),
+            "site_names": [s["name"] for s in list_supported_sites()],
+            **ctx,
+        },
+    )
+
+
+@router.get("/decks", response_class=HTMLResponse)
+async def deck_library(request: Request, db: DbDep) -> HTMLResponse:
+    """Biblioteca de mazos (antes vivía en ``/``)."""
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"decks": decks, **_t_context(request)},
+        {"decks": await _decks_with_covers(db), **_t_context(request)},
     )
 
 
@@ -182,11 +305,17 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
 async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        return HTMLResponse("Deck no encontrado", status_code=404)
+        return render_not_found(request, "deck")
+    # Portada del commander en la cabecera. Se resuelve en el servidor, y no
+    # en el fetch del editor, para que esté en el primer pintado: es el
+    # destino de la transición que la hace volar desde la biblioteca. Después,
+    # el editor la mantiene al día si cambias el arte del commander.
+    cover = await deck_covers.cover_for_deck(db, deck)
+    commander_image_url = cover.image_url
     return templates.TemplateResponse(
         request,
         "deck.html",
-        {"deck": deck, **_t_context(request)},
+        {"deck": deck, "commander_image_url": commander_image_url, **_t_context(request)},
     )
 
 
@@ -194,7 +323,7 @@ async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
 async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        return HTMLResponse("Deck no encontrado", status_code=404)
+        return render_not_found(request, "deck")
     return templates.TemplateResponse(
         request,
         "proof.html",
@@ -210,7 +339,7 @@ async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResp
     """
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        return HTMLResponse("Deck no encontrado", status_code=404)
+        return render_not_found(request, "deck")
     return templates.TemplateResponse(
         request,
         "pdf_studio.html",

@@ -100,7 +100,15 @@ class TestUsedKeysExist:
     def _referenced_keys(self) -> set[str]:
         keys: set[str] = set()
         for path in (PROJECT_ROOT / "templates").glob("*.html"):
-            keys |= set(re.findall(r"\{\{\s*t\.(\w+)\s*\}\}", path.read_text(encoding="utf-8")))
+            text = path.read_text(encoding="utf-8")
+            # `{{ t.clave }}`, también con filtros (`{{ t.clave | default(...) }}`):
+            # `Translations` devuelve "[clave]" para las que faltan, así que un
+            # `default` nunca actúa y la clave cruda acaba en pantalla.
+            keys |= set(re.findall(r"\{\{\s*t\.(\w+)\s*(?:\}\}|\|)", text))
+            # `t['clave']` / `t["clave"]` en expresiones Jinja
+            keys |= set(re.findall(r"\bt\[\s*['\"](\w+)['\"]\s*\]", text))
+            # `window._T.clave` en atributos de Alpine
+            keys |= set(re.findall(r"window\._T\.(\w+)", text))
         for path in (PROJECT_ROOT / "static" / "js").glob("*.js"):
             text = path.read_text(encoding="utf-8")
             keys |= set(re.findall(r"_t\(['\"](\w+)['\"]\)", text))

@@ -36,6 +36,12 @@ art are cached.
 
 ## Features
 
+- **Home.** A landing page (`/`) with one-field URL import, your latest decks
+  and the state of your workshop (offline card data, art index, collection).
+  The deck library lives at `/decks`.
+- **A workshop that feels alive.** Animated deck statistics (mana curve, colors,
+  rarity, types, keywords) and a subtle animated background you can switch off
+  from the sparkles button in the sidebar footer.
 - **Import from anywhere.** Paste a URL from any of the supported deck sites, or
   a plain-text list in the usual formats (`1 Sol Ring`, `1 Sol Ring (C21) 263`,
   section headers for commander, sideboard and maybeboard). Cards that cannot be
@@ -57,6 +63,11 @@ art are cached.
   them with your decks to print only what is missing.
 - **History and undo.** Every change to a deck is recorded on a timeline and can
   be reverted individually.
+- **Storage breakdown.** *Settings → Storage* shows what the app is actually
+  using on disk — database, art cache, thumbnails, exports, backups — with the
+  free space left on each drive and one-click cleanup of everything that can be
+  regenerated or downloaded again. Your database, custom art and cardbacks are
+  never offered for deletion.
 - **Offline mode (API only for now).** Optionally import Scryfall's bulk data so
   card resolution and printing lookups never touch the network. See
   [Working with Scryfall](#working-with-scryfall).

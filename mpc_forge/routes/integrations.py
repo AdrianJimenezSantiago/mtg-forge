@@ -10,7 +10,16 @@ from datetime import UTC
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -448,11 +457,18 @@ def _parse_csv_list(raw: str | None) -> list[str] | None:
     return parts or None
 
 
+# Tamaño máximo de página de /drives/search. El selector de arte pagina con
+# `offset` hasta cubrir `X-Total-Count`.
+DRIVE_SEARCH_MAX_PAGE = 500
+
+
 @router.get("/drives/search", response_model=list[SearchHit])
 async def drives_search(
     q: str,
     db: DbDep,
-    limit: int = 20,
+    response: Response,
+    limit: int = Query(20, ge=1, le=DRIVE_SEARCH_MAX_PAGE),
+    offset: int = Query(0, ge=0),
     source_id: int | None = None,
     tags_include: str | None = None,
     tags_exclude: str | None = None,
@@ -465,18 +481,26 @@ async def drives_search(
       - ``tags_exclude=promo``: descarta artes con cualquiera de los indicados.
       - ``expansion_code=dmu``: solo artes con tag `[DMU NUM]`.
 
-    Devuelve top-N resultados con thumbnails y URLs de descarga listas.
+    Paginación: ``limit`` (máx. 500) y ``offset``. La respuesta sigue siendo
+    una lista; el total de coincidencias va en la cabecera ``X-Total-Count``
+    y ``X-Total-Capped: 1`` indica que el total es un mínimo (hay más
+    candidatos de los que se evalúan por búsqueda).
     """
     if not q.strip():
+        response.headers["X-Total-Count"] = "0"
         return []
     source_ids = [source_id] if source_id else None
-    results = await gdrive_search.search(
-        db, q, limit=limit,
+    page = await gdrive_search.search_page(
+        db, q, limit=limit, offset=offset,
         source_ids=source_ids,
         tags_include=_parse_csv_list(tags_include),
         tags_exclude=_parse_csv_list(tags_exclude),
         expansion_code=(expansion_code or None),
     )
+    response.headers["X-Total-Count"] = str(page.total)
+    if page.capped:
+        response.headers["X-Total-Capped"] = "1"
+    results = page.results
     return [
         SearchHit(
             file_id=r.file_id, filename=r.filename,

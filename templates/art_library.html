@@ -186,8 +186,8 @@
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-3">
         <template x-for="item in items" :key="item.id">
-          <button @click="open(item)"
-                  class="group text-left rounded-lg overflow-hidden bg-bg-subtle border border-border-subtle hover:border-accent/50 transition">
+          <button @click="open(item)" data-tilt="foil"
+                  class="group text-left rounded-lg overflow-hidden bg-bg-subtle border border-border-subtle hover:border-accent/50">
             <div class="aspect-[63/88] bg-bg-base overflow-hidden">
               {# loading=lazy y decoding=async: con cientos de miniaturas
                  remotas en la rejilla, cargarlas todas de golpe bloquea el

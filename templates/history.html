@@ -84,8 +84,9 @@
       <div x-show="!loading && decks.length > 0"
            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <template x-for="deck in decks" :key="deck.id">
-          <div class="group bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden
-                      hover:border-accent/50 hover:shadow-card cursor-pointer transition"
+          <div data-tilt data-tilt-max="6"
+               class="group bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden
+                      hover:border-accent/50 hover:shadow-card cursor-pointer"
                @click="openTimeline(deck)">
             {# Arte del commander recortado 63:88 (ratio de carta MTG) #}
             <div class="relative aspect-[63/88] bg-bg-inset overflow-hidden">
@@ -119,7 +120,7 @@
               <div class="font-display text-base leading-tight truncate group-hover:text-accent-glow transition"
                    x-text="deck.name" :title="deck.name"></div>
               <div class="flex items-center justify-between text-[11px] text-fg-faint">
-                <span x-text="deck.card_count + ' {{ t.history_cards_count }}'"></span>
+                <span x-text="deck.card_count + ' ' + (deck.card_count === 1 ? '{{ t.nav_card_one }}' : '{{ t.nav_cards }}')"></span>
                 <span class="text-fg-muted" x-text="deck.format"></span>
               </div>
               <template x-if="deck.last_activity_at">
@@ -215,7 +216,7 @@
             <div class="text-[10px] uppercase tracking-widest text-fg-faint">{{ t.history_timeline }}</div>
             <div class="font-display text-xl text-accent-glow truncate" x-text="timelineDeck?.name || ''"></div>
             <div class="flex items-center gap-3 mt-1 text-[11px] text-fg-muted">
-              <span x-text="timelineDeck?.card_count + ' {{ t.history_cards_count }}'"></span>
+              <span x-text="timelineDeck?.card_count + ' ' + (timelineDeck?.card_count === 1 ? '{{ t.nav_card_one }}' : '{{ t.nav_cards }}')"></span>
               <span>·</span>
               <span><span x-text="timelineDeck?.activity_count"></span> {{ t.history_events_count }}</span>
               <template x-if="timelineDeck?.format">

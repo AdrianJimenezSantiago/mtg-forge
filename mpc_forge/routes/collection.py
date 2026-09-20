@@ -134,7 +134,7 @@ class RecentDeck(BaseModel):
 @router.get("/recent-decks", response_model=list[RecentDeck])
 async def recent_decks(db: DbDep) -> list[RecentDeck]:
     """Últimos 5 mazos editados para acceso rápido en el sidebar."""
-    from mpc_forge.models import PrintingCache
+    from mpc_forge.services import deck_covers
 
     result = await db.execute(
         select(Deck, func.count(DeckCard.id).label("cc"))
@@ -147,14 +147,8 @@ async def recent_decks(db: DbDep) -> list[RecentDeck]:
     if not rows:
         return []
 
-    # Batch commander images
-    cmd_ids = {d.commander_scryfall_id for d, _ in rows if d.commander_scryfall_id}
-    imgs: dict[str, str | None] = {}
-    if cmd_ids:
-        prints = (await db.scalars(
-            select(PrintingCache).where(PrintingCache.scryfall_id.in_(cmd_ids))
-        )).all()
-        imgs = {p.scryfall_id: p.image_normal for p in prints}
+    # Portadas por lotes: el arte que cada mazo usa para su commander.
+    covers = await deck_covers.covers_for_decks(db, [d for d, _ in rows])
 
     out = []
     for deck, cc in rows:
@@ -163,7 +157,7 @@ async def recent_decks(db: DbDep) -> list[RecentDeck]:
             name=deck.name,
             format=deck.format,
             card_count=cc,
-            commander_image=imgs.get(deck.commander_scryfall_id) if deck.commander_scryfall_id else None,
+            commander_image=covers.get(deck.id, deck_covers.EMPTY).image_url,
         ))
     return out
 

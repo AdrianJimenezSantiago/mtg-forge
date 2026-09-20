@@ -139,9 +139,26 @@ def _score_match(query_norm: str, name_norm: str) -> int:
 
 # Umbral mínimo: 55. Filtramos "casi-matches" ruidosos.
 _MIN_SCORE = 55
-# Prefetch inicial: cuántos candidatos pedimos al SQL antes de re-score.
-# Con prefix match y índice usado, esto es rápido incluso con números altos.
-_SQL_PREFETCH = 300
+# Tope de candidatos que se traen de SQLite antes de puntuar y ordenar.
+#
+# Antes era 300, y además el selector solo pedía 100: con un índice grande,
+# las cartas populares (Sol Ring, Command Tower: cientos de artes) quedaban
+# recortadas en silencio. La ordenación tiene que ser global para poder
+# paginar, así que se traen todos los candidatos razonables de una vez; con
+# el índice FTS5 o el B-tree de name_normalized son milisegundos.
+_MAX_CANDIDATES = 5000
+
+
+@dataclass
+class SearchPage:
+    """Una página de resultados y el total de coincidencias.
+
+    ``capped`` indica que había más candidatos que ``_MAX_CANDIDATES`` y el
+    total es un mínimo, no la cifra exacta.
+    """
+    results: list[SearchResult]
+    total: int
+    capped: bool = False
 
 
 # Cache del flag FTS5 tras primera consulta. Es un valor set-once por el
@@ -200,12 +217,11 @@ def _fts_escape(query: str) -> str:
 async def _search_fts5(
     db: AsyncSession,
     q_norm: str,
-    limit: int,
     source_ids: list[int] | None,
     tags_include: list[str] | None,
     tags_exclude: list[str] | None,
     expansion_code: str | None,
-) -> list[SearchResult]:
+) -> SearchPage:
     """Búsqueda vía tabla virtual FTS5 con ranking BM25.
 
     JOIN entre `indexed_art_fts` (que devuelve rowid ordenado por bm25) y la
@@ -216,18 +232,17 @@ async def _search_fts5(
     no en el MATCH — SQLite es eficiente combinando ambos (usa el índice
     invertido para la primera cardinalidad, luego filtra).
 
-    Devuelve directamente `SearchResult` ordenados por bm25 (menor = mejor).
-    Traducimos el bm25 a la misma escala 0-100 que `_score_match` para no
-    romper contratos con el caller.
+    Devuelve TODAS las coincidencias (hasta `_MAX_CANDIDATES`) puntuadas con
+    `_score_match`, igual que el modo LIKE; bm25 solo desempata.
     """
     fts_query = _fts_escape(q_norm)
     if not fts_query:
-        return []
+        return SearchPage(results=[], total=0)
 
     # WHERE clauses estáticas — construimos con SQL crudo para poder mezclar
     # con MATCH que no expone directamente vía ORM.
     where_parts = ["indexed_art_fts MATCH :match"]
-    params: dict = {"match": fts_query, "limit": _SQL_PREFETCH}
+    params: dict = {"match": fts_query, "limit": _MAX_CANDIDATES + 1}
 
     if source_ids:
         # SQLite acepta parámetros expandidos si los damos como tuple + ejecutamos
@@ -278,27 +293,25 @@ async def _search_fts5(
     result = await db.execute(sa_text(sql), params)
     rows = result.mappings().all()
     if not rows:
-        return []
+        return SearchPage(results=[], total=0)
 
-    # Traducir bm25 → 0-100. bm25 típico de un exact match es negativo cercano
-    # a 0 (mejor cuanto más cerca de 0 por abajo). Un match genérico está en
-    # el rango -20 a -1. Mapeamos: -20 → 60, 0 → 100, positivos (raros) → 50.
-    def _bm25_to_score(bm25: float) -> int:
-        if bm25 is None:
-            return 50
-        # Linear: cada -1 de bm25 son ~2 puntos hacia arriba, cap 100 / 40
-        s = 100 + bm25 * 2
-        return int(max(40, min(100, s)))
-
+    # Relevancia: la misma `_score_match` que el modo LIKE, sobre el nombre
+    # normalizado. FTS5 solo aporta los candidatos y el orden de desempate.
+    #
+    # Antes se convertía bm25 a 0-100 con `100 + bm25 * 2`. Pero en FTS5 un
+    # bm25 MÁS NEGATIVO es MEJOR coincidencia, y su magnitud crece con el
+    # tamaño del índice y con lo raros que son los términos: con ~200.000
+    # artes, "Sol Ring" exacto daba bm25 ≈ -20 (score 60, rozando el umbral)
+    # y "Elesh Norn, Grand Cenobite" ≈ -71 (score 40). El filtro de
+    # `_MIN_SCORE` se aplicaba antes de reconocer el match exacto, así que
+    # las cartas con nombres largos o poco comunes devolvían CERO artes.
+    capped = len(rows) > _MAX_CANDIDATES
+    rows = rows[:_MAX_CANDIDATES]
     out: list[SearchResult] = []
     for row in rows:
-        s = _bm25_to_score(row.get("rank"))
+        s = _score_match(q_norm, row["name_normalized"])
         if s < _MIN_SCORE:
             continue
-        # Bonus: exact match sobre name_normalized se garantiza como 100.
-        # (bm25 puede darle 95 y colar tras un prefix match; nos aseguramos.)
-        if row["name_normalized"] == q_norm:
-            s = 100
         tag_list = [t for t in (row.get("tags") or "").split(",") if t]
         out.append(SearchResult(
             file_id=row["file_id"],
@@ -323,9 +336,10 @@ async def _search_fts5(
             image_hash=row.get("image_hash"),
         ))
 
-    # Reordenar por score final (exact matches primero, luego bm25 mapeado).
-    out.sort(key=lambda r: (-r.score, r.filename))
-    return out[:limit]
+    # Orden final: score; a igualdad, el orden de bm25 que ya traen las filas
+    # (`sort` es estable), así la paginación es determinista.
+    out.sort(key=lambda r: -r.score)
+    return SearchPage(results=out, total=len(out), capped=capped)
 
 
 async def search(
@@ -337,7 +351,46 @@ async def search(
     tags_exclude: list[str] | None = None,
     expansion_code: str | None = None,
 ) -> list[SearchResult]:
-    """Busca `query` en el índice y devuelve top-N por relevancia.
+    """Top-``limit`` resultados para ``query``. Ver :func:`search_page`."""
+    page = await search_page(
+        db, query, limit=limit, offset=0, source_ids=source_ids,
+        tags_include=tags_include, tags_exclude=tags_exclude,
+        expansion_code=expansion_code,
+    )
+    return page.results
+
+
+async def search_page(
+    db: AsyncSession,
+    query: str,
+    limit: int = 20,
+    offset: int = 0,
+    source_ids: list[int] | None = None,
+    tags_include: list[str] | None = None,
+    tags_exclude: list[str] | None = None,
+    expansion_code: str | None = None,
+) -> SearchPage:
+    """Una página de resultados ordenados por relevancia, y el total."""
+    full = await _search_all(
+        db, query, source_ids, tags_include, tags_exclude, expansion_code,
+    )
+    start = max(0, offset)
+    return SearchPage(
+        results=full.results[start : start + max(0, limit)],
+        total=full.total,
+        capped=full.capped,
+    )
+
+
+async def _search_all(
+    db: AsyncSession,
+    query: str,
+    source_ids: list[int] | None,
+    tags_include: list[str] | None,
+    tags_exclude: list[str] | None,
+    expansion_code: str | None,
+) -> SearchPage:
+    """Busca `query` en el índice y devuelve TODAS las coincidencias ordenadas.
 
     Estrategia (Fase 2 · T6): si FTS5 está compilado en la SQLite del usuario,
     usamos ranking BM25 nativo con tokenizer unicode61 (asciifolding gratuito).
@@ -357,14 +410,18 @@ async def search(
     """
     q_norm = normalize_filename(query)
     if not q_norm:
-        return []
+        return SearchPage(results=[], total=0)
 
     # FTS5 first — si está disponible, es 10-100x más rápido en índices grandes.
     if await _fts5_available(db):
         try:
-            return await _search_fts5(
-                db, q_norm, limit, source_ids, tags_include, tags_exclude, expansion_code,
+            page = await _search_fts5(
+                db, q_norm, source_ids, tags_include, tags_exclude, expansion_code,
             )
+            if page.total:
+                return page
+            # Sin resultados: el modo LIKE tiene una fase de substring y
+            # tolerancia a erratas que el MATCH de FTS5 no cubre.
         except Exception as e:
             # Si FTS5 falla por cualquier motivo (query mal parseada, índice
             # corrupto), caemos al modo LIKE. Loguearemos como warning para
@@ -406,7 +463,7 @@ async def search(
                 base = base.where(col.is_(False))
 
     # --- Fase 1: match exacto (súper rápido, índice B-tree) ---
-    stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_SQL_PREFETCH)
+    stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_MAX_CANDIDATES + 1)
     rows = (await db.execute(stmt)).all()
 
     # --- Fase 2: prefix (rápido, sí usa índice) ---
@@ -414,7 +471,7 @@ async def search(
         stmt = base.where(
             IndexedArt.name_normalized.like(f"{q_norm}%"),
             IndexedArt.name_normalized != q_norm,  # no duplicar los ya encontrados
-        ).limit(_SQL_PREFETCH - len(rows))
+        ).limit(_MAX_CANDIDATES + 1 - len(rows))
         rows += (await db.execute(stmt)).all()
 
     # --- Fase 3: substring en cualquier posición (más lento, solo si hace falta) ---
@@ -427,11 +484,13 @@ async def search(
                 or_(*conds),
                 ~IndexedArt.name_normalized.like(f"{q_norm}%"),
                 IndexedArt.name_normalized != q_norm,
-            ).limit(_SQL_PREFETCH - len(rows))
+            ).limit(_MAX_CANDIDATES + 1 - len(rows))
             rows += (await db.execute(stmt)).all()
 
     if not rows:
-        return []
+        return SearchPage(results=[], total=0)
+    capped = len(rows) > _MAX_CANDIDATES
+    rows = rows[:_MAX_CANDIDATES]
 
     # --- Re-scoring y ordenación ---
     scored: list[tuple[int, SearchResult]] = []
@@ -464,7 +523,8 @@ async def search(
         )))
 
     scored.sort(key=lambda x: (-x[0], x[1].filename))
-    return [r for _, r in scored[:limit]]
+    results = [r for _, r in scored]
+    return SearchPage(results=results, total=len(results), capped=capped)
 
 
 async def list_cardbacks(

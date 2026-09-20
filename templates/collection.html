@@ -213,7 +213,9 @@
               <div class="grid gap-2.5"
                    :style="'grid-template-columns: repeat(auto-fill, minmax(' + cardWidth + 'px, 1fr))'">
                 <template x-for="c in paginatedCards" :key="c.scryfall_id">
+                  {# x-flip: al marcarla como tuya (o quitarla), la carta se voltea. #}
                   <button @click="toggleCard(c)"
+                          data-tilt data-tilt-max="9" x-flip="c.owned"
                           class="relative group rounded-lg overflow-hidden transition-all duration-200
                                  border-2 focus:outline-none focus:ring-2 focus:ring-accent/40"
                           :class="c.owned

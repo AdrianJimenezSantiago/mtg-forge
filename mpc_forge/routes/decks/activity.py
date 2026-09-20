@@ -19,10 +19,10 @@ from sqlalchemy import func, select
 from mpc_forge.models import (
     Deck,
     DeckCard,
-    PrintingCache,
 )
 from mpc_forge.services import (
     deck_activity,
+    deck_covers,
 )
 
 log = logging.getLogger(__name__)
@@ -142,27 +142,15 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         for deck_id, created_at, kind, summary in last_rows
     }
 
-    # --- BATCH 4: printings de commanders en una única query ---
-    commander_ids = {d.commander_scryfall_id for d, _ in deck_rows if d.commander_scryfall_id}
-    printings_by_id: dict[str, PrintingCache] = {}
-    if commander_ids:
-        rows = (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(commander_ids))
-            )
-        ).all()
-        printings_by_id = {p.scryfall_id: p for p in rows}
+    # --- BATCH 4: portadas (el arte que el mazo usa para su commander) ---
+    covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
 
     # --- Composición sin más queries ---
     out: list[DeckWithActivityView] = []
     for deck, card_count in deck_rows:
-        commander_name: str | None = None
-        commander_image: str | None = None
-        if deck.commander_scryfall_id:
-            p = printings_by_id.get(deck.commander_scryfall_id)
-            if p:
-                commander_name = p.name
-                commander_image = p.image_normal or p.image_large
+        cover = covers.get(deck.id, deck_covers.EMPTY)
+        commander_name = cover.name
+        commander_image = cover.image_url
 
         last = last_activity.get(deck.id)
         out.append(DeckWithActivityView(

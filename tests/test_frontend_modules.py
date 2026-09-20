@@ -27,6 +27,8 @@ MODULARIZED = {
     "pdf_studio.html": "pdf-studio.js",
     "settings.html": "settings.js",
     "index.html": "home.js",
+    # Landing (/): nace como módulo; reutiliza importPanel() de home.js.
+    "landing.html": "landing.js",
     "history.html": "history.js",
     "collection.html": "collection.js",
     # Vista nueva del Sprint 4: nace ya como módulo, nunca tuvo JS embebido.

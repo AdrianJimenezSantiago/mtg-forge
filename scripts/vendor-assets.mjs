@@ -91,6 +91,44 @@ if (existsSync(cssPath)) {
   console.log('  ok     mana.min.css reescrito a woff2+woff')
 }
 
+// ── Paquetes que solo se publican como módulo ES ─────────────────────────
+// La interfaz usa scripts clásicos con `defer` (ver api.js y
+// check_pages_in_browser.mjs: jsdom no ejecuta módulos), así que estos se
+// re-empaquetan como IIFE que publica una global. esbuild es determinista con
+// la versión fijada en package.json, así que el job \"assets\" de CI sigue
+// pudiendo comprobar que static/vendor está al día.
+const IIFE_BUNDLES = [
+  {
+    // FLIP automático para listas: cartas que entran/salen del mazo, toasts,
+    // resultados que se reordenan. Expone `window.autoAnimate`.
+    pkg: '@formkit/auto-animate',
+    out: 'auto-animate.min.js',
+    contents: "import autoAnimate from '@formkit/auto-animate';\nwindow.autoAnimate = autoAnimate;\n",
+  },
+]
+
+try {
+  const esbuild = await import('esbuild')
+  for (const bundle of IIFE_BUNDLES) {
+    const to = join(OUT, bundle.out)
+    esbuild.buildSync({
+      stdin: { contents: bundle.contents, resolveDir: ROOT, loader: 'js' },
+      bundle: true,
+      format: 'iife',
+      minify: true,
+      target: ['chrome110', 'firefox115', 'safari16'],
+      legalComments: 'none',
+      outfile: to,
+    })
+    const kb = (statSync(to).size / 1024).toFixed(1)
+    console.log(`  ok     ${bundle.out.padEnd(28)} ${kb.padStart(8)} KB  (iife de ${bundle.pkg})`)
+    copied++
+  }
+} catch (err) {
+  console.error(`  FALTA  bundles IIFE — ¿has ejecutado npm install? (${err.message})`)
+  missing++
+}
+
 console.log(`\n${copied} assets copiados a static/vendor/`)
 if (missing > 0) {
   console.error(`${missing} assets no encontrados.`)

@@ -115,6 +115,8 @@ function deckEditor(deckId) {
     // Tamaño de página del endpoint. 60 llena la rejilla visible con margen
     // en cualquier tamaño de ventana razonable.
     PICKER_PAGE_SIZE: 60,
+    // Página de /api/drives/search (el servidor admite hasta 500).
+    DRIVE_PAGE_SIZE: 250,
     // true mientras llegan las páginas 2..N en segundo plano. La interfaz es
     // usable durante todo ese tiempo; solo se muestra un indicador discreto.
     pickerStreaming: false,
@@ -157,7 +159,7 @@ function deckEditor(deckId) {
     // el header del picker para explicar al usuario si hubo error, si no
     // hay drives indexados, o cuántos resultados salieron. Sin esto, un
     // fetch fallido o un índice vacío parecen "no hay arte" sin más pista.
-    driveSearchState: {loading: false, error: null, hits: null},
+    driveSearchState: {loading: false, error: null, hits: null, total: null, capped: false},
 
     // -- Precarga de prints en background --
     preload: {
@@ -198,14 +200,23 @@ function deckEditor(deckId) {
 
     // -- Modal de estadísticas --
     statsOpen: false,
+    // `statsReady` pasa a true dos frames después de abrir: el CSS anima las
+    // gráficas desde su estado inicial (barras a 0, arcos vacíos) hasta el
+    // final. Ver static/stats.css.
+    statsReady: false,
     stats: {
       totalCards: 0,
-      summary: [],       // [{label, value, icon, hint}]
-      curve: {},         // {cmc: count}
-      colors: {},        // {W: n, U: n, B: n, R: n, G: n, C: n}
-      types: {},         // {Creature: n, ...}
+      uniqueCards: 0,
+      landCount: 0, basicLandCount: 0, nonBasicLandCount: 0,
+      nonLandCount: 0, landPct: 0, avgCmc: null,
+      curve: {columns: [], max: 0, avgPos: null, gridlines: []},
+      colors: {total: 0, segments: []},
+      rarity: {total: 0, segments: []},
+      types: [],
+      keywords: [],
     },
-    _chartInstances: [], // Chart.js instances a destruir al cerrar
+    // Elemento bajo el cursor en el modal de stats: {chart, key}
+    statsHover: {chart: null, key: null},
 
     // Estado de "añadiendo relacionadas" para deshabilitar botón
     addingRelated: null,  // card.id o null
@@ -522,7 +533,7 @@ function deckEditor(deckId) {
       this.pickerVisibleCount = 60;
       this.driveHits = [];
       // Estado de diagnóstico del buscador de drives (mostrado en la UI del picker)
-      this.driveSearchState = {loading: false, error: null, hits: null};
+      this.driveSearchState = {loading: false, error: null, hits: null, total: null, capped: false};
 
       // Refrescar stats de drives ANTES de decidir si buscar en drives.
       // Sin esto, si el user indexó drives desde Settings mientras el deck
@@ -640,75 +651,117 @@ function deckEditor(deckId) {
       }
     },
 
+    /**
+     * Artes de los drives comunitarios para la carta del selector.
+     *
+     * El endpoint está paginado (`limit`/`offset`, total en `X-Total-Count`).
+     * Antes se pedía una sola vez con `limit=100`, así que una carta con 450
+     * artes indexados enseñaba 100 y el contador decía "100" sin avisar.
+     * Ahora se pinta la primera página en cuanto llega y el resto se va
+     * añadiendo, igual que las impresiones de Scryfall.
+     */
     async _loadDrivesForPicker(cardName) {
-      this.driveSearchState = {loading: true, error: null, hits: null};
-      try {
-        // Construir query string con los filtros de tag activos.
-        const params = new URLSearchParams({
-          q: cardName,
-          limit: '100',
-        });
-        const inc = this.pickerFilters.driveTagsInclude || [];
-        const exc = this.pickerFilters.driveTagsExclude || [];
-        if (inc.length) params.set('tags_include', inc.join(','));
-        if (exc.length) params.set('tags_exclude', exc.join(','));
-        // Extras · F2/T5: filtro por set canónico [SET NUM]
-        const expCode = (this.pickerFilters.driveExpansionCode || '').trim().toLowerCase();
-        if (expCode) params.set('expansion_code', expCode);
+      // Cancelar una carga anterior (otra carta, o filtros cambiados).
+      this._driveAbort?.abort();
+      const ctrl = new AbortController();
+      this._driveAbort = ctrl;
+      const cardId = this.pickerCard ? this.pickerCard.id : null;
 
-        const r = await fetch(`/api/drives/search?${params.toString()}`);
-        if (!r.ok) {
-          this.driveSearchState = {loading: false, error: `HTTP ${r.status}`, hits: 0};
-          return;
+      this.driveSearchState = {loading: true, error: null, hits: null, total: null, capped: false};
+      const params = new URLSearchParams({q: cardName, limit: String(this.DRIVE_PAGE_SIZE)});
+      const inc = this.pickerFilters.driveTagsInclude || [];
+      const exc = this.pickerFilters.driveTagsExclude || [];
+      if (inc.length) params.set('tags_include', inc.join(','));
+      if (exc.length) params.set('tags_exclude', exc.join(','));
+      // Extras · F2/T5: filtro por set canónico [SET NUM]
+      const expCode = (this.pickerFilters.driveExpansionCode || '').trim().toLowerCase();
+      if (expCode) params.set('expansion_code', expCode);
+
+      let hits = [];
+      let total = null;
+      let capped = false;
+      try {
+        while (true) {
+          params.set('offset', String(hits.length));
+          const r = await fetch(`/api/drives/search?${params.toString()}`, {signal: ctrl.signal});
+          if (ctrl.signal.aborted) return;
+          if (!r.ok) {
+            if (!hits.length) {
+              this.driveSearchState = {loading: false, error: `HTTP ${r.status}`, hits: 0, total: 0, capped: false};
+              return;
+            }
+            // Fallo a mitad: se queda lo ya cargado y se avisa del error.
+            this.driveSearchState = {...this.driveSearchState, loading: false, error: `HTTP ${r.status}`};
+            return;
+          }
+          const page = await r.json();
+          if (ctrl.signal.aborted) return;
+          if (total === null) {
+            const header = parseInt(r.headers.get('X-Total-Count') || '', 10);
+            total = Number.isFinite(header) ? header : page.length;
+            capped = r.headers.get('X-Total-Capped') === '1';
+          }
+          hits = hits.concat(page);
+          const done = page.length < this.DRIVE_PAGE_SIZE || hits.length >= total;
+          this._applyDriveHits(hits, {total, capped, loading: !done});
+          if (done) break;
         }
-        const hits = await r.json();
-        this.driveHits = hits;
-        this.driveSearchState = {loading: false, error: null, hits: hits.length};
-        // Añadir cada hit al pickerAllArts como si fuera un "arte" más.
-        // Pasamos los flags is_* y tags para que _preprocessArt los pueda
-        // enseñar como badges en el thumbnail (junto a los ya existentes de
-        // Scryfall).
-        const driveArts = hits.map((h, i) => this._preprocessArt({
-          kind: 'drive',
-          image_small: h.thumb_url,
-          download_url: h.download_url,
-          filename: h.filename,
-          set_name: h.source_name,
-          collector_number: h.folder_path || '',
-          artist: null,
-          released_at: null,
-          rarity: '',
-          // Los flags aquí replican los Scryfall que ya consumen los badges,
-          // más los propios de drives que añadimos en preprocess.
-          full_art:   !!h.is_full_art,
-          textless:   !!h.is_textless,
-          promo:      !!h.is_promo,
-          border_color: h.is_borderless ? 'borderless' : '',
-          frame:      h.is_retro ? '1997' : '',
-          is_extended:  !!h.is_extended,
-          is_showcase:  !!h.is_showcase,
-          is_alt_art:   !!h.is_alt_art,
-          drive_tags:   h.tags || [],
-          // Metadatos canónicos [SET NUM] extraídos del filename/folder
-          // (Fase 2 · T5). Solo presente si el filename usa la convención.
-          canonical_set: h.expansion_code || null,
-          canonical_num: h.collector_number || null,
-          // Extras · F2/T8: pHash (para "Ver similares" y dedup cross-drive).
-          image_hash: h.image_hash || null,
-          face: 'front',
-          score: h.score,
-          _drive_hit: h,
-        }, i, 'drives'));
-        // Fusionar: filtrar drives previos + añadir nuevos
-        const nonDrive = this.pickerAllArts.filter(a => a.__source !== 'drives');
-        this.pickerAllArts = [...nonDrive, ...driveArts];
-        // Actualizar cache
-        if (this.pickerCard) {
-          this._pickerCache[this.pickerCard.id] = this.pickerAllArts;
+        // Cache solo con el conjunto completo (mismo criterio que Scryfall).
+        if (this.pickerCard && this.pickerCard.id === cardId) {
+          this._pickerCache[cardId] = this.pickerAllArts;
         }
       } catch (e) {
-        this.driveSearchState = {loading: false, error: e.message || 'Error', hits: 0};
+        if (e.name === 'AbortError') return;
+        this.driveSearchState = {
+          ...this.driveSearchState, loading: false, error: e.message || 'Error',
+          hits: this.driveSearchState.hits || 0,
+        };
       }
+    },
+
+    /** Sustituye los artes de drives del selector por `hits` (acumulados). */
+    _applyDriveHits(hits, {total, capped, loading}) {
+      this.driveHits = hits;
+      this.driveSearchState = {loading, error: null, hits: hits.length, total, capped};
+      const driveArts = this._driveHitsToArts(hits);
+      // Fusionar: quitar los drives previos y añadir los actuales.
+      const nonDrive = this.pickerAllArts.filter(a => a.__source !== 'drives');
+      this.pickerAllArts = [...nonDrive, ...driveArts];
+    },
+
+    /** Resultado de /api/drives/search → arte del selector. */
+    _driveHitsToArts(hits) {
+      return hits.map((h, i) => this._preprocessArt({
+        kind: 'drive',
+        image_small: h.thumb_url,
+        download_url: h.download_url,
+        filename: h.filename,
+        set_name: h.source_name,
+        collector_number: h.folder_path || '',
+        artist: null,
+        released_at: null,
+        rarity: '',
+        // Los flags aquí replican los Scryfall que ya consumen los badges,
+        // más los propios de drives que añadimos en preprocess.
+        full_art:   !!h.is_full_art,
+        textless:   !!h.is_textless,
+        promo:      !!h.is_promo,
+        border_color: h.is_borderless ? 'borderless' : '',
+        frame:      h.is_retro ? '1997' : '',
+        is_extended:  !!h.is_extended,
+        is_showcase:  !!h.is_showcase,
+        is_alt_art:   !!h.is_alt_art,
+        drive_tags:   h.tags || [],
+        // Metadatos canónicos [SET NUM] extraídos del filename/folder
+        // (Fase 2 · T5). Solo presente si el filename usa la convención.
+        canonical_set: h.expansion_code || null,
+        canonical_num: h.collector_number || null,
+        // Extras · F2/T8: pHash (para "Ver similares" y dedup cross-drive).
+        image_hash: h.image_hash || null,
+        face: 'front',
+        score: h.score,
+        _drive_hit: h,
+      }, i, 'drives'));
     },
 
     // Handler cuando el usuario cambia checkboxes de tags de drive.
@@ -846,6 +899,9 @@ function deckEditor(deckId) {
       // estado de la siguiente carta que abra.
       this._pickerAbort?.abort();
       this._pickerAbort = null;
+      // Igual con la paginación de artes de drives.
+      this._driveAbort?.abort();
+      this._driveAbort = null;
       this.pickerStreaming = false;
       this.artPickerOpen = false;
       this.pickerCard = null;
@@ -979,6 +1035,16 @@ function deckEditor(deckId) {
 
     get pickerFilteredCount() { return this.pickerFilteredArts.length; },
     get pickerTotalCount()    { return this.pickerAllArts.length; },
+
+    /** Portada del mazo: miniatura actual de la carta que el servidor marcó
+     *  como portada (`cover_card_id`, ver services/deck_covers.py). Como
+     *  `cards` se actualiza al elegir arte, la cabecera cambia en el acto. */
+    get coverUrl() {
+      const id = this.deck && this.deck.cover_card_id;
+      if (!id) return null;
+      const card = (this.cards || []).find(c => c.id === id);
+      return (card && card.thumbnail_url) || null;
+    },
 
     get pickerCounts() {
       const c = { all: this.pickerAllArts.length, custom: 0, drives: 0, scryfall: 0 };
@@ -1449,7 +1515,7 @@ function deckEditor(deckId) {
         window._t('js_delete_deck_confirm').replace('{name}', this.deck.name),
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${this.deckId}`, {method: 'DELETE'});
-      if (r.ok) { window.location.href = '/'; }
+      if (r.ok) { window.location.href = '/decks'; }
       else window.toast(window._t('common_error'), window._t('deck_error_delete'));
     },
 
@@ -1739,50 +1805,34 @@ function deckEditor(deckId) {
     },
 
     async openStats() {
-      // Calculamos primero para tener los datos listos antes de que Alpine
-      // pinte el modal. Los charts se dibujan en $nextTick porque los canvas
-      // solo existen tras render.
+      // Gráficas propias en HTML/SVG (antes Chart.js con las animaciones
+      // desactivadas: cerrar el modal a mitad de animación dejaba un frame
+      // pintando sobre un canvas destruido). Ahora el movimiento es CSS puro
+      // y no hay nada que destruir al cerrar.
       this.computeStats();
+      this.statsHover = {chart: null, key: null};
+      this.statsReady = false;
       this.statsOpen = true;
-      // Lazy-load Chart.js si no está cargado ya. Ahorra ~80KB del initial
-      // load en el 90% de sesiones donde el usuario no abre stats. Cached
-      // por el navegador tras la primera vez.
-      if (typeof window.Chart === 'undefined') {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          // Servido desde el propio bundle: el modal de stats funciona sin internet.
-          s.src = '/static/vendor/chart.umd.js';
-          s.crossOrigin = 'anonymous';
-          s.onload = resolve;
-          s.onerror = () => reject(new Error('No se pudo cargar Chart.js'));
-          document.head.appendChild(s);
-        }).catch(e => {
-          window.toast(window._t('common_error'), e.message);
-          this.statsOpen = false;
-        });
-        if (!this.statsOpen) return;
-      }
       this.$nextTick(() => {
-        this.renderCharts();
-        window.icons?.();  // re-render iconos Lucide dentro del modal
+        window.icons?.();
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (this.statsOpen) this.statsReady = true;
+        }));
       });
     },
 
     closeStats() {
-      // Destruimos las instancias de Chart.js para no leak memoria si se
-      // reabre el modal. Ojo con el orden:
-      //   1) Primero destruimos los charts (mientras el canvas aún existe)
-      //   2) Después escondemos el modal (x-if quita el canvas del DOM)
-      // Si el orden fuese inverso, el canvas ya no existe y .destroy() peta.
-      this._chartInstances.forEach(c => {
-        try { c.stop(); c.destroy(); } catch (e) {}
-      });
-      this._chartInstances = [];
-      // Doble RAF para asegurar que cualquier frame pendiente de Chart.js
-      // se ejecute (o descarte) antes de quitar el canvas del DOM.
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        this.statsOpen = false;
-      }));
+      this.statsOpen = false;
+      this.statsReady = false;
+    },
+
+    /** Traducción con parámetros: tf('stats_unique', {n: 3}). */
+    tf(key, params = {}) {
+      let text = window._t(key);
+      for (const [k, v] of Object.entries(params)) {
+        text = text.split(`{${k}}`).join(String(v));
+      }
+      return text;
     },
 
     computeStats() {
@@ -1797,31 +1847,27 @@ function deckEditor(deckId) {
       const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
       const cmcBucket = (cmc) => cmc >= 7 ? '7+' : String(Math.floor(cmc || 0));
 
-      // Curva de maná apilada por color dominante. Para cada carta no-tierra
-      // elegimos UN color representativo (el primero que aparezca en su
-      // color identity) — así una barra apilada suma exactamente el nº de
-      // cartas, sin duplicar cartas multicolor.
-      const CURVE_COLORS = ['W', 'U', 'B', 'R', 'G', 'M', 'C'];  // M=multicolor, C=incoloro
+      // Curva de maná apilada por color dominante. Cada carta no-tierra
+      // aporta UN color (el de su identidad si es monocolor, M si es
+      // multicolor, C si es incolora): así cada columna suma exactamente el
+      // nº de cartas de ese coste, sin duplicar multicolores.
+      const CURVE_COLORS = ['W', 'U', 'B', 'R', 'G', 'M', 'C'];
       const curveByColor = {};
       for (const col of CURVE_COLORS) {
         curveByColor[col] = Object.fromEntries(CMC_BUCKETS.map(b => [b, 0]));
       }
 
-      // Métricas simples
       let landCount = 0;
       let basicLandCount = 0;
       let nonBasicLandCount = 0;
       let totalCmcNonLand = 0;
       let nonLandCount = 0;
 
-      // Pips por color (para chart de colores) — como antes
+      // Símbolos de maná por color (los incoloros cuentan como C)
       const colors = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
-
-      // Tipos y rareza — un contador por categoría
       const types = {};
       const rarity = {};
-      // Keywords: {name → count de cartas que la tienen}
-      // Contamos cartas únicas, no copias (una carta con quantity=4 cuenta 1)
+      // Keywords: nº de cartas únicas que la tienen (no multiplica por qty)
       const keywords = {};
 
       const MAIN_TYPES = [
@@ -1840,24 +1886,14 @@ function deckEditor(deckId) {
           if (isBasic) basicLandCount += qty;
           else nonBasicLandCount += qty;
         } else {
-          // Bucket CMC
           const bucket = cmcBucket(c.cmc || 0);
           totalCmcNonLand += (c.cmc || 0) * qty;
           nonLandCount += qty;
-
-          // Color dominante para apilar la barra:
-          // - Si tiene 2+ colores en color_identity → 'M' (multicolor)
-          // - Si tiene 1 → ese color
-          // - Si tiene 0 → 'C' (incoloro)
           const ci = c.color_identity || [];
-          let bucketColor;
-          if (ci.length === 0) bucketColor = 'C';
-          else if (ci.length === 1) bucketColor = ci[0];
-          else bucketColor = 'M';
+          const bucketColor = ci.length === 0 ? 'C' : (ci.length === 1 ? ci[0] : 'M');
           curveByColor[bucketColor][bucket] += qty;
         }
 
-        // Pips por color (para donut) — como antes, solo no-tierras con manaCost
         if (!isLand && c.mana_cost) {
           const pips = this._extractPips(c.mana_cost);
           let hasColor = false;
@@ -1870,7 +1906,6 @@ function deckEditor(deckId) {
           if (!hasColor) colors.C += qty;
         }
 
-        // Tipo principal
         let mainType = 'Other';
         for (const t of MAIN_TYPES) {
           if (new RegExp('\\b' + t + '\\b', 'i').test(typeLine)) {
@@ -1879,45 +1914,129 @@ function deckEditor(deckId) {
         }
         types[mainType] = (types[mainType] || 0) + qty;
 
-        // Rareza
         const r = c.rarity || 'unknown';
         rarity[r] = (rarity[r] || 0) + qty;
 
-        // Keywords — cuenta cartas únicas (no multiplica por qty)
         for (const kw of (c.keywords || [])) {
           if (!kw) continue;
           keywords[kw] = (keywords[kw] || 0) + 1;
         }
       }
 
-      const totalCards = cards.reduce((s, c) => s + (c.quantity || 1), 0);
-      const avgCmc = nonLandCount > 0 ? (totalCmcNonLand / nonLandCount).toFixed(2) : '—';
+      const totalCards = cards.reduce((sum, c) => sum + (c.quantity || 1), 0);
+      const avgCmc = nonLandCount > 0 ? totalCmcNonLand / nonLandCount : null;
       const landPct = totalCards > 0 ? Math.round(100 * landCount / totalCards) : 0;
 
-      // Top 12 keywords por número de cartas que las tienen (evita ensuciar
-      // con las 30+ keywords que puede tener un mazo grande).
-      const topKeywords = Object.entries(keywords)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
-        .map(([name, count]) => ({ name, count }));
+      // --- Curva: columnas con segmentos ---
+      const columns = CMC_BUCKETS.map((bucket, i) => {
+        const segments = CURVE_COLORS
+          .map(key => ({key, count: curveByColor[key][bucket]}))
+          .filter(sg => sg.count > 0);
+        const total = segments.reduce((sum, sg) => sum + sg.count, 0);
+        return {bucket, i, total, segments};
+      });
+      const curveMax = Math.max(0, ...columns.map(col => col.total));
+      // Escala con margen y líneas guía en valores redondos
+      const step = curveMax <= 4 ? 1 : curveMax <= 10 ? 2 : curveMax <= 25 ? 5 : 10;
+      const scaleMax = Math.max(step, Math.ceil(curveMax / step) * step);
+      for (const col of columns) {
+        col.pct = scaleMax ? (100 * col.total / scaleMax) : 0;
+        for (const sg of col.segments) sg.pct = col.total ? (100 * sg.count / col.total) : 0;
+      }
+      const gridlines = [];
+      for (let v = step; v <= scaleMax; v += step) gridlines.push({v, pct: 100 * v / scaleMax});
+      // Marcador de la media: centro de la columna i está en (i + 0.5) / 8
+      const avgPos = avgCmc === null ? null
+        : 100 * (Math.min(avgCmc, 7) + 0.5) / CMC_BUCKETS.length;
 
-      const summary = [
-        { label: 'Total cartas', icon: 'library',
-          value: totalCards, hint: `${cards.length} entradas únicas` },
-        { label: 'Tierras', icon: 'trees',
-          value: landCount,
-          hint: landCount > 0 ? `${basicLandCount} básicas · ${nonBasicLandCount} no-básicas · ${landPct}% mazo` : null },
-        { label: 'CMC medio', icon: 'trending-up',
-          value: avgCmc, hint: 'sin contar tierras' },
-        { label: 'No-tierras', icon: 'sparkles',
-          value: nonLandCount, hint: nonLandCount > 0 ? `${100 - landPct}% del mazo` : null },
-      ];
+      // --- Donut de colores (circunferencia normalizada a 100) ---
+      const COLOR_ORDER = ['W', 'U', 'B', 'R', 'G', 'C'];
+      const colorTotal = COLOR_ORDER.reduce((sum, k) => sum + colors[k], 0);
+      let cursor = 0;
+      const colorSegments = COLOR_ORDER
+        .filter(k => colors[k] > 0)
+        .map((key, i) => {
+          const pct = 100 * colors[key] / colorTotal;
+          const seg = {key, i, count: colors[key], pct, start: cursor,
+                       // hueco de 0,8 entre segmentos (si hay más de uno)
+                       len: Math.max(0.01, pct - (colorTotal && pct < 100 ? 0.8 : 0))};
+          cursor += pct;
+          return seg;
+        });
+
+      // --- Rareza: cinta segmentada en orden canónico ---
+      const RARITY_ORDER = ['common', 'uncommon', 'rare', 'mythic', 'special', 'bonus', 'unknown'];
+      const rarityTotal = RARITY_ORDER.reduce((sum, k) => sum + (rarity[k] || 0), 0);
+      const raritySegments = RARITY_ORDER
+        .filter(k => rarity[k] > 0)
+        .map((key, i) => ({key, i, count: rarity[key], pct: 100 * rarity[key] / rarityTotal}));
+
+      // --- Tipos: filas ordenadas ---
+      const typeRows = Object.entries(types).sort((a, b) => b[1] - a[1]);
+      const typeMax = typeRows.length ? typeRows[0][1] : 0;
+      const typeList = typeRows.map(([key, count], i) => ({
+        key, i, count,
+        pct: typeMax ? 100 * count / typeMax : 0,
+        share: totalCards ? Math.round(100 * count / totalCards) : 0,
+      }));
+
+      // --- Keywords: top 12, con peso relativo para la intensidad ---
+      const kwRows = Object.entries(keywords).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      const kwMax = kwRows.length ? kwRows[0][1] : 0;
+      const keywordList = kwRows.map(([name, count], i) => ({
+        name, count, i, weight: kwMax ? count / kwMax : 0,
+      }));
 
       this.stats = {
-        totalCards, summary,
-        curveByColor, cmcBuckets: CMC_BUCKETS,
-        colors, types, rarity, topKeywords,
+        totalCards, uniqueCards: cards.length,
+        landCount, basicLandCount, nonBasicLandCount, nonLandCount, landPct, avgCmc,
+        curve: {columns, max: curveMax, scaleMax, avgPos, gridlines},
+        colors: {total: colorTotal, segments: colorSegments},
+        rarity: {total: rarityTotal, segments: raritySegments},
+        types: typeList,
+        keywords: keywordList,
       };
+    },
+
+    /** Texto bajo la curva: desglose de la columna bajo el cursor. */
+    curveCaption() {
+      const h = this.statsHover;
+      if (h.chart !== 'curve') return window._t('stats_curve_hint');
+      const col = this.stats.curve.columns.find(c => c.bucket === h.key);
+      if (!col) return window._t('stats_curve_hint');
+      const cards = col.total === 1 ? window._t('nav_card_one') : window._t('nav_cards');
+      const head = this.tf('stats_curve_caption', {cmc: col.bucket, n: col.total, cards});
+      if (!col.segments.length) return head;
+      const parts = col.segments.map(sg => `${sg.count} ${window._t('stats_color_' + sg.key).toLowerCase()}`);
+      return `${head} · ${parts.join(', ')}`;
+    },
+
+    /** ¿Atenuar este elemento porque el cursor está sobre otro del mismo gráfico? */
+    statsDim(chart, key) {
+      return this.statsHover.chart === chart && this.statsHover.key !== key;
+    },
+
+    /** Segmento del anillo de colores para `key`, o null si no aparece. */
+    colorSeg(key) {
+      return this.stats.colors.segments.find(sg => sg.key === key) || null;
+    },
+
+    /** Centro del anillo: total de símbolos, o el color bajo el cursor. */
+    donutCenter() {
+      const h = this.statsHover;
+      const seg = h.chart === 'colors' ? this.colorSeg(h.key) : null;
+      if (seg) return {value: seg.count, label: window._t('stats_color_' + seg.key)};
+      return {value: this.stats.colors.total, label: window._t('stats_colors_center')};
+    },
+
+    /** Icono de la fuente de maná para cada tipo de carta. */
+    typeIcon(key) {
+      const icons = {
+        Creature: 'creature', Instant: 'instant', Sorcery: 'sorcery',
+        Enchantment: 'enchantment', Artifact: 'artifact', Planeswalker: 'planeswalker',
+        Battle: 'battle', Land: 'land',
+      };
+      return icons[key] || 'multiple';
     },
 
     // Extrae los símbolos de coste de una manaCost tipo "{2}{W}{U/B}".
@@ -1936,211 +2055,6 @@ function deckEditor(deckId) {
         }
       }
       return pips;
-    },
-
-    renderCharts() {
-      // Paleta consistente con el tema arcane. Usamos rgba() para poder
-      // aplicar transparencias en fondos de barras.
-      const GOLD = '#d4af37';
-      const GOLD_SOFT = 'rgba(212, 175, 55, 0.75)';
-      const GRID = 'rgba(255, 255, 255, 0.06)';
-      const FG_MUTED = '#a8a8b8';
-      const FG_FAINT = '#6a6a80';
-
-      // Colores MTG (mismos que en la paleta del tema)
-      const MTG_COLORS = {
-        W: '#f5f0d8', U: '#5b9bd5', B: '#3a3a4a',
-        R: '#d9534f', G: '#5cb85c', C: '#8a8a9a',
-      };
-
-      // Chart.js: defaults globales para el tema oscuro
-      Chart.defaults.color = FG_MUTED;
-      Chart.defaults.font.family = 'ui-sans-serif, system-ui, sans-serif';
-      Chart.defaults.font.size = 11;
-      // Sin animaciones: evita que un requestAnimationFrame pendiente intente
-      // dibujar sobre un canvas ya destruido cuando el usuario cierra el modal
-      // rápido (click fuera / ESC) durante la animación inicial de aparición.
-      Chart.defaults.animation = false;
-      Chart.defaults.animations.colors = false;
-      Chart.defaults.animations.x = false;
-      Chart.defaults.animations.y = false;
-      Chart.defaults.transitions.active.animation.duration = 0;
-
-      const commonAxes = {
-        grid: { color: GRID, drawBorder: false },
-        ticks: { color: FG_MUTED },
-      };
-
-      // --- Curva de maná apilada por color (stacked bar) ---
-      // Cada bucket CMC es una barra dividida en segmentos, uno por "color
-      // dominante" de las cartas de ese coste (W/U/B/R/G/M/C).
-      const CURVE_COLOR_META = [
-        { key: 'W', label: 'Blanco',     color: '#f5f0d8' },
-        { key: 'U', label: 'Azul',       color: '#5b9bd5' },
-        { key: 'B', label: 'Negro',      color: '#4a4a5a' },
-        { key: 'R', label: 'Rojo',       color: '#d9534f' },
-        { key: 'G', label: 'Verde',      color: '#5cb85c' },
-        { key: 'M', label: 'Multicolor', color: GOLD },
-        { key: 'C', label: 'Incoloro',   color: '#8a8a9a' },
-      ];
-      const curveBuckets = this.stats.cmcBuckets;
-      const curveDatasets = CURVE_COLOR_META.map(meta => ({
-        label: meta.label,
-        data: curveBuckets.map(b => this.stats.curveByColor[meta.key][b] || 0),
-        backgroundColor: meta.color,
-        borderColor: meta.color === '#f5f0d8' ? '#0a0d13' : 'rgba(0,0,0,0.15)',
-        borderWidth: 1,
-        borderRadius: 2,
-        stack: 'curve',
-      })).filter(ds => ds.data.some(v => v > 0));  // no pintar datasets vacíos
-
-      this._chartInstances.push(new Chart(this.$refs.chartCurve, {
-        type: 'bar',
-        data: { labels: curveBuckets, datasets: curveDatasets },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { color: FG_MUTED, padding: 8, boxWidth: 12, font: { size: 10 } },
-            },
-            tooltip: {
-              callbacks: {
-                footer: (items) => {
-                  const total = items.reduce((s, it) => s + it.parsed.y, 0);
-                  return `Total CMC ${items[0].label}: ${total}`;
-                },
-              },
-            },
-          },
-          scales: {
-            x: { ...commonAxes, stacked: true, title: { display: true, text: 'CMC', color: FG_FAINT } },
-            y: { ...commonAxes, stacked: true, beginAtZero: true, ticks: { ...commonAxes.ticks, stepSize: 1 } },
-          },
-        },
-      }));
-
-      // --- Colores (donut) ---
-      const colorEntries = Object.entries(this.stats.colors).filter(([, v]) => v > 0);
-      const colorLabels = colorEntries.map(([k]) => ({
-        W: 'Blanco', U: 'Azul', B: 'Negro', R: 'Rojo', G: 'Verde', C: 'Incoloro',
-      }[k]));
-      const colorData = colorEntries.map(([, v]) => v);
-      const colorBg = colorEntries.map(([k]) => MTG_COLORS[k]);
-      this._chartInstances.push(new Chart(this.$refs.chartColors, {
-        type: 'doughnut',
-        data: {
-          labels: colorLabels,
-          datasets: [{
-            data: colorData,
-            backgroundColor: colorBg,
-            borderColor: '#0a0d13',
-            borderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'right',
-              labels: { color: FG_MUTED, padding: 8, boxWidth: 12, font: { size: 11 } },
-            },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const total = colorData.reduce((s, v) => s + v, 0);
-                  const pct = total > 0 ? Math.round(100 * ctx.parsed / total) : 0;
-                  return `${ctx.label}: ${ctx.parsed} pips (${pct}%)`;
-                },
-              },
-            },
-          },
-          cutout: '55%',
-        },
-      }));
-
-      // --- Rareza (donut horizontal ordenado) ---
-      // Orden canónico de MTG. Colores estándar del juego para reforzar la
-      // convención visual (common=gris, uncommon=plateado, rare=dorado,
-      // mythic=naranja-rojo, special=violeta, bonus=cian).
-      const RARITY_META = [
-        { key: 'common',    label: 'Common',    color: '#8a8a9a' },
-        { key: 'uncommon',  label: 'Uncommon',  color: '#c0c8d0' },
-        { key: 'rare',      label: 'Rare',      color: '#c9a55a' },
-        { key: 'mythic',    label: 'Mythic',    color: '#d97539' },
-        { key: 'special',   label: 'Special',   color: '#a06cd5' },
-        { key: 'bonus',     label: 'Bonus',     color: '#5bc0be' },
-        { key: 'unknown',   label: 'Desconocida', color: '#4a4a5a' },
-      ];
-      const rarityEntries = RARITY_META
-        .map(m => ({ ...m, count: this.stats.rarity[m.key] || 0 }))
-        .filter(e => e.count > 0);
-      const rarityLabels = rarityEntries.map(e => e.label);
-      const rarityData = rarityEntries.map(e => e.count);
-      const rarityBg = rarityEntries.map(e => e.color);
-      this._chartInstances.push(new Chart(this.$refs.chartRarity, {
-        type: 'doughnut',
-        data: {
-          labels: rarityLabels,
-          datasets: [{
-            data: rarityData,
-            backgroundColor: rarityBg,
-            borderColor: '#0a0d13',
-            borderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'right',
-              labels: { color: FG_MUTED, padding: 8, boxWidth: 12, font: { size: 11 } },
-            },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const total = rarityData.reduce((s, v) => s + v, 0);
-                  const pct = total > 0 ? Math.round(100 * ctx.parsed / total) : 0;
-                  return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
-                },
-              },
-            },
-          },
-          cutout: '55%',
-        },
-      }));
-
-      // --- Tipos (horizontal bar, ordenado descendente) ---
-      const typeEntries = Object.entries(this.stats.types).sort((a, b) => b[1] - a[1]);
-      const typeLabels = typeEntries.map(([k]) => k);
-      const typeData = typeEntries.map(([, v]) => v);
-      this._chartInstances.push(new Chart(this.$refs.chartTypes, {
-        type: 'bar',
-        data: {
-          labels: typeLabels,
-          datasets: [{
-            label: 'Cartas',
-            data: typeData,
-            backgroundColor: GOLD_SOFT,
-            borderColor: GOLD,
-            borderWidth: 1,
-            borderRadius: 4,
-          }],
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ...commonAxes, beginAtZero: true, ticks: { ...commonAxes.ticks, stepSize: 1 } },
-            y: { ...commonAxes, grid: { display: false } },
-          },
-        },
-      }));
     },
 
     // ---- Helper ----

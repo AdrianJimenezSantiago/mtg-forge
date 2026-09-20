@@ -220,8 +220,16 @@ window.fmt = {
     const hiresSrc = upsizeUrl(src);   // /small/ → /normal/ para mejor resolución
     const el = ensurePreview();
     const img = el.querySelector('img');
+    const wasHidden = el.style.display !== 'block';
     if (img.src !== hiresSrc) img.src = hiresSrc;
     el.style.display = 'block';
+    // Entrada con giro y destello (ver #mpc-forge-preview en motion.css).
+    // Solo al aparecer: al moverse entre cartas contiguas no se repite.
+    if (wasHidden) {
+      el.classList.remove('fx-pop');
+      void el.offsetWidth;
+      el.classList.add('fx-pop');
+    }
     positionPreview(e || lastMouseEvent || {clientX: 0, clientY: 0});
   }
 

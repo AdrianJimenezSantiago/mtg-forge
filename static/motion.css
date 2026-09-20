@@ -1,0 +1,636 @@
+/* ==========================================================================
+   MPC Forge · capa de movimiento
+   --------------------------------------------------------------------------
+   Tres ideas, en este orden de importancia:
+
+   1. Las cartas se comportan como cartas. Se inclinan bajo el cursor con un
+      reflejo foil, se reparten al abrir la biblioteca y se voltean cuando
+      cambias su arte.
+   2. La luz dorada marca las acciones. Botón primario, pestaña activa,
+      barra de progreso: el oro se mueve cuando algo pasa por tu culpa.
+   3. Todo lo demás, quieto. Nada de fade-in por sección ni rebotes gratuitos.
+
+   Sin dependencias de build: CSS plano, cargado después de Tailwind. La parte
+   interactiva vive en /static/js/motion.js.
+   ========================================================================== */
+
+:root {
+  --fx-gold:        #d4af37;
+  --fx-gold-glow:   #e9c86a;
+  --fx-ink:         #0a0d13;
+
+  /* Curvas. `out-arcane` es un expo-out: arranca rápido y se posa. */
+  --fx-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --fx-ease-in:     cubic-bezier(0.55, 0, 1, 0.45);
+  --fx-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --fx-fast: 140ms;
+  --fx-base: 240ms;
+  --fx-slow: 520ms;
+
+  /* Espectro foil: los cinco colores de maná desaturados, para que el
+     reflejo recuerde a una carta foil y no a un arcoíris genérico. */
+  --fx-foil:
+    #f5f0d8 0%, #7fb4e6 18%, #9b8cc9 34%,
+    #e2807a 52%, #7cc98a 70%, #e9c86a 86%, #f5f0d8 100%;
+}
+
+/* Propiedades registradas: permiten animar el destello de los botones sin
+   añadir nodos al DOM. En navegadores sin @property simplemente no se ve. */
+@property --fx-br { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --fx-ba { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+@keyframes fx-spin      { to { rotate: 360deg; } }
+@keyframes fx-spin-rev  { to { rotate: -360deg; } }
+
+/* ==========================================================================
+   1 · TRANSICIONES ENTRE PÁGINAS (View Transitions entre documentos)
+   Chromium/WebView2 las ejecuta de forma nativa; el resto las ignora y la
+   navegación funciona como siempre.
+   ========================================================================== */
+
+@view-transition { navigation: auto; }
+
+/* La barra lateral no forma parte del cambio: se queda donde está. */
+.app-sidebar { view-transition-name: app-sidebar; }
+::view-transition-group(app-sidebar) { animation: none; }
+::view-transition-old(app-sidebar),
+::view-transition-new(app-sidebar) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(app-sidebar) { display: none; }
+
+/* El contenido: el viejo se aparta rápido, el nuevo sube y se posa. */
+::view-transition-old(root) {
+  animation: fx-vt-out 150ms var(--fx-ease-in) both;
+}
+::view-transition-new(root) {
+  animation: fx-vt-in 380ms var(--fx-ease-out) 40ms both;
+}
+@keyframes fx-vt-out {
+  to { opacity: 0; translate: 0 -6px; filter: blur(2px); }
+}
+@keyframes fx-vt-in {
+  from { opacity: 0; translate: 0 14px; filter: blur(3px); }
+}
+
+/* El indicador de sección viaja de un enlace a otro. */
+.nav-indicator { view-transition-name: nav-indicator; }
+::view-transition-group(nav-indicator) {
+  animation-duration: 460ms;
+  animation-timing-function: var(--fx-ease-spring);
+}
+
+/* La portada del mazo vuela de la biblioteca a la cabecera del editor. */
+::view-transition-group(deck-cover) {
+  animation-duration: 520ms;
+  animation-timing-function: var(--fx-ease-out);
+  z-index: 50;
+}
+::view-transition-old(deck-cover),
+::view-transition-new(deck-cover) {
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 12px;
+  overflow: hidden;
+}
+::view-transition-new(deck-cover) { animation-duration: 260ms; }
+
+/* ==========================================================================
+   1b · FONDO AMBIENTAL (aurora + motas de maná, ver /static/js/ambient.js)
+   ========================================================================== */
+
+.fx-ambient-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* No participa del fundido entre páginas: el cielo es continuo. */
+  view-transition-name: fx-ambient;
+}
+::view-transition-group(fx-ambient) { animation: none; }
+::view-transition-old(fx-ambient) { display: none; }
+::view-transition-new(fx-ambient) { animation: none; }
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.fx-ambient {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Aurora: canvas pequeño (1/8 de la pantalla) que ambient.js redibuja
+   5 veces por segundo; el navegador lo escala y el propio escalado la
+   difumina. Se pinta con alfas ×4 y aquí se atenúa: más niveles de color,
+   sin escalones. Animar capas grandes con degradados en CSS costaba medio
+   framerate en equipos sin GPU; así cuesta lo mismo que una capa estática. */
+.fx-aurora {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.25;
+}
+
+/* Grano estático muy fino: rompe el bandeado de los degradados oscuros
+   (8 bits por canal) y da algo de textura. Se rasteriza una sola vez. */
+.fx-ambient-layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.2 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+
+.fx-ambient-off .fx-ambient-layer { display: none; }
+.fx-ambient-toggle[aria-pressed='true'] { color: var(--fx-gold-glow); }
+
+@media print {
+  .fx-ambient-layer { display: none; }
+}
+
+/* ==========================================================================
+   2 · BARRA LATERAL
+   ========================================================================== */
+
+/* Cristal: deja pasar el fondo ambiental difuminado. */
+.bg-arcane-panel {
+  background:
+    radial-gradient(120% 40% at 0% 0%, rgb(212 175 55 / 0.07), transparent 60%),
+    linear-gradient(180deg, rgb(18 22 32 / 0.86) 0%, rgb(14 17 25 / 0.9) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+          backdrop-filter: blur(14px) saturate(1.1);
+}
+.fx-ambient-off .bg-arcane-panel {
+  background:
+    radial-gradient(120% 40% at 0% 0%, rgb(212 175 55 / 0.07), transparent 60%),
+    linear-gradient(180deg, #121620 0%, #0e1119 100%);
+}
+
+.nav-indicator {
+  position: absolute;
+  left: -2px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--fx-gold-glow), var(--fx-gold));
+  box-shadow:
+    0 0 10px 1px rgb(233 200 106 / 0.55),
+    0 0 26px 2px rgb(212 175 55 / 0.25);
+  pointer-events: none;
+}
+
+/* Navegación con scroll interno (ventanas bajas): el borde inferior se
+   difumina mientras quede contenido por debajo. motion.js pone la clase. */
+.app-sidebar__nav {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4358 transparent;
+}
+.app-sidebar__nav.fx-more-below {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+
+/* El logo: al pasar el ratón, un destello cruza el sello. */
+.fx-logo {
+  position: relative;
+  display: block;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.fx-logo::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(115deg, transparent 40%, rgb(255 246 214 / 0.65) 50%, transparent 60%);
+  translate: -120% 0;
+  pointer-events: none;
+}
+.group:hover .fx-logo::after {
+  translate: 120% 0;
+  transition: translate 700ms var(--fx-ease-out);
+}
+
+/* ==========================================================================
+   3 · ESTADOS DE CARGA
+   Estas clases ya se usaban en las plantillas pero no existían en ningún
+   CSS: los spinners eran invisibles.
+   ========================================================================== */
+
+.spinner-ring,
+.spinner-ring--lg,
+.spinner-ring--sm {
+  --size: 34px;
+  --stroke: 3px;
+  position: relative;
+  display: block;
+  width: var(--size);
+  height: var(--size);
+  margin-inline: auto;
+  flex-shrink: 0;
+}
+.spinner-ring--lg { --size: 48px; --stroke: 3.5px; }
+.spinner-ring--sm {
+  --size: 16px;
+  --stroke: 2px;
+  display: inline-block;
+  margin-inline: 0;
+  vertical-align: middle;
+}
+
+/* Anillo exterior: un arco dorado que se desvanece en su cola. */
+.spinner-ring::before,
+.spinner-ring--lg::before,
+.spinner-ring--sm::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 30%, rgb(212 175 55 / 0.15) 45%, var(--fx-gold-glow) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--stroke)), #000 calc(100% - var(--stroke) + 0.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--stroke)), #000 calc(100% - var(--stroke) + 0.5px));
+  animation: fx-spin 850ms linear infinite;
+}
+/* Anillo interior: runa punteada que gira al revés, más despacio. */
+.spinner-ring::after,
+.spinner-ring--lg::after {
+  content: '';
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: 1.5px dashed rgb(212 175 55 / 0.45);
+  animation: fx-spin-rev 3.2s linear infinite;
+}
+
+.loading-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: 2px;
+  height: 0.8em;
+}
+.loading-dots > span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fx-dot 1.1s var(--fx-ease-out) infinite;
+}
+.loading-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots > span:nth-child(3) { animation-delay: 0.30s; }
+@keyframes fx-dot {
+  0%, 60%, 100% { translate: 0 0; opacity: 0.35; }
+  30%           { translate: 0 -4px; opacity: 1; }
+}
+
+.skeleton {
+  background:
+    linear-gradient(100deg, transparent 30%, rgb(233 200 106 / 0.10) 50%, transparent 70%) 0 0 / 250% 100% no-repeat,
+    #1c2230;
+  animation: fx-skeleton 1.6s ease-in-out infinite;
+}
+@keyframes fx-skeleton {
+  from { background-position: 150% 0, 0 0; }
+  to   { background-position: -50% 0, 0 0; }
+}
+
+/* Brillo que recorre las barras de progreso doradas mientras avanzan. */
+.fx-progress {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 12px rgb(212 175 55 / 0.45);
+}
+.fx-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 250 230 / 0.6), transparent);
+  translate: -100% 0;
+  animation: fx-progress-sheen 1.3s var(--fx-ease-out) infinite;
+}
+@keyframes fx-progress-sheen { to { translate: 100% 0; } }
+
+/* ==========================================================================
+   4 · TOASTS
+   ========================================================================== */
+
+.toast-progress {
+  transform-origin: left center;
+  animation-name: fx-toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes fx-toast-timer {
+  from { scale: 1 1; }
+  to   { scale: 0 1; }
+}
+
+.fx-toast {
+  animation: fx-toast-in 420ms var(--fx-ease-spring) both;
+}
+@keyframes fx-toast-in {
+  from { opacity: 0; translate: 28px 0; scale: 0.94; }
+}
+
+.fx-toast-icon { animation: fx-icon-pop 520ms var(--fx-ease-spring) 80ms both; }
+@keyframes fx-icon-pop {
+  from { scale: 0.3; rotate: -25deg; opacity: 0; }
+}
+
+/* Onda que sale del icono de éxito. */
+.fx-toast[data-type='success'] .fx-toast-icon { position: relative; }
+.fx-toast[data-type='success'] .fx-toast-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 rgb(74 222 128 / 0.55);
+  animation: fx-ring 900ms var(--fx-ease-out) 200ms both;
+}
+@keyframes fx-ring {
+  to { box-shadow: 0 0 0 14px rgb(74 222 128 / 0); }
+}
+
+/* Los errores dan un pequeño temblor para llamar la atención. */
+.fx-toast[data-type='error'] {
+  animation:
+    fx-toast-in 420ms var(--fx-ease-spring) both,
+    fx-shake 420ms ease-in-out 380ms;
+}
+@keyframes fx-shake {
+  20%, 60% { translate: -4px 0; }
+  40%, 80% { translate: 4px 0; }
+}
+
+/* ==========================================================================
+   5 · CARTAS: INCLINACIÓN 3D + REFLEJO FOIL
+   motion.js escribe --fx-rx/--fx-ry (ángulos) y --fx-mx/--fx-my (posición
+   del cursor en %). Aquí solo se pinta.
+   ========================================================================== */
+
+[data-tilt] {
+  --fx-rx: 0deg;
+  --fx-ry: 0deg;
+  --fx-mx: 50%;
+  --fx-my: 50%;
+  --fx-hover: 0;
+  position: relative;
+  transform: perspective(900px) rotateX(var(--fx-rx)) rotateY(var(--fx-ry));
+  transform-style: preserve-3d;
+  transition:
+    transform 650ms var(--fx-ease-out),
+    box-shadow 300ms ease,
+    border-color 150ms ease;
+  isolation: isolate;
+}
+[data-tilt].is-tilting {
+  transition:
+    transform 90ms linear,
+    box-shadow 300ms ease,
+    border-color 150ms ease;
+  box-shadow:
+    0 18px 40px -12px rgb(0 0 0 / 0.75),
+    0 0 0 1px rgb(212 175 55 / 0.25),
+    0 0 30px -6px rgb(212 175 55 / 0.35);
+  z-index: 5;
+}
+
+/* Reflejo especular que sigue al cursor. */
+[data-tilt]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(
+    circle at var(--fx-mx) var(--fx-my),
+    rgb(255 255 255 / 0.30) 0%,
+    rgb(255 255 255 / 0.08) 25%,
+    transparent 55%
+  );
+  mix-blend-mode: soft-light;
+  opacity: var(--fx-hover);
+  transition: opacity 300ms ease;
+}
+
+/* Película foil: bandas de color que se desplazan con el ángulo. */
+[data-tilt='foil']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(
+      115deg,
+      var(--fx-foil)
+    );
+  background-size: 300% 300%;
+  background-position: var(--fx-mx) var(--fx-my);
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--fx-hover) * 0.22);
+  -webkit-mask: linear-gradient(180deg, #000 0%, #000 55%, transparent 90%);
+          mask: linear-gradient(180deg, #000 0%, #000 55%, transparent 90%);
+  transition: opacity 300ms ease;
+}
+
+/* Controles que deben quedar por encima del reflejo. */
+.fx-above { z-index: 3; }
+
+/* ==========================================================================
+   6 · REPARTO DE CARTAS (biblioteca de mazos)
+   Se anima con translate/rotate/scale sueltos, que se componen con el
+   `transform` de la inclinación en vez de pisarlo.
+   ========================================================================== */
+
+/* Hasta que motion.js reparte, las primeras cartas esperan ocultas. El script
+   del <head> retira esta clase a los 2 s pase lo que pase. */
+.fx-dealing [data-deal] > :nth-child(-n + 16) { opacity: 0; }
+
+.fx-deal {
+  animation: fx-deal 760ms var(--fx-ease-out) both;
+  animation-delay: calc(var(--fx-i, 0) * 65ms + 60ms);
+}
+@keyframes fx-deal {
+  0% {
+    opacity: 0;
+    translate: calc(-38px + var(--fx-i, 0) * -6px) 64px;
+    rotate: -9deg;
+    scale: 0.86;
+    filter: brightness(1.8) saturate(0.4);
+  }
+  55% { opacity: 1; filter: brightness(1.15) saturate(1); }
+  100% { translate: 0 0; rotate: 0deg; scale: 1; filter: none; }
+}
+
+/* ==========================================================================
+   7 · VOLTEO AL CAMBIAR DE ARTE
+   ========================================================================== */
+
+.fx-flip { animation: fx-flip 560ms var(--fx-ease-out); backface-visibility: hidden; }
+@keyframes fx-flip {
+  0%   { transform: perspective(500px) rotateY(-90deg) scale(0.92); filter: brightness(2); }
+  60%  { filter: brightness(1.2); }
+  100% { transform: perspective(500px) rotateY(0) scale(1); filter: none; }
+}
+
+/* Destello dorado sobre la fila que acaba de cambiar. */
+.fx-flash { animation: fx-flash 1.1s var(--fx-ease-out); }
+@keyframes fx-flash {
+  0%   { box-shadow: inset 0 0 0 999px rgb(212 175 55 / 0.16); }
+  100% { box-shadow: inset 0 0 0 999px rgb(212 175 55 / 0); }
+}
+
+/* Valor numérico que acaba de cambiar (x-tween). */
+.fx-bump { animation: fx-bump 480ms var(--fx-ease-spring); display: inline-block; }
+@keyframes fx-bump {
+  30% { scale: 1.12; color: var(--fx-gold-glow); text-shadow: 0 0 12px rgb(233 200 106 / 0.6); }
+}
+
+/* Destino de un enlace con ancla (p. ej. /decks#import-text desde la
+   landing): un pulso dorado indica dónde has llegado. */
+.fx-target:target {
+  animation: fx-target 1.8s var(--fx-ease-out) 300ms both;
+}
+@keyframes fx-target {
+  0%   { border-color: rgb(212 175 55 / 0.9); box-shadow: 0 0 0 0 rgb(212 175 55 / 0.35); }
+  100% { box-shadow: 0 0 0 16px rgb(212 175 55 / 0); }
+}
+
+/* ==========================================================================
+   8 · BOTONES PRIMARIOS
+   Un barrido de luz al pasar el ratón y un destello desde el punto exacto
+   del clic. Todo va en background-image: no añade nodos, no necesita
+   position:relative y lo recorta el propio borde del botón.
+   ========================================================================== */
+
+:is(button, a).bg-accent {
+  --fx-bx: 50%;
+  --fx-by: 50%;
+  background-image:
+    radial-gradient(
+      circle at var(--fx-bx) var(--fx-by),
+      rgb(255 255 255 / var(--fx-ba)) 0,
+      rgb(255 255 255 / var(--fx-ba)) var(--fx-br),
+      transparent calc(var(--fx-br) + 1px)
+    ),
+    linear-gradient(105deg, transparent 38%, rgb(255 250 230 / 0.55) 50%, transparent 62%);
+  background-size: 100% 100%, 250% 100%;
+  background-position: 0 0, 150% 0;
+  background-repeat: no-repeat;
+  transition:
+    color 150ms ease, background-color 150ms ease, border-color 150ms ease,
+    opacity 150ms ease, box-shadow 250ms ease, scale 120ms ease,
+    background-position 0s;
+}
+:is(button, a).bg-accent:not(:disabled):hover {
+  background-position: 0 0, -50% 0;
+  box-shadow: 0 6px 22px -8px rgb(212 175 55 / 0.7);
+  transition:
+    color 150ms ease, background-color 150ms ease, border-color 150ms ease,
+    opacity 150ms ease, box-shadow 250ms ease, scale 120ms ease,
+    background-position 800ms var(--fx-ease-out);
+}
+:is(button, a).bg-accent.fx-burst {
+  animation: fx-burst 600ms var(--fx-ease-out);
+}
+@keyframes fx-burst {
+  from { --fx-br: 0px;   --fx-ba: 0.55; }
+  to   { --fx-br: 160px; --fx-ba: 0; }
+}
+
+/* Pulsación: todos los botones compactos ceden un poco al presionarlos. */
+button:not(:disabled):not(.w-full):not([data-tilt]):active { scale: 0.96; }
+
+/* ==========================================================================
+   9 · VISTA PREVIA DE CARTA (hover sobre miniaturas, ver app.js)
+   ========================================================================== */
+
+#mpc-forge-preview.fx-pop {
+  animation: fx-preview-in 260ms var(--fx-ease-out);
+  transform-origin: top left;
+}
+@keyframes fx-preview-in {
+  from {
+    opacity: 0;
+    transform: perspective(900px) rotateY(-14deg) scale(0.9);
+  }
+}
+#mpc-forge-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(125deg, transparent 35%, rgb(255 255 255 / 0.18) 48%, transparent 60%);
+  translate: -100% 0;
+  pointer-events: none;
+}
+#mpc-forge-preview.fx-pop::after {
+  animation: fx-preview-sheen 900ms var(--fx-ease-out) 120ms;
+}
+@keyframes fx-preview-sheen { to { translate: 100% 0; } }
+
+/* ==========================================================================
+   10 · PORTADA DEL MAZO EN LA CABECERA DEL EDITOR
+   ========================================================================== */
+
+.fx-deck-cover {
+  view-transition-name: deck-cover;
+  box-shadow:
+    0 10px 30px -10px rgb(0 0 0 / 0.8),
+    0 0 0 1px rgb(212 175 55 / 0.25),
+    0 0 24px -4px rgb(212 175 55 / 0.25);
+}
+
+/* ==========================================================================
+   11 · MOVIMIENTO REDUCIDO
+   Quien lo pide en el sistema no ve inclinaciones, repartos ni barridos.
+   Los spinners se mantienen (comunican estado) pero más lentos.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+
+  .fx-deal,
+  .fx-target:target,
+  .fx-flip,
+  .fx-flash,
+  .fx-bump,
+  .fx-toast,
+  .fx-toast-icon,
+  .fx-toast[data-type='error'],
+  .fx-toast[data-type='success'] .fx-toast-icon::after,
+  #mpc-forge-preview.fx-pop,
+  #mpc-forge-preview.fx-pop::after,
+  :is(button, a).bg-accent.fx-burst,
+  .fx-progress::after,
+  .skeleton {
+    animation: none !important;
+  }
+  [data-tilt],
+  [data-tilt].is-tilting {
+    transform: none !important;
+    transition: none !important;
+  }
+  [data-tilt]::before,
+  [data-tilt]::after { display: none; }
+  :is(button, a).bg-accent:not(:disabled):hover { background-position: 0 0, 150% 0; }
+  .spinner-ring::before,
+  .spinner-ring--lg::before,
+  .spinner-ring--sm::before { animation-duration: 2.4s; }
+  .spinner-ring::after,
+  .spinner-ring--lg::after { animation: none; }
+  .loading-dots > span { animation: none; opacity: 0.7; }
+  .group:hover .fx-logo::after { transition: none; translate: -120% 0; }
+  button:not(:disabled):active { scale: none; }
+}

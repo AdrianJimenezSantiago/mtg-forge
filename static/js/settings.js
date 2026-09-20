@@ -47,6 +47,17 @@ function settingsShell() {
     savingPaths: false,
     pathsDirty: false,
 
+    // --- Almacenamiento en disco ---
+    // `storage` es el snapshot de GET /api/storage/ (null mientras no se haya
+    // entrado en ninguna sección que lo use). `exportsKeepRecent` decide si la
+    // limpieza de exportaciones respeta los últimos 30 días.
+    storage: null,
+    storageLoading: false,
+    storageError: '',
+    storagePurging: '',
+    exportsKeepRecent: true,
+    _storageLoaded: false,
+
     // Configuración estática de los inputs. La label/description también
     // vive en DEFINITIONS del backend, pero aquí duplicamos las mínimas para
     // no depender de el JOIN + orden. Estable y auto-documentada.
@@ -54,6 +65,7 @@ function settingsShell() {
       const map = [
         {
           key: 'paths.art_dir',
+          storageKey: 'art',
           label: 'Art cache (Scryfall)',
           description: 'Downloaded thumbnails. Can grow several GB — moving to another disk frees space on the main one.',
           effectiveKey: 'art_dir',
@@ -61,6 +73,7 @@ function settingsShell() {
         },
         {
           key: 'paths.custom_art_dir',
+          storageKey: 'custom_art',
           label: 'User custom art',
           description: 'Local images that replace official art.',
           effectiveKey: 'custom_art_dir',
@@ -68,6 +81,7 @@ function settingsShell() {
         },
         {
           key: 'paths.exports_dir',
+          storageKey: 'exports',
           label: 'Generated XMLs and PDFs',
           description: 'Final pipeline output. Useful to point to a cloud-synced folder.',
           effectiveKey: 'exports_dir',
@@ -75,6 +89,7 @@ function settingsShell() {
         },
         {
           key: 'paths.backups_dir',
+          storageKey: 'backups',
           label: 'Backups (.zip)',
           description: 'Recommended to point to a different disk or cloud folder.',
           effectiveKey: 'backups_dir',
@@ -82,6 +97,7 @@ function settingsShell() {
         },
         {
           key: 'paths.cardbacks_dir',
+          storageKey: 'cardbacks',
           label: 'Cardbacks (back faces)',
           description: 'Back face images available in the picker.',
           effectiveKey: 'cardbacks_dir',
@@ -91,6 +107,9 @@ function settingsShell() {
       return map.map(m => ({
         ...m,
         effectivePath: this.paths[m.effectiveKey] || '',
+        // null mientras no se haya calculado el almacenamiento; la fila
+        // simplemente no pinta el tamaño en ese caso.
+        bytes: this.sizeForCategory(m.storageKey),
       }));
     },
 
@@ -131,6 +150,7 @@ function settingsShell() {
         { key: 'offline',      label: _t('settings_nav_offline'),      icon: 'cloud-download', group: null },
         { key: 'custom-art',   label: _t('settings_nav_custom_art'),   icon: 'folder',        group: null },
         { key: 'backup',       label: _t('settings_nav_backup'),       icon: 'archive',       group: null },
+        { key: 'storage',      label: _t('settings_nav_storage'),      icon: 'hard-drive',    group: null },
         { key: 'log',          label: _t('settings_nav_log'),          icon: 'file-text',     group: null },
       ];
     },
@@ -162,6 +182,11 @@ function settingsShell() {
     selectSection(key) {
       this.activeSection = key;
       this.searchQuery = '';
+      // Las dos secciones que enseñan cifras de disco piden el desglose la
+      // primera vez que se abren. No se carga en `load()` a propósito:
+      // recorrer decenas de miles de imágenes no puede ser el precio de
+      // entrar en Ajustes a cambiar el tipo de cambio del dólar.
+      if (key === 'storage' || key === 'backup') this.loadStorage();
       // Refrescar iconos tras el swap de sección (los que aparecen en el nuevo panel)
       this.$nextTick(() => window.icons && window.icons());
     },
@@ -310,6 +335,169 @@ function settingsShell() {
       } finally {
         this.backingUp = false;
       }
+    },
+
+    // --- Almacenamiento ---
+    //
+    // Vive en el shell y no en un componente hijo porque el desglose lo
+    // consumen DOS sitios: la sección "Almacenamiento" y la lista de rutas de
+    // "Backup y datos", donde cada carpeta enseña lo que ocupa. Con un x-data
+    // aparte habría que duplicar la petición o cruzar componentes, que en
+    // Alpine 3 no tiene una forma limpia.
+    //
+    // La carga es perezosa: escanear el disco no puede ser el precio de abrir
+    // Ajustes para cambiar el tipo de cambio del dólar.
+    async loadStorage(refresh = false) {
+      if (this._storageLoaded && !refresh) return;
+      this._storageLoaded = true;
+      this.storageLoading = true;
+      this.storageError = '';
+      try {
+        const r = await fetch(`/api/storage/${refresh ? '?refresh=true' : ''}`);
+        if (!r.ok) throw new Error(window._t('storage_error'));
+        this.storage = await r.json();
+      } catch (e) {
+        this.storageError = e.message;
+      } finally {
+        this.storageLoading = false;
+        this.$nextTick(() => window.icons && window.icons());
+      }
+    },
+
+    /**
+     * Libera una categoría recuperable.
+     *
+     * Los dos objetivos con consecuencias visibles para el usuario (borrar
+     * exportaciones, podar backups) piden confirmación; las miniaturas y los
+     * logs no, porque se regeneran solos y pedir permiso para eso solo enseña
+     * a aceptar diálogos sin leerlos.
+     */
+    async purgeStorage(target) {
+      const confirmKey = {
+        exports: 'storage_confirm_exports',
+        backups: 'storage_confirm_backups',
+      }[target];
+      if (confirmKey && !window.confirm(window._t(confirmKey))) return;
+
+      this.storagePurging = target;
+      try {
+        const r = await fetch('/api/storage/purge', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            targets: [target],
+            // El filtro solo aplica a exports; para el resto el backend lo
+            // ignora. 30 días es el mismo valor que anuncia la casilla.
+            exports_older_than_days: this.exportsKeepRecent ? 30 : 0,
+          }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || window._t('common_error'));
+        }
+        const data = await r.json();
+        this.storage = data.storage;
+        window.toast(
+          window._t('storage_cleanup_done'),
+          window._t('storage_cleanup_freed')
+            .replace('{size}', this.fmtBytes(data.freed_bytes))
+            .replace('{n}', data.removed),
+        );
+      } catch (e) {
+        window.toast(window._t('common_error'), e.message);
+      } finally {
+        this.storagePurging = '';
+        this.$nextTick(() => window.icons && window.icons());
+      }
+    },
+
+    /** Bytes → "1,4 GB". Se corta a un decimal salvo en cifras de tres dígitos. */
+    fmtBytes(value) {
+      const bytes = Number(value) || 0;
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let size = bytes / 1024;
+      let i = 0;
+      while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+      return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[i]}`;
+    },
+
+    /** Porcentaje que representa una cifra sobre el total en disco. */
+    storagePct(bytes) {
+      const total = this.storage && this.storage.totals ? this.storage.totals.bytes : 0;
+      if (!total) return 0;
+      return (Number(bytes) || 0) * 100 / total;
+    },
+
+    /** Categorías con algo dentro, de mayor a menor. Las vacías no aportan. */
+    get storageRows() {
+      if (!this.storage) return [];
+      return this.storage.categories
+        .filter(c => c.bytes > 0 || c.exists)
+        .sort((a, b) => b.bytes - a.bytes);
+    },
+
+    get storagePurgeable() {
+      return this.storageRows.filter(c => c.reclaimable && c.bytes > 0);
+    },
+
+    // Las etiquetas viajan por i18n con la clave derivada del identificador
+    // de categoría (`storage_cat_art`), así que el backend no necesita saber
+    // nada de idiomas para describir su propio desglose.
+    catLabel(key) { return window._t(`storage_cat_${key}`); },
+    catDesc(key) { return window._t(`storage_cat_${key}_desc`); },
+    kindLabel(kind) { return window._t(`storage_kind_${kind}`); },
+
+    /** Color de la barra por tipo de dato. Inline: Tailwind purga lo que no ve. */
+    kindColor(kind) {
+      return {
+        essential:   '#d4af37',  // accent — lo que no se recupera
+        refetchable: '#5b9bd5',
+        derived:     '#6a6a80',
+        output:      '#4ade80',
+        safety:      '#fb923c',
+      }[kind] || '#6a6a80';
+    },
+
+    // Los textos con placeholders se arman aquí y no en la plantilla: así la
+    // traducción sigue siendo una frase entera y no tres trozos de HTML
+    // pegados en un orden que solo vale para el español.
+    diskFreeText(vol) {
+      return window._t('storage_disk_free')
+        .replace('{size}', this.fmtBytes(vol.free_bytes))
+        .replace('{total}', this.fmtBytes(vol.total_bytes));
+    },
+    diskShareText(vol) {
+      const pct = vol.total_bytes
+        ? (vol.app_bytes * 100 / vol.total_bytes)
+        : 0;
+      // Por debajo del 0,1 % "0,0 %" se lee como un error; se marca como <0,1.
+      const shown = pct > 0 && pct < 0.1 ? '<0,1' : pct.toFixed(1);
+      return window._t('storage_disk_app_share').replace('{pct}', shown);
+    },
+    diskUsedPct(vol) {
+      return vol.total_bytes ? vol.used_bytes * 100 / vol.total_bytes : 0;
+    },
+    backupEstimateText() {
+      if (!this.storage) return '';
+      return window._t('storage_backup_next')
+        .replace('{size}', this.fmtBytes(this.storage.backup_estimate.full_bytes))
+        .replace('{db}', this.fmtBytes(this.storage.backup_estimate.db_only_bytes));
+    },
+    backupsStoredText() {
+      if (!this.storage) return '';
+      const b = this.storage.backups;
+      if (!b.count) return window._t('storage_backup_none');
+      return window._t('storage_backup_stored')
+        .replace('{n}', b.count)
+        .replace('{size}', this.fmtBytes(b.bytes));
+    },
+
+    /** Bytes de una categoría, para pintarlos junto a su ruta editable. */
+    sizeForCategory(key) {
+      if (!this.storage) return null;
+      const row = this.storage.categories.find(c => c.key === key);
+      return row ? row.bytes : null;
     },
 
     // --- Métodos de paths ---

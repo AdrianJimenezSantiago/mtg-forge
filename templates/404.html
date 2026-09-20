@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{# Página 404. La renderiza ui.render_not_found(): el manejador global de
+   app.py para rutas desconocidas y las vistas de mazo cuando el id no existe.
+   No usa Alpine ni módulo propio: todo el movimiento es CSS (showcase.css) y
+   la inclinación compartida de motion.js. #}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/showcase.css?v={{ asset_v('showcase.css') }}">
+{% endblock %}
+
+{% block title %}{{ t.nf_title }} · MPC Forge{% endblock %}
+
+{% block content %}
+{% set shown_path = missing_path if missing_path | length <= 42 else missing_path[:39] ~ '…' %}
+<div class="nf">
+  <div class="nf-stage" aria-hidden="true">
+    <div class="nf-portal"></div>
+    <div class="nf-float">
+      <div class="nf-card" data-tilt="foil" data-tilt-max="16">
+        <div class="nf-flip">
+
+          {# Reverso: diseño propio, no el dorso oficial de Magic #}
+          <div class="nf-face nf-back">
+            <div class="nf-back__ring nf-back__ring--outer"></div>
+            <div class="nf-back__ring nf-back__ring--inner"></div>
+            <img src="/static/logo.png" alt="" class="nf-back__logo">
+          </div>
+
+          {# Anverso: la carta "Página perdida", coste {4}{0}{4} #}
+          <div class="nf-face nf-front">
+            <div class="nf-front__frame">
+              <div class="nf-bar">
+                <span class="nf-bar__name">{{ t.nf_card_name }}</span>
+                <span class="nf-bar__cost">
+                  <i class="ms ms-4 ms-cost ms-shadow"></i><i class="ms ms-0 ms-cost ms-shadow"></i><i class="ms ms-4 ms-cost ms-shadow"></i>
+                </span>
+              </div>
+              <div class="nf-art">
+                <span class="nf-art__door"></span>
+                <span class="nf-art__mote" style="--m: 0"></span>
+                <span class="nf-art__mote" style="--m: 1"></span>
+                <span class="nf-art__mote" style="--m: 2"></span>
+              </div>
+              <div class="nf-bar nf-bar--type">
+                <span>{{ t.nf_card_type }}</span>
+                <span class="nf-set"></span>
+              </div>
+              <div class="nf-textbox">
+                {% set rules = t.nf_card_rules.split('{path}') %}
+                <p class="nf-rules">{{ rules[0] }}<code>{% for part in shown_path.split('/') %}{% if not loop.first %}/<wbr>{% endif %}{{ part }}{% endfor %}</code>{{ rules[1] if rules | length > 1 else '' }}</p>
+                <p class="nf-flavor">{{ t.nf_card_flavor }}</p>
+              </div>
+              <div class="nf-foot">
+                <span>{{ t.nf_card_credit }}</span>
+                <span>404/404</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="nf-shadow"></div>
+  </div>
+
+  <div class="nf-copy">
+    <p class="nf-code">404</p>
+    <h1 class="nf-heading">{{ t.nf_heading }}</h1>
+    <p class="nf-body">{{ t.nf_deck_body if missing_kind == 'deck' else t.nf_body }}</p>
+    <div class="nf-actions">
+      <a href="/" class="bg-accent hover:bg-accent-glow text-bg-base font-medium rounded-lg nf-btn">
+        <i data-lucide="house" class="w-4 h-4"></i>
+        {{ t.nf_home }}
+      </a>
+      <a href="/decks" class="nf-btn nf-btn--ghost">
+        <i data-lucide="layers" class="w-4 h-4"></i>
+        {{ t.nf_decks }}
+      </a>
+    </div>
+    <nav class="nf-suggest" aria-label="{{ t.nf_suggest }}">
+      <span class="nf-suggest__label">{{ t.nf_suggest }}</span>
+      <a href="/collection"><i data-lucide="library"></i>{{ t.nav_collection }}</a>
+      <a href="/art-library"><i data-lucide="images"></i>{{ t.nav_library }}</a>
+      <a href="/print-planner"><i data-lucide="package"></i>{{ t.nav_planner }}</a>
+      <a href="/settings"><i data-lucide="settings"></i>{{ t.nav_settings }}</a>
+    </nav>
+  </div>
+</div>
+{% endblock %}

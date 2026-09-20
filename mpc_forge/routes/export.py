@@ -28,6 +28,7 @@ from mpc_forge.services import (
     decklist_export,
     history,
 )
+from mpc_forge.services import storage as storage_service
 from mpc_forge.services.art_cache import ArtCache
 from mpc_forge.services.deck_activity import DeckActivityKind as K
 from mpc_forge.services.pdf_generator import PDFOptions, build_pdf
@@ -1000,4 +1001,8 @@ class BackupResponse(BaseModel):
 @router.post("/backup", response_model=BackupResponse)
 async def create_backup_endpoint() -> BackupResponse:
     zip_path = backup_service.create_backup()
+    # Un backup completo añade a disco casi tanto como ocupa la app entera.
+    # Sin invalidar, la pantalla de almacenamiento seguiría dando la cifra de
+    # antes hasta que caducara el snapshot cacheado.
+    storage_service.invalidate()
     return BackupResponse(path=str(zip_path), size_bytes=zip_path.stat().st_size)

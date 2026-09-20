@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block view_module %}
+  {# La importación rápida reutiliza importPanel() de la biblioteca (home.js);
+     landing.js solo la envuelve. Ambos van aquí, antes de Alpine: ver la
+     nota del bloque view_module en base.html. #}
+  <script defer src="/static/js/home.js?v={{ asset_v('js/home.js') }}"></script>
+  <script defer src="/static/js/landing.js?v={{ asset_v('js/landing.js') }}"></script>
+{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/showcase.css?v={{ asset_v('showcase.css') }}">
+{% endblock %}
+
+{% block title %}{{ t.landing_title }} · MPC Forge{% endblock %}
+
+{% block content %}
+{% set step_icons = ['download', 'scan-search', 'wand-sparkles', 'printer'] %}
+{# Tolerante a un contexto parcial (los tests renderizan con lo mínimo). #}
+{% set ws = workshop or {} %}
+{# Cantidad con su sustantivo en singular o plural: count(1, 'deck') → "1 mazo". #}
+{% macro count(n, noun) -%}
+  {{- t['landing_count_%s_%s' % (noun, 'one' if n == 1 else 'many')] | replace('{n}', n | num(lang)) -}}
+{%- endmacro %}
+<div class="lp">
+
+  {# ============================================================
+     HERO: importación + mano de cartas
+     ============================================================ #}
+  <section class="lp-hero" x-data="landingImport()" x-init="loadSites()">
+    <div class="lp-hero__copy">
+      <h1 class="lp-title">
+        <span class="lp-title__line">{{ t.landing_hero_title }}</span>
+      </h1>
+      <p class="lp-lede">{{ t.landing_hero_sub }}</p>
+
+      <form class="lp-import" @submit.prevent="importUrl" novalidate>
+        <label for="lp-import-url" class="sr-only">{{ t.landing_import_label }}</label>
+        <div class="lp-import__field">
+          <i data-lucide="link" class="lp-import__icon"></i>
+          <input id="lp-import-url" type="url" x-ref="url" x-model="urlInput"
+                 autocomplete="off" spellcheck="false"
+                 placeholder="{{ t.landing_import_placeholder }}">
+          <kbd class="lp-import__kbd" x-show="!urlInput" title="{{ t.landing_import_shortcut }}">/</kbd>
+          <button type="submit" :disabled="loading || !urlInput.trim()"
+                  class="bg-accent hover:bg-accent-glow text-bg-base font-medium rounded-lg
+                         disabled:opacity-50 disabled:cursor-not-allowed lp-import__btn">
+            <i data-lucide="download" class="w-4 h-4" x-show="!loading"></i>
+            <span class="spinner-ring spinner-ring--sm" x-show="loading" x-cloak></span>
+            <span x-text="loading ? '{{ t.landing_import_loading }}' : '{{ t.landing_import_btn }}'">{{ t.landing_import_btn }}</span>
+          </button>
+        </div>
+
+        <div class="lp-import__hint" aria-live="polite">
+          <template x-if="urlSiteHint">
+            <span class="lp-import__detected">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+              {{ t.landing_import_detected }}: <strong x-text="urlSiteHint"></strong>
+            </span>
+          </template>
+          <template x-if="!urlSiteHint">
+            <span class="lp-sites">
+              <span class="lp-sites__label">{{ t.landing_sites_label }}</span>
+              {% for name in site_names %}<span class="lp-sites__name">{{ name }}</span>{% endfor %}
+            </span>
+          </template>
+        </div>
+      </form>
+
+      <p class="lp-alt">
+        {{ t.landing_import_or_text }}
+        <a href="/decks#import-text">{{ t.landing_import_text_link }}</a>
+      </p>
+    </div>
+
+    {# Mano de cartas en abanico. Las portadas son de tus mazos recientes;
+       los huecos se rellenan con cartas de ejemplo dibujadas en CSS. #}
+    <div class="lp-hand-wrap">
+      <div class="lp-hand" role="list" aria-label="{{ t.landing_hand_label }}">
+        {% for slot in hand %}
+          {% if slot.deck %}
+            <a href="/decks/{{ slot.deck.id }}" role="listitem"
+               class="lp-card" data-tilt="foil" data-tilt-max="12"
+               style="--i: {{ slot.i }}; --ia: {{ slot.ia }}; --z: {{ slot.z }}; --n: {{ slot.rank }}"
+               title="{{ slot.deck.name }}">
+              <img src="{{ slot.deck.commander_image_url }}" alt="{{ slot.deck.name }}"
+                   data-deck-cover="{{ slot.deck.id }}" decoding="async">
+              <span class="lp-card__label">{{ slot.deck.name }}</span>
+            </a>
+          {% else %}
+            <div role="listitem" aria-hidden="true"
+                 class="lp-card lp-card--sample" data-tilt="foil" data-tilt-max="12"
+                 style="--i: {{ slot.i }}; --ia: {{ slot.ia }}; --z: {{ slot.z }}; --n: {{ slot.rank }}">
+              <div class="proxy proxy--{{ slot.color }}">
+                <div class="proxy__bar">
+                  <span class="proxy__name">{{ slot.name }}</span>
+                  <i class="ms ms-{{ slot.color }} ms-cost ms-shadow"></i>
+                </div>
+                <div class="proxy__art"><i class="ms ms-{{ slot.color }}"></i></div>
+                <div class="proxy__type">{{ slot.type }}</div>
+                <div class="proxy__text"><span></span><span></span><span></span></div>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% if not has_covers %}
+        <p class="lp-hand__note">{{ t.landing_hand_placeholder_note }}</p>
+      {% endif %}
+    </div>
+
+    {% include "_unresolved_modal.html" %}
+  </section>
+
+  {# ============================================================
+     SEGUIR: mazos recientes (solo si hay)
+     ============================================================ #}
+  {% if recent_decks %}
+  <section class="lp-section">
+    <header class="lp-section__head">
+      <h2 class="lp-h2">{{ t.landing_continue_title }}</h2>
+      <a href="/decks" class="lp-link">{{ t.landing_continue_all }}</a>
+    </header>
+    <div class="lp-recent">
+      {% for deck in recent_decks %}
+        <a href="/decks/{{ deck.id }}" class="lp-recent__item">
+          <span class="lp-recent__cover">
+            {% if deck.commander_image_url %}
+              <img src="{{ deck.commander_image_url }}" alt="" loading="lazy" decoding="async">
+            {% else %}
+              <i data-lucide="layers" class="w-4 h-4"></i>
+            {% endif %}
+          </span>
+          <span class="lp-recent__body">
+            <span class="lp-recent__name">{{ deck.name }}</span>
+            <span class="lp-recent__meta">{{ deck.card_count }} {{ t.landing_continue_card if deck.card_count == 1 else t.landing_continue_cards }}, {{ deck.format }}</span>
+          </span>
+          <i data-lucide="chevron-right" class="lp-recent__chev"></i>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# ============================================================
+     FLUJO: los cuatro pasos (es una secuencia real → numerada)
+     ============================================================ #}
+  <section class="lp-section">
+    <header class="lp-section__head">
+      <h2 class="lp-h2">{{ t.landing_flow_title }}</h2>
+    </header>
+    <div class="lp-flow" data-reveal>
+      <span class="lp-flow__line" aria-hidden="true"></span>
+      <ol class="lp-flow__steps">
+      {% for n in range(1, 5) %}
+        <li class="lp-step" style="--n: {{ n - 1 }}">
+          <span class="lp-step__mark">
+            <i data-lucide="{{ step_icons[n - 1] }}"></i>
+            <span class="lp-step__num">{{ n }}</span>
+          </span>
+          <h3 class="lp-step__title">{{ t['landing_flow_%d_title' % n] }}</h3>
+          <p class="lp-step__desc">{{ t['landing_flow_%d_desc' % n] }}</p>
+          {% if n == 4 %}
+            <p class="lp-chips lp-chips--gold"><span>PDF</span><span>MPC XML</span><span>ZIP</span><span>TXT</span></p>
+          {% endif %}
+        </li>
+      {% endfor %}
+      </ol>
+    </div>
+  </section>
+
+  {# ============================================================
+     TALLER: PDF Studio destacado + resto de herramientas
+     ============================================================ #}
+  <section class="lp-section">
+    <header class="lp-section__head">
+      <h2 class="lp-h2">{{ t.landing_tools_title }}</h2>
+    </header>
+    <div class="lp-tools">
+      <a class="lp-studio" href="{{ '/decks/%d/pdf' % latest_deck.id if latest_deck else '/decks' }}">
+        <div class="lp-studio__sheet" aria-hidden="true">
+          <svg viewBox="0 0 170 220" role="presentation">
+            <defs>
+              <clipPath id="lp-card-clip"><rect width="46" height="64" rx="3"/></clipPath>
+            </defs>
+            <rect class="sheet-paper" x="0" y="0" width="170" height="220" rx="4"/>
+            {% set covers = hand | selectattr('deck') | map(attribute='deck') | list %}
+            {% for row in range(3) %}
+              {% for col in range(3) %}
+                {% set idx = row * 3 + col %}
+                <g transform="translate({{ 11 + col * 50 }} {{ 13 + row * 68 }})" class="sheet-card" style="--n: {{ idx }}">
+                  <rect class="sheet-card__base sheet-card__base--{{ ['w','u','b','r','g','w','u','b','r'][idx] }}" width="46" height="64" rx="3"/>
+                  {% if covers %}
+                    <image href="{{ covers[idx % (covers | length)].commander_image_url }}" width="46" height="64"
+                           preserveAspectRatio="xMidYMin slice" clip-path="url(#lp-card-clip)"/>
+                  {% endif %}
+                </g>
+              {% endfor %}
+            {% endfor %}
+            {# Guías de corte: líneas a sangre en los bordes de cada carta #}
+            {% for x in [11, 57, 61, 107, 111, 157] %}
+              <line class="sheet-cut" x1="{{ x }}" y1="3" x2="{{ x }}" y2="217"/>
+            {% endfor %}
+            {% for y in [13, 77, 81, 145, 149, 213] %}
+              <line class="sheet-cut" x1="3" y1="{{ y }}" x2="167" y2="{{ y }}"/>
+            {% endfor %}
+          </svg>
+        </div>
+        <div class="lp-studio__copy">
+          <h3 class="lp-h3">PDF Studio</h3>
+          <p>{{ t.landing_studio_desc }}</p>
+          <span class="lp-link">
+            {{ t.landing_studio_cta if latest_deck else t.landing_studio_cta_empty }}
+          </span>
+        </div>
+      </a>
+
+      <ul class="lp-toollist">
+        {% for href, icon, label, desc in [
+          ('/print-planner', 'package',   t.nav_planner,    t.landing_tool_planner),
+          ('/art-library',   'images',    t.nav_library,    t.landing_tool_library),
+          ('/collection',    'library',   t.nav_collection, t.landing_tool_collection),
+          ('/calibrate',     'crosshair', t.nav_calibrate,  t.landing_tool_calibrate),
+          ('/history',       'history',   t.nav_history,    t.landing_tool_history),
+        ] %}
+          <li>
+            <a href="{{ href }}" class="lp-tool">
+              <span class="lp-tool__icon"><i data-lucide="{{ icon }}"></i></span>
+              <span class="lp-tool__body">
+                <span class="lp-tool__name">{{ label }}</span>
+                <span class="lp-tool__desc">{{ desc }}</span>
+              </span>
+              <i data-lucide="chevron-right" class="lp-tool__chev"></i>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  {# ============================================================
+     ESTADO DEL TALLER
+     ============================================================ #}
+  <section class="lp-section">
+    <header class="lp-section__head">
+      <h2 class="lp-h2">{{ t.landing_status_title }}</h2>
+    </header>
+    <div class="lp-status">
+      <div class="lp-status__item">
+        <span class="lp-status__icon"><i data-lucide="database"></i></span>
+        <div>
+          <p class="lp-status__label">{{ t.landing_status_data }}</p>
+          <p class="lp-status__value">{{ t.landing_status_data_value | replace('{n}', count(ws.printings or 0, 'printing')) }}</p>
+          <p class="lp-status__note">
+            {% if (ws.offline or 0) %}
+              <span class="lp-status__flag"><span class="lp-dot lp-dot--ok"></span>{{ t.landing_status_offline_on }}</span>
+            {% else %}
+              <span class="lp-status__flag"><span class="lp-dot"></span>{{ t.landing_status_offline_off }}</span>
+              <a href="/settings" class="lp-link lp-link--sm">{{ t.landing_status_configure }}</a>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="lp-status__item">
+        <span class="lp-status__icon"><i data-lucide="images"></i></span>
+        <div>
+          <p class="lp-status__label">{{ t.landing_status_art }}</p>
+          {% if (ws.art_files or 0) %}
+            <p class="lp-status__value">{{ t.landing_status_art_value | replace('{files}', count(ws.art_files or 0, 'image')) | replace('{sources}', count(ws.art_sources or 0, 'source')) }}</p>
+            <p class="lp-status__note"><a href="/art-library" class="lp-link lp-link--sm">{{ t.landing_status_open }}</a></p>
+          {% else %}
+            <p class="lp-status__value">{{ t.landing_status_art_empty }}</p>
+            <p class="lp-status__note"><a href="/settings" class="lp-link lp-link--sm">{{ t.landing_status_configure }}</a></p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="lp-status__item">
+        <span class="lp-status__icon"><i data-lucide="layers"></i></span>
+        <div>
+          <p class="lp-status__label">{{ t.landing_status_yours }}</p>
+          <p class="lp-status__value">{{ t.landing_status_yours_value | replace('{decks}', count(ws.decks or 0, 'deck')) | replace('{owned}', count(ws.collection or 0, 'owned')) }}</p>
+          <p class="lp-status__note"><a href="/collection" class="lp-link lp-link--sm">{{ t.landing_status_open }}</a></p>
+        </div>
+      </div>
+      {# Espacio en disco. A diferencia de los otros tres, esta cifra NO se
+         renderiza en servidor: calcularla recorre la carpeta de datos entera y
+         la landing es la puerta de entrada de la app. Se pide por fetch y
+         aparece cuando está lista. #}
+      <div class="lp-status__item" x-data="workshopStorage()" x-init="load()">
+        <span class="lp-status__icon"><i data-lucide="hard-drive"></i></span>
+        <div>
+          <p class="lp-status__label">{{ t.landing_status_storage }}</p>
+          <p class="lp-status__value" x-text="label"></p>
+          <p class="lp-status__note">
+            <a href="/settings" class="lp-link lp-link--sm">{{ t.landing_status_storage_detail }}</a>
+          </p>
+        </div>
+      </div>
+    </div>
+    <p class="lp-local">
+      <i data-lucide="shield-check" class="w-4 h-4"></i>
+      {{ t.landing_local_note }}
+    </p>
+  </section>
+
+</div>
+{% endblock %}

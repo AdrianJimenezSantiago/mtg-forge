@@ -25,7 +25,7 @@
 import { JSDOM, VirtualConsole } from 'jsdom'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8000'
-const PAGES = ['/', '/history', '/collection', '/settings', '/print-planner', '/art-library', '/calibrate']
+const PAGES = ['/', '/decks', '/history', '/collection', '/settings', '/print-planner', '/art-library', '/calibrate']
 
 // Lo que este script vigila: que Alpine resuelva todas las expresiones.
 //

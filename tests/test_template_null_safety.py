@@ -47,6 +47,7 @@ VIEWS = {
     "history.html": "history.js",
     "collection.html": "collection.js",
     "index.html": "home.js",
+    "landing.html": "landing.js",
 }
 
 # Atributos de Alpine cuyo contenido es una expresión que se evalúa siempre,

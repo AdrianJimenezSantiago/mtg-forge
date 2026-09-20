@@ -225,6 +225,9 @@ class DeckView(BaseModel):
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
     price: DeckPriceView | None = None
+    # Carta del mazo que hace de portada (ver services/deck_covers). El editor
+    # la sigue para refrescar la portada de la cabecera al cambiar su arte.
+    cover_card_id: int | None = None
 
 
 class UnresolvedEntry(BaseModel):

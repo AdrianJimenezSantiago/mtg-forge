@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 
+{% block extra_head %}
+  {# Modal de estadísticas (gráficas propias animadas). #}
+  <link rel="stylesheet" href="/static/stats.css?v={{ asset_v('stats.css') }}">
+{% endblock %}
+
 {% block view_module %}
   {# La lógica de esta vista vive en /static/js/deck-editor.js.
      Se extrajo del bloque embebido que había en el cuerpo de esta
@@ -40,7 +45,7 @@
       </div>
       {# Barra proper — width en % anima suavemente #}
       <div class="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
-        <div class="h-full bg-accent transition-all duration-300 rounded-full"
+        <div class="fx-progress h-full bg-accent transition-all duration-300 rounded-full"
              :style="'width: ' + Math.min(100, Math.max(2, buildProgress.percent)) + '%'"></div>
       </div>
       <div class="mt-2 flex items-center gap-2 text-[11px] text-fg-muted min-h-[16px]">
@@ -63,9 +68,29 @@
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-3">
-        <a href="/" class="text-fg-muted hover:text-fg text-sm">{{ t.deck_back_link }}</a>
+        <a href="/decks" class="text-fg-muted hover:text-fg text-sm">{{ t.deck_back_link }}</a>
       </div>
       <div class="flex items-center gap-3 mt-2 flex-wrap">
+        {# Portada del commander: el arte que el mazo usa para él.
+           - `src` del servidor → está en el primer pintado y es el destino de
+             la transición que la hace volar desde la biblioteca
+             (view-transition-name en .fx-deck-cover).
+           - `coverUrl` (deck-editor.js) la mantiene al día si cambias el arte
+             del commander, y x-flip la voltea al cambiar.
+           Atributos con comilla simple: `tojson` escapa ' pero no ". #}
+        {% if commander_image_url %}
+          <img src="{{ commander_image_url }}" alt=""
+               data-preview="{{ commander_image_url }}"
+               :src='coverUrl || {{ commander_image_url | tojson }}'
+               :data-preview='coverUrl || {{ commander_image_url | tojson }}'
+               x-flip="coverUrl"
+               class="fx-deck-cover w-12 aspect-[63/88] object-cover object-top rounded-md shrink-0">
+        {% else %}
+          <template x-if="coverUrl">
+            <img :src="coverUrl" :data-preview="coverUrl" alt=""
+                 class="w-12 aspect-[63/88] object-cover object-top rounded-md shrink-0 fx-flip">
+          </template>
+        {% endif %}
         {# Nombre editable inline #}
         <div class="flex items-center gap-2 min-w-0">
           <template x-if="!editingName">
@@ -121,7 +146,7 @@
           <div>
             <div class="flex items-baseline gap-2 flex-wrap">
               <span class="text-xs text-fg-muted">{{ t.deck_cost_label }}</span>
-              <span class="text-2xl font-semibold text-fg" x-text="estimate.total_eur.toFixed(2) + ' €'"></span>
+              <span class="text-2xl font-semibold text-fg tabular-nums" x-tween.2="estimate.total_eur" data-suffix=" €"></span>
               <span class="text-xs text-fg-faint font-mono" x-text="estimate.total_cards + '/' + estimate.tier_size + ' cartas'"></span>
             </div>
             <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
@@ -535,10 +560,14 @@
             </button>
 
             {# Cartas del grupo — visible según isGroupExpanded (con defaults sensatos). #}
-            <div x-show="isGroupExpanded(group.role)">
+            <div x-show="isGroupExpanded(group.role)" x-collapse>
+            {# x-auto-animate.lazy: las cartas que entran, salen o se reordenan
+               se deslizan a su sitio; la carga inicial no se anima. #}
+            <div x-auto-animate.lazy>
             <template x-for="card in group.cards" :key="card.id">
               {# Borde izquierdo coloreado por rareza + fondo sutil si está excluida #}
-              <div class="flex gap-3 px-3 py-2.5 border-b border-border-subtle last:border-b-0
+              <div data-flash-row
+                   class="flex gap-3 px-3 py-2.5 border-b border-border-subtle last:border-b-0
                           hover:bg-bg-subtle/60 transition relative"
                    :class="[
                      selectedCardId === card.id ? 'bg-bg-subtle/80 ring-1 ring-inset ring-accent/40' : '',
@@ -553,6 +582,7 @@
                         title="{{ t.deck_card_change_art }}">
                   <img x-show="card.thumbnail_url"
                        :src="card.thumbnail_url" :data-preview="card.thumbnail_url"
+                       x-flip="card.thumbnail_url"
                        class="w-full h-full object-cover object-top" loading="lazy">
                   {# Cantidad como overlay en la parte inferior del thumb (solo si > 1) #}
                   <div x-show="card.quantity > 1"
@@ -722,6 +752,7 @@
 
               </div>
             </template>
+            </div>
             </div>
           </div>
         </template>
@@ -1044,6 +1075,22 @@
               </div>
             </template>
 
+            {# Artes de drives: progreso de la paginación y aviso de tope #}
+            <template x-if="driveSearchState.loading && driveSearchState.hits > 0 && driveSearchState.total > driveSearchState.hits">
+              <div class="text-[11px] text-fg-muted bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+                <span class="spinner-ring spinner-ring--sm"></span>
+                <span x-text="window._T.picker_drives_progress
+                                .replace('{loaded}', driveSearchState.hits.toLocaleString())
+                                .replace('{total}', driveSearchState.total.toLocaleString())"></span>
+              </div>
+            </template>
+            <template x-if="!driveSearchState.loading && driveSearchState.capped">
+              <div class="text-[11px] text-fg-muted bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+                <i data-lucide="info" class="w-3.5 h-3.5 shrink-0"></i>
+                <span x-text="window._T.picker_drives_capped.replaceAll('{total}', driveSearchState.total.toLocaleString())"></span>
+              </div>
+            </template>
+
             {# Empty state #}
             <template x-if="!pickerLoading && pickerFilteredArts.length === 0">
               <div class="text-center py-16">
@@ -1064,8 +1111,9 @@
                 <div class="group relative">
                   <button @click="pickArt(art, false)"
                           @dblclick="pickArt(art, true)"
-                          class="block w-full aspect-[63/88] rounded-md overflow-hidden border-2 transition
-                                 hover:scale-[1.02] hover:z-10 relative"
+                          data-tilt="foil" data-tilt-max="12"
+                          class="block w-full aspect-[63/88] rounded-md overflow-hidden border-2
+                                 hover:z-10 relative"
                           :class="art.is_chosen ? 'border-accent shadow-glow' :
                                   art.is_preferred ? 'border-emerald-500/50' :
                                   'border-border-subtle hover:border-accent/60'"
@@ -1162,7 +1210,7 @@
                     flex items-center justify-between">
           <span>
             <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> {{ t.picker_footer_click }} ·
-            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">{{ t.picker_footer_dblclick_key | default("Doble click") }}</kbd> {{ t.picker_footer_dblclick }} ·
+            <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">{{ t.picker_footer_dblclick_key }}</kbd> {{ t.picker_footer_dblclick }} ·
             <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Hover</kbd> {{ t.picker_footer_hover }}
           </span>
           <span>
@@ -1743,133 +1791,232 @@
     </div>
   </template>
 
-  {# ============ MODAL DE ESTADÍSTICAS ============ #}
+  {# ============ MODAL DE ESTADÍSTICAS ============
+     Gráficas propias en HTML/SVG, animadas con CSS (static/stats.css).
+     `statsReady` (deck-editor.js) se activa dos frames después de abrir y
+     dispara la entrada: columnas que suben, arcos que se dibujan, barras que
+     crecen. Ojo: `x-for` no funciona dentro de <svg>, así que los arcos se
+     generan con Jinja y cada uno lee su dato con colorSeg(). #}
   <template x-if="statsOpen">
-    <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+    <div class="st-overlay fixed inset-0 z-50 flex items-center justify-center p-6"
          @click="closeStats()"
          @keydown.escape.window="closeStats()">
-      <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl
-                  max-h-[90vh] flex flex-col overflow-hidden"
+      <div class="st-panel w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+           role="dialog" aria-modal="true" aria-labelledby="st-title"
            @click.stop>
-        {# Header #}
-        <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
-              <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
-            </div>
-            <div>
-              <div class="font-display text-lg text-accent-glow" x-text="deck ? deck.name : ''"></div>
-              <div class="text-xs text-fg-muted">Estadísticas del mazo</div>
+
+        {# Cabecera #}
+        <div class="st-head">
+          <div class="st-head__id">
+            <template x-if="coverUrl">
+              <img :src="coverUrl" alt="" class="st-head__cover">
+            </template>
+            <template x-if="!coverUrl">
+              <span class="st-head__icon"><i data-lucide="bar-chart-3" class="w-5 h-5"></i></span>
+            </template>
+            <div class="min-w-0">
+              <p class="st-head__kicker">{{ t.stats_subtitle }}</p>
+              <h2 id="st-title" class="st-head__title" x-text="deck ? deck.name : ''"></h2>
             </div>
           </div>
-          <button @click="closeStats()"
-                  class="text-fg-muted hover:text-fg p-1.5 rounded hover:bg-bg-subtle transition">
+          <button @click="closeStats()" class="st-close" title="{{ t.common_close }}" aria-label="{{ t.common_close }}">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
 
-        {# Body scrollable #}
-        <div class="flex-1 overflow-y-auto p-5 space-y-5">
-          {# Métricas rápidas #}
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <template x-for="m in stats.summary" :key="m.label">
-              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
-                <div class="flex items-center gap-1.5 text-[10px] text-fg-faint uppercase tracking-wider mb-1">
-                  <i class="w-3 h-3" :data-lucide="m.icon"></i>
-                  <span x-text="m.label"></span>
-                </div>
-                <div class="text-2xl font-display text-fg" x-text="m.value"></div>
-                <div x-show="m.hint" class="text-[10px] text-fg-faint mt-0.5" x-text="m.hint"></div>
-              </div>
-            </template>
-          </div>
+        <div class="st-body" :class="{ 'is-ready': statsReady }">
 
-          {# Grid de charts #}
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {# Curva de maná — ahora apilada por color #}
-            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium flex items-center gap-2">
-                  <i data-lucide="trending-up" class="w-4 h-4 text-accent"></i>
-                  Curva de maná
-                </h3>
-                <span class="text-[10px] text-fg-faint">apilada por color · excluye tierras</span>
+          <template x-if="stats.totalCards === 0">
+            <p class="st-empty">{{ t.stats_empty }}</p>
+          </template>
+
+          <template x-if="stats.totalCards > 0">
+          <div class="st-content">
+
+            {# Cifras clave #}
+            <div class="st-tiles">
+              <div class="st-tile" style="--i: 0">
+                <span class="st-tile__icon"><i data-lucide="library"></i></span>
+                <p class="st-tile__label">{{ t.stats_total }}</p>
+                <p class="st-tile__value" x-tween.from0="stats.totalCards"></p>
+                <p class="st-tile__hint" x-text="tf('stats_unique', {n: stats.uniqueCards})"></p>
               </div>
-              <div class="h-56">
-                <canvas x-ref="chartCurve"></canvas>
+              <div class="st-tile" style="--i: 1">
+                <span class="st-tile__icon"><i data-lucide="gauge"></i></span>
+                <p class="st-tile__label">{{ t.stats_avg_cmc }}</p>
+                <p class="st-tile__value" x-tween.2.from0="stats.avgCmc === null ? '—' : stats.avgCmc"></p>
+                <p class="st-tile__hint">{{ t.stats_avg_cmc_hint }}</p>
+              </div>
+              <div class="st-tile st-tile--ring" style="--i: 2">
+                <svg class="st-ring" viewBox="0 0 42 42" aria-hidden="true">
+                  <circle class="st-ring__track" cx="21" cy="21" r="15.9155"/>
+                  <circle class="st-ring__value st-ring__value--land" cx="21" cy="21" r="15.9155"
+                          :style="`--len: ${stats.landPct}`"/>
+                </svg>
+                <p class="st-tile__label">{{ t.stats_lands }}</p>
+                <p class="st-tile__value">
+                  <span x-tween.from0="stats.landCount"></span><span class="st-tile__pct" x-text="stats.landPct + '%'"></span>
+                </p>
+                <p class="st-tile__hint" x-text="tf('stats_lands_hint', {basic: stats.basicLandCount, nonbasic: stats.nonBasicLandCount})"></p>
+              </div>
+              <div class="st-tile st-tile--ring" style="--i: 3">
+                <svg class="st-ring" viewBox="0 0 42 42" aria-hidden="true">
+                  <circle class="st-ring__track" cx="21" cy="21" r="15.9155"/>
+                  <circle class="st-ring__value" cx="21" cy="21" r="15.9155"
+                          :style="`--len: ${100 - stats.landPct}`"/>
+                </svg>
+                <p class="st-tile__label">{{ t.stats_nonlands }}</p>
+                <p class="st-tile__value" x-tween.from0="stats.nonLandCount"></p>
+                <p class="st-tile__hint" x-text="tf('stats_nonlands_hint', {pct: 100 - stats.landPct})"></p>
               </div>
             </div>
 
-            {# Distribución de colores #}
-            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium flex items-center gap-2">
-                  <i data-lucide="palette" class="w-4 h-4 text-accent"></i>
-                  Colores
-                </h3>
-                <span class="text-[10px] text-fg-faint">pips en costes</span>
-              </div>
-              <div class="h-52">
-                <canvas x-ref="chartColors"></canvas>
-              </div>
-            </div>
-
-            {# Rareza — nuevo chart #}
-            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium flex items-center gap-2">
-                  <i data-lucide="gem" class="w-4 h-4 text-accent"></i>
-                  Rareza
-                </h3>
-                <span class="text-[10px] text-fg-faint">todas las cartas incluidas</span>
-              </div>
-              <div class="h-52">
-                <canvas x-ref="chartRarity"></canvas>
-              </div>
-            </div>
-
-            {# Tipos #}
-            <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium flex items-center gap-2">
-                  <i data-lucide="layers-3" class="w-4 h-4 text-accent"></i>
-                  Tipos de carta
-                </h3>
-                <span class="text-[10px] text-fg-faint" x-text="stats.totalCards + ' cartas incluidas'"></span>
-              </div>
-              <div class="h-64">
-                <canvas x-ref="chartTypes"></canvas>
-              </div>
-            </div>
-
-            {# Top keywords — nueva sección visual (no chart, más denso) #}
-            <div x-show="stats.topKeywords && stats.topKeywords.length > 0"
-                 class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 lg:col-span-2">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium flex items-center gap-2">
-                  <i data-lucide="tag" class="w-4 h-4 text-accent"></i>
-                  Keywords más presentes
-                </h3>
-                <span class="text-[10px] text-fg-faint">nº de cartas que tienen cada keyword</span>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <template x-for="kw in stats.topKeywords" :key="kw.name">
-                  <div class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 flex items-center gap-2">
-                    <span class="text-xs text-fg" x-text="kw.name"></span>
-                    <span class="text-[10px] text-accent font-mono" x-text="kw.count"></span>
+            {# Curva de maná #}
+            <section class="st-card st-card--wide" style="--i: 4">
+              <header class="st-card__head">
+                <h3><i data-lucide="trending-up"></i>{{ t.stats_curve_title }}</h3>
+                <span class="st-note">{{ t.stats_curve_note }}</span>
+              </header>
+              <div class="st-curve" @mouseleave="statsHover = {chart: null, key: null}">
+                <div class="st-curve__plot">
+                  <template x-for="g in stats.curve.gridlines" :key="g.v">
+                    <div class="st-grid" :style="`bottom: ${g.pct}%`"><span x-text="g.v"></span></div>
+                  </template>
+                  <template x-if="stats.curve.avgPos !== null">
+                    <div class="st-avg" :style="`left: ${stats.curve.avgPos}%`">
+                      <span x-text="tf('stats_curve_avg', {v: stats.avgCmc.toFixed(2)})"></span>
+                    </div>
+                  </template>
+                  <div class="st-cols">
+                    <template x-for="col in stats.curve.columns" :key="col.bucket">
+                      <div class="st-col" :style="`--i: ${col.i}`"
+                           :class="{ 'is-dim': statsDim('curve', col.bucket), 'is-empty': col.total === 0 }"
+                           @mouseenter="statsHover = {chart: 'curve', key: col.bucket}">
+                        <span class="st-col__count" x-show="col.total > 0"
+                              :style="`bottom: calc(${col.pct}% + 4px)`" x-text="col.total"></span>
+                        <div class="st-col__bar" :style="`height: ${col.pct}%`">
+                          <template x-for="sg in col.segments" :key="sg.key">
+                            <span class="st-seg" :class="'st-bg-' + sg.key" :style="`flex-grow: ${sg.count}`"></span>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
                   </div>
+                </div>
+                <div class="st-curve__axis">
+                  <template x-for="col in stats.curve.columns" :key="col.bucket">
+                    <span :class="{ 'is-active': statsHover.chart === 'curve' && statsHover.key === col.bucket }"
+                          x-text="col.bucket"></span>
+                  </template>
+                </div>
+                <p class="st-caption" x-text="curveCaption()"></p>
+              </div>
+            </section>
+
+            {# Colores #}
+            <section class="st-card" style="--i: 5">
+              <header class="st-card__head">
+                <h3><i data-lucide="palette"></i>{{ t.stats_colors_title }}</h3>
+                <span class="st-note">{{ t.stats_colors_note }}</span>
+              </header>
+              <div class="st-donut-wrap" @mouseleave="statsHover = {chart: null, key: null}">
+                <div class="st-donut">
+                  <svg viewBox="0 0 42 42" aria-hidden="true">
+                    <circle class="st-donut__track" cx="21" cy="21" r="15.9155"/>
+                    {% for key in ['W', 'U', 'B', 'R', 'G', 'C'] %}
+                    <circle class="st-donut__seg st-stroke-{{ key }}" cx="21" cy="21" r="15.9155"
+                            x-show="colorSeg('{{ key }}')"
+                            :class="{ 'is-dim': statsDim('colors', '{{ key }}') }"
+                            :style="colorSeg('{{ key }}') ? `--len: ${colorSeg('{{ key }}').len}; --start: ${colorSeg('{{ key }}').start}; --i: ${colorSeg('{{ key }}').i}` : ''"
+                            @mouseenter="statsHover = {chart: 'colors', key: '{{ key }}'}"/>
+                    {% endfor %}
+                  </svg>
+                  <div class="st-donut__center">
+                    <strong x-tween.from0="donutCenter().value"></strong>
+                    <span x-text="donutCenter().label"></span>
+                  </div>
+                </div>
+                <ul class="st-legend">
+                  <template x-for="sg in stats.colors.segments" :key="sg.key">
+                    <li :class="{ 'is-dim': statsDim('colors', sg.key) }" :style="`--i: ${sg.i}`"
+                        @mouseenter="statsHover = {chart: 'colors', key: sg.key}">
+                      <i class="ms ms-cost ms-shadow" :class="'ms-' + sg.key.toLowerCase()"></i>
+                      <span class="st-legend__name" x-text="window._t('stats_color_' + sg.key)"></span>
+                      <span class="st-legend__count" x-text="sg.count"></span>
+                      <span class="st-legend__pct" x-text="Math.round(sg.pct) + '%'"></span>
+                    </li>
+                  </template>
+                </ul>
+              </div>
+            </section>
+
+            {# Rareza #}
+            <section class="st-card" style="--i: 6">
+              <header class="st-card__head">
+                <h3><i data-lucide="gem"></i>{{ t.stats_rarity_title }}</h3>
+                <span class="st-note">{{ t.stats_rarity_note }}</span>
+              </header>
+              <div class="st-ribbon" @mouseleave="statsHover = {chart: null, key: null}">
+                <template x-for="sg in stats.rarity.segments" :key="sg.key">
+                  <span class="st-ribbon__seg" :class="['st-rarity-' + sg.key, statsDim('rarity', sg.key) ? 'is-dim' : '']"
+                        :style="`flex-grow: ${sg.count}; --i: ${sg.i}`"
+                        :title="window._t('stats_rarity_' + sg.key) + ': ' + sg.count"
+                        @mouseenter="statsHover = {chart: 'rarity', key: sg.key}"></span>
                 </template>
               </div>
-            </div>
+              <ul class="st-rarities" @mouseleave="statsHover = {chart: null, key: null}">
+                <template x-for="sg in stats.rarity.segments" :key="sg.key">
+                  <li :class="{ 'is-dim': statsDim('rarity', sg.key) }" :style="`--i: ${sg.i}`"
+                      @mouseenter="statsHover = {chart: 'rarity', key: sg.key}">
+                    <span class="st-gem" :class="'st-rarity-' + sg.key"></span>
+                    <span class="st-rarities__name" x-text="window._t('stats_rarity_' + sg.key)"></span>
+                    <span class="st-rarities__count" x-text="sg.count"></span>
+                    <span class="st-rarities__pct" x-text="Math.round(sg.pct) + '%'"></span>
+                  </li>
+                </template>
+              </ul>
+            </section>
+
+            {# Tipos #}
+            <section class="st-card" style="--i: 7">
+              <header class="st-card__head">
+                <h3><i data-lucide="layers-3"></i>{{ t.stats_types_title }}</h3>
+                <span class="st-note" x-text="tf('stats_types_note', {n: stats.totalCards})"></span>
+              </header>
+              <ul class="st-types">
+                <template x-for="row in stats.types" :key="row.key">
+                  <li class="st-type" :style="`--i: ${row.i}`">
+                    <i class="ms st-type__icon" :class="'ms-' + typeIcon(row.key)"></i>
+                    <span class="st-type__name" x-text="window._t('stats_type_' + row.key)"></span>
+                    <span class="st-type__track"><span class="st-type__fill" :style="`width: ${row.pct}%`"></span></span>
+                    <span class="st-type__count" x-text="row.count"></span>
+                    <span class="st-type__share" x-text="row.share + '%'"></span>
+                  </li>
+                </template>
+              </ul>
+            </section>
+
+            {# Keywords #}
+            <section class="st-card" style="--i: 8" x-show="stats.keywords.length > 0">
+              <header class="st-card__head">
+                <h3><i data-lucide="sparkles"></i>{{ t.stats_keywords_title }}</h3>
+                <span class="st-note">{{ t.stats_keywords_note }}</span>
+              </header>
+              <div class="st-keywords">
+                <template x-for="kw in stats.keywords" :key="kw.name">
+                  <span class="st-kw" :style="`--i: ${kw.i}; --w: ${kw.weight}`">
+                    <span x-text="kw.name"></span>
+                    <b x-text="kw.count"></b>
+                  </span>
+                </template>
+              </div>
+            </section>
+
           </div>
+          </template>
         </div>
 
-        {# Footer #}
-        <div class="px-5 py-3 border-t border-border-subtle bg-bg-inset text-[11px] text-fg-faint shrink-0
-                    flex items-center justify-between">
-          <span>Cálculo sobre cartas <em class="text-fg-muted">incluidas</em> del commander y mainboard.</span>
-          <span>Sideboard/tokens excluidos.</span>
-        </div>
+        <div class="st-foot">{{ t.stats_footer }}</div>
       </div>
     </div>
   </template>

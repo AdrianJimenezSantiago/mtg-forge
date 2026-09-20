@@ -26,7 +26,7 @@ from mpc_forge.schemas import (
     DeckView,
     IllegalCardView,
 )
-from mpc_forge.services import custom_art, deck_validation, history
+from mpc_forge.services import custom_art, deck_covers, deck_validation, history
 
 log = logging.getLogger(__name__)
 
@@ -386,6 +386,16 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         illegal,
     )
     price = _deck_price(cards_list, printings_by_id)
+    commanders = sorted((c for c in cards_list if c.role == deck_covers.COMMANDER_ROLE), key=lambda c: c.id)
+    cover_printings = printings_by_id
+    wanted = deck.commander_scryfall_id
+    if commanders and wanted and wanted not in printings_by_id:
+        # El arte del commander cambió: la impresión de importación ya no está
+        # entre las del mazo y hace falta para identificarlo por oracle_id.
+        base = await db.get(PrintingCache, wanted)
+        if base is not None:
+            cover_printings = {**printings_by_id, wanted: base}
+    cover_card = deck_covers.pick_cover_card(deck, commanders, cover_printings)
     return DeckView(
         id=deck.id,
         name=deck.name,
@@ -396,6 +406,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         imported_at=deck.imported_at,
         updated_at=deck.updated_at,
         cards=card_views,
+        cover_card_id=cover_card.id if cover_card else None,
         validation=DeckValidation(
             format=val.format,
             expected=val.expected,

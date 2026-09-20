@@ -1,0 +1,80 @@
+{# Modal: reporte de cartas no importadas.
+
+   Parcial compartido por la biblioteca (index.html) y la landing
+   (landing.html). Tiene que incluirse DENTRO de un componente
+   `importPanel()` (home.js): usa su estado `unresolvedModal` y sus métodos
+   copyUnresolved / closeUnresolvedAndReload / continueToDeck. #}
+    <template x-if="unresolvedModal.open">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+           @keydown.escape.window="unresolvedModal.open = false"
+           x-transition.opacity>
+        <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal animate-scale-in max-w-2xl w-full
+                    max-h-[85vh] flex flex-col"
+             @click.outside="unresolvedModal.open = false">
+          {# Header #}
+          <div class="flex items-start gap-3 p-5 border-b border-border-subtle">
+            <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+              <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <h3 class="font-semibold text-fg">{{ t.home_unresolved_title }}</h3>
+              <p class="text-xs text-fg-muted mt-1">
+                <span class="text-amber-400 font-medium" x-text="unresolvedModal.unresolved.length"></span>
+                <span x-text="unresolvedModal.unresolved.length === 1 ? ' {{ t.home_unresolved_not_resolved }}' : ' {{ t.home_unresolved_not_resolved_pl }}'"></span>
+                contra Scryfall. El mazo <span class="text-fg font-medium" x-text="'“' + unresolvedModal.deckName + '”'"></span>
+                {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
+              </p>
+            </div>
+            <button @click="unresolvedModal.open = false"
+                    class="p-1 rounded hover:bg-bg-subtle text-fg-muted hover:text-fg">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          {# Body: lista de fallos con línea original + motivo probable #}
+          <div class="flex-1 overflow-y-auto p-5 space-y-2">
+            <p class="text-xs text-fg-muted mb-2">
+              {{ t.home_unresolved_hint }}
+            </p>
+            <div class="rounded-lg border border-border-subtle bg-bg-subtle/40 divide-y divide-border-subtle/60">
+              <template x-for="(entry, i) in unresolvedModal.unresolved" :key="i">
+                <div class="p-3 flex items-start gap-3">
+                  <span class="text-[10px] font-mono text-fg-faint mt-0.5 w-6 text-right shrink-0" x-text="i + 1"></span>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-mono text-fg break-words"
+                         x-text="entry.raw_line || (entry.quantity + ' ' + entry.name)"></div>
+                    <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span x-show="entry.set">Set: <span class="font-mono uppercase" x-text="entry.set"></span></span>
+                      <span x-show="entry.number">Nº: <span class="font-mono" x-text="entry.number"></span></span>
+                      <span x-show="entry.role && entry.role !== 'mainboard'">Role: <span x-text="entry.role"></span></span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {# Footer: acciones #}
+          <div class="border-t border-border-subtle p-4 flex flex-wrap items-center gap-2 justify-end">
+            <button @click="copyUnresolved()"
+                    class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
+                           px-3 py-2 rounded-md transition flex items-center gap-1.5">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              {{ t.home_unresolved_copy }}
+            </button>
+            <div class="flex-1"></div>
+            <button @click="closeUnresolvedAndReload()"
+                    class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
+                           px-3 py-2 rounded-md transition">
+              {{ t.common_close }}
+            </button>
+            <button @click="continueToDeck()"
+                    class="text-xs bg-accent hover:bg-accent-soft text-black font-medium
+                           px-3 py-2 rounded-md transition flex items-center gap-1.5">
+              <span>{{ t.home_unresolved_continue }}</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>

@@ -8,8 +8,10 @@ import sqlite3
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
 
 from mpc_forge import config as cfg
@@ -27,6 +29,7 @@ from mpc_forge.routes import decks, export, integrations, ui
 from mpc_forge.routes import library as library_routes
 from mpc_forge.routes import planner as planner_routes
 from mpc_forge.routes import settings as settings_routes
+from mpc_forge.routes import storage as storage_routes
 from mpc_forge.routes import thumbs as thumbs_routes
 from mpc_forge.services import art_sources as art_sources_service
 from mpc_forge.services import custom_art as custom_art_service
@@ -310,6 +313,31 @@ class CachedStaticFiles(StaticFiles):
         return response
 
 
+# Rutas cuyos 404 deben seguir siendo la respuesta JSON/vacía de siempre: la
+# API (el frontend lee `detail`), los ficheros estáticos y las imágenes. Una
+# página HTML de 404 ahí rompería los `fetch()` y los `<img onerror>`.
+_NON_HTML_PREFIXES = (
+    "/api/", "/static/", "/art/", "/custom_art/", "/thumbs/",
+    "/local-source/", "/i18n/",
+)
+
+
+def _wants_html_page(request: Request) -> bool:
+    """¿Es una navegación del usuario que merece la página 404 con estilo?"""
+    if request.method not in ("GET", "HEAD"):
+        return False
+    if request.url.path.startswith(_NON_HTML_PREFIXES):
+        return False
+    return "text/html" in request.headers.get("accept", "")
+
+
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """404 del navegador → plantilla propia. Todo lo demás, como antes."""
+    if exc.status_code == 404 and _wants_html_page(request):
+        return ui.render_not_found(request)
+    return await http_exception_handler(request, exc)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MPC Forge",
@@ -359,6 +387,9 @@ def create_app() -> FastAPI:
     # /api/thumb/ solo interviene cuando hay que GENERARLAS.
     app.mount("/thumbs", CachedStaticFiles(directory=str(cfg.PATHS.thumbs_dir), max_age=2592000), name="thumbs")
 
+    # Página 404 propia para las navegaciones del usuario (ver arriba).
+    app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+
     app.include_router(ui.router)
     app.include_router(decks.router)
     app.include_router(export.router)
@@ -374,6 +405,7 @@ def create_app() -> FastAPI:
     app.include_router(library_routes.router)
     app.include_router(bulk_routes.router)
     app.include_router(thumbs_routes.router)
+    app.include_router(storage_routes.router)
     app.include_router(debug_routes.router)
     return app
 

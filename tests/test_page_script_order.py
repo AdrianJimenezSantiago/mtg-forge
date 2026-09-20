@@ -36,6 +36,7 @@ TEMPLATES = ROOT / "templates"
 # cargar. `proof.html` queda fuera: no usa Alpine.
 PAGES = {
     "index.html": "home.js",
+    "landing.html": "landing.js",
     "deck.html": "deck-editor.js",
     "pdf_studio.html": "pdf-studio.js",
     "settings.html": "settings.js",

@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 from mpc_forge.config import PATHS
+from mpc_forge.services import storage as storage_service
 from mpc_forge.services import thumbnails
 
 router = APIRouter(tags=["thumbnails"])
@@ -96,5 +97,7 @@ async def clear_thumbnails() -> dict[str, int]:
     abra una rejilla.
     """
     removed = thumbnails.clear()
+    # El desglose de almacenamiento acaba de quedarse obsoleto.
+    storage_service.invalidate()
     log.info("Caché de miniaturas vaciada: %d ficheros", removed)
     return {"removed": removed}
