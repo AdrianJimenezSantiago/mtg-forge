@@ -50,8 +50,6 @@ def test_multiline_run_on_windows_declares_a_shell(workflow):
     offenders: list[str] = []
     for job_name, job in _load(workflow)["jobs"].items():
         if not _runs_on_windows(job):
-            # En los runners de Linux y macOS el shell por defecto ya es bash
-            # con `set -e`, así que el problema no se da.
             continue
         for step in job.get("steps", []):
             run = step.get("run")
@@ -220,5 +218,4 @@ class TestFrozenLauncher:
         text = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
         assert "--no-browser" in text and "--port 8791" in text
         launcher = self._launcher()
-        # No lanza: son flags válidos.
         launcher._parse_args(["--no-browser", "--port", "8791"])

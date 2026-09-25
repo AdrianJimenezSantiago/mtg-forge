@@ -41,26 +41,25 @@ class DeckActivityKind:
     El frontend (history.html → KIND_META) tiene un renderer para cada uno.
     Añadir aquí + añadir renderer allí = feature completa.
     """
-    DECK_CREATED = "deck_created"       # payload: {source: 'moxfield'|'text'|'manual', card_count, unresolved_count}
-    DECK_RENAMED = "deck_renamed"        # payload: {old_name, new_name}
-    DECK_LOCALIZED = "deck_localized"    # payload: {lang, localized, unchanged, unavailable, skipped_custom}
+    DECK_CREATED = "deck_created"
+    DECK_RENAMED = "deck_renamed"
+    DECK_LOCALIZED = "deck_localized"
 
-    CARD_ADDED = "card_added"            # payload: {quantity, role}
-    CARD_REMOVED = "card_removed"        # payload: {quantity, role}
-    CARD_MOVED = "card_moved"            # payload: {from_role, to_role}
-    CARD_QTY_CHANGED = "card_qty_changed"        # payload: {old_qty, new_qty}
-    CARD_INCLUDE_TOGGLED = "card_include_toggled"  # payload: {new_include: bool}
-    CARD_ART_CHANGED = "card_art_changed"        # payload: {old_scryfall_id, new_scryfall_id, old_set, new_set, remember_globally, custom_art_id, face}
+    CARD_ADDED = "card_added"
+    CARD_REMOVED = "card_removed"
+    CARD_MOVED = "card_moved"
+    CARD_QTY_CHANGED = "card_qty_changed"
+    CARD_INCLUDE_TOGGLED = "card_include_toggled"
+    CARD_ART_CHANGED = "card_art_changed"
 
-    ROLE_CLEARED = "role_cleared"        # payload: {role, count}
-    RELATED_ADDED = "related_added"      # payload: {count, kinds:[token,meld_result…]}
+    ROLE_CLEARED = "role_cleared"
+    RELATED_ADDED = "related_added"
 
-    XML_GENERATED = "xml_generated"      # payload: {cardstock, foil, total_cards, tier_size, xml_path}
-    PDF_GENERATED = "pdf_generated"      # payload: {page_size, cut_marks, include_backs, total_slots, total_pages, pdf_path}
-    IMAGES_EXPORTED = "images_exported"  # payload: {total_files, total_unique_cards, total_dfc_backs, zip_path, zip_filename}
+    XML_GENERATED = "xml_generated"
+    PDF_GENERATED = "pdf_generated"
+    IMAGES_EXPORTED = "images_exported"
 
 
-# Etiquetas legibles usadas si el caller no pasa summary a mano.
 _DEFAULT_SUMMARY: dict[str, str] = {
     DeckActivityKind.DECK_CREATED: "Mazo creado",
     DeckActivityKind.DECK_RENAMED: "Mazo renombrado",
@@ -144,25 +143,3 @@ async def list_for_deck(
     if kinds:
         stmt = stmt.where(DeckActivity.kind.in_(kinds))
     return list((await db.scalars(stmt)).all())
-
-
-async def count_for_deck(db: AsyncSession, deck_id: int) -> int:
-    """Cuenta rápida de eventos para pintar el badge en la card del mazo."""
-    from sqlalchemy import func
-    result = await db.execute(
-        select(func.count(DeckActivity.id)).where(DeckActivity.deck_id == deck_id)
-    )
-    return int(result.scalar_one() or 0)
-
-
-async def last_activity_for_deck(
-    db: AsyncSession, deck_id: int
-) -> DeckActivity | None:
-    """Último evento — usado para "última actividad hace X" en la card."""
-    stmt = (
-        select(DeckActivity)
-        .where(DeckActivity.deck_id == deck_id)
-        .order_by(DeckActivity.created_at.desc())
-        .limit(1)
-    )
-    return (await db.scalars(stmt)).first()

@@ -66,7 +66,7 @@ class DeckCardResolved:
     quantity: int
     scryfall_id: str
     front_path: Path
-    back_path: Path | None = None  # DFC
+    back_path: Path | None = None
     back_name: str | None = None
     query: str = ""
 
@@ -80,13 +80,9 @@ class XMLBuildResult:
 
 def _slug(text: str) -> str:
     import re
-    # Normaliza separador DFC (//) → espacio (antes de limpiar el resto)
     text = text.replace("//", " ")
-    # Guiones → espacio: Ex-SOLDIER → ex soldier, Master-at-Arms → master at arms
     text = text.replace("-", " ")
-    # Elimina todo lo que no sea alfanumérico ni espacio
     text = "".join(c for c in text.lower() if c.isalnum() or c == " ")
-    # Colapsa múltiples espacios consecutivos (deja solo uno)
     return re.sub(r" +", " ", text).strip()
 
 
@@ -293,10 +289,8 @@ async def plan_deck_slots(
         )
     ).all()
     out: list[DeckCardResolved] = []
-    _placeholder = Path("")  # nunca se leerá — solo cuenta como "hay back"
+    _placeholder = Path("")
     for dc in cards:
-        # Consultamos el PrintingCache solo por `back_name` — el resto no
-        # importa para el plan de slots.
         pc = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
         has_back = bool(pc and pc.back_name)
         out.append(DeckCardResolved(
@@ -351,7 +345,7 @@ def build_xml(
 
     slot_cursor = 0
     slots_map: list[str] = []
-    slots_with_custom_back: set[int] = set()  # slots que YA tienen back propio
+    slots_with_custom_back: set[int] = set()
 
     for c in cards:
         slots = list(range(slot_cursor, slot_cursor + c.quantity))
@@ -361,8 +355,6 @@ def build_xml(
             slots_map.append(c.name)
 
         front_card = ET.SubElement(fronts_el, "card")
-        # web_mode=True → <id> vacío; mpcfill.com usará <query> para buscar.
-        # web_mode=False → ruta local para el desktop client de MPC Autofill.
         ET.SubElement(front_card, "id").text = "" if web_mode else str(c.front_path)
         ET.SubElement(front_card, "slots").text = slots_str
         ET.SubElement(front_card, "name").text = c.name
@@ -376,7 +368,6 @@ def build_xml(
             ET.SubElement(back_card, "query").text = _slug(c.back_name or c.name)
             slots_with_custom_back.update(slots)
 
-    # --- Cardback global aplicado explícitamente a los slots restantes ---
     if cardback_path:
         remaining = [s for s in range(slot_cursor) if s not in slots_with_custom_back]
         if remaining:
@@ -386,7 +377,6 @@ def build_xml(
             cb_name = cardback_path.name
             ET.SubElement(back_card, "name").text = cb_name
             ET.SubElement(back_card, "query").text = _slug(cardback_path.stem)
-        # Fallback global (por si el tool no lee <backs>)
         if not web_mode:
             ET.SubElement(root, "cardback").text = str(cardback_path)
 

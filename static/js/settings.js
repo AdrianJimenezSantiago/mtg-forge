@@ -1,25 +1,5 @@
-/**
- * Vista de Ajustes
- *
- * Extraído de `templates/settings.html`, donde vivía como un bloque `<script>`
- * de 822 líneas. La lógica es idéntica: solo ha cambiado de fichero.
- *
- * Las funciones que Alpine necesita resolver desde los atributos `x-data` del
- * HTML se publican en `window` al final del módulo. Es deliberado: Alpine
- * evalúa `x-data` como una expresión en el ámbito global, así que un `export`
- * por sí solo no basta.
- *
- * Regenerar con:  python scripts/extract_inline_js.py
- */
-// ============================================================================
-// SHELL DE LA VISTA DE AJUSTES
-// ============================================================================
-// Contiene el estado principal (settings, sección activa, búsqueda, modal drives)
-// y helpers de render. Los sub-componentes (autofillStatus, artSourcesPanel,
-// debugLogPanel) se registran aparte, reutilizando su lógica original.
 function settingsShell() {
   return {
-    // Estado principal
     loading: true,
     definitions: [],
     secretsSet: [],
@@ -29,12 +9,6 @@ function settingsShell() {
     backingUp: false,
     lastBackup: null,
 
-    // --- Ubicación de datos (rutas personalizables) ---
-    // paths: dict con rutas efectivas en uso, viene de GET /api/settings/paths.
-    // pathOverrides: valores editados por el usuario en los inputs (posiblemente
-    //   distintos de lo que hay en BD hasta que se guarda). Empieza con lo
-    //   guardado en values (values['paths.art_dir'] etc).
-    // pathsDirty: true si algún input cambió respecto a lo guardado.
     paths: {
       install_root: '', data_dir: '', db_path: '',
       art_dir: '', custom_art_dir: '', exports_dir: '',
@@ -47,10 +21,6 @@ function settingsShell() {
     savingPaths: false,
     pathsDirty: false,
 
-    // --- Almacenamiento en disco ---
-    // `storage` es el snapshot de GET /api/storage/ (null mientras no se haya
-    // entrado en ninguna sección que lo use). `exportsKeepRecent` decide si la
-    // limpieza de exportaciones respeta los últimos 30 días.
     storage: null,
     storageLoading: false,
     storageError: '',
@@ -58,9 +28,6 @@ function settingsShell() {
     exportsKeepRecent: true,
     _storageLoaded: false,
 
-    // Configuración estática de los inputs. La label/description también
-    // vive en DEFINITIONS del backend, pero aquí duplicamos las mínimas para
-    // no depender de el JOIN + orden. Estable y auto-documentada.
     get customPathsConfig() {
       const map = [
         {
@@ -107,22 +74,14 @@ function settingsShell() {
       return map.map(m => ({
         ...m,
         effectivePath: this.paths[m.effectiveKey] || '',
-        // null mientras no se haya calculado el almacenamiento; la fila
-        // simplemente no pinta el tamaño en ese caso.
         bytes: this.sizeForCategory(m.storageKey),
       }));
     },
 
-    // Navegación entre secciones
     activeSection: 'general',
     searchQuery: '',
     showDrivesModal: false,
 
-    // Resumen ligero de fuentes de arte (solo para la sección "Fuentes de arte").
-    // El detalle vive en el modal (componente artSourcesPanel). Vive aquí y no en
-    // un x-data hijo para que showDrivesModal y selectSection sean accesibles
-    // desde los botones de esa sección sin necesidad de $parent (Alpine 3 no lo
-    // expone como magic property).
     artSources: [],
     driveStats: {total_files: 0, sources_indexed: 0},
     hasGoogleApiKey: false,
@@ -136,9 +95,6 @@ function settingsShell() {
       return Math.round(100 * this.driveStats.sources_indexed / this.artSources.length);
     },
 
-    // Definición del sidebar. `group` es la etiqueta que usa settings.py; la
-    // relación key ↔ group se utiliza también para saltar de un resultado de
-    // búsqueda a su sección.
     get sections() {
       const _t = window._t || ((k) => k);
       return [
@@ -162,19 +118,12 @@ function settingsShell() {
         const data = await r.json();
         this.definitions = data.definitions;
         this.values = data.values;
-        // Los settings marcados como `secret` llegan vacíos por diseño: el
-        // backend nunca los devuelve en claro. `secretsSet` dice cuáles ya
-        // tienen valor guardado, que es lo único que la UI necesita saber.
         this.secretsSet = data.secrets_set || [];
-        // Rutas efectivas + overrides — se pintan en la sección Backup y datos.
-        // Fire-and-forget: si falla, la sección muestra "..." pero no rompe
-        // el resto de settings.
         this.loadPaths();
       } catch (e) {
         window.toast(window._t('settings_loading'), e.message);
       } finally {
         this.loading = false;
-        // Reload lucide iconos tras render inicial
         this.$nextTick(() => window.icons && window.icons());
       }
     },
@@ -182,20 +131,10 @@ function settingsShell() {
     selectSection(key) {
       this.activeSection = key;
       this.searchQuery = '';
-      // Las dos secciones que enseñan cifras de disco piden el desglose la
-      // primera vez que se abren. No se carga en `load()` a propósito:
-      // recorrer decenas de miles de imágenes no puede ser el precio de
-      // entrar en Ajustes a cambiar el tipo de cambio del dólar.
       if (key === 'storage' || key === 'backup') this.loadStorage();
-      // Refrescar iconos tras el swap de sección (los que aparecen en el nuevo panel)
       this.$nextTick(() => window.icons && window.icons());
     },
 
-    // Carga perezosa del resumen de fuentes de arte. Se dispara al entrar en la
-    // sección "art-sources" (x-init en el div de la sección). Solo se ejecuta
-    // una vez por vida de la vista — al reabrir el modal, artSourcesPanel hace
-    // su propio load() completo y ese es el estado autoritativo mientras el
-    // modal está abierto.
     async loadArtSourcesSummary() {
       if (this._artSummaryLoaded) return;
       this._artSummaryLoaded = true;
@@ -211,19 +150,15 @@ function settingsShell() {
           const s = await settingsR.json();
           this.hasGoogleApiKey = !!(s.values.google_api_key || '').trim();
         }
-      } catch (e) { /* silent — resumen es best-effort */ }
+      } catch (e) {}
       this.$nextTick(() => window.icons && window.icons());
     },
-
-    // ------- Helpers de agrupación / búsqueda -------
 
     defsInGroup(groupName) {
       return this.definitions.filter(d => d.group === groupName);
     },
 
     sectionKeyForGroup(groupName) {
-      // Mapeo especial: los settings del grupo "Ubicación de datos" viven
-      // dentro de la sección "Backup y datos" (no tienen sección propia).
       if (groupName === 'Ubicación de datos') return 'backup';
       const s = this.sections.find(x => x.group === groupName);
       return s ? s.key : 'general';
@@ -251,16 +186,10 @@ function settingsShell() {
       return this.values[def.key] === def.default;
     },
 
-    /** ¿Hay una credencial guardada para esta clave? */
     isSecretSet(key) {
       return (this.secretsSet || []).includes(key);
     },
 
-    /**
-     * Guarda una credencial. El input está siempre vacío al cargar, así que
-     * solo mandamos lo que el usuario acaba de escribir; una cadena vacía el
-     * backend la interpreta como "no tocar".
-     */
     async updateSecret(key, value) {
       const text = String(value || '').trim();
       if (!text) return;
@@ -268,16 +197,12 @@ function settingsShell() {
       this.secretInputs[key] = '';
     },
 
-    /** Borra una credencial guardada (centinela que el backend entiende). */
     async clearSecret(key) {
       await this.update(key, '__CLEAR__');
       this.secretInputs[key] = '';
     },
 
-    // ------- Actualización de un setting -------
-
     async update(key, value) {
-      // Actualización optimista
       this.values[key] = value;
       try {
         const r = await fetch('/api/settings/', {
@@ -292,7 +217,7 @@ function settingsShell() {
         window.toast(window._t('settings_saved'), key);
       } catch (e) {
         window.toast(window._t('common_error'), e.message);
-        this.load();  // recarga estado auténtico
+        this.load();
       }
     },
 
@@ -302,8 +227,6 @@ function settingsShell() {
         window._t('common_reset') + '?',
         { danger: true, icon: 'rotate-ccw', confirmLabel: window._t('common_reset') })) return;
       const updates = {};
-      // Los secretos se excluyen del reset masivo: un "restaurar valores por
-      // defecto" no debería borrar silenciosamente la API key del usuario.
       for (const d of this.definitions) {
         if (d.secret) continue;
         updates[d.key] = d.default;
@@ -337,16 +260,6 @@ function settingsShell() {
       }
     },
 
-    // --- Almacenamiento ---
-    //
-    // Vive en el shell y no en un componente hijo porque el desglose lo
-    // consumen DOS sitios: la sección "Almacenamiento" y la lista de rutas de
-    // "Backup y datos", donde cada carpeta enseña lo que ocupa. Con un x-data
-    // aparte habría que duplicar la petición o cruzar componentes, que en
-    // Alpine 3 no tiene una forma limpia.
-    //
-    // La carga es perezosa: escanear el disco no puede ser el precio de abrir
-    // Ajustes para cambiar el tipo de cambio del dólar.
     async loadStorage(refresh = false) {
       if (this._storageLoaded && !refresh) return;
       this._storageLoaded = true;
@@ -364,14 +277,6 @@ function settingsShell() {
       }
     },
 
-    /**
-     * Libera una categoría recuperable.
-     *
-     * Los dos objetivos con consecuencias visibles para el usuario (borrar
-     * exportaciones, podar backups) piden confirmación; las miniaturas y los
-     * logs no, porque se regeneran solos y pedir permiso para eso solo enseña
-     * a aceptar diálogos sin leerlos.
-     */
     async purgeStorage(target) {
       const confirmKey = {
         exports: 'storage_confirm_exports',
@@ -386,8 +291,6 @@ function settingsShell() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             targets: [target],
-            // El filtro solo aplica a exports; para el resto el backend lo
-            // ignora. 30 días es el mismo valor que anuncia la casilla.
             exports_older_than_days: this.exportsKeepRecent ? 30 : 0,
           }),
         });
@@ -411,7 +314,6 @@ function settingsShell() {
       }
     },
 
-    /** Bytes → "1,4 GB". Se corta a un decimal salvo en cifras de tres dígitos. */
     fmtBytes(value) {
       const bytes = Number(value) || 0;
       if (bytes < 1024) return `${bytes} B`;
@@ -422,14 +324,12 @@ function settingsShell() {
       return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[i]}`;
     },
 
-    /** Porcentaje que representa una cifra sobre el total en disco. */
     storagePct(bytes) {
       const total = this.storage && this.storage.totals ? this.storage.totals.bytes : 0;
       if (!total) return 0;
       return (Number(bytes) || 0) * 100 / total;
     },
 
-    /** Categorías con algo dentro, de mayor a menor. Las vacías no aportan. */
     get storageRows() {
       if (!this.storage) return [];
       return this.storage.categories
@@ -441,17 +341,13 @@ function settingsShell() {
       return this.storageRows.filter(c => c.reclaimable && c.bytes > 0);
     },
 
-    // Las etiquetas viajan por i18n con la clave derivada del identificador
-    // de categoría (`storage_cat_art`), así que el backend no necesita saber
-    // nada de idiomas para describir su propio desglose.
     catLabel(key) { return window._t(`storage_cat_${key}`); },
     catDesc(key) { return window._t(`storage_cat_${key}_desc`); },
     kindLabel(kind) { return window._t(`storage_kind_${kind}`); },
 
-    /** Color de la barra por tipo de dato. Inline: Tailwind purga lo que no ve. */
     kindColor(kind) {
       return {
-        essential:   '#d4af37',  // accent — lo que no se recupera
+        essential:   '#d4af37',
         refetchable: '#5b9bd5',
         derived:     '#6a6a80',
         output:      '#4ade80',
@@ -459,9 +355,6 @@ function settingsShell() {
       }[kind] || '#6a6a80';
     },
 
-    // Los textos con placeholders se arman aquí y no en la plantilla: así la
-    // traducción sigue siendo una frase entera y no tres trozos de HTML
-    // pegados en un orden que solo vale para el español.
     diskFreeText(vol) {
       return window._t('storage_disk_free')
         .replace('{size}', this.fmtBytes(vol.free_bytes))
@@ -471,7 +364,6 @@ function settingsShell() {
       const pct = vol.total_bytes
         ? (vol.app_bytes * 100 / vol.total_bytes)
         : 0;
-      // Por debajo del 0,1 % "0,0 %" se lee como un error; se marca como <0,1.
       const shown = pct > 0 && pct < 0.1 ? '<0,1' : pct.toFixed(1);
       return window._t('storage_disk_app_share').replace('{pct}', shown);
     },
@@ -493,24 +385,17 @@ function settingsShell() {
         .replace('{size}', this.fmtBytes(b.bytes));
     },
 
-    /** Bytes de una categoría, para pintarlos junto a su ruta editable. */
     sizeForCategory(key) {
       if (!this.storage) return null;
       const row = this.storage.categories.find(c => c.key === key);
       return row ? row.bytes : null;
     },
 
-    // --- Métodos de paths ---
-    // Se llama desde load() principal (al arrancar la vista) y desde el botón
-    // Refrescar. Actualiza tanto `paths` (rutas efectivas) como los inputs
-    // (pathOverrides) desde el valor guardado en `values`.
     async loadPaths() {
       try {
         const r = await fetch('/api/settings/paths');
         if (!r.ok) throw new Error(window._t('settings_paths'));
         this.paths = await r.json();
-        // Poblamos los inputs con los overrides guardados. Si values[key] no
-        // existe (primera vez), queda vacío = usa default.
         for (const k of Object.keys(this.pathOverrides)) {
           this.pathOverrides[k] = String(this.values[k] || '');
         }
@@ -520,18 +405,15 @@ function settingsShell() {
       }
     },
     markPathDirty(_key) {
-      // Detecta si algún override difiere del valor guardado en values.
       this.pathsDirty = this.customPathsConfig.some(cfg =>
         (this.pathOverrides[cfg.key] || '') !== String(this.values[cfg.key] || '')
       );
     },
     resetPath(key) {
-      // Vaciar el override — el backend lo interpretará como "usar default".
       this.pathOverrides[key] = '';
       this.markPathDirty(key);
     },
     discardPathChanges() {
-      // Restaurar los inputs al valor guardado en BD, descartando cambios.
       for (const k of Object.keys(this.pathOverrides)) {
         this.pathOverrides[k] = String(this.values[k] || '');
       }
@@ -540,8 +422,6 @@ function settingsShell() {
     async savePathOverrides() {
       this.savingPaths = true;
       try {
-        // Enviamos SOLO las claves de paths.* — no queremos que este PUT sobre-
-        // escriba otros settings modificados en paralelo.
         const updates = {};
         for (const k of Object.keys(this.pathOverrides)) {
           updates[k] = (this.pathOverrides[k] || '').trim();
@@ -556,7 +436,6 @@ function settingsShell() {
         }
         const data = await r.json();
         this.values = data.values;
-        // Recargamos las rutas efectivas para reflejar los cambios aplicados.
         await this.loadPaths();
         this.pathsDirty = false;
         window.toast(window._t('settings_paths_saved'), window._t('settings_paths_saved_desc'));
@@ -567,22 +446,6 @@ function settingsShell() {
       }
     },
 
-    // ------- Renders inline (para vista de búsqueda y filas dentro de sección) -------
-    //
-    // En lugar de repetir el markup del input para cada tipo en cada sección,
-    // usamos x-html con estos helpers. Como necesitamos acceder al método
-    // update() al cambiar el valor, la función devuelve HTML con @change que
-    // llama a $data.update(...). x-html + eventos delegados funciona bien
-    // dentro de Alpine porque el HTML se procesa por Alpine tras insertarse.
-
-    /**
-     * Control para credenciales.
-     *
-     * El input arranca SIEMPRE vacío: el backend no devuelve el valor, ni
-     * siquiera enmascarado. Si ya hay una guardada, el placeholder lo indica y
-     * aparece un botón para borrarla. Escribir algo y salir del campo la
-     * sustituye.
-     */
     renderSecretInput(def) {
       const isSet = this.isSecretSet(def.key);
       const placeholder = isSet
@@ -639,8 +502,6 @@ function settingsShell() {
                               focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
       }
       if (def.type === 'path') {
-        // Como str pero con placeholder "por defecto" — comunica claramente
-        // que vacío ≠ desactivado, sino "usar la ruta calculada por la app".
         return `<input type="text" value="${escLabel}" placeholder=""
                        @change="update('${def.key}', $event.target.value)"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
@@ -662,8 +523,6 @@ function settingsShell() {
 
     renderRow(def) {
       const desc = def.description || '';
-      // Para un secreto no se pinta el badge "≠ default (valor)": imprimiría
-      // la credencial en el DOM, que es justo lo que estamos evitando.
       const isDefault = def.secret
         ? !this.isSecretSet(def.key)
         : this.values[def.key] === def.default;
@@ -687,20 +546,8 @@ function settingsShell() {
   };
 }
 
-// ============================================================================
-// SUB-COMPONENTE: modo offline (bulk data de Scryfall)
-//
-// Hasta ahora esta funcionalidad solo se podía arrancar con un POST manual a
-// /api/bulk/sync desde la documentación interactiva de la API. Era la opción
-// más potente de la app (deja de depender de la red para resolver cartas) y
-// estaba escondida detrás de Swagger.
-// ============================================================================
 function bulkData() {
   return {
-    // Forma por defecto en lugar de `null`: la plantilla puede leer
-    // `status.printings` desde el primer render sin protecciones, y evita que
-    // `status` cuente como propiedad anulable del módulo (lo que obligaría a
-    // blindar también el componente de autofill, que comparte el nombre).
     status: { printings: 0, unique_cards: 0, ijson_available: true, progress: {} },
     checking: false,
     starting: false,
@@ -708,9 +555,6 @@ function bulkData() {
 
     async init() {
       await this.refresh();
-      // Si al abrir Ajustes ya hay una importación en curso (arrancada antes
-      // de navegar aquí), retomamos el polling en lugar de mostrar un estado
-      // congelado.
       if (this.active) this._startPolling();
     },
 
@@ -718,7 +562,6 @@ function bulkData() {
     get active()   { return !!this.progress.active; },
     get percent()  { return Math.round(this.progress.percent || 0); },
 
-    /** Texto del tiempo restante, si el backend lo estima. */
     get eta() {
       const s = this.progress.eta_seconds;
       if (!s || s <= 0) return '';
@@ -730,7 +573,7 @@ function bulkData() {
       try {
         const r = await fetch('/api/bulk/status');
         if (r.ok) this.status = await r.json();
-      } catch (e) { /* la sección simplemente no se pinta */ }
+      } catch (e) {}
     },
 
     async start(force = false) {
@@ -780,10 +623,6 @@ function bulkData() {
   };
 }
 
-// ============================================================================
-// SUB-COMPONENTE: estado de detección MPC Autofill
-// Se conserva sin cambios funcionales; solo estilos ajustados al nuevo panel.
-// ============================================================================
 function autofillStatus() {
   return {
     status: {available: false, exe_path: null, source: 'not_found', hint: null},
@@ -791,17 +630,12 @@ function autofillStatus() {
       try {
         const r = await fetch('/api/mpc-autofill/status');
         if (r.ok) this.status = await r.json();
-      } catch (e) { /* silent */ }
+      } catch (e) {}
       this.$nextTick(() => window.icons && window.icons());
     }
   };
 }
 
-// ============================================================================
-// SUB-COMPONENTE: gestión completa de art sources (dentro del modal)
-// Lógica idéntica a la versión anterior. Se llama con x-init="load()" al
-// abrir el modal, así solo se cargan sus datos cuando el usuario lo pide.
-// ============================================================================
 function artSourcesPanel() {
   return {
     sources: [],
@@ -811,15 +645,12 @@ function artSourcesPanel() {
     restoring: false,
     catalogSize: 67,
     stats: {total_files: 0, sources_indexed: 0},
-    indexingIds: [],          // solo para indexOne (drive individual)
+    indexingIds: [],
     hasApiKey: false,
-    _pollTimer: null,         // polling de indexOne
-    // --- Batch indexing state ---
-    batchProgress: null,      // null = no batch; object = datos de /drives/index-progress
+    _pollTimer: null,
+    batchProgress: null,
     _batchPollTimer: null,
-    // --- Add form ---
     draft: {name: '', url: '', description: '', tags: '', pinned: false, source_type: ''},
-    // Extras · F2/T7: estado de validación de URL antes de guardar.
     validating: false,
     validation: {
       checked: false, valid: false,
@@ -845,16 +676,13 @@ function artSourcesPanel() {
           const s = await settingsR.json();
           this.hasApiKey = !!(s.values.google_api_key || '').trim();
         }
-      } catch (e) { /* silent */ }
+      } catch (e) {}
       finally {
         this.loading = false;
         this.$nextTick(() => window.icons && window.icons());
       }
     },
 
-    // ==================================================================
-    // indexOne — sigue usando el endpoint individual (sin cambios)
-    // ==================================================================
     async indexOne(s) {
       if (this.indexingIds.includes(s.id)) return;
       if (this.batchProgress) {
@@ -888,7 +716,6 @@ function artSourcesPanel() {
       }
     },
 
-    // Polling legacy para indexOne (sin cambios funcionales)
     _startPolling() {
       if (this._pollTimer) return;
       const initialSnapshot = {};
@@ -919,9 +746,6 @@ function artSourcesPanel() {
       }, 3000);
     },
 
-    // ==================================================================
-    // indexAll / indexPinned — ahora usan el endpoint batch
-    // ==================================================================
     async _startBatch(sourceIds, mode) {
       if (this.batchProgress && !this.batchProgress.all_done && !this.batchProgress.cancelled) {
         window.toast('Batch en curso', 'Ya hay un indexado corriendo.');
@@ -942,7 +766,6 @@ function artSourcesPanel() {
           window.toast(window._t('settings_indexed_files'), 'Todos los drives ya están indexados.');
           return;
         }
-        // Arrancamos el polling de progreso
         this._startBatchPolling();
       } catch (e) {
         window.toast(window._t('common_error'), e.message);
@@ -977,10 +800,8 @@ function artSourcesPanel() {
       await this._startBatch(allIds, 'pending');
     },
 
-    // --- Batch polling ---
     _startBatchPolling() {
       if (this._batchPollTimer) return;
-      // Primera lectura inmediata
       this._pollBatchProgress();
       this._batchPollTimer = setInterval(() => this._pollBatchProgress(), 2500);
     },
@@ -993,37 +814,32 @@ function artSourcesPanel() {
         this.batchProgress = data;
         this.$nextTick(() => window.icons && window.icons());
 
-        // ¿Terminó?
         if (data.all_done || data.cancelled) {
           clearInterval(this._batchPollTimer);
           this._batchPollTimer = null;
-          // Recargar la lista de sources para ver los nuevos indexed_at
           await this.load();
         }
-      } catch (e) { /* silent */ }
+      } catch (e) {}
     },
 
     async cancelBatch() {
       try {
         await fetch('/api/drives/index-cancel', {method: 'POST'});
-        // El polling detectará el cancelled y parará solo
       } catch (e) {
         window.toast(window._t('common_error'), e.message);
       }
     },
 
     async closeBatchProgress() {
-      // Limpiar estado del batch
       this.batchProgress = null;
       clearInterval(this._batchPollTimer);
       this._batchPollTimer = null;
       try {
         await fetch('/api/drives/index-clear', {method: 'POST'});
-      } catch (e) { /* silent */ }
+      } catch (e) {}
       await this.load();
     },
 
-    // --- Helpers para la vista de progreso ---
     batchProgressTitle() {
       if (!this.batchProgress) return '';
       const p = this.batchProgress;
@@ -1039,10 +855,6 @@ function artSourcesPanel() {
       const s = Math.round(seconds % 60);
       return s > 0 ? `${m}m ${s}s` : `${m}m`;
     },
-
-    // ==================================================================
-    // Resto de métodos (sin cambios)
-    // ==================================================================
 
     async restore() {
       this.restoring = true;
@@ -1155,9 +967,6 @@ function artSourcesPanel() {
   };
 }
 
-// ============================================================================
-// SUB-COMPONENTE: log de depuración (sin cambios funcionales)
-// ============================================================================
 function debugLogPanel() {
   return {
     info: {exists: false, path: null, size_bytes: 0},
@@ -1168,7 +977,7 @@ function debugLogPanel() {
       try {
         const r = await fetch('/api/debug/log/info');
         if (r.ok) this.info = await r.json();
-      } catch (e) { /* silent */ }
+      } catch (e) {}
       this.$nextTick(() => window.icons && window.icons());
     },
     async viewTail() {
@@ -1193,10 +1002,6 @@ function debugLogPanel() {
   };
 }
 
-
-// --- Puente con Alpine -------------------------------------
-// Alpine resuelve las expresiones de `x-data` contra el ámbito
-// global, así que estas funciones tienen que estar en `window`.
 window.artSourcesPanel = artSourcesPanel
 window.autofillStatus = autofillStatus
 window.bulkData = bulkData

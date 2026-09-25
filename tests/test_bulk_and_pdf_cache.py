@@ -13,10 +13,6 @@ import pytest
 from mpc_forge.services import bulk_data
 from mpc_forge.services.pdf_generator import _ImageReaderCache
 
-# --------------------------------------------------------------------------
-# Fixtures de datos con la forma exacta que devuelve Scryfall
-# --------------------------------------------------------------------------
-
 SIMPLE_CARD = {
     "id": "aaaa-1111",
     "oracle_id": "oracle-sol-ring",
@@ -111,8 +107,6 @@ class TestCardMapping:
         assert row["scryfall_id"] == "aaaa-1111"
         assert row["oracle_id"] == "oracle-sol-ring"
         assert row["name"] == "Sol Ring"
-        # El código de set se normaliza a minúsculas: el resto de la app
-        # compara siempre en minúscula.
         assert row["set_code"] == "lea"
         assert row["image_png"] == "https://img/card.png"
         assert row["artist"] == "Mark Tedin"
@@ -281,7 +275,7 @@ class TestImageReaderCache:
 
     def test_counts_hits_and_misses(self, sample_image):
         cache = _ImageReaderCache()
-        for _ in range(35):          # 35 tierras básicas del mismo arte
+        for _ in range(35):
             cache.get(str(sample_image))
         assert cache.misses == 1, "Solo debe decodificarse una vez"
         assert cache.hits == 34

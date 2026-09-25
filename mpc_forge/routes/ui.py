@@ -24,13 +24,6 @@ TEMPLATES_DIR = template_dir()
 STATIC_DIR = static_dir()
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-# Cache-busting: los templates usan `{{ asset_v('app.js') }}` para generar URLs
-# como `/static/app.js?v=1735234123`. El navegador guarda /static/app.js en cache
-# con max-age=1día (nuestra CachedStaticFiles), pero cuando cambiamos el fichero
-# y reiniciamos, el `v` cambia → URL nueva → cache-miss → descarga fresca.
-#
-# El mtime se lee UNA VEZ al arrancar la app. No hay hit por cada request. Si
-# el usuario reinicia el .exe, el asset se recarga.
 _ASSET_MTIMES: dict[str, int] = {}
 
 
@@ -50,14 +43,10 @@ def _asset_v(filename: str) -> int:
     return _ASSET_MTIMES[filename]
 
 
-# Exponemos la función a los templates como global (accesible desde cualquier
-# {% extends %} o {% include %}).
 templates.env.globals["asset_v"] = _asset_v
 
-# Versión del bundle de traducciones, para el cache-busting de /i18n/<lang>.js.
 templates.env.globals["i18n_v"] = i18n_service.bundle_version
 
-# Exponer constantes i18n a todos los templates
 templates.env.globals["SUPPORTED_LANGS"] = SUPPORTED_LANGS
 templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
 
@@ -78,9 +67,6 @@ def _t_context(request: Request) -> dict:
     return {"t": tr, "lang": lang, "_T": tr.as_dict()}
 
 
-# Cache de un año: la URL lleva el hash del contenido (`?v=`), así que un
-# cambio en las traducciones genera una URL distinta. `immutable` evita incluso
-# la petición condicional al refrescar.
 _I18N_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
 
@@ -117,12 +103,6 @@ async def set_language(
     from mpc_forge.services.i18n import _TRANSLATIONS
     if lang not in _TRANSLATIONS:
         lang = "es"
-    # Redirect al referer o a la home — mantiene al usuario en la página actual.
-    #
-    # El destino se valida: `Referer` lo controla el cliente, así que sin
-    # comprobarlo esto sería un redirect abierto (alguien enlaza a
-    # /set-lang con un Referer a su web y el usuario acaba allí creyendo que
-    # sigue en la app).
     target = request.headers.get("referer") or next_url
     if not is_same_origin(request, target):
         target = "/"
@@ -130,16 +110,12 @@ async def set_language(
     response.set_cookie(
         key="lang",
         value=lang,
-        max_age=365 * 24 * 3600,  # 1 año
-        httponly=False,            # JS puede leer window._LANG si hace falta
+        max_age=365 * 24 * 3600,
+        httponly=False,
         samesite="lax",
     )
     return response
 
-
-# ---------------------------------------------------------------------------
-# Datos compartidos por la landing y la biblioteca
-# ---------------------------------------------------------------------------
 
 async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[Deck]:
     """Mazos ordenados por última edición, con recuento y portada del commander.
@@ -165,7 +141,7 @@ async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list
     decks = []
     for deck, count in deck_rows:
         cover = covers.get(deck.id, deck_covers.EMPTY)
-        deck.card_count = count  # atributos runtime, disponibles en el template
+        deck.card_count = count
         deck.commander_image_url = cover.image_url
         deck.commander_name = cover.name
         decks.append(deck)
@@ -191,7 +167,7 @@ async def _workshop_status(db: AsyncSession) -> dict:
         local = await bulk_data.local_stats(db)
         status["printings"] = int(local.get("printings") or 0)
         status["offline"] = bool(local.get("syncs"))
-    except Exception:  # la landing nunca debe caerse por una cifra
+    except Exception:
         log.warning("No se pudo leer el estado del volcado de Scryfall", exc_info=True)
     try:
         art = await gdrive_search.stats(db)
@@ -209,12 +185,8 @@ async def _workshop_status(db: AsyncSession) -> dict:
     return status
 
 
-# Colores de maná de las cartas de ejemplo de la landing, en el orden en que
-# aparecen las traducciones ``landing_card_N_*``.
 _SAMPLE_CARD_COLORS = ("w", "u", "b", "r", "g")
 
-# Posición en abanico de cada carta según su rango de antigüedad: el mazo más
-# reciente va en el centro y los demás se reparten alternando a los lados.
 _HAND_POSITIONS = (0, -1, 1, -2, 2)
 
 
@@ -237,7 +209,6 @@ def _build_hand(decks: list[Deck], t) -> list[dict]:
             slot["name"] = t[f"landing_card_{n}_name"]
             slot["type"] = t[f"landing_card_{n}_type"]
         slots.append(slot)
-    # Orden de pintado de izquierda a derecha; el z-index resuelve el solape.
     return sorted(slots, key=lambda s: s["i"])
 
 
@@ -306,10 +277,6 @@ async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
         return render_not_found(request, "deck")
-    # Portada del commander en la cabecera. Se resuelve en el servidor, y no
-    # en el fetch del editor, para que esté en el primer pintado: es el
-    # destino de la transición que la hace volar desde la biblioteca. Después,
-    # el editor la mantiene al día si cambias el arte del commander.
     cover = await deck_covers.cover_for_deck(db, deck)
     commander_image_url = cover.image_url
     return templates.TemplateResponse(

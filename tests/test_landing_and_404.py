@@ -22,10 +22,8 @@ class TestLanding:
         assert r.status_code == 200
         body = r.text
         assert 'class="lp-hero"' in body
-        # Sin mazos, la mano se rellena con las cinco cartas de ejemplo.
         assert body.count("lp-card--sample") == 5
         assert "landingImport()" in body
-        # Sin mazos no se ofrece "seguir donde lo dejaste".
         assert "lp-recent" not in body
 
     async def test_lists_supported_sites(self, client):
@@ -38,7 +36,6 @@ class TestLanding:
         assert r.status_code == 200
         assert f'href="/decks/{deck["id"]}"' in r.text
         assert deck["name"] in r.text
-        # PDF Studio apunta al mazo más reciente.
         assert f'href="/decks/{deck["id"]}/pdf"' in r.text
 
     async def test_uses_the_unresolved_modal_partial(self, client):
@@ -76,7 +73,6 @@ class TestDeckLibraryMoved:
 
     async def test_nav_marks_decks_active_inside_the_editor(self, client, deck):
         r = await client.get(f"/decks/{deck['id']}", headers=HTML)
-        # Un único indicador de sección, y es el de Mazos, no el de Inicio.
         assert r.text.count('class="nav-indicator"') == 1
         nav_decks = r.text.index('href="/decks"\n')
         indicator = r.text.index('class="nav-indicator"')
@@ -89,8 +85,6 @@ class TestNotFoundPage:
         assert r.status_code == 404
         assert "text/html" in r.headers["content-type"]
         assert 'class="nf"' in r.text
-        # La ruta aparece en la carta, con <wbr> tras cada "/" para que el
-        # navegador pueda partirla por ahí.
         code = r.text.split("<code>", 1)[1].split("</code>", 1)[0]
         assert code.replace("<wbr>", "") == "/esto-no-existe"
 

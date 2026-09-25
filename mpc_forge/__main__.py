@@ -42,7 +42,6 @@ def main() -> None:
             args.window = False
 
     if args.window:
-        # Levantamos uvicorn en un thread y abrimos ventana pywebview.
         import webview  # type: ignore
 
         def _run_server() -> None:

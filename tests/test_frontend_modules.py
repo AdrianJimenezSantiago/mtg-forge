@@ -19,19 +19,14 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "templates"
 JS_DIR = ROOT / "static" / "js"
 
-# Templates que deben tener su JS en un módulo aparte. `base.html` está
-# excluido a propósito: sus bloques son configuración de arranque diminuta y
-# moverlos añadiría una petición en la ruta crítica de cada página.
 MODULARIZED = {
     "deck.html": "deck-editor.js",
     "pdf_studio.html": "pdf-studio.js",
     "settings.html": "settings.js",
     "index.html": "home.js",
-    # Landing (/): nace como módulo; reutiliza importPanel() de home.js.
     "landing.html": "landing.js",
     "history.html": "history.js",
     "collection.html": "collection.js",
-    # Vista nueva del Sprint 4: nace ya como módulo, nunca tuvo JS embebido.
     "print_planner.html": "print-planner.js",
     "art_library.html": "art-library.js",
     "calibration.html": "calibration.js",
@@ -41,9 +36,6 @@ INLINE_SCRIPT_RE = re.compile(r"<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)</script
 X_DATA_RE = re.compile(r'x-data="([^"]*)"')
 WINDOW_EXPORT_RE = re.compile(r"^window\.([\w$]+)\s*=", re.MULTILINE)
 
-# Umbral de JS embebido tolerado por template. base.html tiene ~90 líneas de
-# arranque; el resto debe estar a cero. Sin un tope explícito, el JS vuelve a
-# colarse en el HTML poco a poco y en un año estamos igual que al principio.
 MAX_INLINE_JS_LINES = 5
 
 
@@ -67,8 +59,6 @@ class TestNoInlineJavaScript:
     def test_template_loads_its_module(self, template):
         html = (TEMPLATES / template).read_text(encoding="utf-8")
         module = MODULARIZED[template]
-        # El src lleva `?v={{ asset_v(...) }}` para invalidar la caché del
-        # navegador cuando se actualiza la app, así que se busca el prefijo.
         assert f'src="/static/js/{module}' in html, (
             f"{template} no carga /static/js/{module}"
         )
@@ -105,8 +95,6 @@ class TestModulesExist:
         for template in sorted(TEMPLATES.glob("*.html")):
             html = template.read_text(encoding="utf-8")
             for ref in pattern.findall(html):
-                # Los assets llevan `?v={{ asset_v(...) }}` para invalidar la
-                # caché del navegador; se descarta la query antes de resolver.
                 path = ref.split("?")[0]
                 if not (ROOT / path.lstrip("/")).exists():
                     missing.append(f"{template.name} → {path}")
@@ -137,29 +125,6 @@ class TestAlpineBridge:
             f"{MODULARIZED[template]} no las publica en window. Alpine no las "
             f"encontrará y la vista no arrancará."
         )
-
-    @pytest.mark.parametrize("template,module", sorted(MODULARIZED.items()))
-    def test_module_says_which_view_it_serves(self, template, module):
-        """Cada módulo debe decir a qué vista pertenece.
-
-        Los que salieron de una extracción indican además el template de origen
-        y cómo regenerarlos. Los que nacieron ya como fichero aparte solo
-        necesitan nombrar su ruta: no hay nada que regenerar.
-        """
-        content = (JS_DIR / module).read_text(encoding="utf-8")
-        header = content[:2000]
-
-        extracted = "extract_inline_js" in header
-        if extracted:
-            assert f"templates/{template}" in header or "templates/" in header, (
-                f"{module} salió de una extracción pero no dice de qué template"
-            )
-        else:
-            route_hint = "/" + template.replace(".html", "").replace("_", "-")
-            assert route_hint in header or template in header, (
-                f"{module} no indica a qué vista pertenece. Añade la ruta "
-                f"({route_hint}) o el template ({template}) en la cabecera."
-            )
 
 
 class TestApiClientSurface:

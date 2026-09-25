@@ -3,14 +3,7 @@ document.addEventListener('alpine:init', () => {
     toasts: [],
     _nextId: 1,
 
-    /**
-     * Añade un toast. Garantiza que SIEMPRE hay un mensaje descriptivo:
-     * si el caller no pasa `message` (o pasa cadena vacía / null / undefined),
-     * se rellena con un fallback razonable según el tipo. Antes salían toasts
-     * con solo el título ("Éxito", "Error"…) que resultaban poco útiles.
-     */
     toast(title, message = '', type = 'info', ttl = 4500) {
-      // Fallbacks por tipo cuando no viene mensaje descriptivo:
       const _t = window._t || ((k) => k);
       const fallbacks = {
         success: _t('js_toast_success_fallback'),
@@ -100,12 +93,6 @@ window.icons = () => {
 document.addEventListener('DOMContentLoaded', () => window.icons());
 document.addEventListener('alpine:initialized', () => window.icons());
 
-// Fix #14: el MutationObserver solo dispara window.icons() si el batch de
-// mutaciones incluye al menos un nodo con [data-lucide] aún sin procesar
-// (i.e. sin el atributo stroke que Lucide añade al renderizar). Antes
-// llamaba document.querySelector('[data-lucide]') en cada rAF, lo que
-// recorre el DOM entero aunque no haya iconos nuevos. Ahora filtramos
-// los addedNodes directamente en el observer, que ya los tiene disponibles.
 (function () {
   let scheduled = false;
   let hasPendingIcons = false;
@@ -148,24 +135,14 @@ window.fmt = {
   int:   (n) => Number(n || 0).toLocaleString(),
 };
 
-// Fix #15: los listeners de hover se delegan en document pero la lógica
-// pesada (closest + findPreviewSrc) solo se ejecuta cuando el evento viene
-// de dentro de un contenedor que contiene al menos un [data-preview]. El
-// check rápido con e.target.closest('[data-preview]') ya está — el coste
-// principal era que mouseover/mouseout se disparaban en CUALQUIER movimiento
-// sobre la página, incluyendo áreas sin cartas. Añadimos un guard temprano
-// que descarta el evento si el target no tiene ningún ancestro con
-// [data-preview], evitando el traversal innecesario en la mayoría de casos.
 (function() {
-  const HOVER_DELAY_MS = 120;   // ms antes de mostrar el zoom (más reactivo que el original 180ms)
+  const HOVER_DELAY_MS = 120;
   let ctrlHeld = false;
   let currentImg = null;
   let previewEl = null;
   let hoverTimer = null;
   let lastMouseEvent = null;
 
-  // Escala las URLs de Scryfall de /small/ a /normal/ para la preview en alta resolución.
-  // Para arte custom (URLs no-Scryfall) devuelve la misma URL sin modificar.
   function upsizeUrl(url) {
     if (!url) return url;
     return url.includes('cards.scryfall.io/small/')
@@ -217,14 +194,12 @@ window.fmt = {
   function show(target, e) {
     const src = findPreviewSrc(target);
     if (!src) return;
-    const hiresSrc = upsizeUrl(src);   // /small/ → /normal/ para mejor resolución
+    const hiresSrc = upsizeUrl(src);
     const el = ensurePreview();
     const img = el.querySelector('img');
     const wasHidden = el.style.display !== 'block';
     if (img.src !== hiresSrc) img.src = hiresSrc;
     el.style.display = 'block';
-    // Entrada con giro y destello (ver #mpc-forge-preview en motion.css).
-    // Solo al aparecer: al moverse entre cartas contiguas no se repite.
     if (wasHidden) {
       el.classList.remove('fx-pop');
       void el.offsetWidth;
@@ -249,8 +224,6 @@ window.fmt = {
   }, {passive: true});
 
   document.addEventListener('mouseover', (e) => {
-    // Guard rápido: si no hay ningún [data-preview] en el camino del evento,
-    // salimos antes de hacer el closest completo.
     if (!currentImg && !e.target.closest('[data-preview]')) return;
 
     const el = e.target.closest('[data-preview]');

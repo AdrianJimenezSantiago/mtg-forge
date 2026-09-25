@@ -33,7 +33,6 @@ from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
 
-# Poblado por __init_subclass__ en cada subclase declarada.
 _REGISTRY: list[type[ImportSite]] = []
 
 
@@ -83,14 +82,12 @@ class ImportSite:
         ``base_url``      : URL base para requests (usa .request() shortcut)
     """
 
-    # Metadata (obligatoria en subclases)
     key: ClassVar[str] = ""
     name: ClassVar[str] = ""
     host_names: ClassVar[tuple[str, ...]] = ()
     example_url: ClassVar[str] = ""
-    base_url: ClassVar[str] = ""  # opcional — para el helper .request()
+    base_url: ClassVar[str] = ""
 
-    # Timeout por request. Los sitios lentos como MagicVille pueden necesitar más.
     request_timeout: ClassVar[float] = 30.0
 
     def __init_subclass__(cls, /, register: bool = True, **kwargs: Any) -> None:
@@ -98,8 +95,6 @@ class ImportSite:
         super().__init_subclass__(**kwargs)
         if not register:
             return
-        # Sanity checks tempranos: si una subclase se declara sin la metadata
-        # mínima, es un bug del desarrollador — fallamos ruidosamente.
         if not cls.key:
             raise TypeError(f"ImportSite subclass {cls.__name__} lacks `key`")
         if not cls.name:
@@ -108,7 +103,6 @@ class ImportSite:
             raise TypeError(f"ImportSite subclass {cls.__name__} lacks `host_names`")
         _REGISTRY.append(cls)
 
-    # ------------------------------------------------------------------ HTTP
     @classmethod
     def get_headers(cls) -> dict[str, str]:
         """Cabeceras por defecto. Sobreescribir para APIs que exigen tokens."""
@@ -143,7 +137,6 @@ class ImportSite:
                 )
             if "://" not in host:
                 host = f"{scheme}://{host}"
-            # normalizar barras: base_url puede o no terminar en /, path puede o no empezar en /
             host = host.rstrip("/")
             path_clean = path if path.startswith("/") else f"/{path}"
             url = f"{host}{path_clean}"
@@ -159,7 +152,6 @@ class ImportSite:
             resp.raise_for_status()
             return resp
 
-    # ------------------------------------------------------------------ API
     @classmethod
     async def retrieve_card_list(cls, url: str) -> str:
         """Descarga la decklist como texto plano.

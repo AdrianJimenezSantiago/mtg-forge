@@ -33,16 +33,11 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 JS_DIR = ROOT / "static" / "js"
 
-# Endpoints cuya respuesta NO es un array plano y que por tanto no se pueden
-# consumir con un `fetch` suelto seguido de `.filter()` / `.map()`.
-# (fragmento de ruta, helper de api.js que hay que usar en su lugar)
 PAGINATED_ENDPOINTS = [
     ("/prints", "api.cards.prints() o api.cards.allPrints()"),
     ("/api/library/browse", "api.request sobre /api/library/browse"),
 ]
 
-# `api.js` es la excepción: es justamente el sitio donde vive el conocimiento
-# de cómo se pagina cada endpoint.
 EXEMPT = {"api.js"}
 
 
@@ -56,8 +51,6 @@ def js_files() -> list[Path]:
 def test_no_raw_fetch_against_paginated_endpoint(path, endpoint, helper):
     source = path.read_text(encoding="utf-8")
 
-    # Se buscan llamadas a fetch(...) que mencionen el endpoint. Los
-    # comentarios se descartan: varios explican precisamente esta historia.
     without_comments = re.sub(r"//[^\n]*", "", source)
     without_comments = re.sub(r"/\*.*?\*/", "", without_comments, flags=re.DOTALL)
 

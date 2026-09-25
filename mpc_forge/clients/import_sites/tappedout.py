@@ -41,7 +41,6 @@ class TappedOutSite(ImportSite):
         Sin fetch adicional.
         """
         path = urlparse(url).path or ""
-        # Ruta: /mtg-decks/{slug}/ — tomamos el último segmento no vacío.
         parts = [p for p in path.split("/") if p and p != "mtg-decks"]
         if not parts:
             return None

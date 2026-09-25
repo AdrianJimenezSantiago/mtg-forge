@@ -33,8 +33,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     _get_scryfall,
@@ -46,9 +44,6 @@ from mpc_forge.routes.decks._views import (
 
 router = make_router()
 
-
-# ANÁLISIS DE TOKENS DEL MAZO
-# ================================================================
 
 @router.get("/{deck_id}/tokens-analysis")
 async def tokens_analysis(
@@ -70,9 +65,6 @@ async def tokens_analysis(
     """
     import json as _json
 
-    # Cartas activas del mazo (excluyendo tokens/meld_result — los generadores
-    # son commander/mainboard/sideboard, no queremos que los tokens generen tokens
-    # de sí mismos si por accidente tuvieran related_parts).
     generator_roles = {"commander", "mainboard", "sideboard"}
     cards = (
         await db.scalars(
@@ -87,7 +79,6 @@ async def tokens_analysis(
     if not cards:
         return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
 
-    # BATCH: printings de todos los generadores (para leer related_parts)
     scryfall_ids = {c.scryfall_id for c in cards}
     printings = (
         await db.scalars(
@@ -96,10 +87,6 @@ async def tokens_analysis(
     ).all()
     printings_by_id = {p.scryfall_id: p for p in printings}
 
-    # Recolectar tokens únicos y quién los genera
-    # tokens_map[scryfall_id_del_token] = {
-    #   "name": str, "generated_by": [{deck_card_id, name, quantity}, ...]
-    # }
     tokens_map: dict[str, dict] = {}
     for dc in cards:
         printing = printings_by_id.get(dc.scryfall_id)
@@ -128,7 +115,6 @@ async def tokens_analysis(
     if not tokens_map:
         return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
 
-    # BATCH: metadata de todos los tokens desde cache local (imagen, tipo, etc.)
     token_sfids = list(tokens_map.keys())
     token_printings = (
         await db.scalars(
@@ -137,7 +123,6 @@ async def tokens_analysis(
     ).all()
     token_meta_by_id = {p.scryfall_id: p for p in token_printings}
 
-    # BATCH: qué tokens ya están en el mazo (por scryfall_id)
     already_in_deck_rows = (
         await db.execute(
             select(DeckCard.id, DeckCard.scryfall_id, DeckCard.quantity)
@@ -149,8 +134,6 @@ async def tokens_analysis(
     ).all()
     in_deck_by_sfid = {sfid: (dc_id, qty) for dc_id, sfid, qty in already_in_deck_rows}
 
-    # Para tokens sin metadata cacheada, la pedimos a Scryfall (uno por uno con
-    # el rate limit de ScryfallClient). Suele ser rápido porque son pocos por mazo.
     missing_meta = [s for s in token_sfids if s not in token_meta_by_id]
     for sfid in missing_meta:
         try:
@@ -163,7 +146,6 @@ async def tokens_analysis(
     if missing_meta:
         await db.commit()
 
-    # Ensamblar respuesta
     tokens_out = []
     already_count = 0
     for sfid, info in tokens_map.items():
@@ -185,7 +167,6 @@ async def tokens_analysis(
             "generated_by": info["generated_by"],
         })
 
-    # Orden estable: primero los que faltan, luego los que están, alfabético por nombre
     tokens_out.sort(key=lambda t: (t["in_deck"], t["name"].lower()))
 
     return {
@@ -216,16 +197,12 @@ async def tokens_add_many(
     if not payload.scryfall_ids:
         return []
 
-    # ¿Qué scryfall_ids ya están?
     existing_ids = set((
             await db.scalars(
                 select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id)
             )
         ).all())
 
-    # --- OPTIMIZACIÓN: batch prefetch de printings ya cacheados ---
-    # Antes: db.get(PrintingCache, sfid) por cada id (N queries).
-    # Ahora: 1 query WHERE IN, luego solo los que falten los pedimos a Scryfall.
     ids_to_check = [s for s in payload.scryfall_ids if s not in existing_ids]
     cached_printings: dict[str, PrintingCache] = {}
     if ids_to_check:
@@ -252,7 +229,7 @@ async def tokens_add_many(
             name=cached.name or "Token",
             quantity=1,
             scryfall_id=sfid,
-            role="tokens",  # excluido del count del mazo, incluido en PDF/XML
+            role="tokens",
             include=True,
         )
         db.add(new_dc)
@@ -301,14 +278,10 @@ async def add_related_cards(
     except (ValueError, TypeError):
         return []
 
-    # ¿Qué scryfall_ids ya tiene el mazo?
     existing_ids = set((
             await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))
         ).all())
 
-    # --- OPTIMIZACIÓN: batch prefetch de printings ---
-    # Antes: db.get(PrintingCache, sfid) por cada part (N queries en el bucle).
-    # Ahora: 1 query WHERE IN por adelantado.
     candidate_sfids = {
         part.get("id") for part in related
         if part.get("id") and part["id"] not in existing_ids
@@ -327,7 +300,6 @@ async def add_related_cards(
         sfid = part.get("id")
         if not sfid or sfid in existing_ids:
             continue
-        # Asegurar que el printing está cacheado
         cached = cached_map.get(sfid)
         if not cached:
             raw = await scryfall.by_id(sfid)
@@ -341,7 +313,7 @@ async def add_related_cards(
             name=cached.name or part.get("name", ""),
             quantity=1,
             scryfall_id=sfid,
-            role="tokens",  # se muestra en la sección Tokens y no cuenta para el 100
+            role="tokens",
             include=True,
         )
         db.add(new_dc)
@@ -349,7 +321,6 @@ async def add_related_cards(
         existing_ids.add(sfid)
 
     if added:
-        # Contamos por componente para el summary (tokens vs meld_result…)
         components: dict[str, int] = {}
         for part in related:
             if part.get("id") in {a.scryfall_id for a in added}:
@@ -370,6 +341,3 @@ async def add_related_cards(
     for dc in added:
         await db.refresh(dc)
     return await _deckcards_to_views(db, added)
-
-
-# ================================================================

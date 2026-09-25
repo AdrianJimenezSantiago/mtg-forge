@@ -1,10 +1,5 @@
 {% extends "base.html" %}
 
-{# Página 404. La renderiza ui.render_not_found(): el manejador global de
-   app.py para rutas desconocidas y las vistas de mazo cuando el id no existe.
-   No usa Alpine ni módulo propio: todo el movimiento es CSS (showcase.css) y
-   la inclinación compartida de motion.js. #}
-
 {% block extra_head %}
   <link rel="stylesheet" href="/static/showcase.css?v={{ asset_v('showcase.css') }}">
 {% endblock %}
@@ -20,14 +15,12 @@
       <div class="nf-card" data-tilt="foil" data-tilt-max="16">
         <div class="nf-flip">
 
-          {# Reverso: diseño propio, no el dorso oficial de Magic #}
           <div class="nf-face nf-back">
             <div class="nf-back__ring nf-back__ring--outer"></div>
             <div class="nf-back__ring nf-back__ring--inner"></div>
             <img src="/static/logo.png" alt="" class="nf-back__logo">
           </div>
 
-          {# Anverso: la carta "Página perdida", coste {4}{0}{4} #}
           <div class="nf-face nf-front">
             <div class="nf-front__frame">
               <div class="nf-bar">

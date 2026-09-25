@@ -1,21 +1,3 @@
-/* ==========================================================================
-   MPC Forge · modal de estadísticas del mazo
-   --------------------------------------------------------------------------
-   Gráficas propias en HTML/SVG. La entrada es una sola secuencia:
-
-     1. el panel se posa,
-     2. las cifras cuentan desde cero y los anillos se cierran,
-     3. las columnas de la curva suben de izquierda a derecha,
-     4. los arcos de color, la cinta de rareza y las barras de tipos crecen,
-     5. las habilidades aparecen al final.
-
-   Todo parte de `.st-body` sin `.is-ready` (estado inicial) y transiciona al
-   añadirse la clase (deck-editor.js → statsReady). Con "reducir movimiento"
-   se ve el estado final directamente.
-
-   Depende de los tokens de /static/motion.css (--fx-*).
-   ========================================================================== */
-
 .st-overlay,
 .st-panel {
   --ink:       #f1eee4;
@@ -30,7 +12,6 @@
   --gold-glow: #e9c86a;
   --serif:     Cinzel, Georgia, 'Times New Roman', serif;
 
-  /* Colores de maná legibles sobre fondo oscuro */
   --mana-W: #f1e9c8;
   --mana-U: #5b9bd5;
   --mana-B: #8a78a8;
@@ -47,8 +28,6 @@
   --rar-bonus:    #5bc0be;
   --rar-unknown:  #4a4a5a;
 }
-
-/* ── Capa y panel ─────────────────────────────────────────────────────── */
 
 .st-overlay {
   background: rgb(4 6 10 / 0.74);
@@ -170,8 +149,6 @@
   .st-content { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ── Cifras clave ─────────────────────────────────────────────────────── */
-
 .st-tiles {
   grid-column: 1 / -1;
   display: grid;
@@ -229,7 +206,6 @@
 }
 .st-tile--ring { padding-right: 4.4rem; }
 
-/* Anillos (tierras / hechizos). Circunferencia normalizada a 100. */
 .st-ring {
   position: absolute;
   top: 50%;
@@ -253,8 +229,6 @@
 }
 .st-ring__value--land { stroke: var(--mana-G); filter: drop-shadow(0 0 3px rgb(95 191 106 / 0.45)); }
 .st-body:not(.is-ready) .st-ring__value { stroke-dasharray: 0 100; }
-
-/* ── Tarjetas de gráfica ──────────────────────────────────────────────── */
 
 .st-card {
   min-width: 0;
@@ -295,8 +269,6 @@
 
 .is-dim { opacity: 0.32; }
 
-/* ── Curva de maná ────────────────────────────────────────────────────── */
-
 .st-curve__plot {
   position: relative;
   height: 220px;
@@ -332,7 +304,6 @@
   cursor: default;
   transition: opacity 200ms ease;
 }
-/* Franja de hover a toda altura para que sea fácil apuntar */
 .st-col::before {
   content: '';
   position: absolute;
@@ -386,7 +357,6 @@
 }
 .st-body:not(.is-ready) .st-col__count { opacity: 0; translate: 0 6px; }
 
-/* Marcador de la media */
 .st-avg {
   position: absolute;
   top: -1.2rem;
@@ -433,7 +403,6 @@
   color: var(--muted);
 }
 
-/* Colores de maná (relleno de columnas) */
 .st-bg-W { background: linear-gradient(180deg, #fff8df, var(--mana-W)); }
 .st-bg-U { background: linear-gradient(180deg, #8cc0ee, var(--mana-U)); }
 .st-bg-B { background: linear-gradient(180deg, #a996c6, var(--mana-B)); }
@@ -441,8 +410,6 @@
 .st-bg-G { background: linear-gradient(180deg, #8ad893, var(--mana-G)); }
 .st-bg-M { background: linear-gradient(180deg, #f3d77f, var(--mana-M)); }
 .st-bg-C { background: linear-gradient(180deg, #c2c2d0, var(--mana-C)); }
-
-/* ── Anillo de colores ────────────────────────────────────────────────── */
 
 .st-donut-wrap {
   display: flex;
@@ -540,8 +507,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Rareza ───────────────────────────────────────────────────────────── */
-
 .st-ribbon {
   display: flex;
   gap: 3px;
@@ -614,8 +579,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Tipos ────────────────────────────────────────────────────────────── */
-
 .st-types {
   display: flex;
   flex-direction: column;
@@ -672,8 +635,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Habilidades ──────────────────────────────────────────────────────── */
-
 .st-keywords {
   display: flex;
   flex-wrap: wrap;
@@ -685,7 +646,6 @@
   gap: 0.5rem;
   padding: 0.3rem 0.4rem 0.3rem 0.7rem;
   border-radius: 999px;
-  /* La intensidad del dorado crece con el nº de cartas (--w: 0..1) */
   border: 1px solid rgb(212 175 55 / calc(0.15 + var(--w) * 0.45));
   background: rgb(212 175 55 / calc(0.03 + var(--w) * 0.14));
   font-size: 0.78rem;
@@ -715,8 +675,6 @@
 @keyframes st-kw-in {
   from { opacity: 0; scale: 0.7; translate: 0 6px; }
 }
-
-/* ── Movimiento reducido ──────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   .st-overlay,

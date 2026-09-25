@@ -44,8 +44,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     _get_scryfall,
@@ -136,16 +134,12 @@ async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
     deck = await db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
-    # Traemos solo (role, quantity, include) — no necesitamos las cartas enteras.
     rows = (
         await db.execute(
             select(DeckCard.role, DeckCard.quantity, DeckCard.include)
             .where(DeckCard.deck_id == deck_id)
         )
     ).all()
-    # Legalidades: un LEFT JOIN contra el cache de printings. Las cartas sin
-    # printing cacheado salen con legalities vacío y `check_legalities` las
-    # ignora, que es el comportamiento correcto (no inventar un veredicto).
     legality_rows = (
         await db.execute(
             select(
@@ -189,7 +183,7 @@ async def delete_deck(deck_id: int, db: DbDep) -> None:
 
 
 class DuplicateDeckRequest(BaseModel):
-    name: str | None = None  # si es None, se usa "{original} (copia)"
+    name: str | None = None
 
 
 @router.post("/{deck_id}/duplicate", response_model=DeckView, status_code=status.HTTP_201_CREATED)
@@ -216,10 +210,9 @@ async def duplicate_deck(
         format=src.format,
         commander_scryfall_id=src.commander_scryfall_id,
         notes=src.notes,
-        # moxfield_id y source_url NO se copian — el duplicado es una entidad nueva
     )
     db.add(new_deck)
-    await db.flush()  # necesitamos el id para las cartas
+    await db.flush()
 
     total_qty = 0
     for c in src.cards:
@@ -265,9 +258,6 @@ async def update_deck(deck_id: int, payload: UpdateDeckRequest, db: DbDep) -> De
         deck.format = payload.format
     if payload.notes is not None:
         deck.notes = payload.notes
-    # Solo loggeamos rename porque es el único cambio "material" que le puede
-    # importar al usuario en el timeline. Cambios de formato/notas rara vez
-    # ocurren y no aportan mucho al historial.
     if payload.name is not None and payload.name != old_name:
         await deck_activity.log_event(
             db, deck_id, K.DECK_RENAMED,
@@ -290,7 +280,6 @@ async def add_card(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    # Resolver la carta contra Scryfall (usa named si no hay set/num específico)
     if payload.set_code and payload.collector_number:
         raw = await scryfall.by_set_and_number(payload.set_code, payload.collector_number)
     else:
@@ -300,7 +289,6 @@ async def add_card(
 
     printing = await deck_service.upsert_printing(db, raw)
 
-    # Si ya existe una entrada con el mismo oracle_id y rol, sumamos cantidad
     existing = None
     if printing.oracle_id:
         stmt = select(DeckCard).where(
@@ -314,7 +302,6 @@ async def add_card(
         existing.quantity += payload.quantity
         dc = existing
     else:
-        # Aplica preferencia global si existe
         chosen_sfid = printing.scryfall_id
         if printing.oracle_id:
             pref = await db.get(ArtPreference, printing.oracle_id)
@@ -352,7 +339,6 @@ async def update_card(
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
-    # Guardamos el estado previo ANTES de mutar, para poder loggear (old → new).
     old_qty = dc.quantity
     old_role = dc.role
 
@@ -380,7 +366,6 @@ async def delete_card(deck_id: int, card_id: int, db: DbDep) -> None:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
-    # Loggeamos ANTES de borrar para conservar los datos de la carta.
     await deck_activity.log_event(
         db, deck_id, K.CARD_REMOVED,
         card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
@@ -402,7 +387,6 @@ async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
     pregunta, borra directo. Idempotente: si no hay cartas de ese rol, devuelve
     ``deleted=0`` sin error.
     """
-    # Validamos que el mazo existe (para dar 404 claro en vez de "deleted=0" silencioso)
     deck = await db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
@@ -415,8 +399,6 @@ async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
             )
         )
     ).all()
-    # Snapshot para el timeline: hasta 20 nombres (evita payloads gigantes en
-    # sideboards enormes). Solo se usa para mostrar en el modal, no es autoritativo.
     card_names = [c.name for c in cards[:20]]
     total_qty = sum(c.quantity for c in cards)
     for dc in cards:
@@ -435,6 +417,3 @@ async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
         )
     await db.commit()
     return ClearRoleResponse(role=role, deleted=len(cards))
-
-
-# ================================================================

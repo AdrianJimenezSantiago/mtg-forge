@@ -14,10 +14,6 @@ from pathlib import Path
 
 import pytest
 
-# ============================================================================
-# FASE 1
-# ============================================================================
-
 
 class TestNormalization:
     """Fase 1 · T1 — asciifolding en normalize_filename."""
@@ -103,7 +99,7 @@ class TestImportSites:
     def test_supported_sites_endpoint(self):
         from mpc_forge.clients.import_sites import list_supported_sites
         sites = list_supported_sites()
-        assert len(sites) == 7  # +Deckstats (Extras · F1/T3)
+        assert len(sites) == 7
         keys = {s["key"] for s in sites}
         assert keys == {"moxfield", "archidekt", "cubecobra", "deckstats",
                         "mtggoldfish", "scryfall", "tappedout"}
@@ -116,8 +112,7 @@ class TestImportSites:
                 "commanders": {"cards": {"c1": {"quantity": 1, "card": {"name": "Atraxa", "set": "c21", "cn": "2"}}}},
                 "mainboard": {"cards": {
                     "m1": {"quantity": 1, "card": {"name": "Sol Ring", "set": "cmm", "cn": "451"}},
-                    "m2": {"quantity": 4, "card": {"name": "Forest"}},  # sin set/cn
-                    # DFC: nombre completo con //
+                    "m2": {"quantity": 4, "card": {"name": "Forest"}},
                     "m3": {"quantity": 1, "card": {
                         "name": "Zanarkand, Ancient Metropolis // Lasting Fayth",
                         "set": "ffa", "cn": "193",
@@ -128,14 +123,11 @@ class TestImportSites:
         }
         text = _payload_to_text(payload)
         assert "//Commanders" in text
-        # Con set+CN cuando disponible
         assert "1 Atraxa (c21) 2" in text
         assert "1 Sol Ring (cmm) 451" in text
-        # Sin set+CN cae al nombre solo
         assert "4 Forest" in text
-        # DFC con set+CN
         assert "1 Zanarkand, Ancient Metropolis // Lasting Fayth (ffa) 193" in text
-        assert "//Sideboard" not in text  # Vacío no se emite
+        assert "//Sideboard" not in text
 
     def test_moxfield_payload_to_text_dfc_no_setcn(self):
         """DFC sin set/CN en el JSON: el nombre completo con // se pasa tal cual."""
@@ -150,9 +142,7 @@ class TestImportSites:
             }
         }
         text = _payload_to_text(payload)
-        # Sin set/CN, el nombre se emite sin set annotation
         assert "1 Delver of Secrets // Insectile Aberration" in text
-        # NO debe haber paréntesis después
         assert "Delver of Secrets // Insectile Aberration (" not in text
 
 
@@ -163,11 +153,6 @@ class TestSupportedSitesAPI:
         data = r.json()
         keys = {s["key"] for s in data}
         assert "moxfield" in keys and "archidekt" in keys
-
-
-# ============================================================================
-# FASE 2
-# ============================================================================
 
 
 class TestCanonicalMetadata:
@@ -209,8 +194,6 @@ class TestFTS5:
         assert r.status_code == 200
         data = r.json()
         assert "fts5_available" in data
-        # No aserto True — depende de la build SQLite del CI. Con la
-        # sqlite3 estándar de Python el flag debe ser True.
         assert isinstance(data["fts5_available"], bool)
 
 
@@ -220,7 +203,6 @@ class TestSourceTypes:
     def test_registry_contains_all_types(self):
         from mpc_forge.services.source_types import list_registered
         keys = {k for k, _ in list_registered()}
-        # +s3 en Extras · F3/T7
         assert keys == {"gdrive", "gdrive-file", "local-folder", "http-listing", "s3"}
 
     def test_resolve_returns_class(self):
@@ -241,26 +223,20 @@ class TestSourceTypes:
     def test_local_folder_validates_url(self, tmp_path):
         from mpc_forge.services.source_types import resolve
         cls = resolve("local-folder")
-        # OK: directorio existente
         assert cls.validate_url(str(tmp_path)).endswith(tmp_path.name)
-        # OK: file:// prefix
         assert cls.validate_url(f"file://{tmp_path}").endswith(tmp_path.name)
-        # Fail: ruta inexistente
         with pytest.raises(ValueError):
             cls.validate_url("/nonexistent/path/xyz")
-        # Fail: vacío
         with pytest.raises(ValueError):
             cls.validate_url("")
 
     async def test_local_folder_indexing(self, client, tmp_path):
         """Añadir un local-folder source e indexarlo debe descubrir imágenes."""
-        # Crear algunas imágenes de prueba en tmp
         (tmp_path / "Sol Ring (Full Art).png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
         (tmp_path / "Forest [DMU 275].jpg").write_bytes(b"\xff\xd8\xff\xe0")
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "Opt.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
 
-        # Añadir source vía endpoint
         r = await client.post("/api/art-sources/", json={
             "name": "Local test",
             "url": str(tmp_path),
@@ -269,16 +245,13 @@ class TestSourceTypes:
         src_id = r.json()["id"]
         assert r.json()["source_type"] == "local-folder"
 
-        # Indexar (endpoint puede ser 200 sync o 202 async según implementación)
         r = await client.post(f"/api/art-sources/{src_id}/index")
         assert r.status_code in (200, 202), r.text
 
-        # Buscar → debe encontrar las 3 imágenes
         r = await client.get("/api/drives/search?q=Forest")
         assert r.status_code == 200
         hits = r.json()
         assert any(h["filename"].startswith("Forest") for h in hits)
-        # Verificar canonical extraído
         forest = next(h for h in hits if h["filename"].startswith("Forest"))
         assert forest["expansion_code"] == "dmu"
         assert forest["collector_number"] == "275"
@@ -293,16 +266,12 @@ class TestPHash:
 
     def test_is_available_reported(self):
         from mpc_forge.services import phash
-        # No importamos si está o no — solo que la función devuelve bool sin crash.
         assert isinstance(phash.is_available(), bool)
 
     def test_hamming_distance(self):
         from mpc_forge.services import phash
-        # 0 distance
         assert phash.hamming_distance("ffffffffffffffff", "ffffffffffffffff") == 0
-        # 1 bit diff
         assert phash.hamming_distance("ffffffffffffffff", "fffffffffffffffe") == 1
-        # Inválido devuelve -1
         assert phash.hamming_distance("", "abc") == -1
         assert phash.hamming_distance("bad", "worse") == -1
 
@@ -317,13 +286,7 @@ class TestPHash:
         Image.new("RGB", (32, 32), color=(255, 128, 0)).save(buf, format="PNG")
         h = phash.compute_from_bytes(buf.getvalue())
         assert h is not None and len(h) == 16
-        # Todos los chars hex
         assert all(c in "0123456789abcdef" for c in h)
-
-
-# ============================================================================
-# FASE 3
-# ============================================================================
 
 
 class TestPrintRuns:
@@ -401,7 +364,6 @@ class TestPrintRuns:
         cards = [self._mock(f"C{i}", 1) for i in range(50)]
         plan = split_into_runs(cards)
         d = summary_dict(plan)
-        # Debe serializarse a JSON sin errores
         json.dumps(d)
         assert d["total_runs"] == 1
 
@@ -417,7 +379,6 @@ class TestDFCBulkLookup:
     """Fase 3 · TODO F1 — endpoint /dfc-pairs/lookup."""
 
     async def test_bulk_lookup_endpoint(self, client):
-        # Seed manual del cache
         from mpc_forge.db import session_scope
         from mpc_forge.models import DFCPair
         async with session_scope() as s:
@@ -426,7 +387,6 @@ class TestDFCBulkLookup:
             s.add(DFCPair(front_name="Bruna, the Fading Light",
                           back_name="Brisela Top", kind="meld_top"))
 
-        # Query con | como separador
         r = await client.get(
             "/api/dfc-pairs/lookup"
             "?names=Delver of Secrets|Nonexistent|Bruna, the Fading Light"
@@ -446,7 +406,6 @@ class TestDFCBulkLookup:
         async with session_scope() as s:
             s.add(DFCPair(front_name="Delver of Secrets",
                           back_name="Insectile Aberration", kind="transform"))
-        # Case distinto en el input
         r = await client.get("/api/dfc-pairs/lookup?names=DELVER of secrets")
         assert r.status_code == 200
         data = r.json()
@@ -486,18 +445,16 @@ class TestRecommender:
         )
         assert r.status_code == 200
         data = r.json()
-        # fake_scryfall.prints_by_oracle_id devuelve [] → nada matched
         assert data["artist_query"] == "Test Artist"
         assert isinstance(data["matched"], list)
         assert isinstance(data["unmatched_count"], int)
         assert isinstance(data["total_deck_uniques"], int)
-        assert data["total_deck_uniques"] >= 1  # el deck fixture tiene al menos 1 unique
+        assert data["total_deck_uniques"] >= 1
 
 
 class TestExtrasBackend:
     """Extras — TODOs backend consolidados en esta iteración."""
 
-    # --- Extras · F1/T2 · DFC revert en import_from_plaintext ---
     async def test_dfc_revert_backs_to_fronts(self, client):
         """Si el usuario pega el nombre de un BACK, el importer lo revierte
         al front vía el cache DFC."""
@@ -509,14 +466,11 @@ class TestExtrasBackend:
                 back_name="Insectile Aberration",
                 kind="transform",
             ))
-        # Importar por texto plano con el back
         r = await client.post("/api/decks/import/text", json={
             "name": "DFC revert",
             "text": "1 Insectile Aberration\n1 Sol Ring",
             "format": "commander",
         })
-        # No assert de status estricto (Scryfall mock puede no reconocer
-        # "Delver of Secrets"): lo importante es que el revert NO crashea.
         assert r.status_code in (200, 400)
 
     async def test_dfc_revert_skips_full_dfc_names(self, client):
@@ -527,7 +481,6 @@ class TestExtrasBackend:
         from mpc_forge.models import DFCPair
         from mpc_forge.services.deck_service import _revert_dfc_backs_to_fronts
 
-        # Seed un DFCPair con datos hipotéticos que podrían pisar
         async with session_scope() as s:
             s.add(DFCPair(
                 front_name="Zanarkand, Ancient Metropolis",
@@ -535,22 +488,18 @@ class TestExtrasBackend:
                 kind="transform",
             ))
 
-        # Las entradas ya tienen el nombre completo con //
         entries = [
             {"name": "Zanarkand, Ancient Metropolis // Lasting Fayth", "quantity": 1},
-            {"name": "Lasting Fayth", "quantity": 1},   # este SÍ debería revertirse
+            {"name": "Lasting Fayth", "quantity": 1},
         ]
         async with session_scope() as s:
             await _revert_dfc_backs_to_fronts(s, entries)
 
-        # El nombre completo con // no debe haberse tocado
         assert entries[0]["name"] == "Zanarkand, Ancient Metropolis // Lasting Fayth"
         assert "dfc_reverted_from" not in entries[0]
-        # El back puro sí debe haberse revertido al front
         assert entries[1]["name"] == "Zanarkand, Ancient Metropolis"
         assert entries[1].get("dfc_reverted_from") == "Lasting Fayth"
 
-    # --- Extras · F1/T3 · State machine con secciones ---
     def test_parser_state_machine_sideboard(self):
         from mpc_forge.clients.moxfield import parse_plain_decklist
         text = "//Commanders\n1 Atraxa\n//Mainboard\n1 Sol Ring\n//Sideboard\n2 Blood Moon"
@@ -568,7 +517,7 @@ class TestExtrasBackend:
         by_name = {e["name"]: e for e in entries}
         assert by_name["Sol Ring"]["role"] == "mainboard"
         assert by_name["Blood Moon"]["role"] == "sideboard"
-        assert by_name["Lightning Bolt"]["role"] == "mainboard"  # vuelve al state
+        assert by_name["Lightning Bolt"]["role"] == "mainboard"
 
     def test_parser_line_starting_with_digit_not_header(self):
         """'4 Sideboard' es una carta, no una cabecera."""
@@ -578,20 +527,17 @@ class TestExtrasBackend:
         assert entries[0]["name"] == "Sideboard"
         assert entries[0]["quantity"] == 4
 
-    # --- Extras · F1/T3 · Deckstats site ---
     def test_deckstats_registered(self):
         from mpc_forge.clients.import_sites import resolve_site
         cls = resolve_site("https://deckstats.net/decks/1234/5678-my-deck")
         assert cls is not None
         assert cls.__name__ == "DeckstatsSite"
 
-    # --- Extras · F1/T4 · Vocabulario editable ---
     def test_vocab_user_override(self, tmp_path, monkeypatch):
         """Si existe tag_vocabulary.json en data_dir, se mergea al default."""
         import json
 
         from mpc_forge import config as _cfg
-        # Simular data_dir en tmp
         old_paths = _cfg.PATHS
         _cfg.PATHS = old_paths.__class__(
             **{**vars(old_paths), "data_dir": tmp_path}
@@ -612,10 +558,8 @@ class TestExtrasBackend:
             from mpc_forge.services.gdrive_indexer import reload_tag_vocabulary as _r
             _r()
 
-    # --- Extras · F1/T4 · Tags de folder sin brackets ---
     def test_folder_segment_exact_match(self):
         from mpc_forge.services.gdrive_indexer import extract_tags
-        # Segmento "Full Art" == alias exacto
         csv, flags = extract_tags("Opt.png", "Chilli/Full Art/Opt.png")
         assert "full_art" in csv
         assert flags["is_full_art"]
@@ -627,13 +571,10 @@ class TestExtrasBackend:
         assert "full_art" not in csv
         assert not flags["is_full_art"]
 
-    # --- Extras · F2/T6 · Rebuild FTS5 ---
     async def test_fts5_rebuild_endpoint(self, client):
         r = await client.post("/api/drives/rebuild-fts5")
-        # Puede devolver 200 (rebuild OK) o 501 (FTS5 no disponible)
         assert r.status_code in (200, 501)
 
-    # --- Extras · F2/T7 · Validate source endpoint ---
     async def test_validate_source_gdrive(self, client):
         r = await client.post("/api/art-sources/validate", json={
             "url": "https://drive.google.com/drive/folders/abc123",
@@ -666,7 +607,6 @@ class TestExtrasBackend:
         assert data["valid"] is True
         assert data["detected_type"] == "local-folder"
 
-    # --- Extras · F3/T10 · DP solver para tiers ---
     def test_dp_solver_borderline_case(self):
         """620 cartas: greedy = 612+18=630 (10 waste), optimized debe ser
         ≤ 630 slots totales."""
@@ -684,13 +624,10 @@ class TestExtrasBackend:
         ]
         greedy = split_into_runs(cards)
         optimized = split_into_runs_optimized(cards)
-        # Ambos deben cubrir las 620 cartas
         assert sum(r.total_cards for r in greedy.runs) == 620
         assert sum(r.total_cards for r in optimized.runs) == 620
-        # El optimized debe waste <= greedy
         assert optimized.total_wasted_slots <= greedy.total_wasted_slots
 
-    # --- Extras · F3/T11 · Cache artists ---
     async def test_oracle_artist_cache_persists(self, client, deck):
         """Al llamar al recomendador se persiste el cache local."""
         from sqlalchemy import select as _sel
@@ -698,21 +635,16 @@ class TestExtrasBackend:
         from mpc_forge.db import session_scope
         from mpc_forge.models import OracleArtistCache
 
-        # Llamada 1
         r1 = await client.post(
             f"/api/decks/{deck['id']}/recommend-by-artist",
             json={"artist": "Test Artist"},
         )
         assert r1.status_code == 200
 
-        # Comprobar que hay filas en el cache tras la primera llamada
         async with session_scope() as s:
             rows = (await s.scalars(_sel(OracleArtistCache))).all()
-        # El mock scryfall devuelve [] para prints_by_oracle_id, así que
-        # tendremos filas sentinela con artist_folded=""
         assert len(rows) >= 1
 
-    # --- Extras · F3/T11 · Recomendador por style ---
     async def test_recommend_by_style_needs_criterion(self, client, deck):
         """Sin criterio activo, devuelve vacío."""
         r = await client.post(
@@ -733,35 +665,27 @@ class TestExtrasBackend:
         assert "matched" in data
         assert data["query"]["set_code"] == "c21"
 
-    # --- Extras · F2/T5 · Canonical validate endpoint ---
     async def test_canonical_validate_endpoint_empty(self, client):
         """Sin artes con canonical, el endpoint devuelve zeros."""
         r = await client.post("/api/drives/canonical/validate")
         assert r.status_code == 200
         assert r.json() == {"checked": 0, "valid": 0, "invalid": 0, "cache_hits": 0}
 
-    # --- Extras · F1/T4 · Tag vocabulary endpoints ---
     async def test_tag_vocabulary_endpoints(self, client):
-        # Reload
         r = await client.post("/api/tag-vocabulary/reload")
         assert r.status_code == 200
-        # Current
         r = await client.get("/api/tag-vocabulary/current")
         assert r.status_code == 200
         vocab = r.json()
-        # Debe incluir al menos los defaults
         assert "full_art" in vocab
         assert "borderless" in vocab
 
-    # --- Extras · F2/T8 · pHash compute-all endpoint ---
     async def test_phash_compute_all_endpoint(self, client):
         r = await client.post("/api/drives/phash/compute-all", json={
             "limit_per_source": 10,
         })
-        # 200 con phash disponible, 501 sin él
         assert r.status_code in (200, 501)
 
-    # --- Extras · F3/T7 · S3/R2 SourceType ---
     def test_s3_registered(self):
         from mpc_forge.services.source_types import resolve
         cls = resolve("s3")
@@ -800,6 +724,5 @@ class TestExtrasBackend:
         detected_type, canonical = _detect_source_type("s3://mtg-drops/full-art/")
         assert detected_type == "s3"
         assert canonical == "s3://mtg-drops/full-art"
-        # HTTPS S3 también
         detected_type, _ = _detect_source_type("https://foo.s3.amazonaws.com/")
         assert detected_type == "s3"

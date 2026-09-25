@@ -28,15 +28,9 @@ def _get_scryfall(request: Request) -> ScryfallClient:
     return request.app.state.scryfall
 
 
-# ── In-memory cache for Scryfall sets ──────────────────────────────────
-# Scryfall's /sets endpoint rarely changes (new sets appear every few months).
-# We cache the filtered+processed list for 1 hour to avoid hitting Scryfall
-# on every page load. The cache stores the final list of SetInfo dicts
-# (without owned_count — that's merged fresh from DB on each request).
-
 _SETS_CACHE: dict[str, list[dict]] | None = None
 _SETS_CACHE_AT: float = 0.0
-_SETS_CACHE_TTL: float = 3600.0  # 1 hour
+_SETS_CACHE_TTL: float = 3600.0
 
 WANTED_SET_TYPES = frozenset({
     "core", "expansion", "masters", "draft_innovation",
@@ -70,7 +64,6 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
 
     sets_raw = data.get("data", [])
 
-    # Filter and pre-process into lightweight dicts
     filtered = []
     for s in sets_raw:
         if s.get("set_type") not in WANTED_SET_TYPES:
@@ -86,7 +79,6 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
             "icon_svg_uri": s.get("icon_svg_uri"),
         })
 
-    # Sort by release date descending
     filtered.sort(key=lambda x: x.get("released_at") or "", reverse=True)
 
     _SETS_CACHE = filtered
@@ -94,8 +86,6 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
     log.info("Sets cache updated: %d sets", len(filtered))
     return filtered
 
-
-# ── Sidebar stats ──────────────────────────────────────────────────────
 
 class SidebarStats(BaseModel):
     total_decks: int = 0
@@ -121,8 +111,6 @@ async def sidebar_stats(db: DbDep) -> SidebarStats:
     )
 
 
-# ── Recent decks ───────────────────────────────────────────────────────
-
 class RecentDeck(BaseModel):
     id: int
     name: str
@@ -147,7 +135,6 @@ async def recent_decks(db: DbDep) -> list[RecentDeck]:
     if not rows:
         return []
 
-    # Portadas por lotes: el arte que cada mazo usa para su commander.
     covers = await deck_covers.covers_for_decks(db, [d for d, _ in rows])
 
     out = []
@@ -161,8 +148,6 @@ async def recent_decks(db: DbDep) -> list[RecentDeck]:
         ))
     return out
 
-
-# ── Sets list (cached) ─────────────────────────────────────────────────
 
 class SetInfo(BaseModel):
     code: str
@@ -186,7 +171,6 @@ async def list_sets(
     """
     sets_data = await _fetch_sets_cached(scryfall)
 
-    # Owned counts from DB (always fresh)
     owned_q = await db.execute(
         select(CollectionEntry.set_code, func.count())
         .group_by(CollectionEntry.set_code)
@@ -201,8 +185,6 @@ async def list_sets(
         for s in sets_data
     ]
 
-
-# ── Cards in a set ─────────────────────────────────────────────────────
 
 class SetCardInfo(BaseModel):
     scryfall_id: str
@@ -260,7 +242,6 @@ async def set_cards(
             resp.raise_for_status()
             page = resp.json()
 
-    # Owned IDs for this set (single fast query)
     owned_ids = set(
         (await db.scalars(
             select(CollectionEntry.scryfall_id)
@@ -287,8 +268,6 @@ async def set_cards(
 
     return out
 
-
-# ── Toggle owned ───────────────────────────────────────────────────────
 
 class ToggleOwnedRequest(BaseModel):
     scryfall_id: str
@@ -339,13 +318,11 @@ async def toggle_owned(payload: ToggleOwnedRequest, db: DbDep) -> ToggleOwnedRes
     return ToggleOwnedResponse(owned=owned, set_owned_count=count)
 
 
-# ── Batch toggle ───────────────────────────────────────────────────────
-
 class BatchToggleRequest(BaseModel):
     set_code: str
     set_name: str = ""
     cards: list[ToggleOwnedRequest]
-    action: str = "add"  # "add" | "remove"
+    action: str = "add"
 
 
 class BatchToggleResponse(BaseModel):
@@ -397,8 +374,6 @@ async def batch_toggle(payload: BatchToggleRequest, db: DbDep) -> BatchToggleRes
     await db.commit()
     return BatchToggleResponse(added=added, removed=removed, set_owned_count=count)
 
-
-# ── Global collection stats ────────────────────────────────────────────
 
 class CollectionStats(BaseModel):
     total_owned: int = 0

@@ -125,8 +125,6 @@ async def build_xml_endpoint(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    # Contamos las cartas que va a procesar el resolver para inicializar el
-    # tracker. Es una query barata (index sobre deck_id + role).
     total_to_resolve = (
         await db.scalar(
             select(func.count(DeckCard.id)).where(
@@ -150,7 +148,6 @@ async def build_xml_endpoint(
 
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
     foil = bool(payload.foil) if payload.foil is not None else False
-    # Hora local: forma parte del nombre del fichero exportado.
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.xml"
 
@@ -176,14 +173,12 @@ async def build_xml_endpoint(
             cardstock=cardstock,
             foil=foil,
             tier_size=est.tier_size,
-            estimated_cost_eur=est.total_eur,  # guardamos EUR total (con shipping)
+            estimated_cost_eur=est.total_eur,
             xml_path=str(result.xml_path),
             run_name=payload.run_name,
         )
         run_id = run.id
 
-    # Timeline: dejamos huella del XML generado con las opciones para que
-    # el usuario pueda ver más adelante qué configuración usó cada vez.
     await deck_activity.log_event(
         db, deck_id, K.XML_GENERATED,
         payload={
@@ -204,12 +199,9 @@ async def build_xml_endpoint(
         xml_path=str(result.xml_path),
         total_cards=result.total_cards,
         tier_size=est.tier_size,
-        estimated_cost_eur=est.total_eur,  # devolvemos EUR total al frontend
+        estimated_cost_eur=est.total_eur,
         run_id=run_id,
     )
-
-
-# ---- Split de print runs para mazos grandes (Fase 3 · T10) -----------------
 
 
 class PrintRunPlanCardView(BaseModel):
@@ -335,7 +327,6 @@ async def build_split_xml_endpoint(
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
     foil = payload.foil
     cardback = await _resolve_deck_cardback(db, deck)
-    # Hora local: forma parte del nombre del fichero exportado.
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
 
     xml_paths: list[str] = []
@@ -371,10 +362,6 @@ async def build_split_xml_endpoint(
     )
 
 
-# ---- Decklist como texto plano ---------------------------------------------
-# Copiar la lista serializada al portapapeles o descargarla como .txt para
-# reimportarla en MTGPrint, MPCFill, Moxfield, MTGA, etc.
-
 class DecklistResponse(BaseModel):
     text: str
     format: str
@@ -386,7 +373,7 @@ class DecklistResponse(BaseModel):
 async def get_decklist(
     deck_id: int,
     db: DbDep,
-    format: str = "with_set",  # "simple" | "with_set" | "arena"
+    format: str = "with_set",
     include_headers: bool = True,
 ) -> DecklistResponse:
     """Devuelve el mazo serializado como texto plano.
@@ -448,7 +435,6 @@ async def download_export(filename: str) -> FileResponse:
     target = (PATHS.exports_dir / filename).resolve()
     if not target.exists() or PATHS.exports_dir not in target.parents:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Archivo no encontrado")
-    # media_type se auto-detecta por extensión
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     media = {
         "pdf": "application/pdf",
@@ -471,8 +457,6 @@ async def get_default_cardback() -> FileResponse:
     return FileResponse(path, media_type=media)
 
 
-# ---- Cardback específico por mazo (v2 PDF Studio) --------------------------
-
 class DeckCardbackSettings(BaseModel):
     """Estado actual del cardback del mazo. Cuando `custom_art_id` es None,
     se usa el `default_cardback_path()` global."""
@@ -482,11 +466,10 @@ class DeckCardbackSettings(BaseModel):
     filename: str | None = None
     variant_label: str | None = None
     image_url: str | None = None
-    default_image_url: str | None = None  # URL del cardback global (si existe)
+    default_image_url: str | None = None
 
 
 class SetDeckCardbackRequest(BaseModel):
-    # None → revertir al default global. Un id válido → usar ese CustomArt.
     custom_art_id: int | None = None
 
 
@@ -510,7 +493,6 @@ async def _load_deck_cardback_settings(
 
     art = await db.get(CustomArt, deck.custom_cardback_art_id)
     if art is None:
-        # FK huérfana (el CustomArt fue borrado). Auto-corregimos.
         deck.custom_cardback_art_id = None
         await db.commit()
         return DeckCardbackSettings(
@@ -566,8 +548,6 @@ async def clear_deck_cardback(deck_id: int, db: DbDep) -> DeckCardbackSettings:
     return await _load_deck_cardback_settings(db, deck_id)
 
 
-# ---- PDF imprimible ----------------------------------------------------
-
 class BuildPDFRequest(BaseModel):
     """Payload del PDF Studio v2. Todos los campos son opcionales — si no
     vienen, caen a los defaults del dataclass ``PDFOptions``.
@@ -578,72 +558,60 @@ class BuildPDFRequest(BaseModel):
     para no romper integraciones anteriores; se traducen internamente al
     modelo nuevo (``card_guides_*``).
     """
-    # Página
-    page_size: str = "a4"                 # "a4" | "letter" | "a3"
-    orientation: str = "portrait"         # "portrait" | "landscape"
+    page_size: str = "a4"
+    orientation: str = "portrait"
     cols: int = 3
     rows: int = 3
 
-    # Espaciado
     gap_x_mm: float = 0.0
     gap_y_mm: float = 0.0
 
-    # Offsets
     offset_x_mm: float = 0.0
     offset_y_mm: float = 0.0
     back_offset_x_mm: float = 0.0
     back_offset_y_mm: float = 0.0
 
-    # Bleed
     bleed_enabled: bool = False
     bleed_mm: float = 0.0
 
-    # Card guides
     card_guides_enabled: bool = True
-    card_guides_style: str = "corners"     # "corners" | "full"
-    card_guides_shape: str = "square"      # "square"  | "round"
-    card_guides_pattern: str = "solid"     # "solid"   | "dashed" | "dotted"
-    card_guides_placement: str = "outside" # "outside" | "middle" | "inside"
+    card_guides_style: str = "corners"
+    card_guides_shape: str = "square"
+    card_guides_pattern: str = "solid"
+    card_guides_placement: str = "outside"
     card_guides_length_mm: float = 4.0
     card_guides_color: str = "#606060"
     card_guides_width_pt: float = 0.4
 
-    # Page guides
-    page_guides: str = "none"              # "none" | "full_lines" | "corners_only"
+    page_guides: str = "none"
 
-    # Duplex hide flags
     hide_card_guides_front: bool = False
     hide_card_guides_back: bool = False
     hide_page_guides_front: bool = False
     hide_page_guides_back: bool = False
 
-    # Marcas de registro (Silhouette / Cricut)
     reg_marks_enabled: bool = False
     reg_marks_inset_mm: float = 10.0
     reg_marks_size_mm: float = 5.0
 
-    # Contenido
     include_backs: bool = False
-    backs_layout: str = "append"           # "append" | "duplex"
-    backs_content: str = "all_cards"       # "all_cards" | "dfc_only"
-    backs_compact_fill: bool = True        # aprovecha huecos de la última hoja de fronts
+    backs_layout: str = "append"
+    backs_content: str = "all_cards"
+    backs_compact_fill: bool = True
 
-    # Rango de páginas
     page_range: str = ""
 
-    # Pie
     show_footer: bool = True
 
-    # ---- Legacy (traducidos si vienen) ----
-    cut_marks: bool | None = None          # → card_guides_enabled
-    gap_mm: float | None = None            # → gap_x_mm & gap_y_mm
-    guides_enabled: bool | None = None     # → card_guides_enabled
-    guides_style: str | None = None        # → card_guides_style
-    guides_stroke: str | None = None       # → card_guides_pattern
-    guides_placement: str | None = None    # → card_guides_placement
-    guides_length_mm: float | None = None  # → card_guides_length_mm
-    guides_color: str | None = None        # → card_guides_color
-    guides_width_pt: float | None = None   # → card_guides_width_pt
+    cut_marks: bool | None = None
+    gap_mm: float | None = None
+    guides_enabled: bool | None = None
+    guides_style: str | None = None
+    guides_stroke: str | None = None
+    guides_placement: str | None = None
+    guides_length_mm: float | None = None
+    guides_color: str | None = None
+    guides_width_pt: float | None = None
 
 
 class PDFBuildResponse(BaseModel):
@@ -659,7 +627,7 @@ class ImagesExportRequest(BaseModel):
     """Sin campos por ahora — el ZIP incluye siempre las imágenes únicas del
     mazo + decklist.txt + README.txt. Reservado para el futuro por si
     queremos permitir escoger formato de decklist, incluir tokens, etc."""
-    decklist_format: str = "with_set"      # "simple" | "with_set" | "arena"
+    decklist_format: str = "with_set"
 
 
 class ImagesExportResponse(BaseModel):
@@ -679,7 +647,7 @@ class BuildProgressResponse(BaseModel):
     total: int
     current: int
     current_name: str
-    kind: str  # "xml" | "pdf"
+    kind: str
     done: bool
     error: str | None
     elapsed_seconds: float
@@ -749,29 +717,24 @@ async def build_pdf_endpoint(
         build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
-    # Hora local: forma parte del nombre del fichero exportado.
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}.pdf"
 
-    # --- Traducción legacy → nuevo modelo ---
     def _one_of(value: str, allowed: tuple[str, ...], default: str) -> str:
         v = (value or "").lower().strip()
         return v if v in allowed else default
 
-    # cut_marks / guides_enabled → card_guides_enabled
     card_guides_enabled = payload.card_guides_enabled
     if payload.cut_marks is not None:
         card_guides_enabled = payload.cut_marks
     if payload.guides_enabled is not None:
         card_guides_enabled = payload.guides_enabled
 
-    # gap_mm → gap_x/y
     if payload.gap_mm is not None:
         gap_x = gap_y = payload.gap_mm
     else:
         gap_x, gap_y = payload.gap_x_mm, payload.gap_y_mm
 
-    # Legacy guides_* → card_guides_*
     card_style = payload.guides_style if payload.guides_style is not None else payload.card_guides_style
     card_pattern = payload.guides_stroke if payload.guides_stroke is not None else payload.card_guides_pattern
     card_placement = payload.guides_placement if payload.guides_placement is not None else payload.card_guides_placement
@@ -816,8 +779,6 @@ async def build_pdf_endpoint(
         show_footer=payload.show_footer,
     )
 
-    # Cardback específico del mazo (v2). El generador solo lo usa cuando
-    # backs_content='all_cards'; para el resto no consulta el disco.
     cardback = await _resolve_deck_cardback(db, deck)
 
     result = await asyncio.to_thread(
@@ -888,7 +849,7 @@ async def export_images_endpoint(
             )
         )
     ) or 0
-    build_progress.start(deck_id, total_to_resolve, kind="pdf")  # UI ya sabe pintar "pdf"
+    build_progress.start(deck_id, total_to_resolve, kind="pdf")
 
     try:
         resolved = await resolve_deck_for_xml(
@@ -902,13 +863,11 @@ async def export_images_endpoint(
         build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
-    # Decklist en el formato que pida el usuario.
     fmt = payload.decklist_format if payload.decklist_format in {"simple", "with_set", "arena"} else "with_set"
     decklist_text = await decklist_export.build_decklist_text(
         db, deck_id, fmt=fmt, include_headers=True,  # type: ignore[arg-type]
     )
 
-    # Hora local: forma parte del nombre del fichero exportado.
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}-images.zip"
     cardback = await _resolve_deck_cardback(db, deck)
@@ -944,8 +903,6 @@ async def export_images_endpoint(
         size_bytes=result.size_bytes,
     )
 
-
-# --- Historial ---
 
 class PrintRunView(BaseModel):
     id: int
@@ -991,8 +948,6 @@ async def delete_run(run_id: int, db: DbDep) -> None:
     await db.commit()
 
 
-# --- Backup ---
-
 class BackupResponse(BaseModel):
     path: str
     size_bytes: int
@@ -1001,8 +956,5 @@ class BackupResponse(BaseModel):
 @router.post("/backup", response_model=BackupResponse)
 async def create_backup_endpoint() -> BackupResponse:
     zip_path = backup_service.create_backup()
-    # Un backup completo añade a disco casi tanto como ocupa la app entera.
-    # Sin invalidar, la pantalla de almacenamiento seguiría dando la cifra de
-    # antes hasta que caducara el snapshot cacheado.
     storage_service.invalidate()
     return BackupResponse(path=str(zip_path), size_bytes=zip_path.stat().st_size)

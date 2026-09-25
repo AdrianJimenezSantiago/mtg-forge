@@ -24,13 +24,10 @@ def resource_root() -> Path:
     Frozen --onefile → sys._MEIPASS (carpeta temporal de extracción).
     """
     if is_frozen():
-        # PyInstaller onefile pone recursos en _MEIPASS
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass is not None:
             return Path(meipass)
-        # PyInstaller onedir: junto al .exe
         return Path(sys.executable).resolve().parent
-    # Desarrollo: subimos dos niveles desde mpc_forge/paths.py
     return Path(__file__).resolve().parent.parent
 
 
@@ -47,9 +44,7 @@ def install_root() -> Path:
     del usuario viven junto al ejecutable, no en ``%APPDATA%``.
     """
     if is_frozen():
-        # SIEMPRE junto al .exe (persistente), aunque _MEIPASS exista.
         return Path(sys.executable).resolve().parent
-    # Dev: raíz del proyecto (misma que resource_root).
     return Path(__file__).resolve().parent.parent
 
 

@@ -51,18 +51,10 @@ log = logging.getLogger(__name__)
 
 Kind = Literal["essential", "refetchable", "derived", "output", "safety"]
 
-# Cuánto vale un snapshot antes de volver a tocar disco. La vista de Ajustes
-# pinta el desglose, las barras y las rutas con una sola lectura; 60 s evita
-# que un refresco de página relance el escaneo completo.
 CACHE_TTL_SECONDS = 60.0
 
-# Objetivos admitidos por :func:`purge`. Solo entra aquí lo que se puede
-# borrar sin perder información del usuario — la BD, el arte custom y los
-# reversos NO son purgables por diseño.
 PURGE_TARGETS: frozenset[str] = frozenset({"thumbs", "exports", "logs", "backups"})
 
-# Backups automáticos que se conservan al podar. Uno es suficiente: los
-# automáticos se generan antes de cada migración y solo interesa el último.
 DEFAULT_KEEP_BACKUPS = 1
 
 
@@ -78,8 +70,6 @@ class Category:
     purge_target: str | None = None
 
 
-# El orden es el que se pinta en la interfaz: primero lo que más pesa en una
-# instalación típica, y dentro de eso lo irrecuperable antes que lo derivado.
 CATEGORIES: tuple[Category, ...] = (
     Category("database", "essential"),
     Category("art", "refetchable"),
@@ -92,13 +82,8 @@ CATEGORIES: tuple[Category, ...] = (
     Category("other", "essential"),
 )
 
-# Snapshot cacheado: (instante monotónico del cálculo, datos).
 _cache: tuple[float, dict[str, Any]] | None = None
 
-
-# ---------------------------------------------------------------------------
-# Rutas
-# ---------------------------------------------------------------------------
 
 def _logs_dir() -> Path:
     """Carpeta de logs. No vive en ``Paths`` porque no es configurable: la fija
@@ -135,10 +120,6 @@ def _resolved(path: Path) -> Path:
     except OSError:
         return path
 
-
-# ---------------------------------------------------------------------------
-# Escaneo
-# ---------------------------------------------------------------------------
 
 def _scan_dir(root: Path, *, exclude: frozenset[Path] = frozenset()) -> tuple[int, int]:
     """Recorrido recursivo. Devuelve ``(ficheros, bytes)``.
@@ -256,21 +237,10 @@ def _mount_point(path: Path) -> Path:
     return Path(current.anchor or current)
 
 
-# ---------------------------------------------------------------------------
-# Snapshot
-# ---------------------------------------------------------------------------
-
 def _backups_summary() -> dict[str, Any]:
     """Cuántos backups hay, cuáles son automáticos y cuándo fue el último."""
-    # Import diferido: ``backup`` importa ``config`` y nada más, pero mantener
-    # la dependencia dentro de la función deja claro que es de solo lectura.
     from mpc_forge.services import backup as backup_service
 
-    # Se le pasa la carpeta explícitamente en vez de dejar que use su default.
-    # `backup.py` hace `from mpc_forge.config import PATHS`, que captura el
-    # objeto al importar: si el usuario cambia la carpeta de backups en
-    # Ajustes, `cfg.PATHS` se reasigna pero esa referencia se queda con la
-    # vieja. Aquí siempre se mira la ruta efectiva.
     try:
         items = backup_service.list_backups(cfg.PATHS.backups_dir)
     except OSError:
@@ -295,10 +265,6 @@ def compute() -> dict[str, Any]:
     paths = category_paths()
     resolved = {key: _resolved(p) for key, p in paths.items()}
 
-    # Rutas que hay que saltarse al escanear una carpeta: las de las demás
-    # categorías. Cubre el caso de que el usuario apunte, por ejemplo,
-    # `exports_dir` dentro de `art_dir` — legítimo, y sin esto contaríamos
-    # esos bytes en las dos filas y en el total.
     all_roots = frozenset(resolved.values())
 
     categories: list[dict[str, Any]] = []
@@ -330,10 +296,6 @@ def compute() -> dict[str, Any]:
     for c in categories:
         by_kind[c["kind"]] = by_kind.get(c["kind"], 0) + c["bytes"]
 
-    # Volúmenes: se agrupan las categorías por punto de montaje para poder
-    # decir "la app ocupa el 12 % de este disco y te quedan 40 GB libres".
-    # Mover `art_dir` a otro disco es una recomendación que solo tiene sentido
-    # si se ve el espacio de los dos.
     volumes: dict[str, dict[str, Any]] = {}
     for c in categories:
         if not c["exists"]:
@@ -370,10 +332,6 @@ def compute() -> dict[str, Any]:
         },
         "volumes": sorted(volumes.values(), key=lambda v: -v["app_bytes"]),
         "backups": _backups_summary(),
-        # Lo que se llevaría el próximo backup. `create_backup()` comprime BD +
-        # arte + custom + reversos; el modo solo-BD es el que se dispara antes
-        # de una migración. Son cotas superiores: el zip comprime, aunque los
-        # PNG ya vienen comprimidos y apenas bajan.
         "backup_estimate": {
             "full_bytes": (
                 sizes["database"] + sizes["art"]
@@ -420,10 +378,6 @@ def invalidate() -> None:
     _cache = None
 
 
-# ---------------------------------------------------------------------------
-# Limpieza
-# ---------------------------------------------------------------------------
-
 def _delete_files(paths: list[Path]) -> tuple[int, int]:
     """Borra los ficheros indicados. Devuelve ``(borrados, bytes liberados)``."""
     removed = 0
@@ -433,8 +387,6 @@ def _delete_files(paths: list[Path]) -> tuple[int, int]:
             size = path.stat().st_size
             path.unlink()
         except OSError:
-            # Bloqueado por el antivirus o por otro proceso: se salta. No es
-            # un error del que informar — el siguiente intento lo cogerá.
             continue
         removed += 1
         freed += size
@@ -540,8 +492,6 @@ def purge(
         raise ValueError(f"Objetivos no purgables: {', '.join(unknown)}")
 
     results: dict[str, dict[str, int]] = {}
-    # Orden fijo, no el de la petición: así el log y la respuesta son
-    # comparables entre ejecuciones.
     for target in ("thumbs", "exports", "logs", "backups"):
         if target not in targets:
             continue
@@ -567,13 +517,3 @@ def purge(
         "removed": sum(r["removed"] for r in results.values()),
         "freed_bytes": total_freed,
     }
-
-
-def human_bytes(value: int | float) -> str:
-    """Formato legible. Solo para logs y tests — la interfaz lo hace en JS."""
-    size = float(value)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if abs(size) < 1024 or unit == "TB":
-            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"

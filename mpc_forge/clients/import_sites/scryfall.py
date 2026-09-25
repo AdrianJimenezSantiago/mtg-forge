@@ -18,7 +18,6 @@ from mpc_forge.config import SCRYFALL_USER_AGENT
 
 from .base import ImportSite, InvalidURLError
 
-# Cualquier UUID/slug tras "/decks/"
 _DECK_ID_RE = re.compile(r"/decks/([A-Za-z0-9\-]+)")
 
 
@@ -51,7 +50,6 @@ class ScryfallSite(ImportSite):
             netloc="api.scryfall.com",
         )
         text = resp.text or ""
-        # Scryfall usa "// Sideboard" con espacio — normalizamos.
         return text.replace("// Sideboard", "//Sideboard").strip()
 
     @classmethod

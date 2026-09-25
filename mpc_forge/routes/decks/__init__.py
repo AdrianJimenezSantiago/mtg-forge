@@ -25,10 +25,6 @@ from mpc_forge.routes.decks import activity, art, crud, imports, localize, searc
 
 router = APIRouter()
 
-# ORDEN DELIBERADO. `search`, `activity` y `localize` exponen rutas bajo el
-# prefijo literal `/_/`, que debe registrarse antes que `crud`, dueño de
-# `/{deck_id}`. Con el orden invertido, una petición a `/api/decks/_/autocomplete`
-# entraría por `/{deck_id}` con deck_id="_" y devolvería un 422.
 router.include_router(search.router)
 router.include_router(activity.router)
 router.include_router(localize.router)

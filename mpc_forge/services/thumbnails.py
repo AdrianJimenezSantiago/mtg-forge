@@ -42,42 +42,19 @@ from mpc_forge.config import PATHS
 
 log = logging.getLogger(__name__)
 
-# Ancho al que se escalan las miniaturas. 160 px cubre con holgura la tarjeta
-# de la rejilla (~120 px de ancho renderizado) incluso en pantallas 2x.
 THUMB_WIDTH = 160
-# Alto máximo derivado de la proporción de una carta de Magic (63×88 mm).
 THUMB_HEIGHT = int(THUMB_WIDTH * 88 / 63)
 
-# Calidad WebP. 72 es el punto donde el artefacto deja de ser visible a este
-# tamaño; subir a 85 duplica el peso sin diferencia perceptible.
 WEBP_QUALITY = 72
-# method=4 equilibra tiempo de compresión y tamaño. El 6 (máximo) tarda el
-# triple para ahorrar un 3%.
 WEBP_METHOD = 4
 
 _SUPPORTED_SOURCES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
-# Límite de píxeles descomprimidos que aceptamos decodificar.
-#
-# Una "decompression bomb" es un PNG de pocos KB que declara 50000×50000 px:
-# al decodificarlo, Pillow intenta reservar decenas de GB y el proceso muere.
-# No es un ataque teórico aquí: `custom_art/` es una carpeta donde el usuario
-# suelta ficheros que a menudo ha descargado de sitios de terceros.
-#
-# 80 Mpx deja sitio de sobra para cualquier escaneo legítimo de una carta
-# (un 1200 dpi de una carta entera ronda los 12 Mpx) y corta el abuso.
 MAX_SOURCE_PIXELS = 80_000_000
 
-# Generaciones simultáneas. Cada una ocupa un hilo del executor por defecto de
-# asyncio (`min(32, cpu+4)`), así que sin tope una rejilla con 300 artes sin
-# cachear lo agota entero: el resto de `to_thread` de la app (exports a PDF,
-# escaneo de custom art) se queda esperando detrás.
 _GENERATION_CONCURRENCY = 4
 _semaphore: asyncio.Semaphore | None = None
 
-# Generaciones en vuelo, indexadas por ruta de destino. Sin esto, 40 tarjetas
-# de la rejilla que comparten arte disparan 40 generaciones idénticas del
-# mismo fichero, compitiendo por el mismo `.tmp`.
 _inflight: dict[Path, asyncio.Task] = {}
 
 
@@ -143,12 +120,6 @@ def thumb_path_for(source: Path) -> Path:
     """
     relative = _relative_to_art_dir(source)
     if relative is None:
-        # El arte está fuera de art_dir (arte custom, carpeta local del
-        # usuario). Se agrupa por la inicial del nombre para repartir, y se
-        # incluye un hash corto de la carpeta de origen: sin él, dos ficheros
-        # con el mismo nombre en carpetas distintas —algo habitual en los
-        # drives de arte, donde "Sol Ring.png" aparece en varias— escribirían
-        # sobre la misma miniatura.
         digest = hashlib.sha256(
             str(source.parent).encode("utf-8", "surrogateescape")
         ).hexdigest()[:8]
@@ -168,31 +139,14 @@ def _generate_sync(source: Path, target: Path) -> bool:
     from PIL import Image, ImageOps
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Fichero temporal + rename atómico: si el proceso muere a mitad, no queda
-    # un WebP truncado que luego se sirva corrupto para siempre.
     tmp = target.with_suffix(".webp.tmp")
     with Image.open(source) as im:
-        # Guardia contra bombas de descompresión.
-        #
-        # NO se toca `Image.MAX_IMAGE_PIXELS`: es un global de todo el proceso,
-        # así que fijarlo aquí lo cambiaba para cualquier otro código que use
-        # Pillow (el cálculo de pHash, por ejemplo) y, en los tests, se filtraba
-        # de un test a otro dejando el límite bajísimo para el resto de la
-        # sesión.
-        #
-        # `Image.open` solo lee la cabecera —los píxeles se decodifican de forma
-        # perezosa en el primer acceso—, así que comprobar `im.size` aquí ocurre
-        # ANTES de reservar memoria. Que es justo lo que hace falta: una bomba
-        # es un fichero de pocos KB que declara 50.000×50.000.
         width, height = im.size
         if width * height > MAX_SOURCE_PIXELS:
             raise SourceTooLargeError(
                 f"{source.name}: {width}x{height} px supera el límite de "
                 f"{MAX_SOURCE_PIXELS} px"
             )
-        # exif_transpose respeta la orientación EXIF; algunos escaneos de arte
-        # custom vienen rotados y sin esto la miniatura no coincide con la
-        # imagen grande.
         im = ImageOps.exif_transpose(im)
         if im.mode not in ("RGB", "RGBA"):
             im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
@@ -213,9 +167,6 @@ async def ensure_thumb(source: Path) -> Path | None:
 
     target = thumb_path_for(source)
     if target.exists():
-        # Si el arte original se ha regenerado (arte custom sustituido por el
-        # usuario), la miniatura vieja quedaría obsoleta. Comparar mtime es
-        # una comprobación barata que lo resuelve.
         try:
             if target.stat().st_mtime >= source.stat().st_mtime:
                 return target
@@ -225,9 +176,6 @@ async def ensure_thumb(source: Path) -> Path | None:
     if not pillow_available():
         return None
 
-    # Si ya hay una generación en curso para este mismo destino, esperamos a
-    # esa en vez de lanzar otra. Es el mismo patrón de deduplicación en vuelo
-    # que usa `ScryfallClient._inflight`.
     existing = _inflight.get(target)
     if existing is not None:
         try:
@@ -237,16 +185,12 @@ async def ensure_thumb(source: Path) -> Path | None:
 
     async def _generate() -> Path | None:
         async with _get_semaphore():
-            # Puede haberla generado otro esperando en el semáforo.
             if target.exists():
                 return target
             try:
                 await asyncio.to_thread(_generate_sync, source, target)
                 return target
             except Exception:
-                # Una imagen corrupta, una bomba de descompresión o un formato
-                # exótico no deben romper la carga de la rejilla entera. Se
-                # registra y se cae a la imagen original.
                 log.warning(
                     "No se pudo generar la miniatura de %s", source.name, exc_info=True
                 )
@@ -286,29 +230,6 @@ def url_for_relative(art_relative_path: str) -> str:
     """
     normalized = art_relative_path.replace("\\", "/").lstrip("/")
     return f"/api/thumb/{normalized}"
-
-
-async def warm_many(sources: list[Path], *, concurrency: int = 4) -> int:
-    """Pregenera miniaturas en lote. Devuelve cuántas se crearon.
-
-    Se usa después de descargar el arte de un mazo: para cuando el usuario abra
-    el selector, las miniaturas ya están listas. La concurrencia es baja a
-    propósito — es trabajo de CPU y no queremos competir con las descargas.
-    """
-    if not pillow_available():
-        return 0
-    semaphore = asyncio.Semaphore(concurrency)
-    created = 0
-
-    async def _one(path: Path) -> None:
-        nonlocal created
-        async with semaphore:
-            if not thumb_path_for(path).exists():
-                if await ensure_thumb(path) is not None:
-                    created += 1
-
-    await asyncio.gather(*(_one(p) for p in sources), return_exceptions=True)
-    return created
 
 
 def stats() -> dict[str, int | bool]:

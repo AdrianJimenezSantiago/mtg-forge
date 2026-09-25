@@ -16,7 +16,6 @@ TEMPLATES = ROOT / "templates"
 STATIC = ROOT / "static"
 VENDOR = STATIC / "vendor"
 
-# Dominios que servían assets y que ya no deben aparecer en ningún template.
 FORBIDDEN_HOSTS = [
     "cdn.tailwindcss.com",
     "unpkg.com",
@@ -26,8 +25,6 @@ FORBIDDEN_HOSTS = [
     "cdnjs.cloudflare.com",
 ]
 
-# Hosts que SÍ pueden aparecer: son APIs de datos o enlaces que el usuario
-# abre a mano, no assets que bloqueen el render.
 ALLOWED_DATA_HOSTS = [
     "api.scryfall.com", "scryfall.com", "moxfield.com", "archidekt.com",
     "deckstats.net", "tappedout.net", "cubecobra.com", "mtggoldfish.com",
@@ -53,8 +50,6 @@ class TestNoCdnAssets:
     @pytest.mark.parametrize("path", _html_files(), ids=lambda p: p.name)
     def test_template_has_no_cdn_asset(self, path):
         text = path.read_text(encoding="utf-8")
-        # Se ignoran los comentarios Jinja: el propio código documenta de qué
-        # CDNs venía antes, y eso no carga nada.
         without_comments = re.sub(r"\{#.*?#\}", "", text, flags=re.DOTALL)
         for url in _asset_refs(without_comments):
             host = url.split("/")[2].lower()
@@ -100,7 +95,6 @@ class TestVendorBundleIsComplete:
         for path in [*_html_files(), STATIC / "app.js"]:
             text = path.read_text(encoding="utf-8")
             for ref in pattern.findall(text):
-                # Se ignoran las rutas con interpolación de plantilla.
                 if "{{" in ref or "{%" in ref or "${" in ref:
                     continue
                 target = ROOT / ref.lstrip("/")
@@ -120,7 +114,6 @@ class TestVendorBundleIsComplete:
         `font-family` de respaldo en algunas reglas y eso es inofensivo.
         """
         css_path = VENDOR / "mana.min.css"
-        # utf-8-sig: el fichero de mana-font viene con BOM.
         css = css_path.read_text(encoding="utf-8-sig")
         refs = re.findall(r'url\(["\']?([^"\')?#]+)', css)
         assert refs, "El @font-face de Mana ha desaparecido del CSS"
@@ -139,8 +132,6 @@ class TestVendorBundleIsComplete:
         ningún test lo notara.
         """
         css = (VENDOR / "tailwind.css").read_text(encoding="utf-8")
-        # Tailwind emite los colores como `rgb(r g b / alpha)`, no como hex,
-        # para poder aplicar opacidad con las variantes `/50`.
         assert ".bg-bg-base{" in css, (
             "Falta la utilidad bg-bg-base — el tema personalizado no se aplicó"
         )

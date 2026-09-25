@@ -21,9 +21,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = Path(__file__).parent / "data_openapi_snapshot.json"
 DECKS_PKG = ROOT / "mpc_forge" / "routes" / "decks"
 
-# Máximo de líneas por módulo de rutas. El objetivo de la división era que
-# cada fichero cupiera en la cabeza de quien lo lee; sin un tope explícito
-# vuelven a crecer sin que nadie lo note.
 MAX_MODULE_LINES = 1000
 
 
@@ -147,9 +144,6 @@ class TestRouteOrdering:
     paramétrica con `deck_id="_"` y devolvería un 422 en vez del resultado.
     """
 
-    # (ruta en el esquema, ruta a pedir con sus parámetros obligatorios).
-    # `search-cards` y `autocomplete` exigen `q`; sin él devolverían un 422
-    # legítimo que se confundiría con la colisión que queremos detectar.
     LITERAL_ROUTES = [
         ("/api/decks/_/search-cards", "/api/decks/_/search-cards?q=sol"),
         ("/api/decks/_/with-activity", "/api/decks/_/with-activity"),

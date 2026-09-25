@@ -40,16 +40,10 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import ArtSource, IndexedArt
-
-# Se reutilizan los constructores de URL del buscador en vez de duplicarlos:
-# son la fuente de verdad de cómo se piden miniaturas y descargas a Drive, y
-# tenerlos en dos sitios garantiza que algún día diverjan.
 from mpc_forge.services.gdrive_search import _download_url, _thumb_url
 
 log = logging.getLogger(__name__)
 
-# Las columnas booleanas de variante, expuestas como facetas filtrables. El
-# orden es el que se pinta en la interfaz.
 VARIANT_FLAGS = {
     "full_art": IndexedArt.is_full_art,
     "borderless": IndexedArt.is_borderless,
@@ -61,9 +55,6 @@ VARIANT_FLAGS = {
     "alt_art": IndexedArt.is_alt_art,
 }
 
-# Ordenaciones admitidas. Todas terminan en `id` para que el orden sea TOTAL:
-# sin desempate, dos filas con el mismo nombre pueden salir en distinto orden
-# entre dos consultas y la paginación duplicaría o se saltaría elementos.
 SORT_OPTIONS = {
     "name": (IndexedArt.name_normalized.asc(), IndexedArt.id.asc()),
     "name_desc": (IndexedArt.name_normalized.desc(), IndexedArt.id.desc()),
@@ -84,10 +75,10 @@ class LibraryFilters:
     """Estado de filtrado. Todo opcional; sin filtros se navega el índice."""
     query: str = ""
     source_ids: list[int] = field(default_factory=list)
-    variants: list[str] = field(default_factory=list)      # AND entre ellas
+    variants: list[str] = field(default_factory=list)
     exclude_variants: list[str] = field(default_factory=list)
     expansion_code: str = ""
-    card_type: str = ""            # CARD | TOKEN | CARDBACK
+    card_type: str = ""
     tags_include: list[str] = field(default_factory=list)
 
     def is_empty(self) -> bool:
@@ -126,17 +117,11 @@ def _apply_filters(stmt: Select, filters: LibraryFilters) -> Select:
         stmt = stmt.where(IndexedArt.card_type == filters.card_type.upper())
 
     for tag in filters.tags_include:
-        # `tags` es una cadena separada por comas. Se envuelve en comas para que
-        # buscar "art" no case con "alt_art" ni con "artist_proof".
         stmt = stmt.where(
             func.instr("," + IndexedArt.tags + ",", f",{tag},") > 0
         )
 
     if filters.query:
-        # LIKE sobre el nombre normalizado. No se usa FTS5 aquí: el buscador
-        # devuelve un ranking difuso y aquí hace falta un conjunto estable que
-        # se pueda paginar y contar. Para "encuéntrame esta carta concreta" ya
-        # está el selector de arte.
         needle = f"%{filters.query.strip().lower()}%"
         stmt = stmt.where(IndexedArt.name_normalized.like(needle))
 
@@ -157,11 +142,6 @@ def _serialize(row: IndexedArt, source_names: dict[int, str]) -> dict[str, Any]:
         "collector_number": row.collector_number,
         "card_type": row.card_type,
         "image_hash": row.image_hash,
-        # La columna `thumb_url` está vacía en la mayoría de las filas: solo
-        # se rellena cuando el indexador la recibe del API de Drive, y con el
-        # camino de scraping no llega. Hay que derivarla del file_id, que es
-        # lo que hace el resto del proyecto. Leerla a pelo dejaba `src=""` y
-        # la rejilla salía sin ninguna imagen.
         "thumb_url": row.thumb_url or _thumb_url(row.file_id),
         "download_url": row.download_url or _download_url(row.file_id),
         "variants": [

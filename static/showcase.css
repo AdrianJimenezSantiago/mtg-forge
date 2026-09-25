@@ -1,14 +1,3 @@
-/* ==========================================================================
-   MPC Forge · vistas de escaparate: landing (/) y página 404
-   --------------------------------------------------------------------------
-   Se carga solo en esas dos vistas (bloque extra_head) y depende de los
-   tokens de /static/motion.css (--fx-*).
-
-   La pieza memorable es la mano de cartas del hero: las portadas de tus
-   mazos recientes en abanico, que se reparten al cargar y se abren al pasar
-   el ratón. Todo lo demás es deliberadamente sobrio.
-   ========================================================================== */
-
 .lp,
 .nf {
   --ink:        #f1eee4;
@@ -29,10 +18,6 @@
   from { opacity: 0; translate: 0 8px; }
 }
 
-/* ==========================================================================
-   LANDING
-   ========================================================================== */
-
 .lp {
   max-width: 1180px;
   margin: 0 auto;
@@ -41,8 +26,6 @@
   flex-direction: column;
   gap: 4.5rem;
 }
-
-/* ── Hero ─────────────────────────────────────────────────────────────── */
 
 .lp-hero {
   position: relative;
@@ -87,7 +70,6 @@
   animation: lp-fade 700ms var(--fx-ease-out) 260ms both;
 }
 
-/* Importación */
 .lp-import {
   margin-top: 2.2rem;
   max-width: 580px;
@@ -192,8 +174,6 @@
 a:hover .lp-link { text-decoration-color: currentColor; }
 .lp-link--sm { font-size: 0.75rem; }
 
-/* ── La mano de cartas ────────────────────────────────────────────────── */
-
 .lp-hand-wrap {
   position: relative;
   display: flex;
@@ -204,14 +184,10 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   --w: clamp(128px, 10.5vw, 170px);
   --spread: 1;
   position: relative;
-  /* Ancho real del abanico abierto: centro de la carta exterior (2 × 0,36w)
-     + media carta + lo que desplaza la rotación arriba. Con hover
-     (--spread 1,12) sigue cabiendo en la columna del hero. */
   width: calc(var(--w) * 3.6);
   max-width: 100%;
   height: calc(var(--w) * 1.75);
 }
-/* Luz dorada sobre la mesa, bajo las cartas. */
 .lp-hand::before {
   content: '';
   position: absolute;
@@ -251,8 +227,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
     rotate 560ms var(--fx-ease-spring),
     transform 650ms var(--fx-ease-out),
     box-shadow 300ms ease;
-  /* `backwards`, no `both`: tras el reparto, las posiciones vuelven a
-     depender solo de las variables y el hover puede animarlas. */
   animation: lp-hand-in 950ms var(--fx-ease-out) backwards;
   animation-delay: calc(320ms + var(--n) * 95ms);
 }
@@ -317,7 +291,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   animation: lp-fade 700ms ease 900ms both;
 }
 
-/* Carta de ejemplo dibujada en CSS */
 .proxy {
   --c: #f3ecd2;
   --c2: #cfc39a;
@@ -389,8 +362,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
 .proxy__text span:nth-child(2) { width: 82%; }
 .proxy__text span:nth-child(3) { width: 56%; }
 
-/* ── Secciones ────────────────────────────────────────────────────────── */
-
 .lp-section__head {
   display: flex;
   align-items: baseline;
@@ -413,7 +384,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   color: var(--ink);
 }
 
-/* Mazos recientes */
 .lp-recent {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -484,14 +454,11 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   color: var(--gold-glow);
 }
 
-/* Flujo de cuatro pasos */
 .lp-flow { position: relative; }
 .lp-flow__line {
   position: absolute;
   top: 22px;
   left: 22px;
-  /* Del centro del primer marcador al del cuarto: la 4.ª columna empieza en
-     75% + 1,5rem (4 columnas, 3 huecos de 2rem). */
   right: calc(25% - 1.5rem - 22px);
   height: 1px;
   background: linear-gradient(90deg, rgb(212 175 55 / 0.75), rgb(212 175 55 / 0.12));
@@ -572,8 +539,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   color: var(--gold-glow);
 }
 
-/* Aparición al entrar en pantalla (motion.js añade .is-revealed). Sin JS,
-   o con movimiento reducido, se ve el estado final desde el principio. */
 .fx-reveal-ready .lp-flow:not(.is-revealed) .lp-flow__line { transform: scaleX(0); }
 .fx-reveal-ready .lp-flow:not(.is-revealed) .lp-step { opacity: 0; }
 .lp-flow.is-revealed .lp-flow__line {
@@ -593,7 +558,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   to   { box-shadow: 0 0 0 6px #0a0d13, 0 0 0 18px rgb(212 175 55 / 0); }
 }
 
-/* El taller */
 .lp-tools {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -652,7 +616,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   stroke-dasharray: 3 2.5;
   opacity: 0.8;
 }
-/* Guías de corte "en marcha" mientras el cursor está encima. */
 .lp-studio:hover .sheet-cut { animation: lp-ants 1.1s linear infinite; }
 @keyframes lp-ants { to { stroke-dashoffset: -11; } }
 
@@ -746,7 +709,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   color: var(--gold-glow);
 }
 
-/* Estado del taller */
 .lp-status {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -760,9 +722,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   padding: 1.3rem 1.4rem;
 }
 .lp-status__item + .lp-status__item { border-left: 1px solid var(--line); }
-/* Dos columnas en tablet. El separador no puede seguir siendo "todos menos el
-   primero": el tercer ítem abre fila y le tocaría un borde izquierdo suelto.
-   Se pasa a bordes por posición dentro de la rejilla. */
 @media (max-width: 1180px) and (min-width: 901px) {
   .lp-status { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lp-status__item + .lp-status__item { border-left: 0; }
@@ -837,10 +796,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
 }
 .lp-local svg { color: #4ade80; }
 
-/* ==========================================================================
-   404
-   ========================================================================== */
-
 .nf {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -865,7 +820,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   width: 250px;
   aspect-ratio: 63 / 88;
 }
-/* Resplandor tras el portal */
 .nf-stage::before {
   content: '';
   position: absolute;
@@ -874,7 +828,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   background: radial-gradient(closest-side, rgb(212 175 55 / 0.14), transparent);
   pointer-events: none;
 }
-/* Anillo del portal: los colores de maná girando muy despacio */
 .nf-portal {
   position: absolute;
   inset: -32%;
@@ -940,7 +893,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
     0 0 0 1px rgb(255 255 255 / 0.07);
 }
 
-/* Reverso */
 .nf-back {
   display: grid;
   place-items: center;
@@ -972,7 +924,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   box-shadow: 0 0 34px rgb(212 175 55 / 0.4);
 }
 
-/* Anverso */
 .nf-front {
   padding: 4.5%;
   background: linear-gradient(160deg, #3d3c46, #16151b);
@@ -1080,8 +1031,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   border-radius: 3px;
   background: rgb(0 0 0 / 0.08);
   font: 0.64rem ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* La plantilla inserta <wbr> tras cada "/": se corta por ahí y solo
-     parte un segmento si no cabe entero. */
   overflow-wrap: anywhere;
 }
 .nf-flavor {
@@ -1111,7 +1060,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
   50% { scale: 0.82; opacity: 0.55; }
 }
 
-/* Texto */
 .nf-copy { max-width: 32rem; }
 .nf-copy > * { animation: lp-fade 700ms var(--fx-ease-out) both; }
 .nf-copy > :nth-child(1) { animation-delay: 150ms; }
@@ -1206,10 +1154,6 @@ a:hover .lp-link { text-decoration-color: currentColor; }
 }
 .nf-suggest a svg { width: 14px; height: 14px; }
 .nf-suggest a:hover { color: var(--gold-glow); }
-
-/* ==========================================================================
-   MOVIMIENTO REDUCIDO
-   ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   .lp *,

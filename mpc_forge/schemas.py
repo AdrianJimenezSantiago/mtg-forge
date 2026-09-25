@@ -5,7 +5,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-# ---- Requests ------------------------------------------------------------
 
 class ImportFromMoxfieldRequest(BaseModel):
     url_or_id: str = Field(..., min_length=1)
@@ -77,8 +76,8 @@ class ChangeArtRequest(BaseModel):
     deck_card_id: int
     scryfall_id: str | None = None
     custom_art_id: int | None = None
-    face: str = "front"  # front | back
-    remember_globally: bool = False  # solo aplica a arte oficial
+    face: str = "front"
+    remember_globally: bool = False
 
 
 class BuildXMLRequest(BaseModel):
@@ -100,13 +99,10 @@ class AddCustomArtFromUrlRequest(BaseModel):
     variant: str | None = None
 
 
-# ---- Responses -----------------------------------------------------------
-
 class ArtOption(BaseModel):
     """Una opción de arte en la galería. Puede ser oficial (Scryfall) o custom local."""
-    kind: str = "scryfall"  # "scryfall" | "custom"
+    kind: str = "scryfall"
 
-    # Scryfall:
     scryfall_id: str | None = None
     set_code: str = ""
     set_name: str = ""
@@ -119,22 +115,16 @@ class ArtOption(BaseModel):
     layout: str = "normal"
     artist: str | None = None
     released_at: str | None = None
-    rarity: str = ""                   # common | uncommon | rare | mythic | special | bonus
+    rarity: str = ""
 
-    # Custom:
     custom_art_id: int | None = None
     variant_label: str | None = None
     filename: str | None = None
 
-    # Ambos:
     face: str = "front"
-    image_small: str | None = None  # URL para thumbnail (scryfall CDN o /custom_art/…)
-    # Miniatura WebP local de 160 px, si el arte ya está descargado. Pesa ~6 KB
-    # frente a los ~90 KB del `small` de Scryfall y se sirve desde localhost.
-    # NULL = usar `image_small`. Ver services/thumbnails.py.
+    image_small: str | None = None
     thumb_url: str | None = None
 
-    # Estado UI:
     is_chosen: bool = False
     is_preferred: bool = False
     is_last_used: bool = False
@@ -159,30 +149,27 @@ class DeckCardView(BaseModel):
     include: bool
     layout: str
     is_dfc: bool
-    thumbnail_url: str | None  # URL para thumb (custom si aplica, si no scryfall)
+    thumbnail_url: str | None
     printings_available: int
     custom_arts_available: int = 0
     history_copies: int = 0
     history_decks: list[str] = []
-    # Metadata MTG para ordenar/filtrar en la UI:
-    mana_cost: str = ""            # "{2}{U}{U}"
-    cmc: float = 0.0               # coste convertido
-    type_line: str = ""            # "Legendary Creature — Angel"
-    colors: list[str] = []         # ["W","U"]
+    mana_cost: str = ""
+    cmc: float = 0.0
+    type_line: str = ""
+    colors: list[str] = []
     color_identity: list[str] = []
-    rarity: str = ""               # common | uncommon | rare | mythic | special | bonus
-    keywords: list[str] = []       # ["Flying", "Trample", ...] — usado por stats
-    # Reverso para cartas DFC/transform/MDFC:
+    rarity: str = ""
+    keywords: list[str] = []
     back_thumbnail_url: str | None = None
     back_name: str | None = None
-    # Cartas relacionadas (tokens, meld_result, meld_part) — para añadir con 1 click:
     related_parts: list[dict[str, str]] = []
 
 
 class IllegalCardView(BaseModel):
     """Carta baneada, restringida o no legal en el formato del mazo."""
     name: str
-    status: str   # 'banned' | 'restricted' | 'not_legal'
+    status: str
     role: str
 
 
@@ -193,8 +180,8 @@ class DeckValidation(BaseModel):
     counted: int
     is_valid: bool
     message: str
-    level: str  # 'ok' | 'warn' | 'error'
-    breakdown: dict[str, int] = {}  # role → count
+    level: str
+    breakdown: dict[str, int] = {}
     illegal: list[IllegalCardView] = []
 
 
@@ -225,8 +212,6 @@ class DeckView(BaseModel):
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
     price: DeckPriceView | None = None
-    # Carta del mazo que hace de portada (ver services/deck_covers). El editor
-    # la sigue para refrescar la portada de la cabecera al cambiar su arte.
     cover_card_id: int | None = None
 
 
@@ -236,11 +221,11 @@ class UnresolvedEntry(BaseModel):
     Se muestra al usuario tras importar para que sepa qué falta y pueda
     editarlo (o copiar toda la lista de fallos y reintentar).
     """
-    name: str                           # el nombre tal cual se leyó
+    name: str
     quantity: int = 1
-    raw_line: str | None = None         # línea original si venía de texto plano
-    set: str | None = None              # set intentado si lo había
-    number: str | None = None           # collector number intentado si lo había
+    raw_line: str | None = None
+    set: str | None = None
+    number: str | None = None
     role: str = "mainboard"
     reason: str = "not_found_on_scryfall"
 
@@ -275,6 +260,4 @@ class ArtOptionsPage(BaseModel):
     offset: int = 0
     limit: int = 60
     has_more: bool = False
-    # Facetas para pintar los contadores de los filtros sin pedir todo el
-    # conjunto: {"full_art": 12, "borderless": 3, ...}
     facets: dict[str, int] = Field(default_factory=dict)

@@ -26,13 +26,7 @@ from mpc_forge.models import ArtSource
 log = logging.getLogger(__name__)
 
 
-# Catálogo curado de drives comunitarios que MPCFill.com usa como sources.
-# Nombramos "MPCFill #NN" porque no tenemos forma de saber el nombre real de
-# cada uno sin visitarlo — el usuario los puede renombrar desde la UI.
-# El orden es el que dio el usuario. Se pueden restaurar en cualquier momento
-# desde la UI (Ajustes → botón "Restaurar catálogo").
 _CURATED_CATALOG: list[tuple[str, str]] = [
-    # (name, drive_folder_id)
     ("MPCFill #01", "1wI6DgeKQ1YrFIGfhsfYe4w8XzfMjvoCM"),
     ("MPCFill #02", "1jzajJLgBeVwpZJaZYPU2gY1w5U4YXl4x"),
     ("MPCFill #03", "1iIKdugU8N5jNwR1kP8MKNTmUgPVGFCx-"),
@@ -100,7 +94,6 @@ _CURATED_CATALOG: list[tuple[str, str]] = [
     ("MPCFill #65", "1qxpqY5EKCFVWsOFJsYS3nCti5jBnguG7"),
     ("MPCFill #66", "1L7lEr9VPE_rSvNEhO7fjexvTYbaztfnO"),
     ("MPCFill #67", "1zeLPLoBcZdC_sIhTUG9I3Uj00vmaR2jv"),
-    # --- Drives adicionales (añadidos manualmente) ---
     ("MPCFill #68",  "1LDkccHntt1XxgvVdkO2MZsaM_m03NnkB"),
     ("MPCFill #69",  "1xHlEE-PbfjYyD6HcAolvas0dngXSIyge"),
     ("MPCFill #70",  "1-SV8FcX2PHqWjDlLXfAk5aJcBQRmIaXy"),
@@ -228,9 +221,9 @@ _GDRIVE_FILE_RE = re.compile(r"drive\.google\.com/(?:file/d/|open\?id=|uc\?id=)(
 
 @dataclass
 class ParsedGoogleDriveUrl:
-    kind: str          # "folder" | "file" | "unknown"
-    id: str | None     # drive/file id extraído
-    canonical: str     # URL canónica (para folder), o dirección de descarga (file)
+    kind: str
+    id: str | None
+    canonical: str
 
 
 def parse_gdrive_url(url: str) -> ParsedGoogleDriveUrl:
@@ -284,14 +277,12 @@ def _detect_source_type(url: str) -> tuple[str, str]:
     from mpc_forge.services.source_types import resolve
     raw = (url or "").strip()
 
-    # 1-2) Google Drive
     parsed = parse_gdrive_url(raw)
     if parsed.kind == "folder":
         return "gdrive", parsed.canonical
     if parsed.kind == "file":
         return "gdrive-file", parsed.canonical
 
-    # 3) Local folder — file:// o ruta absoluta detectable
     if raw.startswith("file://") or (len(raw) >= 2 and (raw[0] in "/\\" or raw[1] == ":")):
         try:
             local_cls = resolve("local-folder")
@@ -299,11 +290,8 @@ def _detect_source_type(url: str) -> tuple[str, str]:
                 canonical = local_cls.validate_url(raw)
                 return "local-folder", canonical
         except (ValueError, Exception):
-            # Ruta parece local pero no válida — cae a "other" para que el
-            # usuario vea el warning en la UI y corrija.
             pass
 
-    # 4) HTTP JSON manifest
     if raw.startswith(("http://", "https://")) and raw.lower().endswith(".json"):
         try:
             http_cls = resolve("http-listing")
@@ -313,7 +301,6 @@ def _detect_source_type(url: str) -> tuple[str, str]:
         except (ValueError, Exception):
             pass
 
-    # 5) S3 / R2 (Extras · F3/T7). Heurística por prefijo o hostname.
     is_s3_like = (
         raw.startswith("s3://")
         or ".s3.amazonaws.com" in raw.lower()
@@ -350,8 +337,6 @@ async def add_source(
         raise ValueError("La URL no puede estar vacía")
 
     if source_type:
-        # Si el caller fuerza un tipo, respetamos su URL tal cual (después
-        # de validate_url del tipo, que puede normalizar).
         from mpc_forge.services.source_types import resolve
         type_cls = resolve(source_type)
         if type_cls is None:
@@ -392,7 +377,6 @@ async def update_source(
         src.name = name.strip()
     if url is not None:
         if source_type:
-            # Tipo forzado por el caller — validar contra su clase concreta.
             from mpc_forge.services.source_types import resolve
             type_cls = resolve(source_type)
             if type_cls is None:
@@ -402,7 +386,6 @@ async def update_source(
         else:
             src.source_type, src.url = _detect_source_type(url)
     elif source_type is not None:
-        # Solo cambia el tipo (URL no tocada): validamos con el nuevo tipo.
         from mpc_forge.services.source_types import resolve
         type_cls = resolve(source_type)
         if type_cls is None:
@@ -456,7 +439,6 @@ async def restore_catalog(db: AsyncSession) -> dict[str, int]:
 
     Returns dict con {added, skipped, total_curated}.
     """
-    # Índice de URLs existentes (ignoramos casing y trailing slashes)
     existing_rows = (await db.scalars(select(ArtSource))).all()
     existing_urls = {(s.url or "").rstrip("/").lower() for s in existing_rows}
 

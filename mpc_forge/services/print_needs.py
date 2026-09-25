@@ -41,15 +41,10 @@ log = logging.getLogger(__name__)
 
 MatchMode = Literal["oracle", "exact"]
 
-# Las tierras básicas se tratan aparte: nadie marca en su colección las 37
-# llanuras que tiene sueltas en una caja, así que contarlas como "hay que
-# imprimirlas" distorsionaría el total. Se informan por separado para que el
-# usuario decida.
 BASIC_LAND_NAMES = {
     "plains", "island", "swamp", "mountain", "forest", "wastes",
     "snow-covered plains", "snow-covered island", "snow-covered swamp",
     "snow-covered mountain", "snow-covered forest",
-    # Nombres en español, por si el mazo se localizó.
     "llanura", "isla", "pantano", "montaña", "bosque",
 }
 
@@ -65,8 +60,6 @@ class CardNeed:
     owned: int
     role: str = "mainboard"
     is_basic_land: bool = False
-    # Impresiones concretas que el usuario posee de esta carta. Permite a la
-    # interfaz decir "la tienes, pero en otra edición".
     owned_printings: list[dict[str, str]] = field(default_factory=list)
 
     @property
@@ -148,7 +141,6 @@ class DeckNeeds:
 def is_basic_land(name: str) -> bool:
     """¿Es una tierra básica? Tolera prefijos de tipo y sufijos de variante."""
     normalized = name.strip().lower()
-    # "Snow-Covered Forest // Forest" y similares: basta con la primera cara.
     normalized = normalized.split("//")[0].strip()
     return normalized in BASIC_LAND_NAMES
 
@@ -171,8 +163,6 @@ async def _load_collection_index(
     for entry in rows:
         key = entry.scryfall_id if match_mode == "exact" else entry.oracle_id
         counts[key] += 1
-        # Los detalles se indexan SIEMPRE por oracle_id: aunque el modo sea
-        # exacto, la interfaz quiere poder decir "la tienes en otra edición".
         details[entry.oracle_id].append({
             "scryfall_id": entry.scryfall_id,
             "set_code": entry.set_code,
@@ -219,7 +209,6 @@ async def compute_for_decks(
     optimista y el usuario pediría de menos.
     """
     counts, details = await _load_collection_index(db, match_mode)
-    # Copia mutable: si se comparte, se va descontando mazo a mazo.
     pool = dict(counts)
 
     results: list[DeckNeeds] = []
@@ -262,7 +251,6 @@ async def _compute(
 
         key = card.scryfall_id if match_mode == "exact" else card.oracle_id
         available = counts.get(key, 0)
-        # No se puede "poseer" más copias de las que el mazo pide.
         owned = min(available, card.quantity)
 
         if consume and owned > 0:

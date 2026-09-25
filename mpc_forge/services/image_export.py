@@ -29,8 +29,6 @@ from mpc_forge.services.xml_generator import DeckCardResolved
 
 log = logging.getLogger(__name__)
 
-# Caracteres inseguros en nombres de fichero cross-platform. Windows es el más
-# restrictivo, así que respetamos su lista. También añadimos control chars.
 _FORBIDDEN = set('/\\?*|"<>:')
 _CONTROL = {chr(i) for i in range(0, 32)}
 
@@ -41,9 +39,7 @@ def _safe_filename(name: str, max_len: int = 120) -> str:
     porque MPCFill hace matching por nombre y queremos conservar la forma
     original todo lo posible."""
     cleaned = ''.join('_' if (c in _FORBIDDEN or c in _CONTROL) else c for c in name)
-    # Colapsa espacios múltiples y quita whitespace en los bordes.
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    # Windows además prohíbe puntos y espacios al final.
     cleaned = cleaned.rstrip('. ')
     if not cleaned:
         cleaned = 'unnamed'
@@ -64,11 +60,11 @@ def _split_dfc(full_name: str) -> tuple[str, str | None]:
 @dataclass
 class ImageExportResult:
     zip_path: Path
-    total_files: int          # cuántos ficheros hay dentro del zip
-    total_unique_cards: int   # cuántas cartas únicas (fronts)
-    total_dfc_backs: int      # cuántos reversos DFC se incluyeron
-    included_cardback: bool   # si se metió el cardback del mazo en el zip
-    missing_images: int       # cuántas imágenes no se pudieron leer
+    total_files: int
+    total_unique_cards: int
+    total_dfc_backs: int
+    included_cardback: bool
+    missing_images: int
     size_bytes: int
 
 
@@ -89,14 +85,11 @@ def build_images_zip(
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    seen_files: dict[str, str] = {}  # arcname → source path (dedupe)
+    seen_files: dict[str, str] = {}
     missing = 0
     total_backs = 0
     included_cardback = False
 
-    # PNG/JPG/WEBP ya están comprimidas — re-comprimir con DEFLATED gasta CPU
-    # sin ganancia real (a menudo aumenta ligeramente el tamaño). Guardamos
-    # las imágenes STORED y aplicamos DEFLATED solo a los ficheros de texto.
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_STORED) as zf:
         for c in cards:
             front_face, back_face = _split_dfc(c.name)
@@ -143,7 +136,6 @@ def build_images_zip(
             except FileNotFoundError:
                 log.warning("Cardback no encontrado: %s", cardback_path)
 
-        # UTF-8 sin BOM. Moxfield acepta ambos pero sin BOM es más portable.
         zf.writestr('decklist.txt', decklist_text, compress_type=zipfile.ZIP_DEFLATED)
 
         readme = _build_readme(
@@ -153,7 +145,7 @@ def build_images_zip(
         )
         zf.writestr('README.txt', readme, compress_type=zipfile.ZIP_DEFLATED)
 
-    total_files = len(seen_files) + 2  # + decklist.txt + README.txt
+    total_files = len(seen_files) + 2
     return ImageExportResult(
         zip_path=output_path,
         total_files=total_files,

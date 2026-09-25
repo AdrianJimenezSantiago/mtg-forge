@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 
 from .base import ImportSite, InvalidURLError, _slug_to_title
 
-# Ruta típica: /decks/{user_id}/{deck_id}-{slug}
 _DECKSTATS_PATH_RE = re.compile(r"^/decks/(\d+)/(\d+)-(.+)$")
 _DECKSTATS_PATH_BARE_RE = re.compile(r"^/decks/\d+/\d+")
 

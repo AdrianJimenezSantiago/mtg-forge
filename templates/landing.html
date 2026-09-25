@@ -1,9 +1,6 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La importación rápida reutiliza importPanel() de la biblioteca (home.js);
-     landing.js solo la envuelve. Ambos van aquí, antes de Alpine: ver la
-     nota del bloque view_module en base.html. #}
   <script defer src="/static/js/home.js?v={{ asset_v('js/home.js') }}"></script>
   <script defer src="/static/js/landing.js?v={{ asset_v('js/landing.js') }}"></script>
 {% endblock %}
@@ -16,17 +13,12 @@
 
 {% block content %}
 {% set step_icons = ['download', 'scan-search', 'wand-sparkles', 'printer'] %}
-{# Tolerante a un contexto parcial (los tests renderizan con lo mínimo). #}
 {% set ws = workshop or {} %}
-{# Cantidad con su sustantivo en singular o plural: count(1, 'deck') → "1 mazo". #}
 {% macro count(n, noun) -%}
   {{- t['landing_count_%s_%s' % (noun, 'one' if n == 1 else 'many')] | replace('{n}', n | num(lang)) -}}
 {%- endmacro %}
 <div class="lp">
 
-  {# ============================================================
-     HERO: importación + mano de cartas
-     ============================================================ #}
   <section class="lp-hero" x-data="landingImport()" x-init="loadSites()">
     <div class="lp-hero__copy">
       <h1 class="lp-title">
@@ -73,8 +65,6 @@
       </p>
     </div>
 
-    {# Mano de cartas en abanico. Las portadas son de tus mazos recientes;
-       los huecos se rellenan con cartas de ejemplo dibujadas en CSS. #}
     <div class="lp-hand-wrap">
       <div class="lp-hand" role="list" aria-label="{{ t.landing_hand_label }}">
         {% for slot in hand %}
@@ -112,9 +102,6 @@
     {% include "_unresolved_modal.html" %}
   </section>
 
-  {# ============================================================
-     SEGUIR: mazos recientes (solo si hay)
-     ============================================================ #}
   {% if recent_decks %}
   <section class="lp-section">
     <header class="lp-section__head">
@@ -142,9 +129,6 @@
   </section>
   {% endif %}
 
-  {# ============================================================
-     FLUJO: los cuatro pasos (es una secuencia real → numerada)
-     ============================================================ #}
   <section class="lp-section">
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_flow_title }}</h2>
@@ -169,9 +153,6 @@
     </div>
   </section>
 
-  {# ============================================================
-     TALLER: PDF Studio destacado + resto de herramientas
-     ============================================================ #}
   <section class="lp-section">
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_tools_title }}</h2>
@@ -197,7 +178,6 @@
                 </g>
               {% endfor %}
             {% endfor %}
-            {# Guías de corte: líneas a sangre en los bordes de cada carta #}
             {% for x in [11, 57, 61, 107, 111, 157] %}
               <line class="sheet-cut" x1="{{ x }}" y1="3" x2="{{ x }}" y2="217"/>
             {% endfor %}
@@ -238,9 +218,6 @@
     </div>
   </section>
 
-  {# ============================================================
-     ESTADO DEL TALLER
-     ============================================================ #}
   <section class="lp-section">
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_status_title }}</h2>
@@ -282,10 +259,6 @@
           <p class="lp-status__note"><a href="/collection" class="lp-link lp-link--sm">{{ t.landing_status_open }}</a></p>
         </div>
       </div>
-      {# Espacio en disco. A diferencia de los otros tres, esta cifra NO se
-         renderiza en servidor: calcularla recorre la carpeta de datos entera y
-         la landing es la puerta de entrada de la app. Se pide por fetch y
-         aparece cuando está lista. #}
       <div class="lp-status__item" x-data="workshopStorage()" x-init="load()">
         <span class="lp-status__icon"><i data-lucide="hard-drive"></i></span>
         <div>

@@ -49,16 +49,10 @@ from mpc_forge.models import IndexedArt
 
 log = logging.getLogger(__name__)
 
-# Descargas de thumbnails simultáneas durante el retrofit. Mismo criterio que
-# `ArtCache._DOWNLOAD_CONCURRENCY`.
 _RETROFIT_CONCURRENCY = 8
 
-# Cada cuántos artes se hace commit. Acota lo que se pierde si el proceso
-# muere a mitad del job.
 _RETROFIT_BATCH = 40
 
-# Detección lazy de las dependencias opcionales. Si no están, la función
-# `is_available()` devuelve False y el resto del módulo no se usa.
 _pil = None
 _imagehash = None
 _deps_checked = False
@@ -115,11 +109,9 @@ def compute_from_bytes(data: bytes) -> str | None:
         return None
     try:
         img = _pil.open(io.BytesIO(data))
-        # imagehash requiere modo L o RGB — conversión defensiva.
         if img.mode not in ("L", "RGB"):
             img = img.convert("RGB")
         h = _imagehash.phash(img)
-        # imagehash.__str__ devuelve hex de 16 chars para pHash de 64 bits.
         return str(h)
     except Exception as e:
         log.debug("compute_from_bytes falló: %s", e)
@@ -197,21 +189,12 @@ async def find_similar(
     if not reference_hash:
         return []
 
-    # Dos fases a propósito.
-    #
-    # Fase 1: traer SOLO (id, hash). Antes se hidrataban objetos IndexedArt
-    # completos de todas las filas con hash para descartar el 99% acto
-    # seguido: con 100k artes eso son 100k instancias ORM construidas y
-    # tiradas, cientos de MB de pico y el event loop bloqueado mientras dura.
-    # Una fila de dos columnas es una tupla ligera.
-    #
-    # Fase 2: hidratar únicamente los ganadores (`limit`, por defecto 50).
     rows = (await db.execute(
         select(IndexedArt.id, IndexedArt.image_hash, IndexedArt.file_id)
         .where(IndexedArt.image_hash.is_not(None))
     )).all()
 
-    scored: list[tuple[int, int]] = []   # (distancia, id)
+    scored: list[tuple[int, int]] = []
     for art_id, image_hash, file_id in rows:
         if exclude_file_id and file_id == exclude_file_id:
             continue
@@ -227,7 +210,6 @@ async def find_similar(
     found = (await db.scalars(
         select(IndexedArt).where(IndexedArt.id.in_(winner_ids))
     )).all()
-    # El IN no conserva el orden; lo reponemos según la distancia calculada.
     by_id = {a.id: a for a in found}
     return [by_id[i] for i in winner_ids if i in by_id]
 
@@ -265,14 +247,6 @@ async def compute_missing_for_source(
 
     stats = {"computed": 0, "failed": 0, "skipped": 0}
 
-    # Antes esto era un `for` con un `await` de descarga dentro: una imagen
-    # detrás de otra, sin solapar nada. Con ~200 ms de ida y vuelta por
-    # thumbnail, 500 artes eran casi dos minutos de los cuales el 95% era
-    # esperar a la red.
-    #
-    # Un semáforo permite tener varias descargas en vuelo respetando un tope.
-    # El valor es el mismo que usa `ArtCache._DOWNLOAD_CONCURRENCY`: suficiente
-    # para saturar el ancho de banda sin parecer un scraper agresivo.
     pending = [(art, thumb_url_fn(art)) for art in rows]
     stats["skipped"] = sum(1 for _, url in pending if not url)
     pending = [(art, url) for art, url in pending if url]
@@ -283,8 +257,6 @@ async def compute_missing_for_source(
         async with semaphore:
             return art, await compute_from_url(client, url)
 
-    # Se procesa en lotes para poder ir commiteando: si la conexión se cae a
-    # la mitad, el trabajo ya hecho queda guardado.
     for batch_start in range(0, len(pending), _RETROFIT_BATCH):
         batch = pending[batch_start : batch_start + _RETROFIT_BATCH]
         results = await asyncio.gather(
@@ -293,9 +265,6 @@ async def compute_missing_for_source(
         )
         for result in results:
             if isinstance(result, BaseException):
-                # `compute_from_url` ya traga sus propios errores; si algo
-                # llega hasta aquí es inesperado, pero no debe abortar el job
-                # entero ni perder los hashes ya calculados.
                 log.debug("Cálculo de pHash falló con excepción: %s", result)
                 stats["failed"] += 1
                 continue
@@ -324,11 +293,9 @@ def _default_thumb_url(art: IndexedArt, source: Any | None = None) -> str:
       2. Dispatch por ``source.source_type`` vía registry.
       3. Fallback: patrón Google Drive.
     """
-    # (1) URL directa cacheada
     if getattr(art, "thumb_url", None):
         return art.thumb_url
 
-    # (2) Dispatch por source_type
     if source is not None:
         try:
             from mpc_forge.services.source_types import resolve as _resolve_type
@@ -338,5 +305,4 @@ def _default_thumb_url(art: IndexedArt, source: Any | None = None) -> str:
         except Exception as e:
             log.debug("_default_thumb_url dispatch falló, cayendo a gdrive: %s", e)
 
-    # (3) Fallback histórico
     return f"https://drive.google.com/thumbnail?id={art.file_id}&sz=w400"

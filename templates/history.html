@@ -1,44 +1,12 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/history.js.
-     Se extrajo del bloque embebido que había en el cuerpo de esta
-     plantilla para poder lintarlo, depurarlo con nombres de fichero
-     reales y reutilizar código entre vistas.
-
-     Se declara en este bloque, y no donde estaba, porque base.html lo
-     renderiza en el <head> ANTES de Alpine. Alpine arranca en el
-     microtask siguiente a su propio script diferido, así que un módulo
-     declarado más abajo se ejecutaría demasiado tarde y las funciones
-     de x-data no existirían todavía. Ver la nota en base.html.
-
-     Regenerar con scripts/extract_inline_js.py #}
   <script defer src="/static/js/history.js?v={{ asset_v('js/history.js') }}"></script>
 {% endblock %}
 {% block title %}{{ t.history_title }} · MPC Forge{% endblock %}
 {% block content %}
-{#
-  Vista de Historial rediseñada.
-
-  Dos secciones:
-
-  1. Grid de mazos: card por mazo con el arte del commander recortado 63:88,
-     nombre, contadores de actividad y "última X hace Y". Click abre el modal.
-
-  2. Impresiones (PrintRuns): tabla existente conservada abajo, resumida.
-     Sigue siendo útil como vista global de tiradas para MPC.
-
-  El modal de timeline:
-    - Header con nombre del mazo + link al editor
-    - Pills de filtro por tipo de evento
-    - Lista scrollable con icono Lucide por tipo, timestamp relativo y
-      contenido formateado según kind (renderers específicos)
-
-  Todo el estado se hidrata vía fetch — no hay contexto Jinja.
-#}
 <div class="min-h-screen" x-data="historyPage()" x-init="load()">
 
-  {# ============ HEADER STICKY ============ #}
   <div class="sticky top-0 z-30 bg-bg-base/95 backdrop-blur border-b border-border-subtle">
     <div class="max-w-7xl mx-auto px-6 lg:px-8 py-4 flex flex-wrap items-center gap-3">
       <div class="flex items-center gap-3">
@@ -60,7 +28,6 @@
 
   <div class="max-w-7xl mx-auto px-4 lg:px-8 py-6 space-y-10">
 
-    {# ============ SECCIÓN 1: GRID DE MAZOS ============ #}
     <section>
       <div class="flex items-center gap-2 mb-4">
         <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">{{ t.history_decks_section }}</h2>
@@ -88,7 +55,6 @@
                class="group bg-bg-elevated border border-border-subtle rounded-xl overflow-hidden
                       hover:border-accent/50 hover:shadow-card cursor-pointer"
                @click="openTimeline(deck)">
-            {# Arte del commander recortado 63:88 (ratio de carta MTG) #}
             <div class="relative aspect-[63/88] bg-bg-inset overflow-hidden">
               <template x-if="deck.commander_image_url">
                 <img :src="deck.commander_image_url" :alt="deck.commander_name || deck.name"
@@ -103,10 +69,8 @@
                   </div>
                 </div>
               </template>
-              {# Overlay gradient para leer el texto abajo cuando hay imagen #}
               <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg-elevated to-transparent pointer-events-none"></div>
 
-              {# Badge de actividad arriba a la derecha #}
               <div x-show="deck.activity_count > 0"
                    class="absolute top-2 right-2 bg-bg-elevated/90 backdrop-blur-sm border border-border-strong
                           rounded-full px-2 py-0.5 text-[10px] font-mono text-accent flex items-center gap-1">
@@ -115,7 +79,6 @@
               </div>
             </div>
 
-            {# Info del mazo debajo #}
             <div class="p-3 space-y-1.5">
               <div class="font-display text-base leading-tight truncate group-hover:text-accent-glow transition"
                    x-text="deck.name" :title="deck.name"></div>
@@ -141,7 +104,6 @@
       </div>
     </section>
 
-    {# ============ SECCIÓN 2: TIRADAS DE IMPRESIÓN (PrintRuns) ============ #}
     <section>
       <div class="flex items-center gap-2 mb-4">
         <h2 class="text-sm font-medium tracking-wider uppercase text-fg-muted">{{ t.history_runs_section }}</h2>
@@ -189,9 +151,6 @@
     </section>
   </div>
 
-  {# ============================================================================ #}
-  {# MODAL: TIMELINE DE UN MAZO                                                    #}
-  {# ============================================================================ #}
   <template x-if="timelineOpen">
     <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="closeTimeline()"
@@ -199,7 +158,6 @@
       <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
 
-        {# Header con arte pequeño del commander + nombre + link al editor #}
         <div class="p-5 border-b border-border-subtle flex items-start gap-4">
           <template x-if="timelineDeck?.commander_image_url">
             <img :src="timelineDeck.commander_image_url" :alt="timelineDeck.commander_name || timelineDeck.name"
@@ -239,7 +197,6 @@
           </button>
         </div>
 
-        {# Pills de filtro por tipo #}
         <div class="px-5 py-3 border-b border-border-subtle bg-bg-inset/50 flex flex-wrap gap-1.5">
           <template x-for="f in filterOptions" :key="f.value">
             <button @click="activeFilter = f.value"
@@ -256,7 +213,6 @@
           </template>
         </div>
 
-        {# Lista de eventos #}
         <div class="flex-1 overflow-y-auto">
           <template x-if="timelineLoading">
             <div class="text-center py-12 text-fg-faint text-sm">
@@ -279,14 +235,11 @@
           <div x-show="!timelineLoading && filteredActivity.length > 0" class="divide-y divide-border-subtle/60">
             <template x-for="event in filteredActivity" :key="event.id">
               <div class="group flex items-start gap-3 px-5 py-3 hover:bg-bg-subtle/40 transition">
-                {# Icono según kind, dentro de un círculo con color del "tono" #}
                 <div :class="'w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ' + toneClass(event.kind)">
                   <i :data-lucide="iconForKind(event.kind)" class="w-4 h-4"></i>
                 </div>
 
                 <div class="flex-1 min-w-0">
-                  {# Renderer específico por kind. Devuelve HTML seguro (nunca             #}
-                  {# insertamos payload sin escapar). Fallback al summary del backend.     #}
                   <div class="text-sm text-fg" x-html="renderEvent(event)"></div>
                   <div class="text-[11px] text-fg-faint mt-1 flex items-center gap-2">
                     <span x-text="relativeTime(event.created_at)"></span>
@@ -295,10 +248,6 @@
                   </div>
                 </div>
 
-                {# Botón "Deshacer" — solo se muestra si el kind es reversible.
-                   Aparece siempre pero atenuado hasta hover para no saturar
-                   visualmente el timeline. Se deshabilita mientras el undo
-                   está en curso para evitar dobles clicks. #}
                 <template x-if="canUndo(event)">
                   <button @click="undoEvent(event)"
                           :disabled="undoingEventId === event.id"
@@ -319,7 +268,6 @@
           </div>
         </div>
 
-        {# Footer con contador #}
         <div class="px-5 py-2 border-t border-border-subtle bg-bg-inset/30 text-[11px] text-fg-faint text-center">
           <span x-text="filteredActivity.length"></span> {{ t.history_of_events }} <span x-text="activity.length"></span> {{ t.history_events_count }}
           <template x-if="activity.length >= 500">
@@ -331,7 +279,6 @@
   </template>
 
 </div>
-
 
 <style>
   [x-cloak] { display: none !important; }

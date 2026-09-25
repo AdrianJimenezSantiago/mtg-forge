@@ -97,7 +97,6 @@ function proofView(deckId) {
 
     get groupedSlots() {
       if (!this.deck) return [];
-      // Genera una entrada por cada copia (slot). Agrupa por rol.
       const labels = {
         commander: 'Comandante',
         mainboard: 'Mazo',
@@ -126,7 +125,7 @@ function proofView(deckId) {
             groups[c.role].push({
               key: `${c.id}-back-${i}`,
               name: c.name + ' (reverso)',
-              thumbnail: c.thumbnail_url,   // TODO: back-specific thumb si existe
+              thumbnail: c.thumbnail_url,
               is_dfc: true,
               face: 'back',
               copy_index: i,

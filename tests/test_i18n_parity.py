@@ -77,7 +77,6 @@ class TestFallbackChain:
         )
         t = i18n.get_translations("xx")
         assert t.nav_decks == "Decks-XX"
-        # `nav_settings` no existe en 'xx' → cae al español, no a "[nav_settings]".
         assert t.nav_settings == _TRANSLATIONS[BASE_LANG]["nav_settings"]
 
     def test_unknown_key_still_returns_the_marker(self):
@@ -88,8 +87,6 @@ class TestFallbackChain:
     def test_as_dict_resolves_the_fallback(self, monkeypatch):
         monkeypatch.setitem(_TRANSLATIONS, "xx", {"nav_decks": "Decks-XX"})
         data = i18n.get_translations("xx").as_dict()
-        # El dict que va al navegador lleva TODAS las claves ya resueltas, para
-        # que el JS nunca reciba un undefined.
         assert set(data) >= set(_TRANSLATIONS[BASE_LANG])
         assert data["nav_decks"] == "Decks-XX"
 
@@ -101,13 +98,8 @@ class TestUsedKeysExist:
         keys: set[str] = set()
         for path in (PROJECT_ROOT / "templates").glob("*.html"):
             text = path.read_text(encoding="utf-8")
-            # `{{ t.clave }}`, también con filtros (`{{ t.clave | default(...) }}`):
-            # `Translations` devuelve "[clave]" para las que faltan, así que un
-            # `default` nunca actúa y la clave cruda acaba en pantalla.
             keys |= set(re.findall(r"\{\{\s*t\.(\w+)\s*(?:\}\}|\|)", text))
-            # `t['clave']` / `t["clave"]` en expresiones Jinja
             keys |= set(re.findall(r"\bt\[\s*['\"](\w+)['\"]\s*\]", text))
-            # `window._T.clave` en atributos de Alpine
             keys |= set(re.findall(r"window\._T\.(\w+)", text))
         for path in (PROJECT_ROOT / "static" / "js").glob("*.js"):
             text = path.read_text(encoding="utf-8")

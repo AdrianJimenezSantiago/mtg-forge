@@ -143,8 +143,6 @@ class TestThumbnailService:
         target = thumbnails.thumb_path_for(source)
         assert target.suffix == ".webp"
         assert target.is_relative_to(PATHS.thumbs_dir)
-        # Se conserva el subdirectorio: meter decenas de miles de ficheros en
-        # una sola carpeta degrada mucho algunos sistemas de ficheros.
         assert "ab" in target.parts
 
     def test_external_art_gets_bucketed(self):
@@ -176,7 +174,6 @@ class TestThumbnailService:
 
         source = PATHS.art_dir / "thumbtest.png"
         source.parent.mkdir(parents=True, exist_ok=True)
-        # Una imagen del tamaño real de una carta de Scryfall.
         Image.new("RGB", (745, 1040), (30, 60, 120)).save(source)
 
         thumb = await thumbnails.ensure_thumb(source)
@@ -256,6 +253,5 @@ class TestThumbnailEndpoint:
         r = await client.get("/api/thumb/ondemand.png")
         assert r.status_code == 200
         assert r.headers["content-type"] == "image/webp"
-        # `immutable` evita incluso la petición condicional al refrescar.
         assert "immutable" in r.headers.get("cache-control", "")
         assert thumbnails.thumb_path_for(source).exists()

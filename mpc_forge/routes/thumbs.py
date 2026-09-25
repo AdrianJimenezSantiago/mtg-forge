@@ -26,10 +26,6 @@ from mpc_forge.services import thumbnails
 router = APIRouter(tags=["thumbnails"])
 log = logging.getLogger(__name__)
 
-# Las miniaturas son inmutables en la práctica: el nombre deriva del hash del
-# arte de origen. `immutable` hace que el navegador ni siquiera lance la
-# petición condicional al refrescar — con 300 tarjetas en pantalla eso son 300
-# peticiones 304 que desaparecen.
 _CACHE_CONTROL = "public, max-age=2592000, immutable"
 
 
@@ -57,17 +53,12 @@ async def get_thumbnail(art_path: str) -> Response:
 
     source = _resolve_within(PATHS.art_dir, art_path)
     if not source.exists():
-        # Puede ser arte custom en lugar de arte de Scryfall: se intenta en el
-        # otro directorio antes de rendirse.
         source = _resolve_within(PATHS.custom_art_dir, art_path)
         if not source.exists():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Arte no encontrado")
 
     thumb = await thumbnails.ensure_thumb(source)
     if thumb is None:
-        # Degradación limpia: sin Pillow o con una imagen que no se puede
-        # procesar, se manda al cliente a la imagen original. Pesa más, pero la
-        # interfaz se ve correcta.
         original_url = f"/art/{art_path}" if str(source).startswith(
             str(PATHS.art_dir)
         ) else f"/custom_art/{art_path}"
@@ -97,7 +88,6 @@ async def clear_thumbnails() -> dict[str, int]:
     abra una rejilla.
     """
     removed = thumbnails.clear()
-    # El desglose de almacenamiento acaba de quedarse obsoleto.
     storage_service.invalidate()
     log.info("Caché de miniaturas vaciada: %d ficheros", removed)
     return {"removed": removed}

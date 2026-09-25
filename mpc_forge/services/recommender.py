@@ -43,16 +43,10 @@ from mpc_forge.models import OracleArtistCache
 
 log = logging.getLogger(__name__)
 
-# Máximo de oracles a procesar en una request bloqueante.
 MAX_ORACLES_PER_REQUEST = 25
 
-# Concurrencia de fetches a Scryfall. El propio ScryfallClient ya limita a
-# ~10 req/s vía rate limiter; pedir varias en paralelo permite solapar la
-# latencia de red con la cadencia sin pasarnos.
 _FETCH_CONCURRENCY = 8
 
-# TTL del cache local. Nuevas printings salen con cada set (~cada 3 meses),
-# 7 días es suficientemente fresco para uso normal.
 CACHE_TTL = timedelta(days=7)
 
 
@@ -64,9 +58,7 @@ def _fold(name: str) -> str:
         return ""
     n = unicodedata.normalize("NFKD", name)
     n = "".join(ch for ch in n if not unicodedata.combining(ch))
-    # Colapsamos guiones a espacios (algunos artistas aparecen así en Scryfall).
     n = n.replace("-", " ")
-    # Multiple espacios → uno
     return " ".join(n.lower().split())
 
 
@@ -122,17 +114,10 @@ def _pick_best_printing(candidates: list[dict[str, Any]]) -> dict[str, Any] | No
         return (
             1 if c.get("promo") else 0,
             1 if c.get("full_art") else 0,
-            # Truco: released_at descendente → invertimos con negación
-            # ordenando por string (2026 > 2020) y luego negando el
-            # comparador; usamos min() sobre ese tuple positivo.
-            # Simplificamos: prefijo por reversed date usando negation.
-            # Para sort ascendente con lo más reciente primero, invertimos:
             "9" if not c.get("released_at") else c["released_at"],
         )
 
     ranked = sorted(candidates, key=_score)
-    # Los más recientes primero deshaciendo la clave: filtramos entre los
-    # mejores por (promo, full_art) y ordenamos por released_at descendente.
     best_priority = _score(ranked[0])[:2]
     top_bucket = [c for c in candidates
                   if (1 if c.get("promo") else 0, 1 if c.get("full_art") else 0) == best_priority]
@@ -142,7 +127,6 @@ def _pick_best_printing(candidates: list[dict[str, Any]]) -> dict[str, Any] | No
 
 def _to_match(oracle_id: str, printing: dict[str, Any]) -> ArtistMatch:
     imgs = printing.get("image_uris") or {}
-    # Para DFC/MDFC coger el frente si existen faces
     if not imgs and printing.get("card_faces"):
         imgs = printing["card_faces"][0].get("image_uris", {}) or {}
     return ArtistMatch(
@@ -182,7 +166,6 @@ async def _lookup_cache(
         return set(), []
     stale_cutoff = datetime.now(UTC) - CACHE_TTL
 
-    # Traer todas las filas del cache para estos oracles.
     rows = (await db.execute(
         select(OracleArtistCache.oracle_id,
                OracleArtistCache.artist_folded,
@@ -190,7 +173,6 @@ async def _lookup_cache(
         .where(OracleArtistCache.oracle_id.in_(oracle_ids))
     )).all()
 
-    # Estructura: {oracle_id: [(artist_folded, fetched_at), …]}
     by_oracle: dict[str, list[tuple[str, datetime]]] = {}
     for oid, af, fetched in rows:
         by_oracle.setdefault(oid, []).append((af, fetched))
@@ -202,17 +184,12 @@ async def _lookup_cache(
         if not cached:
             need_fetch.append(oid)
             continue
-        # ¿Alguna fila está stale? Si sí, refresh completo.
-        # `fetched_at` llega aware gracias a `models.TZDateTime`; ya no hace
-        # falta reponer el tzinfo a mano en cada punto de comparación.
         any_stale = any(f < stale_cutoff for _, f in cached)
         if any_stale:
             need_fetch.append(oid)
             continue
-        # Cached y fresco: ¿tiene el artist pedido?
         if any(af == artist_folded for af, _ in cached):
             with_artist.add(oid)
-        # Si no matchea, sabemos que NO tiene y no vamos a Scryfall.
     return with_artist, need_fetch
 
 
@@ -225,8 +202,7 @@ async def _persist_cache(
 
     Extrae artist de card_faces también para cubrir DFC/split cards.
     """
-    # Recolectar todos los artist_folded distintos que aparecen para este oracle.
-    artists: set[tuple[str, str]] = set()  # (folded, display)
+    artists: set[tuple[str, str]] = set()
     for p in prints:
         candidates: list[str] = []
         if p.get("artist"):
@@ -239,7 +215,6 @@ async def _persist_cache(
             if folded:
                 artists.add((folded, a))
 
-    # Purga la entrada previa (o entradas huérfanas)
     await db.execute(
         delete(OracleArtistCache).where(OracleArtistCache.oracle_id == oracle_id)
     )
@@ -249,8 +224,6 @@ async def _persist_cache(
             oracle_id=oracle_id, artist_folded=folded,
             artist_display=display, fetched_at=now,
         ))
-    # Si no hay artistas (raro), insertamos una fila sentinela con
-    # artist_folded="" para no re-fetchear infinitamente.
     if not artists:
         db.add(OracleArtistCache(
             oracle_id=oracle_id, artist_folded="",
@@ -280,7 +253,6 @@ async def recommend_by_artist(
 
     unique_oracles = list(dict.fromkeys(o for o in oracle_ids if o))
 
-    # Fase A: consulta al cache local (si tenemos db).
     cached_with_artist: set[str] = set()
     to_fetch = unique_oracles
     if db is not None:
@@ -288,14 +260,11 @@ async def recommend_by_artist(
             db, unique_oracles, artist_folded,
         )
 
-    # Fase B: fetch a Scryfall SOLO para los no cacheados o stale.
     fetch_now = to_fetch[:MAX_ORACLES_PER_REQUEST]
     skipped_oracles = to_fetch[MAX_ORACLES_PER_REQUEST:]
 
     fetched_prints = await _fetch_prints_parallel(scryfall, fetch_now)
 
-    # Persistir en cache para próximas queries. Escritura secuencial: mismos
-    # motivos que en art_cache (AsyncSession no soporta uso concurrente).
     if db is not None:
         for oid, prints in fetched_prints.items():
             try:
@@ -304,13 +273,9 @@ async def recommend_by_artist(
                 log.warning("persist_cache(%s) falló: %s", oid, e)
         await db.commit()
 
-    # Fase C: construir la respuesta unificando cache + fetch.
     matched: list[ArtistMatch] = []
     unmatched: list[str] = []
 
-    # Los oracles cacheados como "sí tiene este artist" solo contienen el
-    # mapping — necesitamos las impresiones concretas para devolver la mejor.
-    # Refresh en paralelo, respetando el cap global.
     cached_needing_prints = cached_with_artist - set(fetched_prints.keys())
     extra_fetch = list(cached_needing_prints)[: MAX_ORACLES_PER_REQUEST - len(fetch_now)]
     if extra_fetch:
@@ -321,18 +286,13 @@ async def recommend_by_artist(
         prints = fetched_prints.get(oid, [])
         if not prints:
             if oid in cached_with_artist and oid in skipped_oracles:
-                # No mostramos como unmatched — se explicita en `skipped`.
                 continue
             if oid in cached_with_artist:
-                # El cache dice que sí tiene pero fetch falló. Marcamos unmatched.
                 unmatched.append(oid)
                 continue
             if oid in fetch_now:
-                # Fetch OK pero sin printings del artist
                 unmatched.append(oid)
-            # Los otros no requieren nada (cache dice que NO tiene)
             continue
-        # Filtrar por artist folded
         candidates: list[dict[str, Any]] = []
         for p in prints:
             artist_candidates = [p.get("artist") or ""]
@@ -355,10 +315,6 @@ async def recommend_by_artist(
     )
 
 
-# ---------------------------------------------------------------------------
-# Recomendador por set / style (Extras · F3/T11)
-# ---------------------------------------------------------------------------
-
 @dataclass
 class StyleMatch:
     """Match encontrado por criterio de estilo (set o borderless/showcase/etc).
@@ -375,7 +331,7 @@ class StyleMatch:
     image_small: str | None
     image_normal: str | None
     released_at: str | None
-    matched_criteria: list[str]  # ["set:mom", "borderless", "showcase"]
+    matched_criteria: list[str]
 
 
 @dataclass
@@ -410,7 +366,6 @@ def _printing_matches_style(
             return []
         labels.append("borderless")
     if showcase:
-        # Scryfall: `frame_effects` incluye "showcase" para cartas showcase.
         effects = printing.get("frame_effects") or []
         if "showcase" not in effects:
             return []
@@ -450,7 +405,6 @@ async def recommend_by_style(
     aquí — cachear "printings de un oracle" es un TODO diferente porque
     las respuestas son grandes.
     """
-    # Al menos un filtro activo
     if not any([set_code, borderless, showcase, extended, full_art]):
         return StyleRecommendResult(
             query={"set_code": set_code, "borderless": borderless,

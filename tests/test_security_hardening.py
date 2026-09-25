@@ -18,10 +18,6 @@ from mpc_forge.services.logging_setup import RedactSecretsFilter, redact
 FAKE_KEY = "AIzaSyD-ExampleKeyForTestsOnly-0123456789"
 
 
-# ---------------------------------------------------------------------------
-# Cabecera Host / DNS rebinding
-# ---------------------------------------------------------------------------
-
 class TestHostValidation:
     async def test_localhost_is_accepted(self, client):
         assert (await client.get("/api/settings/")).status_code == 200
@@ -29,15 +25,12 @@ class TestHostValidation:
     @pytest.mark.parametrize("host", [
         "evil.com",
         "attacker.example",
-        # El caso real de DNS rebinding: un dominio que resuelve a 127.0.0.1
-        # pero llega con su propio nombre en la cabecera Host.
         "rebind.attacker-dns.example",
         "127.0.0.1.evil.com",
     ])
     async def test_foreign_host_is_rejected(self, client, host):
         r = await client.get("/api/settings/", headers={"host": host})
         assert r.status_code == 400
-        # Y, sobre todo, no ha devuelto los ajustes.
         assert "definitions" not in r.text
 
     @pytest.mark.parametrize("host", [
@@ -112,10 +105,6 @@ class TestOpenRedirect:
         assert is_same_origin(_Req(), "https://evil.com/x") is False
 
 
-# ---------------------------------------------------------------------------
-# Credenciales
-# ---------------------------------------------------------------------------
-
 class TestSecretsAreNotExposed:
     async def test_api_key_is_not_returned_after_saving(self, client):
         saved = await client.put(
@@ -128,7 +117,6 @@ class TestSecretsAreNotExposed:
         assert FAKE_KEY not in read.text
         body = read.json()
         assert body["values"]["google_api_key"] == ""
-        # Pero la UI sí sabe que hay una guardada.
         assert "google_api_key" in body["secrets_set"]
 
     async def test_definitions_mark_the_key_as_secret(self, client):

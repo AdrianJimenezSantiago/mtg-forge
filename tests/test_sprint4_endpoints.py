@@ -6,9 +6,6 @@ colección, tema con mazo, snapshot con mazo.
 """
 from __future__ import annotations
 
-# ===========================================================================
-# Planificador
-# ===========================================================================
 
 class TestPlannerEndpoints:
     async def test_tiers_are_exposed(self, client):
@@ -72,10 +69,6 @@ class TestPlannerEndpoints:
         assert (await client.get("/api/planner/compare?total_cards=0")).status_code == 422
         assert (await client.get("/api/planner/compare?total_cards=500")).status_code == 200
 
-
-# ===========================================================================
-# Diff colección ↔ mazo
-# ===========================================================================
 
 class TestPrintNeeds:
     async def test_unknown_deck_is_404(self, client):
@@ -176,10 +169,6 @@ class TestPrintNeeds:
             "Evaluados por separado, ambos mazos cuentan la copia"
         )
 
-
-# ===========================================================================
-# Temas de arte
-# ===========================================================================
 
 class TestArtThemes:
     async def test_list_starts_empty(self, client):
@@ -302,10 +291,6 @@ class TestArtThemes:
         )
         assert r.status_code == 404
 
-
-# ===========================================================================
-# Snapshots
-# ===========================================================================
 
 class TestSnapshots:
     async def test_a_new_deck_has_no_snapshots(self, client, deck):

@@ -1,25 +1,8 @@
-/* ==========================================================================
-   MPC Forge · capa de movimiento
-   --------------------------------------------------------------------------
-   Tres ideas, en este orden de importancia:
-
-   1. Las cartas se comportan como cartas. Se inclinan bajo el cursor con un
-      reflejo foil, se reparten al abrir la biblioteca y se voltean cuando
-      cambias su arte.
-   2. La luz dorada marca las acciones. Botón primario, pestaña activa,
-      barra de progreso: el oro se mueve cuando algo pasa por tu culpa.
-   3. Todo lo demás, quieto. Nada de fade-in por sección ni rebotes gratuitos.
-
-   Sin dependencias de build: CSS plano, cargado después de Tailwind. La parte
-   interactiva vive en /static/js/motion.js.
-   ========================================================================== */
-
 :root {
   --fx-gold:        #d4af37;
   --fx-gold-glow:   #e9c86a;
   --fx-ink:         #0a0d13;
 
-  /* Curvas. `out-arcane` es un expo-out: arranca rápido y se posa. */
   --fx-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --fx-ease-in:     cubic-bezier(0.55, 0, 1, 0.45);
   --fx-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -28,37 +11,25 @@
   --fx-base: 240ms;
   --fx-slow: 520ms;
 
-  /* Espectro foil: los cinco colores de maná desaturados, para que el
-     reflejo recuerde a una carta foil y no a un arcoíris genérico. */
   --fx-foil:
     #f5f0d8 0%, #7fb4e6 18%, #9b8cc9 34%,
     #e2807a 52%, #7cc98a 70%, #e9c86a 86%, #f5f0d8 100%;
 }
 
-/* Propiedades registradas: permiten animar el destello de los botones sin
-   añadir nodos al DOM. En navegadores sin @property simplemente no se ve. */
 @property --fx-br { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --fx-ba { syntax: '<number>'; inherits: false; initial-value: 0; }
 
 @keyframes fx-spin      { to { rotate: 360deg; } }
 @keyframes fx-spin-rev  { to { rotate: -360deg; } }
 
-/* ==========================================================================
-   1 · TRANSICIONES ENTRE PÁGINAS (View Transitions entre documentos)
-   Chromium/WebView2 las ejecuta de forma nativa; el resto las ignora y la
-   navegación funciona como siempre.
-   ========================================================================== */
-
 @view-transition { navigation: auto; }
 
-/* La barra lateral no forma parte del cambio: se queda donde está. */
 .app-sidebar { view-transition-name: app-sidebar; }
 ::view-transition-group(app-sidebar) { animation: none; }
 ::view-transition-old(app-sidebar),
 ::view-transition-new(app-sidebar) { animation: none; mix-blend-mode: normal; }
 ::view-transition-old(app-sidebar) { display: none; }
 
-/* El contenido: el viejo se aparta rápido, el nuevo sube y se posa. */
 ::view-transition-old(root) {
   animation: fx-vt-out 150ms var(--fx-ease-in) both;
 }
@@ -72,14 +43,12 @@
   from { opacity: 0; translate: 0 14px; filter: blur(3px); }
 }
 
-/* El indicador de sección viaja de un enlace a otro. */
 .nav-indicator { view-transition-name: nav-indicator; }
 ::view-transition-group(nav-indicator) {
   animation-duration: 460ms;
   animation-timing-function: var(--fx-ease-spring);
 }
 
-/* La portada del mazo vuela de la biblioteca a la cabecera del editor. */
 ::view-transition-group(deck-cover) {
   animation-duration: 520ms;
   animation-timing-function: var(--fx-ease-out);
@@ -95,17 +64,12 @@
 }
 ::view-transition-new(deck-cover) { animation-duration: 260ms; }
 
-/* ==========================================================================
-   1b · FONDO AMBIENTAL (aurora + motas de maná, ver /static/js/ambient.js)
-   ========================================================================== */
-
 .fx-ambient-layer {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* No participa del fundido entre páginas: el cielo es continuo. */
   view-transition-name: fx-ambient;
 }
 ::view-transition-group(fx-ambient) { animation: none; }
@@ -124,11 +88,6 @@
   height: 100%;
 }
 
-/* Aurora: canvas pequeño (1/8 de la pantalla) que ambient.js redibuja
-   5 veces por segundo; el navegador lo escala y el propio escalado la
-   difumina. Se pinta con alfas ×4 y aquí se atenúa: más niveles de color,
-   sin escalones. Animar capas grandes con degradados en CSS costaba medio
-   framerate en equipos sin GPU; así cuesta lo mismo que una capa estática. */
 .fx-aurora {
   position: absolute;
   inset: 0;
@@ -137,8 +96,6 @@
   opacity: 0.25;
 }
 
-/* Grano estático muy fino: rompe el bandeado de los degradados oscuros
-   (8 bits por canal) y da algo de textura. Se rasteriza una sola vez. */
 .fx-ambient-layer::after {
   content: '';
   position: absolute;
@@ -155,11 +112,6 @@
   .fx-ambient-layer { display: none; }
 }
 
-/* ==========================================================================
-   2 · BARRA LATERAL
-   ========================================================================== */
-
-/* Cristal: deja pasar el fondo ambiental difuminado. */
 .bg-arcane-panel {
   background:
     radial-gradient(120% 40% at 0% 0%, rgb(212 175 55 / 0.07), transparent 60%),
@@ -187,8 +139,6 @@
   pointer-events: none;
 }
 
-/* Navegación con scroll interno (ventanas bajas): el borde inferior se
-   difumina mientras quede contenido por debajo. motion.js pone la clase. */
 .app-sidebar__nav {
   scrollbar-width: thin;
   scrollbar-color: #3a4358 transparent;
@@ -198,7 +148,6 @@
           mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 
-/* El logo: al pasar el ratón, un destello cruza el sello. */
 .fx-logo {
   position: relative;
   display: block;
@@ -218,12 +167,6 @@
   translate: 120% 0;
   transition: translate 700ms var(--fx-ease-out);
 }
-
-/* ==========================================================================
-   3 · ESTADOS DE CARGA
-   Estas clases ya se usaban en las plantillas pero no existían en ningún
-   CSS: los spinners eran invisibles.
-   ========================================================================== */
 
 .spinner-ring,
 .spinner-ring--lg,
@@ -246,7 +189,6 @@
   vertical-align: middle;
 }
 
-/* Anillo exterior: un arco dorado que se desvanece en su cola. */
 .spinner-ring::before,
 .spinner-ring--lg::before,
 .spinner-ring--sm::before {
@@ -259,7 +201,6 @@
           mask: radial-gradient(farthest-side, transparent calc(100% - var(--stroke)), #000 calc(100% - var(--stroke) + 0.5px));
   animation: fx-spin 850ms linear infinite;
 }
-/* Anillo interior: runa punteada que gira al revés, más despacio. */
 .spinner-ring::after,
 .spinner-ring--lg::after {
   content: '';
@@ -302,7 +243,6 @@
   to   { background-position: -50% 0, 0 0; }
 }
 
-/* Brillo que recorre las barras de progreso doradas mientras avanzan. */
 .fx-progress {
   position: relative;
   overflow: hidden;
@@ -317,10 +257,6 @@
   animation: fx-progress-sheen 1.3s var(--fx-ease-out) infinite;
 }
 @keyframes fx-progress-sheen { to { translate: 100% 0; } }
-
-/* ==========================================================================
-   4 · TOASTS
-   ========================================================================== */
 
 .toast-progress {
   transform-origin: left center;
@@ -345,7 +281,6 @@
   from { scale: 0.3; rotate: -25deg; opacity: 0; }
 }
 
-/* Onda que sale del icono de éxito. */
 .fx-toast[data-type='success'] .fx-toast-icon { position: relative; }
 .fx-toast[data-type='success'] .fx-toast-icon::after {
   content: '';
@@ -359,7 +294,6 @@
   to { box-shadow: 0 0 0 14px rgb(74 222 128 / 0); }
 }
 
-/* Los errores dan un pequeño temblor para llamar la atención. */
 .fx-toast[data-type='error'] {
   animation:
     fx-toast-in 420ms var(--fx-ease-spring) both,
@@ -369,12 +303,6 @@
   20%, 60% { translate: -4px 0; }
   40%, 80% { translate: 4px 0; }
 }
-
-/* ==========================================================================
-   5 · CARTAS: INCLINACIÓN 3D + REFLEJO FOIL
-   motion.js escribe --fx-rx/--fx-ry (ángulos) y --fx-mx/--fx-my (posición
-   del cursor en %). Aquí solo se pinta.
-   ========================================================================== */
 
 [data-tilt] {
   --fx-rx: 0deg;
@@ -403,7 +331,6 @@
   z-index: 5;
 }
 
-/* Reflejo especular que sigue al cursor. */
 [data-tilt]::after {
   content: '';
   position: absolute;
@@ -422,7 +349,6 @@
   transition: opacity 300ms ease;
 }
 
-/* Película foil: bandas de color que se desplazan con el ángulo. */
 [data-tilt='foil']::before {
   content: '';
   position: absolute;
@@ -444,17 +370,8 @@
   transition: opacity 300ms ease;
 }
 
-/* Controles que deben quedar por encima del reflejo. */
 .fx-above { z-index: 3; }
 
-/* ==========================================================================
-   6 · REPARTO DE CARTAS (biblioteca de mazos)
-   Se anima con translate/rotate/scale sueltos, que se componen con el
-   `transform` de la inclinación en vez de pisarlo.
-   ========================================================================== */
-
-/* Hasta que motion.js reparte, las primeras cartas esperan ocultas. El script
-   del <head> retira esta clase a los 2 s pase lo que pase. */
 .fx-dealing [data-deal] > :nth-child(-n + 16) { opacity: 0; }
 
 .fx-deal {
@@ -473,10 +390,6 @@
   100% { translate: 0 0; rotate: 0deg; scale: 1; filter: none; }
 }
 
-/* ==========================================================================
-   7 · VOLTEO AL CAMBIAR DE ARTE
-   ========================================================================== */
-
 .fx-flip { animation: fx-flip 560ms var(--fx-ease-out); backface-visibility: hidden; }
 @keyframes fx-flip {
   0%   { transform: perspective(500px) rotateY(-90deg) scale(0.92); filter: brightness(2); }
@@ -484,21 +397,17 @@
   100% { transform: perspective(500px) rotateY(0) scale(1); filter: none; }
 }
 
-/* Destello dorado sobre la fila que acaba de cambiar. */
 .fx-flash { animation: fx-flash 1.1s var(--fx-ease-out); }
 @keyframes fx-flash {
   0%   { box-shadow: inset 0 0 0 999px rgb(212 175 55 / 0.16); }
   100% { box-shadow: inset 0 0 0 999px rgb(212 175 55 / 0); }
 }
 
-/* Valor numérico que acaba de cambiar (x-tween). */
 .fx-bump { animation: fx-bump 480ms var(--fx-ease-spring); display: inline-block; }
 @keyframes fx-bump {
   30% { scale: 1.12; color: var(--fx-gold-glow); text-shadow: 0 0 12px rgb(233 200 106 / 0.6); }
 }
 
-/* Destino de un enlace con ancla (p. ej. /decks#import-text desde la
-   landing): un pulso dorado indica dónde has llegado. */
 .fx-target:target {
   animation: fx-target 1.8s var(--fx-ease-out) 300ms both;
 }
@@ -506,13 +415,6 @@
   0%   { border-color: rgb(212 175 55 / 0.9); box-shadow: 0 0 0 0 rgb(212 175 55 / 0.35); }
   100% { box-shadow: 0 0 0 16px rgb(212 175 55 / 0); }
 }
-
-/* ==========================================================================
-   8 · BOTONES PRIMARIOS
-   Un barrido de luz al pasar el ratón y un destello desde el punto exacto
-   del clic. Todo va en background-image: no añade nodos, no necesita
-   position:relative y lo recorta el propio borde del botón.
-   ========================================================================== */
 
 :is(button, a).bg-accent {
   --fx-bx: 50%;
@@ -549,12 +451,7 @@
   to   { --fx-br: 160px; --fx-ba: 0; }
 }
 
-/* Pulsación: todos los botones compactos ceden un poco al presionarlos. */
 button:not(:disabled):not(.w-full):not([data-tilt]):active { scale: 0.96; }
-
-/* ==========================================================================
-   9 · VISTA PREVIA DE CARTA (hover sobre miniaturas, ver app.js)
-   ========================================================================== */
 
 #mpc-forge-preview.fx-pop {
   animation: fx-preview-in 260ms var(--fx-ease-out);
@@ -580,10 +477,6 @@ button:not(:disabled):not(.w-full):not([data-tilt]):active { scale: 0.96; }
 }
 @keyframes fx-preview-sheen { to { translate: 100% 0; } }
 
-/* ==========================================================================
-   10 · PORTADA DEL MAZO EN LA CABECERA DEL EDITOR
-   ========================================================================== */
-
 .fx-deck-cover {
   view-transition-name: deck-cover;
   box-shadow:
@@ -591,12 +484,6 @@ button:not(:disabled):not(.w-full):not([data-tilt]):active { scale: 0.96; }
     0 0 0 1px rgb(212 175 55 / 0.25),
     0 0 24px -4px rgb(212 175 55 / 0.25);
 }
-
-/* ==========================================================================
-   11 · MOVIMIENTO REDUCIDO
-   Quien lo pide en el sistema no ve inclinaciones, repartos ni barridos.
-   Los spinners se mantienen (comunican estado) pero más lentos.
-   ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }

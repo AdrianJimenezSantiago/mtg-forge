@@ -44,8 +44,8 @@ class SearchResult:
     folder_path: str
     thumb_url: str
     download_url: str
-    score: int  # 0-100
-    tags: list[str]  # canonical tags extraídos del filename/folder ("full_art", …)
+    score: int
+    tags: list[str]
     is_full_art: bool = False
     is_borderless: bool = False
     is_extended: bool = False
@@ -54,12 +54,8 @@ class SearchResult:
     is_textless: bool = False
     is_promo: bool = False
     is_alt_art: bool = False
-    # Metadatos canónicos (Fase 2 · T5) — presentes solo si el arte lleva
-    # tag `[SET NUM]` en filename o folder_path.
     expansion_code: str | None = None
     collector_number: str | None = None
-    # Extras · F2/T8: perceptual hash (pHash) para dedupe cross-drive.
-    # NULL si no se ha calculado.
     image_hash: str | None = None
 
 
@@ -72,10 +68,6 @@ def _download_url(file_id: str) -> str:
     """URL de descarga directa (funciona para archivos < ~100MB sin token extra)."""
     return f"https://drive.google.com/uc?id={file_id}&export=download"
 
-
-# ---------------------------------------------------------------------------
-# Scoring
-# ---------------------------------------------------------------------------
 
 def _score_match(query_norm: str, name_norm: str) -> int:
     """Puntúa la similitud entre query y nombre normalizado (0-100).
@@ -94,7 +86,6 @@ def _score_match(query_norm: str, name_norm: str) -> int:
     if not query_norm or not name_norm:
         return 0
 
-    # 1. Match exacto — caso ideal
     if query_norm == name_norm:
         return 100
 
@@ -109,43 +100,28 @@ def _score_match(query_norm: str, name_norm: str) -> int:
         noise_ratio = extra / q_len
         if noise_ratio == 0:
             return 100
-        elif noise_ratio <= 0.25:  # 1 extra sobre 4+ tokens
+        elif noise_ratio <= 0.25:
             return 90
-        elif noise_ratio <= 0.5:   # 1 extra sobre 2 tokens, o 2 sobre 4
+        elif noise_ratio <= 0.5:
             return 60
-        elif noise_ratio <= 1.0:   # 1 extra sobre 1 token → seguramente otra carta
-            return 40  # queda bajo _MIN_SCORE=55 y se filtra
+        elif noise_ratio <= 1.0:
+            return 40
         else:
             return 0
 
-    # 2. Query es subset de tokens del filename (prefix o desordenado)
     if q_set.issubset(n_set):
-        # Bonus si además va como prefijo consecutivo (más "canónico")
         if name_norm.startswith(query_norm + " ") or name_norm == query_norm:
             base = _by_noise_ratio(len(n_tokens) - len(q_tokens))
-            return min(base + 5, 100)  # pequeño bonus por prefix
+            return min(base + 5, 100)
         return _by_noise_ratio(len(n_set) - len(q_set))
 
-    # 3. Fallback: rapidfuzz para tolerar typos (Sol Rong → Sol Ring)
     r = int(fuzz.ratio(query_norm, name_norm))
     if r >= 85:
         return r
     return 0
 
 
-# ---------------------------------------------------------------------------
-# Búsqueda
-# ---------------------------------------------------------------------------
-
-# Umbral mínimo: 55. Filtramos "casi-matches" ruidosos.
 _MIN_SCORE = 55
-# Tope de candidatos que se traen de SQLite antes de puntuar y ordenar.
-#
-# Antes era 300, y además el selector solo pedía 100: con un índice grande,
-# las cartas populares (Sol Ring, Command Tower: cientos de artes) quedaban
-# recortadas en silencio. La ordenación tiene que ser global para poder
-# paginar, así que se traen todos los candidatos razonables de una vez; con
-# el índice FTS5 o el B-tree de name_normalized son milisegundos.
 _MAX_CANDIDATES = 5000
 
 
@@ -161,10 +137,6 @@ class SearchPage:
     capped: bool = False
 
 
-# Cache del flag FTS5 tras primera consulta. Es un valor set-once por el
-# startup (`init_db`); no cambia en runtime, así que un módulo-global cache
-# elimina el read del KV por cada búsqueda. Un `None` significa "aún no
-# comprobado" (se resuelve en la primera llamada a `_fts5_available()`).
 _fts5_available_cache: bool | None = None
 
 
@@ -197,13 +169,9 @@ def _fts_escape(query: str) -> str:
     Devuelve string vacío si no hay tokens válidos, lo que el caller debe
     tratar como "no match" y fallar a la fase LIKE.
     """
-    # Solo alfanumérico (name_normalized ya está normalizado). Split por
-    # espacios. Excluir tokens vacíos.
     tokens = [t for t in query.split() if t]
     if not tokens:
         return ""
-    # Cada token → "token" (comillas dobles escapadas cambiando " por "").
-    # El último token lleva prefix operator "*" para matching parcial.
     parts = []
     for i, tok in enumerate(tokens):
         safe = tok.replace('"', '""')
@@ -239,16 +207,10 @@ async def _search_fts5(
     if not fts_query:
         return SearchPage(results=[], total=0)
 
-    # WHERE clauses estáticas — construimos con SQL crudo para poder mezclar
-    # con MATCH que no expone directamente vía ORM.
     where_parts = ["indexed_art_fts MATCH :match"]
     params: dict = {"match": fts_query, "limit": _MAX_CANDIDATES + 1}
 
     if source_ids:
-        # SQLite acepta parámetros expandidos si los damos como tuple + ejecutamos
-        # con la sintaxis IN (...). SQLAlchemy `text` expandirá `bindparam`
-        # con `expanding=True`, pero para simplicidad hacemos el interpolado
-        # de ints (safe por ser enteros validados).
         ids = ",".join(str(int(x)) for x in source_ids)
         where_parts.append(f"ia.source_id IN ({ids})")
 
@@ -275,10 +237,6 @@ async def _search_fts5(
 
     where_sql = " AND ".join(where_parts)
 
-    # bm25() de FTS5: menor = mejor. La 2ª columna del CREATE VIRTUAL TABLE
-    # tiene mayor peso implícito, pero preferimos que name_normalized (col 0)
-    # domine — bm25 acepta pesos por columna. Damos peso alto a
-    # name_normalized (10), medio a filename (5), bajo a tags (1).
     sql = f"""
         SELECT ia.*, s.name AS source_name,
                bm25(indexed_art_fts, 10.0, 5.0, 1.0) AS rank
@@ -295,16 +253,6 @@ async def _search_fts5(
     if not rows:
         return SearchPage(results=[], total=0)
 
-    # Relevancia: la misma `_score_match` que el modo LIKE, sobre el nombre
-    # normalizado. FTS5 solo aporta los candidatos y el orden de desempate.
-    #
-    # Antes se convertía bm25 a 0-100 con `100 + bm25 * 2`. Pero en FTS5 un
-    # bm25 MÁS NEGATIVO es MEJOR coincidencia, y su magnitud crece con el
-    # tamaño del índice y con lo raros que son los términos: con ~200.000
-    # artes, "Sol Ring" exacto daba bm25 ≈ -20 (score 60, rozando el umbral)
-    # y "Elesh Norn, Grand Cenobite" ≈ -71 (score 40). El filtro de
-    # `_MIN_SCORE` se aplicaba antes de reconocer el match exacto, así que
-    # las cartas con nombres largos o poco comunes devolvían CERO artes.
     capped = len(rows) > _MAX_CANDIDATES
     rows = rows[:_MAX_CANDIDATES]
     out: list[SearchResult] = []
@@ -336,8 +284,6 @@ async def _search_fts5(
             image_hash=row.get("image_hash"),
         ))
 
-    # Orden final: score; a igualdad, el orden de bm25 que ya traen las filas
-    # (`sort` es estable), así la paginación es determinista.
     out.sort(key=lambda r: -r.score)
     return SearchPage(results=out, total=len(out), capped=capped)
 
@@ -412,7 +358,6 @@ async def _search_all(
     if not q_norm:
         return SearchPage(results=[], total=0)
 
-    # FTS5 first — si está disponible, es 10-100x más rápido en índices grandes.
     if await _fts5_available(db):
         try:
             page = await _search_fts5(
@@ -420,27 +365,18 @@ async def _search_all(
             )
             if page.total:
                 return page
-            # Sin resultados: el modo LIKE tiene una fase de substring y
-            # tolerancia a erratas que el MATCH de FTS5 no cubre.
         except Exception as e:
-            # Si FTS5 falla por cualquier motivo (query mal parseada, índice
-            # corrupto), caemos al modo LIKE. Loguearemos como warning para
-            # que se investigue pero el usuario NO ve un error.
             log.warning("FTS5 search failed, falling back to LIKE: %s", e)
 
-    # --- Fallback: pipeline LIKE original (Fase 1) ---
     base = select(IndexedArt, ArtSource.name).join(
         ArtSource, ArtSource.id == IndexedArt.source_id
     )
     if source_ids:
         base = base.where(IndexedArt.source_id.in_(source_ids))
 
-    # Filtro por set canónico. La columna ya está indexada.
     if expansion_code:
         base = base.where(IndexedArt.expansion_code == expansion_code.lower())
 
-    # Traducción tag → columna. Si el cliente pasa un tag desconocido, lo
-    # ignoramos (no forzamos error para tolerar clientes desactualizados).
     _TAG_TO_COLUMN = {
         "full_art":   IndexedArt.is_full_art,
         "borderless": IndexedArt.is_borderless,
@@ -462,21 +398,17 @@ async def _search_all(
             if col is not None:
                 base = base.where(col.is_(False))
 
-    # --- Fase 1: match exacto (súper rápido, índice B-tree) ---
     stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_MAX_CANDIDATES + 1)
     rows = (await db.execute(stmt)).all()
 
-    # --- Fase 2: prefix (rápido, sí usa índice) ---
     if len(rows) < 20:
         stmt = base.where(
             IndexedArt.name_normalized.like(f"{q_norm}%"),
-            IndexedArt.name_normalized != q_norm,  # no duplicar los ya encontrados
+            IndexedArt.name_normalized != q_norm,
         ).limit(_MAX_CANDIDATES + 1 - len(rows))
         rows += (await db.execute(stmt)).all()
 
-    # --- Fase 3: substring en cualquier posición (más lento, solo si hace falta) ---
     if len(rows) < 20:
-        # Solo si el query tiene >=3 chars (evitar '%a%' que barre toda la BD)
         long_tokens = [t for t in q_norm.split() if len(t) >= 3]
         if long_tokens:
             conds = [IndexedArt.name_normalized.like(f"%{t}%") for t in long_tokens]
@@ -492,7 +424,6 @@ async def _search_all(
     capped = len(rows) > _MAX_CANDIDATES
     rows = rows[:_MAX_CANDIDATES]
 
-    # --- Re-scoring y ordenación ---
     scored: list[tuple[int, SearchResult]] = []
     for art, source_name in rows:
         s = _score_match(q_norm, art.name_normalized)

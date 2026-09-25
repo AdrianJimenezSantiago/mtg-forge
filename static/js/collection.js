@@ -1,19 +1,5 @@
-/**
- * Colección por expansión
- *
- * Extraído de `templates/collection.html`, donde vivía como un bloque `<script>`
- * de 149 líneas. La lógica es idéntica: solo ha cambiado de fichero.
- *
- * Las funciones que Alpine necesita resolver desde los atributos `x-data` del
- * HTML se publican en `window` al final del módulo. Es deliberado: Alpine
- * evalúa `x-data` como una expresión en el ámbito global, así que un `export`
- * por sí solo no basta.
- *
- * Regenerar con:  python scripts/extract_inline_js.py
- */
 function collectionApp() {
   return {
-    // ── State ──
     sets: [],
     loadingSets: true,
     setSearch: '',
@@ -25,12 +11,10 @@ function collectionApp() {
     setsStarted: 0,
     setOwnedCount: 0,
 
-    // ── Sizing & pagination ──
-    cardWidth: 210,    // px — default: readable size
-    perPage: 60,       // cards per page — recalculated dynamically
+    cardWidth: 210,
+    perPage: 60,
     currentPage: 1,
 
-    // ── Computed ──
     get filteredSets() {
       const q = this.setSearch.toLowerCase().trim();
       if (!q) return this.sets;
@@ -70,11 +54,9 @@ function collectionApp() {
       return pages;
     },
 
-    // ── Actions ──
     goPage(p) {
       if (p < 1 || p > this.totalPages) return;
       this.currentPage = p;
-      // Scroll card grid back to top
       const el = document.getElementById('card-grid-scroll');
       if (el) el.scrollTop = 0;
       this.$nextTick(() => window.icons && window.icons());
@@ -147,7 +129,6 @@ function collectionApp() {
           const idx = this.sets.findIndex(s => s.code === this.selectedSet.code);
           if (idx >= 0) this.sets[idx].owned_count = data.set_owned_count;
         }
-        // Recompute global
         this.globalOwned = this.sets.reduce((sum, s) => sum + s.owned_count, 0);
         this.setsStarted = this.sets.filter(s => s.owned_count > 0).length;
       } catch (e) {
@@ -160,8 +141,4 @@ function collectionApp() {
   };
 }
 
-
-// --- Puente con Alpine -------------------------------------
-// Alpine resuelve las expresiones de `x-data` contra el ámbito
-// global, así que estas funciones tienen que estar en `window`.
 window.collectionApp = collectionApp

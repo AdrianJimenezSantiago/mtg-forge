@@ -32,13 +32,6 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Máximo de valores por cláusula ``IN``. SQLite compila cada elemento como un
-# parámetro y tiene un tope (`SQLITE_MAX_VARIABLE_NUMBER`, históricamente 999);
-# pasarse lanza "too many SQL variables" en tiempo de ejecución.
-#
-# Con un mazo normal da igual, pero un cubo importado de CubeCobra pasa de 540
-# cartas y un mazo con muchas impresiones distintas se acerca rápido. Mismo
-# valor que ``deck_service._IN_CHUNK`` para no tener dos criterios distintos.
 _IN_CHUNK = 500
 
 
@@ -125,26 +118,20 @@ async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[D
     if not cards:
         return []
 
-    # --- BATCH 1: printings ---
     scryfall_ids = {c.scryfall_id for c in cards}
     printings_by_id = await _printings_by_id(db, scryfall_ids)
 
-    # --- BATCH 2: custom arts frontales ---
     custom_ids = {c.custom_art_front_id for c in cards if c.custom_art_front_id}
     customs_by_id = await _customs_by_id(db, custom_ids)
 
-    # --- BATCH 3: nº total de impresiones por oracle_id ---
     oracle_ids = {c.oracle_id for c in cards if c.oracle_id}
     prints_count_by_oracle = await _prints_count_by_oracle(db, oracle_ids)
 
-    # --- BATCH 4: nº de custom arts disponibles por nombre normalizado ---
     name_norms = {custom_art.normalize_card_name(c.name) for c in cards}
     custom_count_by_name = await _custom_count_by_name(db, name_norms)
 
-    # --- BATCH 5: history agregado ---
     stats_map = await history.stats_for_oracle_ids(db, list(oracle_ids))
 
-    # --- Composición sin más queries ---
     out: list[DeckCardView] = []
     for dc in cards:
         printing = printings_by_id.get(dc.scryfall_id)
@@ -289,27 +276,21 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             ),
         )
 
-    # --- BATCH 1: printings de las cartas del deck ---
     scryfall_ids = {c.scryfall_id for c in cards_list}
     printings_by_id = await _printings_by_id(db, scryfall_ids)
 
-    # --- BATCH 2: custom arts frontales (para thumbnails) ---
     custom_ids = {c.custom_art_front_id for c in cards_list if c.custom_art_front_id}
     customs_by_id = await _customs_by_id(db, custom_ids)
 
-    # --- BATCH 3: nº total de impresiones (Scryfall) por oracle_id ---
     oracle_ids = {c.oracle_id for c in cards_list if c.oracle_id}
     prints_count_by_oracle = await _prints_count_by_oracle(db, oracle_ids)
 
-    # --- BATCH 4: nº de custom arts disponibles (por card_name normalizado) ---
     from mpc_forge.services.custom_art import normalize_card_name
     name_norms = {normalize_card_name(c.name) for c in cards_list}
     custom_count_by_name = await _custom_count_by_name(db, name_norms)
 
-    # --- BATCH 5: historial de impresiones agregado (una sola llamada) ---
     stats_map = await history.stats_for_oracle_ids(db, list(oracle_ids))
 
-    # --- Composición sin más queries ---
     import json as _json
     card_views: list[DeckCardView] = []
     for dc in cards_list:
@@ -322,14 +303,12 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         is_dfc = printing.layout in _DFC_LAYOUTS if printing else False
         stat = stats_map.get(dc.oracle_id) if dc.oracle_id else None
 
-        # Reverso: si es DFC, usamos back_image_normal del printing.
         back_thumb: str | None = None
         back_name: str | None = None
         if printing and is_dfc:
             back_thumb = printing.back_image_normal
             back_name = printing.back_name
 
-        # Cartas relacionadas (tokens + meld_result + meld_part).
         related_parts: list[dict[str, str]] = []
         if printing and printing.related_parts:
             try:
@@ -366,8 +345,6 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             related_parts=related_parts,
         ))
 
-    # Legalidad: se resuelve con los printings que ya tenemos en memoria del
-    # BATCH 1, así que no cuesta ni una query extra.
     illegal = deck_validation.check_legalities(
         deck.format,
         [
@@ -390,8 +367,6 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
     cover_printings = printings_by_id
     wanted = deck.commander_scryfall_id
     if commanders and wanted and wanted not in printings_by_id:
-        # El arte del commander cambió: la impresión de importación ya no está
-        # entre las del mazo y hace falta para identificarlo por oracle_id.
         base = await db.get(PrintingCache, wanted)
         if base is not None:
             cover_printings = {**printings_by_id, wanted: base}
@@ -461,8 +436,4 @@ def _deck_price(
     )
 
 
-# Roles que cuentan para el precio del mazo (ver `_deck_price`).
 _PRICED_ROLES = {"commander", "mainboard", "companion", "sideboard"}
-
-
-# ---- Recomendador de artes por artista canónico (Fase 3 · T11) --------------

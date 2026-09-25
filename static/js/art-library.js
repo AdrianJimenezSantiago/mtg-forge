@@ -1,25 +1,11 @@
-/**
- * Biblioteca de arte — /art-library
- *
- * Explorador del índice de drives. Hasta ahora ese índice —decenas de miles de
- * artes con tags, expansión y pHash— solo era accesible desde un modal, dentro
- * del editor de un mazo y siempre partiendo de una carta concreta. Esta vista
- * lo abre para navegarlo por sí mismo.
- *
- * Publicado en `window` al final: Alpine resuelve `x-data` en el ámbito global.
- * Ver la nota sobre orden de scripts en base.html.
- */
-
 function artLibrary() {
   return {
-    // --- datos ---
     items: [],
     facets: null,
     overview: null,
     total: 0,
     hasMore: false,
 
-    // --- filtros ---
     query: '',
     sources: [],
     variants: [],
@@ -27,15 +13,13 @@ function artLibrary() {
     cardType: '',
     sort: 'name',
 
-    // --- paginación ---
     offset: 0,
     limit: 60,
 
-    // --- estado ---
     loading: true,
     loadingMore: false,
     error: '',
-    detail: null,          // arte seleccionado en el panel lateral
+    detail: null,
     _abort: null,
 
     async init() {
@@ -47,12 +31,6 @@ function artLibrary() {
       }
       await this.reload()
     },
-
-    // --- URL compartible -------------------------------------------------
-    //
-    // El estado de filtrado vive en la barra de direcciones para que una
-    // búsqueda concreta ("todo lo full art de Dominaria") se pueda guardar en
-    // marcadores o pasar a alguien del grupo de juego.
 
     readFiltersFromUrl() {
       const params = new URLSearchParams(window.location.search)
@@ -74,8 +52,6 @@ function artLibrary() {
       if (this.variants.length) params.set('variants', this.variants.join(','))
       if (this.sources.length) params.set('sources', this.sources.join(','))
       const qs = params.toString()
-      // replaceState y no pushState: filtrar no debería llenar el historial
-      // de entradas por las que el botón "atrás" tenga que pasar una a una.
       window.history.replaceState(
         {}, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname
       )
@@ -91,13 +67,7 @@ function artLibrary() {
       }
     },
 
-    // --- carga -----------------------------------------------------------
-
-    /** Recarga desde cero: primera página y facetas. */
     async reload() {
-      // Cancela lo que hubiera en vuelo: al teclear en el buscador se
-      // encadenan varias peticiones y solo importa la última. Sin esto, una
-      // respuesta lenta de una consulta antigua puede pisar a la nueva.
       this._abort?.abort()
       this._abort = new AbortController()
       const signal = this._abort.signal
@@ -131,7 +101,6 @@ function artLibrary() {
       }
     },
 
-    /** Scroll infinito: añade la página siguiente sin recargar las facetas. */
     async loadMore() {
       if (this.loadingMore || !this.hasMore) return
       this.loadingMore = true
@@ -153,13 +122,10 @@ function artLibrary() {
       }
     },
 
-    /** Debounce del buscador: no lanzar una consulta por pulsación. */
     onSearchInput() {
       clearTimeout(this._searchTimer)
       this._searchTimer = setTimeout(() => this.reload(), 300)
     },
-
-    // --- filtros ---------------------------------------------------------
 
     toggleVariant(name) {
       const at = this.variants.indexOf(name)
@@ -199,16 +165,12 @@ function artLibrary() {
     isVariantActive(name) { return this.variants.includes(name) },
     isSourceActive(id) { return this.sources.includes(id) },
 
-    // --- detalle ---------------------------------------------------------
-
     open(item) {
       this.detail = item
       this.$nextTick(() => window.icons?.())
     },
 
     close() { this.detail = null },
-
-    // --- formato ---------------------------------------------------------
 
     fileSize(bytes) {
       if (!bytes) return '—'
@@ -228,5 +190,4 @@ function artLibrary() {
   }
 }
 
-// --- Puente con Alpine ---------------------------------------------------
 window.artLibrary = artLibrary

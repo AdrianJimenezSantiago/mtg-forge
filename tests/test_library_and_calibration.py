@@ -11,9 +11,6 @@ import pytest
 
 from mpc_forge.services import art_library, calibration
 
-# ===========================================================================
-# Calibración: derivación de offsets
-# ===========================================================================
 
 class TestCalibrationSigns:
     def test_no_drift_means_no_correction(self):
@@ -147,9 +144,7 @@ class TestCalibrationSheet:
         """
         MM = 1.0
         tick = 3.5 * MM
-        # Etiqueta "5" del eje horizontal: colgada bajo la marca.
         horizontal = (5 * MM, -(tick + 5 * MM))
-        # Etiqueta "-5" del eje vertical: a la derecha de su marca.
         vertical = (tick + 1.2 * MM, -5 * MM)
 
         vertical_gap = abs(horizontal[1] - vertical[1])
@@ -158,10 +153,6 @@ class TestCalibrationSheet:
             f"texto mide ~2 mm de alto y se solaparían."
         )
 
-
-# ===========================================================================
-# Biblioteca de arte
-# ===========================================================================
 
 class TestLibraryFilters:
     def test_no_filters_is_empty(self):
@@ -212,10 +203,6 @@ class TestVariantFlags:
         assert art_library.DEFAULT_PAGE_SIZE <= art_library.MAX_PAGE_SIZE
 
 
-# ===========================================================================
-# Endpoints
-# ===========================================================================
-
 class TestSerializedUrls:
     """Las miniaturas de la rejilla tienen que apuntar a algún sitio.
 
@@ -237,7 +224,7 @@ class TestSerializedUrls:
         collector_number = "100"
         card_type = "CARD"
         image_hash = None
-        thumb_url = None          # ← el caso mayoritario
+        thumb_url = None
         download_url = None
         indexed_at = None
         is_full_art = True

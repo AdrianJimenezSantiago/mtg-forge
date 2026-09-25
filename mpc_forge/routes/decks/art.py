@@ -48,8 +48,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     _get_scryfall,
@@ -62,18 +60,12 @@ from mpc_forge.routes.decks._views import (
 router = make_router()
 
 
-# Orden de rareza para el sort "rarity". Se define aquí y no en la BD porque
-# es una preferencia de presentación, no un dato del dominio.
 _RARITY_RANK = {
     "mythic": 0, "rare": 1, "special": 2, "bonus": 3,
     "uncommon": 4, "common": 5,
 }
 
-# Claves de ordenación admitidas. Se valida contra este dict en vez de
-# interpolar el parámetro: así un `sort` arbitrario no llega nunca a la lógica.
 _SORT_KEYS = {
-    # Más reciente primero — el default: casi siempre quieres la impresión
-    # nueva, y las alternativas modernas suelen ser las más vistosas.
     "released_desc": lambda o: (o.released_at or "", o.set_code),
     "released_asc":  lambda o: (o.released_at or "9999", o.set_code),
     "set":           lambda o: (o.set_code, o.collector_number),
@@ -82,13 +74,11 @@ _SORT_KEYS = {
 }
 _REVERSED_SORTS = {"released_desc"}
 
-# Facetas admitidas en el parámetro `only`, con su predicado.
 _FACET_PREDICATES = {
     "full_art":   lambda o: o.full_art,
     "textless":   lambda o: o.textless,
     "promo":      lambda o: o.promo,
     "borderless": lambda o: o.border_color == "borderless",
-    # Los marcos "1993" y "1997" son los retro clásicos según Scryfall.
     "retro":      lambda o: o.frame in ("1993", "1997"),
 }
 
@@ -138,7 +128,6 @@ async def list_printings_for_card(
             f"sort invalido: {sort!r}. Validos: {', '.join(sorted(_SORT_KEYS))}",
         )
 
-    # --- 1) Artes custom (frente + reverso), siempre completos -------------
     custom_options: list[ArtOption] = []
     for face in ("front", "back"):
         for ca in await custom_art.find_for_card(db, dc.name, face=face):
@@ -157,16 +146,12 @@ async def list_printings_for_card(
                 is_chosen=is_chosen,
             ))
 
-    # --- 2) Impresiones oficiales ------------------------------------------
     prints = await deck_service.fetch_printings_for_oracle(db, scryfall, dc.oracle_id)
     pref = await db.get(ArtPreference, dc.oracle_id) if dc.oracle_id else None
     last_used = (
         await history.last_scryfall_id_used(db, dc.oracle_id) if dc.oracle_id else None
     )
 
-    # Miniaturas: UNA query para todos los LocalArt de estas impresiones, en
-    # vez de un lookup por opción. En un endpoint que devuelve cientos de filas
-    # el N+1 aquí sería devastador.
     print_ids = [p.scryfall_id for p in prints]
     local_arts: dict[str, object] = {}
     if print_ids:
@@ -204,10 +189,6 @@ async def list_printings_for_card(
             is_last_used=(last_used is not None and last_used == p.scryfall_id),
         ))
 
-    # --- 3) Facetas ANTES de filtrar ---------------------------------------
-    # Los contadores deben reflejar el conjunto completo: si el usuario ya ha
-    # filtrado por "full art", el contador de "textless" tiene que seguir
-    # diciéndole cuántos hay en total, no cuántos quedan tras su filtro.
     facets = {
         "total": len(options),
         "custom": len(custom_options),
@@ -215,7 +196,6 @@ async def list_printings_for_card(
     for name, predicate in _FACET_PREDICATES.items():
         facets[name] = sum(1 for o in options if predicate(o))
 
-    # --- 4) Filtros ---------------------------------------------------------
     wanted = {t.strip() for t in only.split(",") if t.strip()}
     if wanted:
         unknown = wanted - _FACET_PREDICATES.keys()
@@ -224,8 +204,6 @@ async def list_printings_for_card(
                 status.HTTP_400_BAD_REQUEST,
                 f"Facetas desconocidas: {', '.join(sorted(unknown))}",
             )
-        # AND entre facetas: "full art Y textless" es lo que la gente espera.
-        # Con OR, marcar dos casillas devolvía casi todo el conjunto.
         options = [
             o for o in options
             if all(_FACET_PREDICATES[w](o) for w in wanted)
@@ -241,7 +219,6 @@ async def list_printings_for_card(
             or needle in (o.artist or "").lower()
         ]
 
-    # --- 5) Orden y paginación ---------------------------------------------
     options.sort(key=_SORT_KEYS[sort], reverse=sort in _REVERSED_SORTS)
 
     total = len(options)
@@ -249,8 +226,6 @@ async def list_printings_for_card(
 
     return ArtOptionsPage(
         items=page,
-        # Los customs solo viajan en la primera página: repetirlos en cada
-        # scroll infinito los duplicaría en la rejilla.
         custom=custom_options if offset == 0 else [],
         total=total,
         offset=offset,
@@ -259,14 +234,6 @@ async def list_printings_for_card(
         facets=facets,
     )
 
-
-# ================================================================
-# PRECARGA DE PRINTS EN BACKGROUND
-# ================================================================
-# Cuando el usuario abre un mazo, disparamos precarga de todas las
-# impresiones alternativas (fetch_printings_for_oracle) en background.
-# Así cuando abre el modal de arte para cualquier carta, ya está cacheado
-# y la respuesta es instantánea desde BD (sin llamar a Scryfall).
 
 @router.post("/{deck_id}/preload-prints")
 async def preload_prints(
@@ -316,8 +283,6 @@ async def change_art(
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
 
-    # Snapshot ANTES de mutar. Guardamos el set/número para el timeline —
-    # es lo más útil para el usuario, más que el scryfall_id.
     old_sfid = dc.scryfall_id
     old_custom_front = dc.custom_art_front_id
     old_custom_back = dc.custom_art_back_id
@@ -334,7 +299,6 @@ async def change_art(
         else:
             dc.custom_art_front_id = ca.id
     elif payload.scryfall_id is not None:
-        # Elección oficial: limpia el custom del frente (o back) y actualiza scryfall_id
         printing = await db.get(PrintingCache, payload.scryfall_id)
         if not printing:
             raw = await scryfall.by_id(payload.scryfall_id)
@@ -343,7 +307,6 @@ async def change_art(
             await deck_service.upsert_printing(db, raw)
         if payload.face == "back":
             dc.custom_art_back_id = None
-            # El scryfall_id define la carta completa (front+back del DFC), no lo cambiamos aquí
         else:
             dc.custom_art_front_id = None
             dc.scryfall_id = payload.scryfall_id
@@ -359,7 +322,6 @@ async def change_art(
             "Debe indicarse scryfall_id o custom_art_id"
         )
 
-    # Reunimos el nuevo estado para el payload del timeline.
     new_printing = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
     activity_payload = {
         "face": payload.face,
@@ -381,8 +343,6 @@ async def change_art(
             "new_number": new_printing.collector_number if new_printing else None,
             "remember_globally": payload.remember_globally,
         })
-    # Solo loggeamos si realmente cambió algo (evita ruido si el usuario
-    # hace click en el arte que ya estaba seleccionado).
     changed = (
         dc.scryfall_id != old_sfid
         or dc.custom_art_front_id != old_custom_front
@@ -413,13 +373,10 @@ async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
     return await _deckcard_to_view(db, dc)
 
 
-# --- Helpers de vista -----------------------------------------------------
-
 class ArtistRecommendRequest(BaseModel):
     """Payload del recomendador. Solo requiere ``artist``; los oracle_ids
     se derivan del deck en el servidor (evita al frontend enviarlos)."""
     artist: str
-    # Opcional: filtro por rol para acotar (mainboard, commander, all).
     role: str = "all"
 
 
@@ -471,13 +428,10 @@ async def recommend_by_artist(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    # Filtro de rol si el usuario acotó ("commander", "mainboard", "all").
     role = (payload.role or "all").lower()
     if role not in {"all", "mainboard", "commander", "sideboard"}:
         role = "all"
 
-    # DeckCard ya persiste el oracle_id de cada carta al importar — no
-    # necesitamos JOIN a PrintingCache, evitando N+1 y una query extra.
     stmt = select(DeckCard.oracle_id).where(
         DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
     )
@@ -495,9 +449,6 @@ async def recommend_by_artist(
         skipped_count=len(result.skipped),
         total_deck_uniques=total_unique,
     )
-
-
-# ---- Recomendador por estilo (Extras · F3/T11) ------------------------------
 
 
 class StyleRecommendRequest(BaseModel):

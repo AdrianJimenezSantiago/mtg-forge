@@ -43,22 +43,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-# Logger propio del módulo en lugar de llamar al root directamente. Importa
-# más de lo que parece aquí: el filtro de redacción de secretos
-# (`logging_setup.RedactSecretsFilter`) se engancha a los handlers, y tener un
-# logger con nombre hace que el mensaje sea rastreable hasta su origen en vez
-# de aparecer como "root".
 log = logging.getLogger(__name__)
 
-# Configuramos SSL ANTES de crear cualquier cliente HTTPX — así truststore
-# inyecta el contexto SSL del sistema (con la CA corporativa si aplica) antes
-# de que se instancien conexiones.
 _SSL_MODE = configure_ssl()
 
 STATIC_DIR = static_dir()
 
-# Hosts extra permitidos, separados por comas. Solo hace falta si el usuario
-# arranca con `--host 0.0.0.0` para entrar desde otro equipo de su LAN.
 _EXTRA_HOSTS_ENV = "MPC_FORGE_ALLOWED_HOSTS"
 
 
@@ -86,7 +76,6 @@ def _preload_path_overrides() -> None:
             conn.close()
         overrides = {}
         for key, value in rows:
-            # 'settings.paths.art_dir' → 'art_dir'
             short = key[len("settings.paths."):]
             if value and value.strip():
                 overrides[short] = value.strip()
@@ -94,13 +83,11 @@ def _preload_path_overrides() -> None:
             cfg.PATHS = cfg.Paths.default().with_overrides(**overrides)
             log.info("Aplicados %d overrides de paths desde BD", len(overrides))
     except sqlite3.OperationalError:
-        # Tabla kv_store aún no existe (primera ejecución sin init_db previo).
         pass
     except Exception as e:
         log.warning("Preload de path overrides falló: %s", e)
 
 
-# Se ejecuta al importar el módulo — antes de create_app() se ejecute abajo.
 _preload_path_overrides()
 
 
@@ -133,9 +120,6 @@ class BackgroundTasks:
             return
         exc = task.exception()
         if exc is not None:
-            # Sin esto, una excepción en una tarea de background solo aparece
-            # como un "Task exception was never retrieved" al salir del
-            # proceso, sin contexto sobre qué tarea era.
             log.error(
                 "La tarea de background %r terminó con excepción",
                 task.get_name(), exc_info=exc,
@@ -197,8 +181,6 @@ def _silence_windows_connection_resets(loop: asyncio.AbstractEventLoop) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _silence_windows_connection_resets(asyncio.get_running_loop())
-    # File logging PRIMERO: así capturamos también los errores de init_db,
-    # settings, etc. La ruta es %APPDATA%/MPC-Forge/logs/mpc-forge.log
     logs_dir = cfg.PATHS.data_dir / "logs"
     try:
         log_path = logging_setup.setup_file_logging(logs_dir)
@@ -206,16 +188,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("No se pudo configurar file logging: %s", e)
 
-    # Si estamos en frozen (release .exe), pinta un dump de las rutas resueltas.
-    # Muy útil para diagnosticar problemas de assets/templates que solo aparecen
-    # en release y no en dev.
     if is_frozen():
         for line in paths_diagnose().splitlines():
             log.info(line)
 
     await init_db()
-    # Cargar settings persistidos y aplicarlos a config.py antes de instanciar
-    # los clientes (que leen p.ej. USD_TO_EUR o el User-Agent).
     try:
         async with session_scope() as db:
             values = await settings_service.get_all(db)
@@ -236,7 +213,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("Rescan de custom art falló: %s", e)
 
-    # Sembrar sources iniciales (drives de MPCFill) si el usuario no tiene ninguno.
     try:
         async with session_scope() as db:
             seeded = await art_sources_service.seed_initial_if_empty(db)
@@ -245,12 +221,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning("Seed de art sources falló: %s", e)
 
-    # Backfill de nombres normalizados: si hemos actualizado el normalizador
-    # (nueva NORMALIZATION_VERSION en gdrive_indexer), recalcula
-    # `name_normalized` sobre el índice existente. Idempotente y rápido:
-    # una vez completado, marca el flag y no vuelve a ejecutarse.
-    # Corremos en background para no bloquear el arranque en caso de que
-    # tarde varios segundos con índices muy grandes.
     async def _run_backfill():
         try:
             from mpc_forge.services import gdrive_indexer
@@ -261,10 +231,6 @@ async def lifespan(app: FastAPI):
     app.state.background = BackgroundTasks()
     app.state.background.spawn(_run_backfill(), name="normalization-backfill")
 
-    # Sync de DFC pairs desde Scryfall (cache semanal). Precomputa la lista
-    # de pares double-faced/meld para que el resolver de decks sepa qué
-    # reversos añadir sin lookups reactivos por carta. Corre en background
-    # y no bloquea el arranque; si falla, no impide usar la app.
     async def _run_dfc_sync():
         try:
             from mpc_forge.services import dfc_pairs
@@ -279,16 +245,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # Orden importante: primero paramos las tareas que puedan estar usando
-        # los clientes HTTP o la BD, después cerramos esos recursos, y el
-        # mantenimiento de SQLite va al final, cuando nadie más escribe.
         await app.state.background.shutdown()
         await app.state.scryfall.aclose()
         await app.state.moxfield.aclose()
         await app.state.art_cache.aclose()
         await optimize_db()
-        # Shutdown limpio → borramos el log. Si la app crashea antes de llegar
-        # aquí, el log queda para diagnóstico post-mortem.
         try:
             logging_setup.teardown_file_logging(delete=True)
         except Exception:
@@ -313,9 +274,6 @@ class CachedStaticFiles(StaticFiles):
         return response
 
 
-# Rutas cuyos 404 deben seguir siendo la respuesta JSON/vacía de siempre: la
-# API (el frontend lee `detail`), los ficheros estáticos y las imágenes. Una
-# página HTML de 404 ahí rompería los `fetch()` y los `<img onerror>`.
 _NON_HTML_PREFIXES = (
     "/api/", "/static/", "/art/", "/custom_art/", "/thumbs/",
     "/local-source/", "/i18n/",
@@ -346,13 +304,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # -- Guardia de localhost --
-    # Va ANTES que el resto: valida la cabecera Host (DNS rebinding) y el
-    # origen de las peticiones que modifican estado (CSRF). Ver
-    # `mpc_forge.middleware` para el razonamiento completo.
-    #
-    # Como Starlette ejecuta los middlewares en orden inverso al de registro,
-    # añadirlo el último hace que sea el primero en ver la petición.
     extra_hosts = {
         h.strip().lower()
         for h in os.environ.get(_EXTRA_HOSTS_ENV, "").split(",")
@@ -364,11 +315,6 @@ def create_app() -> FastAPI:
             _EXTRA_HOSTS_ENV, sorted(extra_hosts),
         )
 
-    # -- GZip middleware --
-    # Comprime responses >1KB. Impacto real:
-    #   GET /api/decks/{id} con 100 cartas: 60-80 KB → 8-12 KB (~85% menos)
-    #   GET /api/decks/{id}/prints con 900+ prints: 400 KB → 40 KB
-    # No comprime imágenes (ya están comprimidas). Cero contra.
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
     app.add_middleware(
@@ -376,18 +322,11 @@ def create_app() -> FastAPI:
         allowed_hosts=frozenset(DEFAULT_ALLOWED_HOSTS | extra_hosts),
     )
 
-    # Assets con cache aggressive. Un day para /static (JS/CSS que podríamos
-    # cambiar entre versiones), un mes para /art y /custom_art (nombres con
-    # hash → contenido inmutable).
     app.mount("/static", CachedStaticFiles(directory=str(STATIC_DIR), max_age=86400), name="static")
     app.mount("/art", CachedStaticFiles(directory=str(cfg.PATHS.art_dir), max_age=2592000), name="art")
     app.mount("/custom_art", CachedStaticFiles(directory=str(cfg.PATHS.custom_art_dir), max_age=2592000), name="custom_art")
-    # Las miniaturas también se montan como estáticas para las que ya existen:
-    # así el 99% de las peticiones ni llegan al router de Python. El router
-    # /api/thumb/ solo interviene cuando hay que GENERARLAS.
     app.mount("/thumbs", CachedStaticFiles(directory=str(cfg.PATHS.thumbs_dir), max_age=2592000), name="thumbs")
 
-    # Página 404 propia para las navegaciones del usuario (ver arriba).
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
 
     app.include_router(ui.router)
@@ -396,9 +335,6 @@ def create_app() -> FastAPI:
     app.include_router(custom_art_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(integrations.router)
-    # Router auxiliar sin prefijo /api — sirve archivos de LocalFolderSource
-    # como URLs `/local-source/{id}/{file_id}` (referenciadas directamente
-    # desde el frontend como <img src>).
     app.include_router(integrations.local_source_router)
     app.include_router(collection_routes.router)
     app.include_router(planner_routes.router)

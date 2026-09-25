@@ -84,9 +84,6 @@ async def start_sync(
     async def _with_analyze() -> None:
         async with session_scope() as session:
             await bulk_data.sync(session, kind, force=force)
-        # Tras insertar cientos de miles de filas, el planificador de consultas
-        # sigue usando las estadísticas de la tabla pequeña y puede ignorar los
-        # índices. ANALYZE lo corrige.
         await analyze_table("printings")
 
     import asyncio

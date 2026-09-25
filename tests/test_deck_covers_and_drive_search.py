@@ -26,10 +26,6 @@ import pytest_asyncio
 HTML = {"accept": "text/html"}
 
 
-# ---------------------------------------------------------------------------
-# Portadas
-# ---------------------------------------------------------------------------
-
 @pytest_asyncio.fixture
 async def commander_deck(client, sample_cards):
     """Mazo con Sol Ring como commander (impresión `sr-en`)."""
@@ -117,9 +113,8 @@ class TestDeckCover:
         })
         assert r.status_code == 200, r.text
         expected = custom_art.custom_art_url(rel)
-        assert "%23" in expected  # el "#" va escapado en la URL
+        assert "%23" in expected
         urls = await _all_cover_urls(client, commander_deck["deck_id"])
-        # En el HTML el "&" y similares irían escapados; esta URL no tiene.
         _assert_everywhere(urls, expected)
 
     async def test_back_face_custom_art_does_not_change_the_cover(self, client, commander_deck):
@@ -192,7 +187,6 @@ class TestPickCoverCard:
     def test_follows_the_commander_after_its_art_changed(self):
         from mpc_forge.models import Deck
         from mpc_forge.services.deck_covers import pick_cover_card
-        # El segundo commander (el importado como principal) ahora usa "b2".
         a, b = self._card(1, "a1", "oa"), self._card(2, "b2", "ob")
         deck = Deck(name="x", format="commander", commander_scryfall_id="b1")
         printings = {"b1": self._printing("b1", "ob")}
@@ -237,13 +231,8 @@ class TestDeckCoverBatching:
                 event.remove(engine.sync_engine, "before_cursor_execute", listener)
         assert len(covers) == 25
         assert all(c.image_url == "https://x.test/sr-en_n.jpg" for c in covers.values())
-        # commanders + impresiones (+ customs, que aquí no hace falta)
         assert len(statements) <= 3, statements
 
-
-# ---------------------------------------------------------------------------
-# Búsqueda de artes en drives
-# ---------------------------------------------------------------------------
 
 async def _seed_index(n_sol_ring=0, rare=(), filler=0):
     """Inserta artes directamente en el índice (los triggers mantienen FTS5)."""
@@ -400,7 +389,6 @@ class TestDriveSearchRelevance:
             forest = await gdrive_search.search(db, "Forest", limit=100)
             sol = await gdrive_search.search(db, "Sol Ring", limit=100)
         assert sorted(r.filename for r in forest) == ["Forest (Full Art).png", "Forest.png"]
-        # "Cursed Sol Ring" es otra carta: puede aparecer, pero siempre detrás.
         assert sol[0].filename == "Sol Ring.png"
         assert all(r.score < 100 for r in sol[1:])
 

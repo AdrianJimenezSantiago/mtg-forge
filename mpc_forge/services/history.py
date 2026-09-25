@@ -14,10 +14,10 @@ from mpc_forge.models import Deck, DeckCard, PrintRun, PrintRunItem
 class CardHistoryStat:
     oracle_id: str
     card_name: str
-    total_copies: int  # copias totales impresas hasta ahora
-    times_in_runs: int  # nº de tiradas donde aparece
+    total_copies: int
+    times_in_runs: int
     last_printed_at: datetime | None
-    decks: list[str]  # nombres de mazos donde ha aparecido
+    decks: list[str]
 
 
 async def create_print_run_from_deck(
@@ -40,7 +40,6 @@ async def create_print_run_from_deck(
     ).all()
     total = sum(c.quantity for c in cards)
     run = PrintRun(
-        # Hora local: este nombre se muestra tal cual en el historial.
         name=run_name or (
             f"{deck.name} — "
             f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}"

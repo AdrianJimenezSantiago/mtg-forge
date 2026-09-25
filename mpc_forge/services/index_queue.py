@@ -34,10 +34,6 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Modelo de estado por drive
-# ---------------------------------------------------------------------------
-
 class JobStatus(StrEnum):
     QUEUED = "queued"
     INDEXING = "indexing"
@@ -55,7 +51,7 @@ class IndexJob:
     status: JobStatus = JobStatus.QUEUED
     files_added: int = 0
     files_updated: int = 0
-    files_total: int = 0          # indexed_files reportados por partial commits
+    files_total: int = 0
     folders_visited: int = 0
     error: str | None = None
     started_at: float | None = None
@@ -82,10 +78,6 @@ class IndexJob:
         }
 
 
-# ---------------------------------------------------------------------------
-# Cola + worker
-# ---------------------------------------------------------------------------
-
 class IndexQueue:
     """Cola de indexado con un único worker asyncio.
 
@@ -94,14 +86,12 @@ class IndexQueue:
 
     def __init__(self) -> None:
         self._queue: asyncio.Queue[int] = asyncio.Queue()
-        self._jobs: dict[int, IndexJob] = {}       # source_id → job
-        self._order: list[int] = []                 # orden de encolado (para UI)
+        self._jobs: dict[int, IndexJob] = {}
+        self._order: list[int] = []
         self._worker_task: asyncio.Task | None = None
         self._cancel_flag: bool = False
         self._batch_id: str | None = None
         self._batch_started_at: float | None = None
-
-    # -- API pública --
 
     async def enqueue(
         self,
@@ -127,7 +117,6 @@ class IndexQueue:
         self._batch_id = uuid.uuid4().hex[:12]
         self._batch_started_at = time.time()
 
-        # Limpiar jobs anteriores completados
         self._jobs = {
             k: v for k, v in self._jobs.items()
             if v.status in (JobStatus.QUEUED, JobStatus.INDEXING)
@@ -138,7 +127,6 @@ class IndexQueue:
         skipped = 0
 
         for sid in source_ids:
-            # No encolar duplicados
             if sid in self._jobs and self._jobs[sid].status in (
                 JobStatus.QUEUED, JobStatus.INDEXING,
             ):
@@ -150,7 +138,6 @@ class IndexQueue:
             await self._queue.put(sid)
             queued += 1
 
-        # Arrancar worker si no está corriendo
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(
                 self._worker(), name="index-queue-worker",
@@ -194,14 +181,12 @@ class IndexQueue:
             elif job.status == JobStatus.QUEUED:
                 queued.append(d)
             else:
-                # DONE, ERROR, SKIPPED, CANCELLED
                 completed.append(d)
 
         total_jobs = len(self._order)
         done_count = len(completed)
         all_done = active is None and len(queued) == 0 and total_jobs > 0
 
-        # ETA: media de elapsed de los completados exitosamente
         done_times = [
             j.elapsed for j in self._jobs.values()
             if j.status == JobStatus.DONE and j.elapsed > 0
@@ -210,7 +195,6 @@ class IndexQueue:
         eta_seconds: float | None = None
         remaining = len(queued) + (1 if active else 0)
         if avg_time and remaining > 0:
-            # Para el activo, descontamos lo que ya lleva
             active_remaining = 0.0
             if active:
                 active_job = next(
@@ -257,8 +241,6 @@ class IndexQueue:
             self._batch_id = None
             self._batch_started_at = None
 
-    # -- Worker interno --
-
     async def _worker(self) -> None:
         """Procesa la cola secuencialmente (un drive a la vez).
 
@@ -276,11 +258,9 @@ class IndexQueue:
             if job is None:
                 continue
 
-            # ¿Cancelación?
             if self._cancel_flag or job.status == JobStatus.CANCELLED:
                 if job.status != JobStatus.CANCELLED:
                     job.status = JobStatus.CANCELLED
-                # Drenar el resto de la cola
                 while not self._queue.empty():
                     remaining_sid = self._queue.get_nowait()
                     rj = self._jobs.get(remaining_sid)
@@ -289,7 +269,6 @@ class IndexQueue:
                 log.info("IndexQueue worker: cancelación, drenada la cola")
                 break
 
-            # Indexar este drive
             job.status = JobStatus.INDEXING
             job.started_at = time.time()
             log.info("IndexQueue: indexando source %d (%s)", sid, job.source_name)
@@ -307,7 +286,6 @@ class IndexQueue:
                 job.error = result.error
                 job.status = JobStatus.ERROR if result.error else JobStatus.DONE
 
-                # Actualizar files_total con el count real post-indexado
                 if not result.error:
                     try:
                         async with session_scope() as db:
@@ -323,7 +301,6 @@ class IndexQueue:
                 job.status = JobStatus.ERROR
                 job.error = f"{type(e).__name__}: {str(e)[:200]}"
 
-                # Intentar marcar el error en BD
                 try:
                     async with session_scope() as db:
                         from datetime import datetime
@@ -370,10 +347,6 @@ class IndexQueue:
                 job.files_total = files_total
         return callback
 
-
-# ---------------------------------------------------------------------------
-# Singleton global
-# ---------------------------------------------------------------------------
 
 _queue = IndexQueue()
 

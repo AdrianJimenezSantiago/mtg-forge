@@ -11,9 +11,6 @@ from urllib.parse import urlparse
 
 from .base import ImportSite, ImportSiteError, InvalidURLError
 
-# Rutas típicas:
-#   https://archidekt.com/decks/123456/my-deck
-#   https://archidekt.com/decks/123456
 _ARCHIDEKT_ID_RE = re.compile(r"^/decks/(\d+)")
 
 
@@ -24,8 +21,6 @@ class ArchidektSite(ImportSite):
     example_url: ClassVar[str] = "https://archidekt.com/decks/1234567/deck-name"
     base_url: ClassVar[str] = "archidekt.com"
 
-    # Cache temporal del payload descargado — evita un segundo fetch en
-    # retrieve_deck_name cuando se llama tras retrieve_card_list.
     _payload_cache: ClassVar[dict[str, dict]] = {}
 
     @classmethod

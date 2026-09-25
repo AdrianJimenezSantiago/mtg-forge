@@ -48,16 +48,10 @@ log = logging.getLogger(__name__)
 
 FlipEdge = Literal["long", "short"]
 
-# Alcance de las reglas, en milímetros a cada lado del centro. ±15 mm cubre con
-# holgura cualquier deriva real; más allá de eso el problema es de la bandeja
-# de papel, no de calibración.
 RULER_RANGE_MM = 15
 
-# Longitud del brazo de la diana.
 CROSSHAIR_ARM_MM = 25
 
-# Una deriva por encima de esto no es descalibración normal: suele significar
-# que el usuario midió mal, o que la impresora está tomando el papel torcido.
 SUSPICIOUS_OFFSET_MM = 10.0
 
 
@@ -103,8 +97,6 @@ def derive_offsets(
     espejado afecta a Y en lugar de a X.
     """
     if flip_edge == "long":
-        # Espejo horizontal: la corrección en X va en el mismo sentido que la
-        # medida, no en el contrario.
         offset_x = measured_x_mm
         offset_y = -measured_y_mm
     else:
@@ -175,8 +167,6 @@ def _draw_front(c, cx, cy, width, height, mm) -> None:
         "Imprime esta hoja a doble cara y mírala al trasluz por este lado."
     )
 
-    # Diana central. Trazo fino: si es grueso, no se distingue a contraluz cuál
-    # de las dos cruces es cuál.
     c.setLineWidth(0.4)
     c.setStrokeColorRGB(0, 0, 0)
     arm = CROSSHAIR_ARM_MM * mm
@@ -187,7 +177,6 @@ def _draw_front(c, cx, cy, width, height, mm) -> None:
     _draw_ruler(c, cx, cy, mm, horizontal=True)
     _draw_ruler(c, cx, cy, mm, horizontal=False)
 
-    # Marcas de registro en las esquinas, a 10 mm de los bordes.
     _draw_corner_marks(c, width, height, mm)
 
     c.setFont("Helvetica", 8)
@@ -208,8 +197,6 @@ def _draw_back(c, cx, cy, width, height, mm, flip_edge: FlipEdge) -> None:
         f"Configura tu impresora para voltear por {label}."
     )
 
-    # La diana del reverso se dibuja con trazo discontinuo para distinguirla de
-    # la del anverso cuando ambas se ven superpuestas a contraluz.
     c.setLineWidth(0.6)
     c.setDash(3, 2)
     arm = CROSSHAIR_ARM_MM * mm
@@ -253,17 +240,11 @@ def _draw_ruler(c, cx, cy, mm, *, horizontal: bool) -> None:
 
         if horizontal:
             x = cx + offset * mm
-            # Las marcas cuelgan hacia abajo del brazo horizontal.
             c.line(x, cy, x, cy - tick)
             if is_major:
-                # 5 mm por debajo de la marca, no 3: con menos separación la
-                # etiqueta "5" del eje horizontal choca con la "-5" del
-                # vertical, que es justo el rango donde caen las derivas
-                # reales.
                 c.drawCentredString(x, cy - tick - 5 * mm, str(offset))
         else:
             y = cy + offset * mm
-            # Y hacia la derecha del brazo vertical.
             c.line(cx, y, cx + tick, y)
             if is_major:
                 c.drawString(cx + tick + 1.2 * mm, y - 0.8 * mm, str(offset))

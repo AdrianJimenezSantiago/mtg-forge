@@ -64,18 +64,14 @@ def max_tier_size() -> int:
     return int(tiers()[-1]["size"])
 
 
-# ---------------------------------------------------------------------------
-# Estructuras
-# ---------------------------------------------------------------------------
-
 @dataclass
 class DeckContribution:
     """Lo que aporta un mazo al total. Solo conteos, sin imágenes."""
     deck_id: int
     name: str
-    card_count: int          # suma de cantidades de las cartas incluidas
+    card_count: int
     distinct_cards: int
-    excluded_count: int = 0  # cartas con include=False, informativo
+    excluded_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -103,7 +99,6 @@ class RunPlan:
 
     @property
     def subtotal_usd(self) -> float:
-        # Se paga el tier completo, no las cartas.
         return round(self.tier_size * self.unit_usd, 2)
 
     @property
@@ -175,10 +170,6 @@ class PlanResult:
         }
 
 
-# ---------------------------------------------------------------------------
-# Lectura de mazos
-# ---------------------------------------------------------------------------
-
 async def collect_contributions(
     db: AsyncSession, deck_ids: list[int]
 ) -> list[DeckContribution]:
@@ -215,8 +206,6 @@ async def collect_contributions(
     excluded = {r[0]: int(r[1]) for r in excluded_rows}
 
     contributions = []
-    # Se respeta el orden que pidió el usuario: la interfaz lista los mazos en
-    # el orden en que los fue marcando y el plan debe coincidir.
     for deck_id in deck_ids:
         if deck_id not in names:
             continue
@@ -230,10 +219,6 @@ async def collect_contributions(
         ))
     return contributions
 
-
-# ---------------------------------------------------------------------------
-# Planificación
-# ---------------------------------------------------------------------------
 
 def plan_runs(
     contributions: list[DeckContribution],
@@ -262,8 +247,6 @@ def plan_runs(
     if not keep_decks_together:
         return _plan_by_volume(pending, ceiling)
 
-    # First-fit-decreasing sobre mazos completos: los grandes primero deja
-    # menos fragmentación que ir en el orden en que el usuario los marcó.
     ordered = sorted(pending, key=lambda c: (-c.card_count, c.name))
 
     runs: list[RunPlan] = []
@@ -272,8 +255,6 @@ def plan_runs(
 
     for deck in ordered:
         if deck.card_count > ceiling:
-            # Un solo mazo más grande que el tier máximo: se parte, no hay
-            # alternativa. Se reparte en trozos del tamaño del techo.
             remaining = deck.card_count
             while remaining > 0:
                 chunk = min(remaining, ceiling)
@@ -351,7 +332,7 @@ def compare_alternatives(total_cards: int) -> list[dict[str, Any]]:
     options = []
     for tier in tiers():
         ceiling = int(tier["size"])
-        runs_needed = -(-total_cards // ceiling)   # división hacia arriba
+        runs_needed = -(-total_cards // ceiling)
         remaining = total_cards
         subtotal = 0.0
         wasted = 0
@@ -369,7 +350,6 @@ def compare_alternatives(total_cards: int) -> list[dict[str, Any]]:
             "effective_unit_usd": round(subtotal / total_cards, 4),
         })
 
-    # Se ordena por coste real por carta, que es lo que el usuario compara.
     options.sort(key=lambda o: o["effective_unit_usd"])
     if options:
         options[0]["is_cheapest"] = True
@@ -391,8 +371,6 @@ def suggest_filler(runs: list[RunPlan]) -> dict[str, Any]:
         if run.wasted_slots <= 0:
             continue
 
-        # ¿Bajar de tier compensa? Solo si sobran suficientes huecos como para
-        # que el mazo entrara en el tier inmediatamente inferior.
         smaller = None
         for tier in tiers():
             if int(tier["size"]) < run.tier_size:
@@ -412,8 +390,6 @@ def suggest_filler(runs: list[RunPlan]) -> dict[str, Any]:
             "run_index": run.index,
             "wasted_slots": run.wasted_slots,
             "fill_percent": run.fill_percent,
-            # Los huecos ya están pagados: llenarlos con tierras básicas es
-            # gratis en términos marginales.
             "free_cards_available": run.wasted_slots,
             "downgrade_option": downgrade,
         })

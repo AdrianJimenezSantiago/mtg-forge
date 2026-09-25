@@ -33,7 +33,6 @@ def extract_deck_id(url_or_id: str) -> str:
     m = _DECK_ID_RE.search(url_or_id)
     if m:
         return m.group(1)
-    # Si no matchea, asumimos que es un ID directo.
     return url_or_id.strip()
 
 
@@ -56,27 +55,24 @@ class MoxfieldClient:
     async def fetch_deck(self, url_or_id: str) -> dict[str, Any]:
         """Devuelve el JSON del mazo, probando v3 → v2 → cloudscraper."""
         deck_id = extract_deck_id(url_or_id)
-        # 1) v3
         try:
             resp = await self._client.get(f"{_MOXFIELD_API_BASE}/decks/all/{deck_id}")
             if resp.status_code == 200:
                 return resp.json()
         except httpx.HTTPError as e:
             log.debug("Moxfield v3 falló: %s", e)
-        # 2) v2 (fallback)
         try:
             resp = await self._client.get(f"{_MOXFIELD_API_LEGACY}/decks/all/{deck_id}")
             if resp.status_code == 200:
                 return resp.json()
         except httpx.HTTPError as e:
             log.debug("Moxfield v2 falló: %s", e)
-        # 3) cloudscraper (bloqueante, en thread) como último recurso
         return await asyncio.to_thread(_cloudscraper_fetch, deck_id)
 
 
 def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
     """Fallback síncrono usando cloudscraper para pasar el JS challenge."""
-    import cloudscraper  # import perezoso: solo si hace falta
+    import cloudscraper
 
     scraper = cloudscraper.create_scraper()
     scraper.headers.update({
@@ -96,8 +92,6 @@ def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
         "pega la lista de cartas manualmente en su lugar."
     )
 
-
-# --- Normalización -------------------------------------------------------
 
 def normalize_deck(payload: dict[str, Any]) -> dict[str, Any]:
     """Convierte la respuesta de Moxfield a una estructura interna estable.
@@ -160,10 +154,6 @@ def normalize_deck(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# Cabeceras de sección reconocidas. La sección "activa" en la state machine
-# se aplica a todas las cartas siguientes hasta la próxima cabecera. Los
-# nombres canónicos son los valores del dict; matchean varias variantes
-# comunes usadas por Moxfield, MTGA, Deckstats, etc.
 _SECTION_ALIASES: dict[str, str] = {
     "commander": "commander",
     "commanders": "commander",
@@ -192,15 +182,10 @@ def _detect_section_header(line: str) -> str | None:
     s = line.strip()
     if not s:
         return None
-    # Formato "//Section" o "// Section"
     if s.startswith("//"):
         candidate = s.lstrip("/").strip().lower()
-        # También aceptamos "//deck" seguido de "(99)"
         candidate = candidate.split("(", 1)[0].strip()
         return _SECTION_ALIASES.get(candidate)
-    # Formato "Section" o "Section (N)" — solo si esa palabra suelta encaja.
-    # Requerimos que la línea NO empiece por dígitos (una cantidad como "4
-    # Sideboard" NO es cabecera, es una carta llamada Sideboard con qty 4).
     m = re.match(r"^([A-Za-z]+)(?:\s*\(\d+\))?\s*$", s)
     if m:
         return _SECTION_ALIASES.get(m.group(1).lower())
@@ -237,7 +222,6 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
         r"(?:\s+[\(\[](?P<set>[A-Za-z0-9]{2,6})[\)\]]"
         r"\s*(?P<num>\S+)?)?\s*$"
     )
-    # Prefijo MTGO "SB:" → sideboard.
     sb_prefix_re = re.compile(r"^\s*SB:\s*", re.IGNORECASE)
 
     current_role = "mainboard"
@@ -247,14 +231,11 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
         if not stripped or stripped.startswith("#"):
             continue
 
-        # 1) ¿Es una cabecera de sección? Actualiza state y salta.
         section = _detect_section_header(raw)
         if section is not None:
             current_role = section
             continue
 
-        # 2) Prefijo MTGO "SB:" fuerza sideboard para ESTA línea concreta
-        # sin cambiar la sección actual (útil en decklists mezcladas).
         role_for_this_line = current_role
         if sb_prefix_re.match(raw):
             role_for_this_line = "sideboard"
@@ -264,7 +245,6 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
 
         m = line_re.match(raw_clean)
         if not m:
-            # intento más simple: "Lightning Bolt"
             entries.append({
                 "name": raw_clean.strip(), "quantity": 1, "set": None, "number": None,
                 "role": role_for_this_line,

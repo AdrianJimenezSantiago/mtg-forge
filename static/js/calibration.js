@@ -1,21 +1,6 @@
-/**
- * Asistente de calibración de dúplex — /calibrate
- *
- * El PDF Studio tiene `back_offset_x_mm` y `back_offset_y_mm`, pero hasta
- * ahora el usuario tenía que adivinarlos. Esta vista los deriva de una
- * medición sobre una hoja impresa.
- *
- * El cálculo del signo lo hace el servidor a propósito: en dúplex por borde
- * largo el reverso queda espejado, así que la corrección en X va en el mismo
- * sentido que la deriva y no en el contrario. Es donde se equivoca todo el
- * mundo, y un signo invertido deja las cartas el DOBLE de descentradas.
- *
- * Publicado en `window` al final: Alpine resuelve `x-data` en el ámbito global.
- */
-
 function calibrationWizard() {
   return {
-    step: 1,               // 1 imprimir · 2 medir · 3 resultado
+    step: 1,
 
     pageSize: 'a4',
     flipEdge: 'long',
@@ -69,7 +54,6 @@ function calibrationWizard() {
       this.$nextTick(() => window.icons?.())
     },
 
-    /** Copia los dos valores para pegarlos en el PDF Studio. */
     async copyValues() {
       if (!this.result) return
       const text =
@@ -80,9 +64,6 @@ function calibrationWizard() {
         this.copied = true
         setTimeout(() => { this.copied = false }, 2000)
       } catch {
-        // El portapapeles puede estar bloqueado según el contexto de
-        // seguridad. No es motivo para mostrar un error: los números están
-        // en pantalla y se pueden teclear.
         this.copied = false
       }
     },
@@ -99,5 +80,4 @@ function calibrationWizard() {
   }
 }
 
-// --- Puente con Alpine ---------------------------------------------------
 window.calibrationWizard = calibrationWizard

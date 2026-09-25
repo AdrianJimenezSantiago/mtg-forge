@@ -39,9 +39,9 @@ from mpc_forge.services.xml_generator import DeckCardResolved, default_cardback_
 
 log = logging.getLogger(__name__)
 
-# Tamaño exacto de una carta MTG en mm (área visible; MPC añade bleed a 66.75×91.75).
 CARD_WIDTH_MM = 63.0
 CARD_HEIGHT_MM = 88.0
+
 
 class _ImageReaderCache:
     """Reutiliza el mismo ``ImageReader`` para rutas repetidas.
@@ -104,32 +104,23 @@ _PAGE_SIZES = {
 
 @dataclass
 class PDFOptions:
-    # --- Página ---
     page_size: PageSize = "a4"
     orientation: Orientation = "portrait"
 
-    # --- Grid (autocalculado si cols/rows = 0) ---
     cols: int = 3
     rows: int = 3
 
-    # --- Espaciado ---
     gap_x_mm: float = 0.0
     gap_y_mm: float = 0.0
 
-    # --- Offsets del grid ---
-    # offset_x/y_mm: aplica a TODAS las páginas.
-    # back_offset_x/y_mm: delta EXTRA solo para páginas de reversos, para
-    # compensar la deriva de la impresora al voltear el papel en duplex.
     offset_x_mm: float = 0.0
     offset_y_mm: float = 0.0
     back_offset_x_mm: float = 0.0
     back_offset_y_mm: float = 0.0
 
-    # --- Bleed ---
     bleed_enabled: bool = False
     bleed_mm: float = 0.0
 
-    # --- Card guides (marcas por carta) ---
     card_guides_enabled: bool = True
     card_guides_style: CardGuidesStyle = "corners"
     card_guides_shape: CardGuidesShape = "square"
@@ -139,36 +130,24 @@ class PDFOptions:
     card_guides_color: str = "#606060"
     card_guides_width_pt: float = 0.4
 
-    # --- Page guides (líneas que atraviesan la página) ---
     page_guides: PageGuides = "none"
 
-    # --- Duplex hide-flags ---
     hide_card_guides_front: bool = False
     hide_card_guides_back: bool = False
     hide_page_guides_front: bool = False
     hide_page_guides_back: bool = False
 
-    # --- Marcas de registro (Silhouette / Cricut) ---
     reg_marks_enabled: bool = False
     reg_marks_inset_mm: float = 10.0
     reg_marks_size_mm: float = 5.0
 
-    # --- Reversos ---
     include_backs: bool = False
     backs_layout: BacksLayout = "append"
-    # dfc_only  = solo cara-B de DFC (v1 original)
-    # all_cards = cada slot lleva reverso: DFC → cara-B, resto → cardback estándar
     backs_content: BacksContent = "all_cards"
-    # Rellenar huecos libres de la última hoja de fronts con reversos antes
-    # de abrir una hoja nueva (SOLO en backs_layout='append'). Ahorra papel
-    # cuando cortas cartas una por una; irrelevante en duplex, donde cada
-    # hoja de fronts tiene su hoja de reversos correspondiente.
     backs_compact_fill: bool = True
 
-    # --- Rango de páginas ---
     page_range: str = ""
 
-    # --- Pie ---
     show_footer: bool = True
 
 
@@ -180,10 +159,6 @@ class PDFBuildResult:
     cols: int
     rows: int
 
-
-# ---------------------------------------------------------------------------
-# Helpers de geometría
-# ---------------------------------------------------------------------------
 
 @dataclass
 class Geometry:
@@ -228,7 +203,6 @@ def compute_geometry(opts: PDFOptions, page_kind: str = "front") -> Geometry:
     grid_w = cols * slot_w + (cols - 1) * opts.gap_x_mm
     grid_h = rows * slot_h + (rows - 1) * opts.gap_y_mm
 
-    # Offsets: base + delta específico para reversos.
     ox = opts.offset_x_mm + (opts.back_offset_x_mm if page_kind == "back" else 0.0)
     oy = opts.offset_y_mm + (opts.back_offset_y_mm if page_kind == "back" else 0.0)
     origin_x = (page_w_mm - grid_w) / 2 + ox
@@ -251,10 +225,6 @@ def _slot_position_mm(g: Geometry, col: int, row: int) -> tuple[float, float]:
     y = g.origin_y_mm + (g.rows - 1 - row) * (g.slot_h_mm + g.gap_y_mm)
     return x, y
 
-
-# ---------------------------------------------------------------------------
-# Expansión de slots
-# ---------------------------------------------------------------------------
 
 def _expand_slots(
     cards: list[DeckCardResolved],
@@ -314,10 +284,6 @@ def _parse_page_range(spec: str, total: int) -> list[int]:
     return sorted(result) if result else list(range(1, total + 1))
 
 
-# ---------------------------------------------------------------------------
-# Construcción del PDF
-# ---------------------------------------------------------------------------
-
 def build_pdf(
     cards: list[DeckCardResolved],
     output_path: Path,
@@ -334,7 +300,6 @@ def build_pdf(
     """
     opts = options or PDFOptions()
 
-    # Cardback: prioridad al override del mazo, si no fallback al global.
     cardback: Path | None = None
     if opts.include_backs and opts.backs_content == "all_cards":
         cardback = cardback_path_override or default_cardback_path()
@@ -348,31 +313,16 @@ def build_pdf(
     if not fronts:
         raise ValueError("No hay cartas resueltas para generar el PDF")
 
-    # Usamos la geometría del frente para calcular slots-por-página.
-    # Los reversos comparten cols/rows (solo cambia origin_x/y por back_offset).
     g_front = compute_geometry(opts, page_kind="front")
     per_page = g_front.cols * g_front.rows
 
-    # --- Orquestación de páginas ---
-    # Cada "página" es (kind, chunk_idx, chunk). ``kind`` afecta:
-    #  * offsets aplicados en compute_geometry (front vs back)
-    #  * espejo horizontal en _render_page (solo back+duplex)
-    #  * flags hide_*_front/back de las guías
-    #  * etiqueta del pie de página
-    # En modo append+compact_fill una hoja puede mezclar fronts y reversos
-    # en el mismo papel (útil imprimiendo a una sola cara y cortando cada
-    # carta por separado). Esa hoja se etiqueta como "front" porque el
-    # grueso del contenido son fronts y no debe espejarse ni desplazarse
-    # con back_offset.
     pages: list[tuple[str, int, list[dict | None]]] = []
 
-    # Trocear los fronts en chunks de per_page (el último puede ser corto)
     front_chunks: list[list[dict | None]] = [
         list(fronts[i:i + per_page]) for i in range(0, len(fronts), per_page)
     ]
 
     if opts.include_backs and opts.backs_layout == "duplex":
-        # Duplex: por cada hoja de fronts, su hoja espejo de reversos.
         for pidx, chunk in enumerate(front_chunks):
             pages.append(("front", pidx, chunk))
             start = pidx * per_page
@@ -382,7 +332,6 @@ def build_pdf(
     elif opts.include_backs and opts.backs_layout == "append":
         real_backs: list[dict] = [b for b in backs if b is not None]
         back_idx = 0
-        # Aprovechar huecos libres de la ÚLTIMA hoja de fronts si hay espacio.
         if opts.backs_compact_fill and front_chunks:
             last = front_chunks[-1]
             free = per_page - len(last)
@@ -392,7 +341,6 @@ def build_pdf(
                 back_idx = take
         for pidx, chunk in enumerate(front_chunks):
             pages.append(("front", pidx, chunk))
-        # Reversos restantes en hojas nuevas
         remaining = real_backs[back_idx:]
         for pidx, i in enumerate(range(0, len(remaining), per_page)):
             pages.append(("back", pidx, list(remaining[i:i + per_page])))
@@ -403,7 +351,6 @@ def build_pdf(
     selected = _parse_page_range(opts.page_range, len(pages))
     pages_to_render = [pages[i - 1] for i in selected]
 
-    # --- Canvas ---
     output_path.parent.mkdir(parents=True, exist_ok=True)
     page_w_pt, page_h_pt = _page_size_pt(opts)
     c = canvas.Canvas(str(output_path), pagesize=(page_w_pt, page_h_pt))
@@ -414,13 +361,10 @@ def build_pdf(
         f"{CARD_WIDTH_MM}×{CARD_HEIGHT_MM} mm"
     )
 
-    # Una caché por generación: se descarta al terminar para no servir un arte
-    # obsoleto si el usuario cambia una imagen entre dos exportaciones.
     image_cache = _ImageReaderCache()
 
     total_pages_rendered = 0
     for page_idx, (kind, chunk_idx, chunk) in enumerate(pages_to_render):
-        # Geometría específica de la cara (front vs back → offsets distintos).
         g = g_front if kind == "front" else compute_geometry(opts, page_kind="back")
         _render_page(c, g, opts, kind, chunk, image_cache)
         if opts.show_footer:
@@ -454,15 +398,10 @@ def _render_page(
     con el frente al voltear el papel (long-edge flip)."""
     is_back_duplex = kind == "back" and opts.backs_layout == "duplex"
 
-    # --- Imágenes ---
-    # Cuando hay bleed, la imagen se coloca en el área de trim (63×88mm),
-    # NO estirada al slot completo. Las imágenes de Scryfall y la mayoría
-    # de fuentes NO tienen bleed incorporado; estirarlas al slot haría que
-    # las marcas de corte quedaran dentro de la imagen.
-    img_x_off = g.bleed_mm      # 0 si no hay bleed
+    img_x_off = g.bleed_mm
     img_y_off = g.bleed_mm
-    img_w = g.slot_w_mm - 2 * g.bleed_mm   # CARD_WIDTH_MM  cuando hay bleed
-    img_h = g.slot_h_mm - 2 * g.bleed_mm   # CARD_HEIGHT_MM cuando hay bleed
+    img_w = g.slot_w_mm - 2 * g.bleed_mm
+    img_h = g.slot_h_mm - 2 * g.bleed_mm
     for i, slot in enumerate(chunk):
         if slot is None:
             continue
@@ -472,8 +411,6 @@ def _render_page(
             col = g.cols - 1 - col
         x_mm, y_mm = _slot_position_mm(g, col, row)
         try:
-            # Se pasa el ImageReader cacheado, no la ruta: es lo que permite a
-            # ReportLab reconocer que es la misma imagen y no reincrustarla.
             c.drawImage(
                 image_cache.get(slot["path"]) if image_cache else slot["path"],
                 (x_mm + img_x_off) * mm, (y_mm + img_y_off) * mm,
@@ -486,13 +423,10 @@ def _render_page(
             log.error("No se pudo pintar %s: %s", slot["path"], e)
             _placeholder(c, x_mm + img_x_off, y_mm + img_y_off, img_w, img_h, slot["name"])
 
-    # --- Guías por carta (marcas de esquina o rectángulo) ---
     _draw_card_guides(c, g, opts, kind)
 
-    # --- Guías de página (líneas que atraviesan) ---
     _draw_page_guides(c, g, opts, kind)
 
-    # --- Marcas de registro ---
     if opts.reg_marks_enabled:
         _draw_registration_marks(c, g, opts)
 
@@ -514,10 +448,6 @@ def _placeholder(
     c.restoreState()
 
 
-# ---------------------------------------------------------------------------
-# Estilo de trazo (color, grosor, patrón)
-# ---------------------------------------------------------------------------
-
 def _apply_stroke_style(
     c: canvas.Canvas,
     color_hex: str,
@@ -530,18 +460,12 @@ def _apply_stroke_style(
         c.setDash(2, 2)
         c.setLineCap(0)
     elif pattern == "dotted":
-        # Dot pequeño + gap. Con lineCap=1 (round) los dots quedan redondos
-        # aunque el "on" del dash sea casi 0.
         c.setDash(0.1, 1.5)
         c.setLineCap(1)
     else:
         c.setDash()
         c.setLineCap(0)
 
-
-# ---------------------------------------------------------------------------
-# Card guides
-# ---------------------------------------------------------------------------
 
 def _draw_card_guides(
     c: canvas.Canvas,
@@ -571,7 +495,7 @@ def _draw_card_guides(
 def _draw_card_full_rects(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> None:
     """Rectángulo completo alrededor de cada área visible.
     Con shape='round' → rectángulo con esquinas redondeadas ~5.3mm (MTG-like)."""
-    r_mm = 3.0  # radio de esquinas ~MTG
+    r_mm = 3.0
     for col in range(g.cols):
         for row in range(g.rows):
             x_slot, y_slot = _slot_position_mm(g, col, row)
@@ -606,9 +530,9 @@ def _draw_card_corner_marks(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> 
 
 def _draw_corner(
     c: canvas.Canvas,
-    cx: float, cy: float,     # vértice de la esquina en mm
-    dx: float, dy: float,     # dirección de "afuera" (±1, ±1)
-    L: float,                 # largo en mm
+    cx: float, cy: float,
+    dx: float, dy: float,
+    L: float,
     opts: PDFOptions,
 ) -> None:
     """Dibuja UNA marca de esquina. Placement decide desde qué punto respecto
@@ -621,7 +545,7 @@ def _draw_corner(
     elif placement == "inside":
         h_start, h_end = (cx, cx - dx * L)
         v_start, v_end = (cy, cy - dy * L)
-    else:  # middle
+    else:
         half = L / 2
         h_start, h_end = (cx - dx * half, cx + dx * half)
         v_start, v_end = (cy - dy * half, cy + dy * half)
@@ -631,10 +555,7 @@ def _draw_corner(
         c.line(cx * mm, v_start * mm, cx * mm, v_end * mm)
         return
 
-    # shape == "round": arco de 90° (bezier) uniendo (h_end, cy) → (cx, v_end).
-    # Curvatura hacia el vértice (cx, cy) para outside/inside, hacia el punto
-    # de simetría para middle.
-    K = 0.5522847498  # constante mágica bezier para cuarto de círculo.
+    K = 0.5522847498
     p = c.beginPath()
     p.moveTo(h_end * mm, cy * mm)
     if placement == "middle":
@@ -650,10 +571,6 @@ def _draw_corner(
     p.curveTo(cp1_x * mm, cp1_y * mm, cp2_x * mm, cp2_y * mm, cx * mm, v_end * mm)
     c.drawPath(p, stroke=1, fill=0)
 
-
-# ---------------------------------------------------------------------------
-# Page guides
-# ---------------------------------------------------------------------------
 
 def _draw_page_guides(
     c: canvas.Canvas,
@@ -675,7 +592,7 @@ def _draw_page_guides(
     )
     if opts.page_guides == "full_lines":
         _draw_page_full_lines(c, g)
-    else:  # corners_only
+    else:
         _draw_page_corner_lines(c, g, opts)
     c.restoreState()
 
@@ -725,18 +642,14 @@ def _draw_page_corner_lines(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> 
         c.line(grid_x2 * mm, y_mm * mm, min(g.page_w_mm, grid_x2 + L) * mm, y_mm * mm)
 
 
-# ---------------------------------------------------------------------------
-# Marcas de registro
-# ---------------------------------------------------------------------------
-
 def _draw_registration_marks(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> None:
     inset = opts.reg_marks_inset_mm
     size = opts.reg_marks_size_mm
     W, H = g.page_w_mm, g.page_h_mm
     positions = [
-        (inset, H - inset),           # TL
-        (W - inset, H - inset),       # TR
-        (inset, inset),               # BL
+        (inset, H - inset),
+        (W - inset, H - inset),
+        (inset, inset),
     ]
     c.saveState()
     c.setFillGray(0.0)
@@ -747,10 +660,6 @@ def _draw_registration_marks(c: canvas.Canvas, g: Geometry, opts: PDFOptions) ->
         c.rect(x, y, size * mm, size * mm, stroke=0, fill=1)
     c.restoreState()
 
-
-# ---------------------------------------------------------------------------
-# Pie de página
-# ---------------------------------------------------------------------------
 
 def _draw_footer(
     c: canvas.Canvas, g: Geometry,

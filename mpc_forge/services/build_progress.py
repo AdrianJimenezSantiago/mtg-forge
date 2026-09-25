@@ -26,14 +26,13 @@ class BuildProgress:
     total: int = 0
     current: int = 0
     current_name: str = ""
-    kind: str = "xml"  # "xml" | "pdf"
+    kind: str = "xml"
     started_at: float = field(default_factory=time.time)
     done: bool = False
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         elapsed = time.time() - self.started_at
-        # Estimación simple de tiempo restante: media de tiempo por carta.
         eta_seconds: float | None = None
         if self.current > 0 and not self.done and self.total > 0:
             per_card = elapsed / self.current
@@ -53,7 +52,6 @@ class BuildProgress:
         }
 
 
-# Registro global. Cada build sobrescribe la entrada anterior del mismo deck_id.
 _progress: dict[int, BuildProgress] = {}
 
 

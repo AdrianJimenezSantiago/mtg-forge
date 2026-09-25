@@ -1,25 +1,3 @@
-/**
- * MPC Forge · fondo ambiental (motas de maná sobre una aurora tenue).
- *
- * Dos lienzos: `.fx-aurora` (1/8 de la pantalla, escalado por el navegador, se
- * redibuja 5 veces por segundo) y `.fx-ambient` (motas, 30 fps).
- *
- * Se carga como script clásico JUSTO DESPUÉS del <canvas> al principio del
- * <body>, sin `defer`: así el primer fotograma ya tiene las estrellas
- * dibujadas y la transición entre páginas no enseña un lienzo vacío.
- *
- * Continuidad entre páginas: la posición de cada mota es una función del
- * reloj (`Date.now()`) y de una semilla fija, no del tiempo desde que cargó
- * la página. Al navegar, el cielo sigue exactamente donde estaba.
- *
- * Coste: ~1 mota por cada 13.000 px² (máx. 170), a 30 fps, con el DPR
- * limitado a 1,5. Se detiene con la pestaña oculta. Con "reducir
- * movimiento" se pinta un único fotograma estático.
- *
- * El botón [data-ambient-toggle] de la barra lateral lo apaga y enciende;
- * la preferencia se guarda en localStorage ("mpc-ambient" = "off") y el
- * <head> la aplica antes del primer pintado (clase html.fx-ambient-off).
- */
 (function () {
   'use strict';
 
@@ -37,12 +15,8 @@
   var FRAME_MS = 1000 / 30;
   var AURORA_FRAME_MS = 200;
   var AURORA_SCALE = 8;
-  // Se dibuja con alfas ×4 y el CSS la atenúa (opacity: .25): con alfas tan
-  // bajos, 8 bits por canal dejaban escalones visibles al escalar.
   var AURORA_GAIN = 4;
 
-  // Luces de la aurora: color, alfa, radio relativo y trayectoria lenta
-  // (centro + amplitud · seno(t / periodo)). Periodos de 40–70 s.
   var LIGHTS = [
     {c: [212, 175, 55], a: 0.13, r: 0.42, x: 0.78, y: 0.16, ax: 0.06, ay: 0.05, px: 47, py: 61},
     {c: [120, 90, 190], a: 0.12, r: 0.40, x: 0.20, y: 0.84, ax: 0.07, ay: 0.04, px: 58, py: 43},
@@ -56,7 +30,6 @@
   var reduced = media('(prefers-reduced-motion: reduce)');
   var enabled = !root.classList.contains('fx-ambient-off');
 
-  // PRNG determinista (mulberry32)
   function rng(seed) {
     var a = seed >>> 0;
     return function () {
@@ -68,15 +41,14 @@
     };
   }
 
-  // Blanco cálido y dorado dominan; los colores de maná son un acento.
   var PALETTE = [
     [255, 244, 222], [255, 244, 222], [255, 244, 222], [255, 244, 222],
     [233, 200, 106], [233, 200, 106], [233, 200, 106],
-    [140, 190, 240],  // U
-    [140, 215, 150],  // G
-    [240, 140, 130],  // R
-    [250, 238, 200],  // W
-    [185, 160, 225],  // B
+    [140, 190, 240],
+    [140, 215, 150],
+    [240, 140, 130],
+    [250, 238, 200],
+    [185, 160, 225],
   ];
 
   var W = 0;
@@ -98,23 +70,20 @@
       auroraCanvas.height = Math.max(9, Math.round(H / AURORA_SCALE));
     }
 
-    // Misma semilla y mismas dimensiones de referencia → mismas motas en
-    // todas las páginas. Se generan sobre un lienzo de referencia grande y
-    // se envuelven con módulo, así redimensionar no las reordena.
     var rand = rng(SEED);
     var count = Math.max(50, Math.min(170, Math.round((W * H) / 13000)));
     motes = [];
     for (var i = 0; i < count; i++) {
-      var z = 0.25 + rand() * 0.75;             // profundidad (1 = cerca)
+      var z = 0.25 + rand() * 0.75;
       var glint = rand() < 0.08;
       motes.push({
         x0: rand() * 4000,
         y0: rand() * 4000,
         z: z,
         r: glint ? 1.1 + rand() * 0.8 : 0.45 + rand() * 0.95 * z,
-        vx: (rand() - 0.5) * 3 * z,              // px/s
-        vy: -(1.5 + rand() * 5) * z,             // suben despacio
-        tw: 0.4 + rand() * 1.6,                  // velocidad de titileo
+        vx: (rand() - 0.5) * 3 * z,
+        vy: -(1.5 + rand() * 5) * z,
+        tw: 0.4 + rand() * 1.6,
         ph: rand() * Math.PI * 2,
         a: glint ? 0.9 : 0.32 + rand() * 0.5,
         c: PALETTE[Math.floor(rand() * PALETTE.length)],
@@ -123,7 +92,6 @@
     }
   }
 
-  // Parallax suave (ratón y scroll)
   var px = 0, py = 0, tx = 0, ty = 0;
   window.addEventListener('pointermove', function (e) {
     if (e.pointerType && e.pointerType !== 'mouse') return;
@@ -133,7 +101,6 @@
 
   function mod(n, m) { return ((n % m) + m) % m; }
 
-  // Estrella fugaz ocasional (no determinista: es un detalle, no el cielo)
   var shooting = null;
   var nextShot = performance.now() + 14000 + Math.random() * 20000;
 
@@ -262,7 +229,7 @@
   }
 
   build();
-  if (enabled) paintAll();   // primer fotograma, ya mismo
+  if (enabled) paintAll();
   start();
 
   var resizeTimer = 0;
@@ -278,7 +245,6 @@
     if (document.hidden) stop(); else start();
   });
 
-  // ── Interruptor ────────────────────────────────────────────────────────
   function syncToggles() {
     var buttons = document.querySelectorAll('[data-ambient-toggle]');
     Array.prototype.forEach.call(buttons, function (btn) {
@@ -299,7 +265,7 @@
     try {
       if (enabled) localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, 'off');
-    } catch (_) { /* sin almacenamiento: vale para esta página */ }
+    } catch (_) {}
     if (enabled) {
       paintAll();
       start();

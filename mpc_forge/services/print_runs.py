@@ -48,8 +48,6 @@ from mpc_forge import config as cfg
 from mpc_forge.services.xml_generator import DeckCardResolved
 
 
-# Ordenamos los tiers una vez al import — MPC_TIERS puede cambiar en runtime
-# si el usuario los edita en Ajustes, pero eso no es común.
 def _get_tiers() -> list[dict[str, float]]:
     """Snapshot de los tiers actuales, ordenados por tamaño ascendente."""
     return sorted(cfg.MPC_TIERS, key=lambda t: int(t["size"]))
@@ -90,8 +88,6 @@ class SplitResult:
     total_subtotal_usd: float = 0.0
 
     def __post_init__(self):
-        # __post_init__ solo se llama con los defaults; los agregados se
-        # recalculan tras construir la lista completa via ``finalize()``.
         pass
 
     def finalize(self) -> SplitResult:
@@ -136,9 +132,6 @@ def split_into_runs(
 
     ceiling = max_tier if max_tier and max_tier > 0 else _max_tier_size()
 
-    # Aplanamos: si una carta tiene qty > ceiling, la partimos en fragmentos
-    # que quepan en un run. Preservamos back_path/etc — MPC nos verá copias
-    # idénticas. Uso `list(cards)` para no mutar la lista original.
     expanded: list[DeckCardResolved] = []
     for c in cards:
         remaining = c.quantity
@@ -156,10 +149,6 @@ def split_into_runs(
                 back_name=c.back_name, query=c.query,
             ))
 
-    # First-fit-decreasing: cartas grandes primero para minimizar
-    # fragmentación. Mantenemos el orden original entre cartas del mismo
-    # tamaño (importante para que los slots sean estables entre runs
-    # sucesivos con el mismo mazo).
     expanded.sort(key=lambda c: (-c.quantity, c.name))
 
     current: list[DeckCardResolved] = []
@@ -221,14 +210,6 @@ def summary_dict(result: SplitResult) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Solver DP: combinación óptima de tiers para minimizar wasted slots
-# ---------------------------------------------------------------------------
-# El greedy `split_into_runs` empaqueta al max_tier; en casos borderline
-# como 620 (=612+8) puede ser preferible 486+180=666 (mismo total, más
-# equilibrado) o incluso 396+234=630. Este solver DP encuentra la mejor
-# combinación de tiers oficiales que suma >= total_cards y minimiza wasted.
-
 def suggest_tier_combination(
     total_cards: int, max_runs: int = 8,
 ) -> list[int]:
@@ -250,14 +231,11 @@ def suggest_tier_combination(
     if not tiers or total_cards <= 0:
         return []
 
-    # Costos unitarios para desempate por precio.
     unit_by_size = {int(t["size"]): float(t["unit_usd"]) for t in _get_tiers()}
 
-    # Cache: (remaining, runs_left) → mejor combinación
     memo: dict[tuple[int, int], list[int]] = {}
 
     def _score(combo: list[int]) -> tuple[int, int, float]:
-        # (wasted, num_runs, total_cost)
         s = sum(combo)
         wasted = s - total_cards
         cost = sum(x * unit_by_size[x] for x in combo)
@@ -267,8 +245,6 @@ def suggest_tier_combination(
         """Best combo que cubre `remaining` en <= runs_left runs."""
         if runs_left <= 0:
             return []
-        # Si un solo tier grande basta, es candidato.
-        # También podemos combinar 2+ para menor wasted.
         key = (remaining, runs_left)
         if key in memo:
             return memo[key]
@@ -277,15 +253,10 @@ def suggest_tier_combination(
         best_score: tuple[int, int, float] | None = None
         for t in tiers:
             if t >= remaining:
-                # 1 solo run con este tier basta
                 combo = [t]
                 sc = _score(combo)
                 if best is None or sc < best_score:
                     best, best_score = combo, sc
-                # No hace falta seguir con este tier + subruns porque este
-                # tier YA cabe todo. Pero combinaciones más pequeñas
-                # pueden ganar en wasted, así que las exploramos también:
-            # Explorar: usar este tier como head y combinar con subruns
             if runs_left > 1 and t < remaining:
                 sub = _best_below(remaining - t, runs_left - 1)
                 if sub:
@@ -322,11 +293,8 @@ def split_into_runs_optimized(
     total = sum(c.quantity for c in cards)
     tier_combo = suggest_tier_combination(total, max_runs=max_runs)
     if not tier_combo:
-        # Fallback al greedy si el DP no encuentra nada (no debería pasar)
         return split_into_runs(cards)
 
-    # Iterar tier_combo del más grande al más pequeño, empaquetando cartas.
-    # Aplanamos duplicates (misma lógica que en split_into_runs original).
     max_size = max(tier_combo)
     expanded: list[DeckCardResolved] = []
     for c in cards:
@@ -365,8 +333,6 @@ def split_into_runs_optimized(
                 unit_usd=unit_by_size.get(tier_size, 0.0),
             ))
 
-    # Si aún quedan cartas (el DP no anticipó una fragmentación adversa),
-    # las metemos en run(s) adicionales usando el greedy.
     if expanded:
         remaining_plan = split_into_runs(expanded)
         for r in remaining_plan.runs:

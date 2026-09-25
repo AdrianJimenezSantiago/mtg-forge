@@ -38,7 +38,6 @@ from mpc_forge.services import custom_art
 
 T = TypeVar("T")
 
-# Mismo tope que `routes/decks/_views._IN_CHUNK` (SQLITE_MAX_VARIABLE_NUMBER).
 _IN_CHUNK = 500
 
 COMMANDER_ROLE = "commander"
@@ -50,7 +49,6 @@ class DeckCover:
 
     image_url: str | None
     name: str | None
-    #: Carta del mazo que hace de portada (None si se usó el respaldo).
     card_id: int | None = None
 
 
@@ -101,7 +99,6 @@ async def covers_for_decks(
         return {}
     deck_ids = [d.id for d in decks]
 
-    # 1. Cartas con rol commander de todos los mazos.
     commanders_by_deck: dict[int, list[DeckCard]] = {}
     for chunk in _chunks(deck_ids):
         rows = (await db.scalars(
@@ -112,7 +109,6 @@ async def covers_for_decks(
         for card in rows:
             commanders_by_deck.setdefault(card.deck_id, []).append(card)
 
-    # 2. Impresiones: las elegidas en cada carta + las de importación.
     printing_ids: set[str] = {d.commander_scryfall_id for d in decks if d.commander_scryfall_id}
     for cards in commanders_by_deck.values():
         printing_ids.update(c.scryfall_id for c in cards if c.scryfall_id)
@@ -123,7 +119,6 @@ async def covers_for_decks(
         )).all()
         printings.update({p.scryfall_id: p for p in rows})
 
-    # 3. Elegir la carta de portada y traer solo los artes custom necesarios.
     chosen: dict[int, DeckCard | None] = {
         d.id: pick_cover_card(d, commanders_by_deck.get(d.id, []), printings)
         for d in decks
@@ -153,8 +148,6 @@ async def covers_for_decks(
         if image is None:
             image = _printing_image(printings.get(card.scryfall_id))
         if image is None:
-            # La impresión elegida aún no está en caché: mejor la de
-            # importación que ninguna.
             image = _printing_image(fallback)
         out[deck.id] = DeckCover(image_url=image, name=card.name, card_id=card.id)
     return out

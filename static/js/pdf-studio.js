@@ -1,26 +1,8 @@
-/**
- * PDF Studio
- *
- * Extraído de `templates/pdf_studio.html`, donde vivía como un bloque `<script>`
- * de 1022 líneas. La lógica es idéntica: solo ha cambiado de fichero.
- *
- * Las funciones que Alpine necesita resolver desde los atributos `x-data` del
- * HTML se publican en `window` al final del módulo. Es deliberado: Alpine
- * evalúa `x-data` como una expresión en el ámbito global, así que un `export`
- * por sí solo no basta.
- *
- * Regenerar con:  python scripts/extract_inline_js.py
- */
-// Persistimos las opciones por deck en localStorage para que la próxima
-// vez que el usuario abra el studio salgan igual.
 const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
 
 function pdfStudio(deckId) { return {
   deckId,
   deck: null,
-  // cardbackSettings.default_image_url = URL del cardback global (si existe)
-  // cardbackSettings.image_url         = URL del cardback específico del mazo (si el user lo configuró)
-  // El fallback en el preview: image_url → default_image_url → null (slot vacío).
   cardbackSettings: null,
   buildProgress: null,
   buildingPdf: false,
@@ -29,37 +11,28 @@ function pdfStudio(deckId) { return {
   zoom: 60,
   showPageMargins: false,
 
-  // --- Cardback picker modal ---
   cardbackModalOpen: false,
   cbUrlInput: '',
   cbAddingUrl: false,
   cbDriveQuery: '',
   cbDriveHits: [],
   cbDriveSearching: false,
-  cbDefaultHits: [],          // cardbacks precargados (tag "back") de drives indexados
-  cbDefaultLoading: false,    // true mientras se cargan los cardbacks por defecto
+  cbDefaultHits: [],
+  cbDefaultLoading: false,
   cbLocalArts: [],
-  cbPickingId: null,          // id que está siendo aplicado (spinner)
+  cbPickingId: null,
 
-  // --- Mini art picker (click sobre una carta en el preview) ---
-  // Se abre con onPreviewClick(); reutiliza /cards/{id}/prints y
-  // /cards/change-art. Es intencionadamente minimalista comparado con
-  // el picker completo del editor de mazos: aquí solo mostramos las
-  // impresiones existentes en un grid. Si el usuario necesita búsqueda
-  // en Drives o URLs, se le ofrece el botón "Abrir en el editor completo".
   miniPickerOpen: false,
-  miniPickerCard: null,       // referencia al DeckCard del deck.cards
-  miniPickerFace: 'front',    // 'front' | 'back' (para DFC)
+  miniPickerCard: null,
+  miniPickerFace: 'front',
   miniPickerArts: [],
   miniPickerLoading: false,
-  miniPickerBusy: false,      // spinner mientras se aplica el cambio
-  miniPickerBusyKey: null,    // qué opción está aplicándose
+  miniPickerBusy: false,
+  miniPickerBusyKey: null,
 
-  // --- Guía de opciones ---
   guideOpen: false,
-  guideSection: null,         // sección para scrollear al abrir
+  guideSection: null,
 
-  // Opciones — mismo shape que el dataclass PDFOptions del backend.
   opts: {
     page_size: 'a4',
     orientation: 'portrait',
@@ -92,28 +65,21 @@ function pdfStudio(deckId) { return {
     show_footer: true,
   },
 
-  // ---------- INIT ----------
   async init() {
-    // 1) carga persistencia si la hay
     this._loadOpts();
-    // 2) reactivamos persistencia y watch para lucide
     this.$watch('opts', () => this._saveOpts(), { deep: true });
     this.$watch('zoom', () => this._saveVolatile());
-    // 3) fetch del mazo
     try {
       const r = await fetch(`/api/decks/${this.deckId}`);
       if (r.ok) this.deck = await r.json();
     } catch (e) {
       console.error('deck fetch:', e);
     }
-    // 3b) Cardback settings del mazo.
     try {
       const rs = await fetch(`/api/decks/${this.deckId}/cardback-settings`);
       if (rs.ok) this.cardbackSettings = await rs.json();
-    } catch (e) { /* silent */ }
-    // 4) icons
+    } catch (e) {}
     if (window.lucide) window.lucide.createIcons();
-    // Re-render iconos cuando el DOM cambie
     this.$nextTick(() => window.lucide && window.lucide.createIcons());
   },
 
@@ -122,11 +88,10 @@ function pdfStudio(deckId) { return {
       const raw = localStorage.getItem(LS_KEY(this.deckId));
       if (!raw) return;
       const saved = JSON.parse(raw);
-      // Merge shallow (mantiene defaults para campos nuevos que no estén en LS)
       Object.assign(this.opts, saved.opts || {});
       if (typeof saved.zoom === 'number') this.zoom = saved.zoom;
       if (typeof saved.showPageMargins === 'boolean') this.showPageMargins = saved.showPageMargins;
-    } catch (e) { /* silent */ }
+    } catch (e) {}
   },
 
   _saveOpts() {
@@ -134,11 +99,10 @@ function pdfStudio(deckId) { return {
       localStorage.setItem(LS_KEY(this.deckId), JSON.stringify({
         opts: this.opts, zoom: this.zoom, showPageMargins: this.showPageMargins,
       }));
-    } catch (e) { /* silent */ }
+    } catch (e) {}
   },
   _saveVolatile() { this._saveOpts(); },
 
-  // ---------- DERIVED ----------
   get uniqueCards() {
     if (!this.deck) return 0;
     return (this.deck.cards || []).filter(c => c.include).length;
@@ -149,13 +113,10 @@ function pdfStudio(deckId) { return {
       .filter(c => c.include)
       .reduce((sum, c) => sum + (c.quantity || 1), 0);
   },
-  // px/mm on screen: 1mm = 3.7795 px @ 96dpi × zoom%
   get pxPerMm() { return 3.7795 * (this.zoom / 100); },
 
-  // Cálculo de geometría (mm) — espejo del backend compute_geometry.
   geomForKind(kind) {
     const o = this.opts;
-    // Tamaños de página en mm.
     const sizes = { a4: [210, 297], letter: [215.9, 279.4], a3: [297, 420] };
     let [pw, ph] = sizes[o.page_size] || sizes.a4;
     if (o.orientation === 'landscape') [pw, ph] = [ph, pw];
@@ -173,9 +134,6 @@ function pdfStudio(deckId) { return {
     const backX = kind === 'back' ? o.back_offset_x_mm : 0;
     const backY = kind === 'back' ? o.back_offset_y_mm : 0;
     const originX = (pw - gridW) / 2 + o.offset_x_mm + backX;
-    // SVG y-down: la esquina TOP-LEFT de la rejilla en coordenadas de página.
-    // El semántico de offset_y_mm es "positivo = mover ARRIBA" (heredado del
-    // PDF y-up del backend), así que en SVG lo restamos.
     const originY = (ph - gridH) / 2 - o.offset_y_mm - backY;
 
     return {
@@ -189,14 +147,10 @@ function pdfStudio(deckId) { return {
   },
   get geom() { return this.geomForKind('front'); },
 
-  // ---------- PAGINACIÓN VIRTUAL ----------
-  // Expande el mazo en slots (front + back donde aplique), y luego los agrupa
-  // en páginas según cols×rows.
   get allSlots() {
     if (!this.deck) return { fronts: [], backs: [] };
     const includeBacks = this.opts.include_backs;
     const fillAllBacks = this.opts.backs_content === 'all_cards';
-    // Prioridad: cardback específico del mazo → cardback global → null (slot vacío)
     const cardback = (this.cardbackSettings && this.cardbackSettings.image_url)
                   || (this.cardbackSettings && this.cardbackSettings.default_image_url)
                   || null;
@@ -205,8 +159,6 @@ function pdfStudio(deckId) { return {
       if (!c.include) continue;
       const qty = c.quantity || 1;
       for (let i = 0; i < qty; i++) {
-        // kind: 'card-front'|'card-back'|'cardback' — usado por onPreviewClick
-        // para decidir si abre el mini art picker o el cardback picker.
         fronts.push({
           name: c.name, thumbnail: c.thumbnail_url || null,
           card_id: c.id, face: 'front', kind: 'card-front',
@@ -235,12 +187,10 @@ function pdfStudio(deckId) { return {
     const { fronts, backs } = this.allSlots;
     const pages = [];
 
-    // Trocear fronts en chunks de per_page (el último puede quedar corto).
     const frontChunks = [];
     for (let i = 0; i < fronts.length; i += per) frontChunks.push(fronts.slice(i, i + per));
 
     if (this.opts.include_backs && this.opts.backs_layout === 'duplex') {
-      // Espejo (long-edge flip): cada hoja de fronts + su hoja de reversos.
       for (let i = 0; i < frontChunks.length; i++) {
         pages.push({
           key: `f${i}`, kind: 'front', mirror: false,
@@ -250,13 +200,11 @@ function pdfStudio(deckId) { return {
         if (bChunk.some(b => b !== null)) {
           pages.push({
             key: `bd${i}`, kind: 'back', mirror: true,
-            chunk: this._chunkWithPositions(bChunk, this.geomForKind('back'), /* mirror */ true),
+            chunk: this._chunkWithPositions(bChunk, this.geomForKind('back'),  true),
           });
         }
       }
     } else if (this.opts.include_backs && this.opts.backs_layout === 'append') {
-      // Append: rellenar huecos libres de la ÚLTIMA hoja de fronts primero
-      // (si compact_fill) y luego seguir con hojas nuevas de reversos.
       const realBacks = backs.filter(b => b !== null);
       let bIdx = 0;
       if (this.opts.backs_compact_fill && frontChunks.length) {
@@ -294,10 +242,6 @@ function pdfStudio(deckId) { return {
   },
 
   _chunkWithPositions(chunk, g, mirror = false) {
-    // SVG y-down: la primera fila (row 0) es la fila SUPERIOR de la hoja,
-    // por lo que la carta i=0 cae arriba-izquierda (lectura natural 1-2-3
-    // / 4-5-6 / 7-8-9). El backend usa el mismo mapeo de índices pero en
-    // ReportLab (y-up), y por eso allí la fórmula es (rows-1-row).
     const out = [];
     for (let i = 0; i < chunk.length; i++) {
       const slot = chunk[i];
@@ -314,9 +258,6 @@ function pdfStudio(deckId) { return {
 
   get totalPages() { return this.allPages.length; },
 
-  // ---------- SVG STRING (Alpine-friendly x-html) ----------
-  // Ver comentario en la plantilla: no podemos anidar <template> dentro de
-  // <svg>, así que generamos el SVG como string y lo inyectamos con x-html.
   _esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -338,7 +279,6 @@ function pdfStudio(deckId) { return {
       `style="width:100%;height:100%;display:block;background:#fff;">`
     );
 
-    // Márgenes del grid
     if (this.showPageMargins) {
       parts.push(
         `<rect x="${n(g.origin_x_mm)}" y="${n(g.origin_y_mm)}" ` +
@@ -347,13 +287,6 @@ function pdfStudio(deckId) { return {
       );
     }
 
-    // Imágenes — clickables. data-* atributos leídos por onPreviewClick():
-    //  * kind=card-front|card-back|cardback
-    //  * card-id (solo si kind es card-*): id del DeckCard
-    //  * face: 'front' | 'back'
-    // Un <rect> transparente encima captura el click con área garantizada
-    // incluso si la <image> aún no ha resuelto la carga (Chrome/Firefox
-    // fallan a veces con pointer-events en <image> mientras el href pende).
     for (const slot of page.chunk) {
       if (!slot) continue;
       const clickAttrs =
@@ -363,19 +296,10 @@ function pdfStudio(deckId) { return {
             ? ` data-slot-kind="${esc(slot.kind)}" data-card-id="${slot.card_id}" ` +
               `data-face="${esc(slot.face)}" style="cursor:pointer"`
             : '';
-      // Tanto la imagen como el placeholder van en el área de trim (63×88),
-      // NO estirados al slot completo — igual que en el backend
-      // (``_render_page`` / ``_placeholder``). Las imágenes de Scryfall y la
-      // mayoría de fuentes NO tienen bleed incorporado: estirarlas al slot
-      // haría que las marcas de corte quedaran dentro de la carta.
-      // Si el arte sí tiene bleed real (MPC drives), la diferencia visual es
-      // mínima (solo se pierde la franja de bleed en el preview).
-      // Antes el placeholder (p. ej. "Cardback" sin imagen) ocupaba el slot
-      // entero, bleed incluido, y parecía desalineado respecto a las guías.
       const imgX = slot.x_mm + g.bleed_mm;
       const imgY = slot.y_mm + g.bleed_mm;
-      const imgW = g.slot_w_mm - 2 * g.bleed_mm;  // = 63.0 siempre
-      const imgH = g.slot_h_mm - 2 * g.bleed_mm;  // = 88.0 siempre
+      const imgW = g.slot_w_mm - 2 * g.bleed_mm;
+      const imgH = g.slot_h_mm - 2 * g.bleed_mm;
       if (slot.thumbnail) {
         parts.push(
           `<image href="${esc(slot.thumbnail)}" ` +
@@ -393,8 +317,6 @@ function pdfStudio(deckId) { return {
           `text-anchor="middle" fill="#a8a8b8" font-size="4" style="pointer-events:none">${esc(slot.name)}</text>`
         );
       }
-      // Rect transparente encima — captura click aunque la <image> tarde
-      // en cargar. Solo si el slot es interactivo.
       if (clickAttrs) {
         parts.push(
           `<rect x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
@@ -406,7 +328,6 @@ function pdfStudio(deckId) { return {
       }
     }
 
-    // Banda de bleed
     if (o.bleed_enabled && g.bleed_mm > 0) {
       for (const slot of page.chunk) {
         if (!slot) continue;
@@ -414,7 +335,6 @@ function pdfStudio(deckId) { return {
       }
     }
 
-    // Card guides
     const showCardGuides = o.card_guides_enabled &&
       !(page.kind === 'front' && o.hide_card_guides_front) &&
       !(page.kind === 'back' && o.hide_card_guides_back);
@@ -433,7 +353,6 @@ function pdfStudio(deckId) { return {
       parts.push(`</g>`);
     }
 
-    // Page guides
     const showPageGuides = o.page_guides !== 'none' &&
       !(page.kind === 'front' && o.hide_page_guides_front) &&
       !(page.kind === 'back' && o.hide_page_guides_back);
@@ -452,14 +371,13 @@ function pdfStudio(deckId) { return {
       parts.push(`</g>`);
     }
 
-    // Reg marks (SVG y-down: TL/TR arriba, BL abajo — coincide con el backend).
     if (o.reg_marks_enabled) {
       parts.push(`<g fill="#000">`);
       const s = o.reg_marks_size_mm;
       for (const [cx, cy] of [
-        [o.reg_marks_inset_mm, o.reg_marks_inset_mm],                          // TL
-        [g.page_w_mm - o.reg_marks_inset_mm, o.reg_marks_inset_mm],            // TR
-        [o.reg_marks_inset_mm, g.page_h_mm - o.reg_marks_inset_mm],            // BL
+        [o.reg_marks_inset_mm, o.reg_marks_inset_mm],
+        [g.page_w_mm - o.reg_marks_inset_mm, o.reg_marks_inset_mm],
+        [o.reg_marks_inset_mm, g.page_h_mm - o.reg_marks_inset_mm],
       ]) {
         parts.push(`<rect x="${n(cx - s/2)}" y="${n(cy - s/2)}" width="${n(s)}" height="${n(s)}"/>`);
       }
@@ -494,17 +412,11 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        // SVG y-down: row 0 arriba, row n-1 abajo.
         const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         const xL = x_slot + g.bleed_mm;
         const xR = x_slot + g.slot_w_mm - g.bleed_mm;
-        // yT/yB en SVG: yT = borde superior (menor Y), yB = borde inferior.
         const yT = y_slot + g.bleed_mm;
         const yB = y_slot + g.slot_h_mm - g.bleed_mm;
-        // dy en las esquinas: negativo apunta hacia arriba en el sentido
-        // "usuario" pero, ojo, aquí lo interpretamos como delta en el eje
-        // SVG donde +Y es hacia abajo. Las 4 esquinas: TL(-1,-1) TR(+1,-1)
-        // BL(-1,+1) BR(+1,+1).
         for (const [cx, cy, dx, dy] of [
           [xL, yT, -1, -1], [xR, yT, 1, -1],
           [xL, yB, -1, 1],  [xR, yB, 1, 1],
@@ -520,7 +432,6 @@ function pdfStudio(deckId) { return {
             parts.push(`<line x1="${n(hStart)}" y1="${n(cy)}" x2="${n(hEnd)}" y2="${n(cy)}"/>`);
             parts.push(`<line x1="${n(cx)}" y1="${n(vStart)}" x2="${n(cx)}" y2="${n(vEnd)}"/>`);
           } else {
-            // Arco bezier de cuarto de círculo entre (hEnd, cy) → (cx, vEnd)
             let c1x, c1y, c2x, c2y;
             if (o.card_guides_placement === 'middle') {
               c1x = hEnd - dx*(L/2)*K; c1y = cy + dy*(L/2)*K;
@@ -546,7 +457,6 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        // SVG y-down: row 0 arriba.
         const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         const x = x_slot + g.bleed_mm;
         const y = y_slot + g.bleed_mm;
@@ -568,7 +478,6 @@ function pdfStudio(deckId) { return {
     for (let col = 0; col < g.cols; col++) {
       for (let row = 0; row < g.rows; row++) {
         const x_slot = g.origin_x_mm + col * (g.slot_w_mm + g.gap_x_mm);
-        // SVG y-down: row 0 arriba.
         const y_slot = g.origin_y_mm + row * (g.slot_h_mm + g.gap_y_mm);
         V.add(round3(x_slot + g.bleed_mm));
         V.add(round3(x_slot + g.slot_w_mm - g.bleed_mm));
@@ -606,7 +515,6 @@ function pdfStudio(deckId) { return {
     return parts.join('');
   },
 
-  // ---------- BUILD PDF ----------
   _startBuildPolling() {
     if (this._buildPollTimer) return;
     this._buildPollTimer = setInterval(async () => {
@@ -616,7 +524,7 @@ function pdfStudio(deckId) { return {
         const p = await r.json();
         if (p.active) this.buildProgress = p;
         if (p.done) this._stopBuildPolling();
-      } catch (e) { /* silent */ }
+      } catch (e) {}
     }, 300);
   },
   _stopBuildPolling() {
@@ -679,7 +587,6 @@ function pdfStudio(deckId) { return {
     }
   },
 
-  // ---------- PRESETS ----------
   applyPreset(name) {
     const presets = {
       mpc_classic: {
@@ -736,25 +643,18 @@ function pdfStudio(deckId) { return {
 
   resetOpts() {
     localStorage.removeItem(LS_KEY(this.deckId));
-    this.opts = { ...this.$data.opts };  // hack: re-evaluar defaults
-    // Cleaner: reload
+    this.opts = { ...this.$data.opts };
     location.reload();
   },
 
-  // =====================================================================
-  // Cardback picker — reutiliza custom-art + drives + from-url
-  // =====================================================================
   async openCardbackPicker() {
     this.cardbackModalOpen = true;
     this.cbDriveQuery = '';
     this.cbDriveHits = [];
     this.cbUrlInput = '';
-    // Refresca estado por si algo cambió detrás
     await this._refreshCardbackSettings();
     await this._loadLocalArts();
-    // Cargar por defecto todos los cardbacks de los drives indexados
     await this._loadDefaultCardbacks();
-    // Re-render iconos del modal
     this.$nextTick(() => window.lucide && window.lucide.createIcons());
   },
 
@@ -780,7 +680,7 @@ function pdfStudio(deckId) { return {
   },
 
   async _loadDefaultCardbacks() {
-    if (this.cbDefaultHits.length > 0) return;  // ya cargados
+    if (this.cbDefaultHits.length > 0) return;
     this.cbDefaultLoading = true;
     try {
       const r = await fetch('/api/drives/cardbacks?limit=200');
@@ -815,22 +715,18 @@ function pdfStudio(deckId) { return {
     if (!url) return;
     this.cbAddingUrl = true;
     try {
-      // 1) Descargar la URL a la librería local de custom art.
       const r = await fetch('/api/custom-art/from-url', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           url,
-          // Nombre "sintético" para que quede indexado por mazo.
           card_name: `_cardback_${this.deck?.name || 'deck'}`,
           face: 'back',
         }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
       const art = await r.json();
-      // 2) Asignarlo como cardback del mazo.
       await this._setCardback(art.id);
       this.cbUrlInput = '';
-      // 3) Refrescar librería local para que aparezca inmediatamente.
       await this._loadLocalArts();
       if (window.toast) window.toast(`Cardback añadido: ${art.filename}`, 'success');
     } catch (e) {
@@ -844,7 +740,6 @@ function pdfStudio(deckId) { return {
   async pickDriveHit(hit) {
     this.cbPickingId = hit.file_id;
     try {
-      // Descarga a la librería local y luego asigna.
       const r = await fetch('/api/custom-art/from-url', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -903,20 +798,13 @@ function pdfStudio(deckId) { return {
     }
   },
 
-  // =====================================================================
-  // Click sobre una carta del preview → mini picker o cardback picker
-  // =====================================================================
   onPreviewClick(ev) {
-    // Event delegation: buscamos el ancestro más cercano con data-slot-kind.
-    // Cubre <image>, <rect> (placeholder) y el <rect fill=transparent> que
-    // ponemos encima para garantizar el click aunque la imagen tarde.
     const el = ev.target.closest && ev.target.closest('[data-slot-kind]');
     if (!el) return;
     ev.preventDefault();
     ev.stopPropagation();
     const kind = el.getAttribute('data-slot-kind');
     if (kind === 'cardback') {
-      // Un cardback no es de una carta concreta — abrimos el picker global.
       this.openCardbackPicker();
       return;
     }
@@ -926,9 +814,6 @@ function pdfStudio(deckId) { return {
     this.openMiniArtPicker(cardId, face);
   },
 
-  // =====================================================================
-  // Mini art picker
-  // =====================================================================
   async openMiniArtPicker(cardId, face) {
     const card = (this.deck?.cards || []).find(c => c.id === cardId);
     if (!card) return;
@@ -940,12 +825,7 @@ function pdfStudio(deckId) { return {
     this.miniPickerBusy = false;
     this.miniPickerBusyKey = null;
     try {
-      // `allPrints` devuelve un array plano. El endpoint pasó a estar
-      // paginado y este punto seguía haciendo `.filter()` sobre el sobre,
-      // que no es un array: "arts.filter is not a function".
       const arts = await window.api.cards.allPrints(this.deckId, cardId);
-      // Filtramos por cara — para DFC el usuario clickó una cara concreta.
-      // Para no-DFC solo hay 'front', así que el filtro no hace daño.
       this.miniPickerArts = arts.filter(a => (a.face || 'front') === face);
     } catch (e) {
       console.error('openMiniArtPicker:', e);
@@ -965,7 +845,6 @@ function pdfStudio(deckId) { return {
   },
 
   miniArtKey(art) {
-    // Clave única y estable para :key y para marcar el que se está aplicando.
     if (art.kind === 'custom') return `c-${art.custom_art_id}-${art.face}`;
     return `s-${art.scryfall_id}-${art.face}`;
   },
@@ -986,12 +865,9 @@ function pdfStudio(deckId) { return {
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
       const updated = await r.json();
-      // Actualiza la carta en deck.cards para que el preview refleje el
-      // cambio sin necesidad de re-fetch completo.
       const cards = this.deck.cards || [];
       const idx = cards.findIndex(c => c.id === updated.id);
       if (idx >= 0) cards[idx] = updated;
-      // Refresca is_chosen dentro del picker abierto para feedback inmediato.
       this.miniPickerArts = this.miniPickerArts.map(a => ({
         ...a,
         is_chosen: this.miniArtKey(a) === this.miniArtKey(art),
@@ -1010,16 +886,11 @@ function pdfStudio(deckId) { return {
   },
 
   openFullEditor() {
-    // Fallback: si el usuario quiere el picker completo (drives, subida por
-    // URL, filtros avanzados), lo mandamos al editor con la carta seleccionada.
     if (!this.miniPickerCard) return;
     const cid = this.miniPickerCard.id;
     window.open(`/decks/${this.deckId}?openArt=${cid}`, '_blank');
   },
 
-  // =====================================================================
-  // Guía de opciones
-  // =====================================================================
   openGuide(section = null) {
     this.guideOpen = true;
     this.guideSection = section;
@@ -1036,8 +907,4 @@ function pdfStudio(deckId) { return {
 
 }}
 
-
-// --- Puente con Alpine -------------------------------------
-// Alpine resuelve las expresiones de `x-data` contra el ámbito
-// global, así que estas funciones tienen que estar en `window`.
 window.pdfStudio = pdfStudio

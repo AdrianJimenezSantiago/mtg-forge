@@ -1,9 +1,6 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/art-library.js.
-     Se declara aquí porque base.html renderiza este bloque en el <head>, antes
-     de Alpine. Ver la nota en base.html. #}
   <script defer src="/static/js/art-library.js?v={{ asset_v('js/art-library.js') }}"></script>
 {% endblock %}
 
@@ -13,7 +10,6 @@
 <div class="h-full flex flex-col overflow-hidden"
      x-data="artLibrary()" x-init="init()">
 
-  {# ===================== CABECERA ===================== #}
   <div class="shrink-0 px-8 pt-6 pb-4 border-b border-border-subtle/60">
     <div class="flex items-end justify-between gap-4 max-w-[1800px] mx-auto">
       <div>
@@ -48,7 +44,6 @@
 
   <div class="flex-1 overflow-hidden flex max-w-[1800px] mx-auto w-full">
 
-    {# ===================== IZQUIERDA: FILTROS ===================== #}
     <aside class="w-72 shrink-0 border-r border-border-subtle/60 overflow-y-auto p-4 space-y-5">
 
       <div>
@@ -69,9 +64,6 @@
         </button>
       </div>
 
-      {# Variantes. Los contadores describen el conjunto YA filtrado: aquí el
-         usuario está explorando, no eligiendo, y quiere saber cuánto queda de
-         cada cosa para seguir acotando. #}
       <div>
         <h3 class="text-[11px] font-semibold uppercase tracking-wider text-fg-muted mb-2">
           {{ t.library_variants }}
@@ -90,7 +82,6 @@
         </div>
       </div>
 
-      {# Drives #}
       <div x-show="(facets?.by_source || []).length > 0">
         <h3 class="text-[11px] font-semibold uppercase tracking-wider text-fg-muted mb-2">
           {{ t.library_drives }}
@@ -110,7 +101,6 @@
         </div>
       </div>
 
-      {# Expansiones #}
       <div x-show="(facets?.by_expansion || []).length > 0">
         <h3 class="text-[11px] font-semibold uppercase tracking-wider text-fg-muted mb-2">
           {{ t.library_expansions }}
@@ -130,7 +120,6 @@
       </div>
     </aside>
 
-    {# ===================== CENTRO: REJILLA ===================== #}
     <main class="flex-1 overflow-y-auto p-6">
 
       <div class="flex items-center justify-between mb-4">
@@ -160,9 +149,6 @@
         </div>
       </template>
 
-      {# Estado vacío: distingue "no hay índice" de "no hay resultados". Sin
-         esa distinción, quien nunca ha indexado un drive cree que la búsqueda
-         está rota. #}
       <template x-if="!loading && items.length === 0 && overview?.is_empty">
         <div class="flex flex-col items-center justify-center text-center gap-3 py-20 text-fg-faint">
           <i data-lucide="database" class="w-12 h-12 opacity-40"></i>
@@ -189,9 +175,6 @@
           <button @click="open(item)" data-tilt="foil"
                   class="group text-left rounded-lg overflow-hidden bg-bg-subtle border border-border-subtle hover:border-accent/50">
             <div class="aspect-[63/88] bg-bg-base overflow-hidden">
-              {# loading=lazy y decoding=async: con cientos de miniaturas
-                 remotas en la rejilla, cargarlas todas de golpe bloquea el
-                 hilo de render. #}
               <img :src="item.thumb_url" :alt="item.filename"
                    loading="lazy" decoding="async"
                    class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-200"
@@ -214,7 +197,6 @@
       </div>
     </main>
 
-    {# ===================== DERECHA: DETALLE ===================== #}
     <aside x-show="detail" x-collapse.duration.150ms
            class="w-80 shrink-0 border-l border-border-subtle/60 overflow-y-auto">
       <template x-if="detail">

@@ -5,120 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}MPC Forge{% endblock %}</title>
 
-  {# Favicon (mismo diseño que el .exe) #}
   <link rel="icon" type="image/png" href="/static/favicon.png">
 
-  {# ── Assets locales ────────────────────────────────────────────────────
-     Todo lo que la interfaz necesita vive en /static/vendor/ y viaja dentro
-     del .exe. Antes esto eran cinco peticiones a tres CDNs distintos
-     (cdn.tailwindcss.com, unpkg, jsdelivr, fonts.googleapis) y la app se veía
-     SIN ESTILOS cuando no había internet — un fallo grave en una herramienta
-     que se vende como local-first.
-
-     Se regeneran con:  npm install && npm run vendor && npm run build:css
-     El resultado está versionado, así que clonar el repo no requiere Node. #}
-
-  {# Tailwind precompilado (~48 KB). Antes: 3 MB del runtime del CDN que
-     recompilaba las clases en el navegador y bloqueaba el render ~200 ms.
-     La configuración del tema vive ahora en /tailwind.config.js. #}
   <link rel="stylesheet" href="/static/vendor/tailwind.css?v={{ asset_v('vendor/tailwind.css') }}">
 
-  {# Símbolos de maná. Carga asíncrona: solo se usan en el modal de stats y en
-     algunos tooltips, no deben bloquear el primer render. #}
   <link rel="preload" href="/static/vendor/mana.min.css" as="style"
         onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="/static/vendor/mana.min.css"></noscript>
 
-  {# Lucide: defer. app.js llama a createIcons() tras DOMContentLoaded. #}
   <script defer src="/static/vendor/lucide.min.js"></script>
 
-  {# La configuración del tema de Tailwind (colores arcane, animaciones,
-     sombras) se movió a /tailwind.config.js — ahora se compila en el build en
-     vez de interpretarse en cada carga de página. #}
-
-  {# Cinzel (títulos "arcane") se servía desde Google Fonts. Eliminado: era la
-     última dependencia de red del render, y no compensa una petición
-     bloqueante a un tercero por un detalle tipográfico. La familia cae a
-     Georgia/serif, que ya estaba declarada como fallback en la config. Para
-     recuperarla, vendoriza el woff2 en static/vendor/fonts/ y declara un
-     @font-face local. #}
-
-  {# Alpine y sus plugins. ORDEN OBLIGATORIO: los plugins deben cargarse ANTES
-     del core, o Alpine arranca sin ellos y x-collapse / x-trap quedan inertes
-     sin dar ningún error visible. #}
   <script defer src="/static/vendor/alpine-collapse.min.js"></script>
-  {# Focus aporta x-trap: atrapa el foco del teclado dentro de un modal
-     abierto. Sin él, Tab se escapa a los controles del fondo. #}
   <script defer src="/static/vendor/alpine-focus.min.js"></script>
-  {# auto-animate (FLIP de listas). Re-empaquetado como IIFE por
-     scripts/vendor-assets.mjs; publica window.autoAnimate. Lo usa la
-     directiva x-auto-animate de /static/js/motion.js. #}
   <script defer src="/static/vendor/auto-animate.min.js?v={{ asset_v('vendor/auto-animate.min.js') }}"></script>
-  {# Cliente API centralizado. Script clásico con `defer`, cargado antes de
-     Alpine porque los componentes usan `window.api` en su init().
-
-     No es un módulo ES a propósito: ver la nota extensa al principio de
-     api.js. En resumen, `defer` en orden de documento tiene una semántica de
-     orden trivial y además se puede ejecutar en jsdom, lo que permite validar
-     el arranque real de las páginas en CI. #}
   <script defer src="/static/js/api.js?v={{ asset_v('js/api.js') }}"></script>
 
-  {# ── Módulo de la vista ────────────────────────────────────────────────
-     TIENE que ir aquí, ANTES de Alpine, y no al final del body.
-
-     La build CDN de Alpine termina con `queueMicrotask(() => Alpine.start())`:
-     arranca en el microtask inmediatamente posterior a su propio script. Los
-     scripts `defer` y los `type="module"` se ejecutan en ORDEN DE DOCUMENTO,
-     así que un módulo colocado más abajo en la página se ejecuta DESPUÉS de
-     que Alpine haya empezado a recorrer el DOM — y entonces las funciones de
-     `x-data` todavía no existen en `window`. El síntoma es
-     "Alpine Expression Error: xxx is not defined" y la vista en blanco.
-
-     Antes esto no pasaba porque el JavaScript vivía en un `<script>` inline
-     sin defer, que se ejecutaba durante el parseo del HTML y por tanto antes
-     que el `defer` de Alpine.
-
-     Cada plantilla hija rellena este bloque con su módulo. #}
   {% block view_module %}{% endblock %}
 
   <script defer src="/static/vendor/alpine.min.js"></script>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_v('app.css') }}">
-  {# Capa de movimiento: transiciones entre páginas, inclinación de cartas,
-     spinners, toasts. La parte interactiva está en /static/js/motion.js. #}
   <link rel="stylesheet" href="/static/motion.css?v={{ asset_v('motion.css') }}">
-  {# Hojas propias de una vista concreta (landing, 404). #}
   {% block extra_head %}{% endblock %}
 
-  {# View Transitions entre documentos. `blocking="render"` retrasa el primer
-     pintado hasta que el contenido principal está parseado: así la captura
-     de la página nueva ya incluye las portadas de los mazos y el script de
-     abajo puede nombrarlas en `pagereveal`. En una app local el coste es
-     inapreciable. #}
   <link rel="expect" href="#app-content-end" blocking="render">
   <script>
     (function () {
       var root = document.documentElement;
 
-      // Fondo animado desactivado por el usuario (ver /static/js/ambient.js).
       try {
         if (localStorage.getItem('mpc-ambient') === 'off') root.classList.add('fx-ambient-off');
-      } catch (_) { /* sin almacenamiento: fondo activo */ }
+      } catch (_) {}
 
-      // Reparto de cartas en la biblioteca: una vez por sesión o al recargar.
       try {
         var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (!reduce && location.pathname === '/decks') {
           var navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
           if ((navEntry && navEntry.type === 'reload') || !sessionStorage.getItem('mpc-dealt')) {
             root.classList.add('fx-dealing');
-            // Red de seguridad: si motion.js no llega a ejecutarse, las
-            // cartas no pueden quedarse invisibles.
             setTimeout(function () { root.classList.remove('fx-dealing'); }, 2000);
           }
         }
-      } catch (_) { /* sin sessionStorage: sin reparto */ }
+      } catch (_) {}
 
-      // La portada del mazo vuela entre la biblioteca y el editor.
       var DECK_PATH = /^\/decks\/(\d+)\/?$/;
       var deckIdFromUrl = function (url) {
         try {
@@ -138,7 +66,6 @@
         }
       });
       window.addEventListener('pagereveal', function (e) {
-        // Restos de una visita anterior restaurada desde la bfcache.
         document.querySelectorAll('[data-deck-cover]').forEach(function (el) {
           el.style.viewTransitionName = '';
         });
@@ -152,10 +79,6 @@
 </head>
 
 <body class="bg-bg-base text-fg antialiased min-h-screen font-sans">
-  {# Fondo ambiental: aurora y motas de maná (dos canvas). Va detrás de
-     todo (.app-shell tiene z-index 1) y no recibe eventos. El script se
-     ejecuta aquí mismo, sin defer, para que el primer fotograma ya tenga
-     las motas y la transición entre páginas no enseñe un lienzo vacío. #}
   <div class="fx-ambient-layer" aria-hidden="true">
     <canvas class="fx-aurora"></canvas>
     <canvas class="fx-ambient"></canvas>
@@ -164,9 +87,6 @@
 
   <div class="app-shell flex min-h-screen">
 
-    {# ============= SIDEBAR ============= #}
-    {# `sticky` + `h-screen`: la barra acompaña al scroll de la página. Si su
-       contenido no cabe (ventanas bajas), el que hace scroll es el <nav>. #}
     <aside class="app-sidebar sticky top-0 self-start h-screen w-64 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
       <div class="p-5 border-b border-border-subtle">
         <a href="/" class="flex items-center gap-3 group">
@@ -183,7 +103,6 @@
       <nav class="app-sidebar__nav flex-1 min-h-0 p-3 space-y-1 text-sm overflow-y-auto" data-scroll-fade
            x-data="sidebarData()" x-init="load()">
         {% set current = request.url.path %}
-        {# `/` es la landing; la biblioteca de mazos vive en `/decks`. #}
         {% set nav_items = [
           ('/',           'house',        t.nav_home),
           ('/decks',      'layers',       t.nav_decks),
@@ -204,15 +123,12 @@
                     {% else %}
                       text-fg-muted hover:bg-bg-subtle hover:text-fg
                     {% endif %}">
-            {# Barra dorada del enlace activo. Tiene view-transition-name, así
-               que al cambiar de página se desliza hasta su nueva posición. #}
             {% if active %}<span class="nav-indicator" aria-hidden="true"></span>{% endif %}
             <i data-lucide="{{ icon }}" class="w-[18px] h-[18px] transition-transform group-hover:scale-110"></i>
             <span class="text-[13px]">{{ label }}</span>
           </a>
         {% endfor %}
 
-        {# ============= QUICK STATS ============= #}
         <div class="pt-3 mt-3 border-t border-border-subtle/60 px-1 space-y-1.5">
           <template x-if="stats">
             <div class="grid grid-cols-1 gap-1.5">
@@ -250,7 +166,6 @@
           </template>
         </div>
 
-        {# ============= RECENT DECKS ============= #}
         <template x-if="recentDecks.length > 0">
           <div class="pt-3 mt-3 border-t border-border-subtle/60">
             <div class="px-1 pb-1.5 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
@@ -261,7 +176,6 @@
               <a :href="'/decks/' + d.id"
                  class="group flex items-center gap-2.5 px-2 py-2 rounded-md transition
                         text-fg-muted hover:bg-bg-subtle hover:text-fg">
-                {# Mini thumbnail del commander #}
                 <template x-if="d.commander_image">
                   <img :src="d.commander_image" :alt="d.name"
                        class="w-6 h-8 rounded-sm object-cover object-top border border-border-subtle/60 shrink-0"
@@ -282,11 +196,6 @@
           </div>
         </template>
 
-        {# ============= BÚSQUEDA GLOBAL DE CARTAS ============= #}
-        {# Debounce con timeout ref porque Alpine no trae debounce en x-model
-           para nuestro caso concreto (queremos el input controlado pero la
-           llamada a la API espaciada). El dropdown se cierra con @click.outside
-           y con Escape. Al elegir un mazo se navega directamente al editor. #}
         <div x-data="globalCardSearch()" class="pt-4 mt-4 border-t border-border-subtle relative"
              @click.outside="if (!document.getElementById('global-search-results')?.contains($event.target)) open = false"
              @keydown.escape.window="open = false"
@@ -306,10 +215,6 @@
                class="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-fg-faint animate-spin"></i>
           </div>
 
-          {# Dropdown de resultados. Sale flotando por la DERECHA del sidebar.
-             Se teletransporta a <body> y se coloca con `position: fixed`: el
-             <nav> hace scroll, y un scroll recorta a sus descendientes, así
-             que dentro de él el desplegable quedaba invisible. #}
           <template x-teleport="body">
           <div id="global-search-results"
                x-show="open && (results.length > 0 || (query.length >= 2 && !loading))"
@@ -317,14 +222,12 @@
                :style="`top: ${pos.top}px; left: ${pos.left}px`"
                class="fixed z-[60] w-[420px] max-w-[calc(100vw-17rem)] max-h-[70vh] overflow-y-auto
                       bg-bg-elevated border border-border-strong rounded-lg shadow-modal">
-            {# Sin resultados #}
             <template x-if="results.length === 0 && query.length >= 2 && !loading">
               <div class="p-4 text-center text-xs text-fg-faint">
                 {{ t.nav_search_no_results }} <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
               </div>
             </template>
 
-            {# Header con contadores #}
             <template x-if="results.length > 0">
               <div class="sticky top-0 bg-bg-elevated border-b border-border-subtle px-3 py-2
                           text-[10px] text-fg-faint flex items-center justify-between">
@@ -340,9 +243,6 @@
               </div>
             </template>
 
-            {# Grupos: una carta puede estar en varios mazos, y en cada mazo
-               con distinta impresión. La renderizamos como acordeón abierto
-               por defecto (los mazos como filas debajo del nombre de carta). #}
             <template x-for="group in results" :key="group.oracle_id + group.canonical_name">
               <div class="border-b border-border-subtle/60 last:border-b-0">
                 <div class="px-3 py-2 bg-bg-subtle/40">
@@ -358,7 +258,6 @@
                 <template x-for="inst in group.instances" :key="inst.deck_card_id">
                   <a :href="'/decks/' + inst.deck_id"
                      class="flex items-center gap-2 px-3 py-2 hover:bg-bg-subtle transition group">
-                    {# Thumbnail 24×34 (ratio carta MTG) #}
                     <template x-if="inst.thumbnail">
                       <img :src="inst.thumbnail" :alt="group.canonical_name"
                            class="w-6 h-8 rounded object-cover object-top border border-border-subtle shrink-0"
@@ -398,8 +297,6 @@
         </div>
       </nav>
 
-      
-      {# ============= SELECTOR DE IDIOMA ============= #}
       <div class="px-4 pb-2 border-t border-border-subtle pt-3">
         <form method="post" action="/set-lang" class="flex items-center gap-2">
           <i data-lucide="globe" class="w-4 h-4 text-fg-faint shrink-0"></i>
@@ -422,7 +319,6 @@
         <div class="flex items-center gap-2 text-[11px] text-fg-faint">
           <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
           <span>v0.1.0 · local-only</span>
-          {# Fondo animado on/off (ver /static/js/ambient.js) #}
           <button type="button" data-ambient-toggle aria-pressed="true"
                   data-label-on="{{ t.ambient_turn_off }}" data-label-off="{{ t.ambient_turn_on }}"
                   title="{{ t.ambient_turn_off }}" aria-label="{{ t.ambient_turn_off }}"
@@ -434,17 +330,12 @@
       </div>
     </aside>
 
-    {# ============= MAIN ============= #}
     <main class="flex-1 overflow-x-hidden">
       {% block content %}{% endblock %}
       <div id="app-content-end" hidden></div>
     </main>
   </div>
 
-  {# ============= TOAST CONTAINER GLOBAL ============= #}
-  {# x-data vacío activa el subtree en Alpine — sin él los x-for/x-show/@click no funcionan. #}
-  {# x-auto-animate.toasts: la entrada la pinta .fx-toast; la directiva anima
-     la salida y recoloca el resto cuando uno desaparece. #}
   <div x-data x-auto-animate.toasts
        class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
     <template x-for="t in $store.ui.toasts" :key="t.id">
@@ -476,7 +367,6 @@
             <i data-lucide="x" class="w-3.5 h-3.5"></i>
           </button>
         </div>
-        {# Barra de progreso de auto-dismiss (CSS pura) #}
         <div class="absolute bottom-0 left-0 right-0 h-0.5 toast-progress"
              :class="{
                'bg-info':    t.type === 'info',
@@ -490,8 +380,6 @@
     </template>
   </div>
 
-  {# ============= CONFIRM MODAL GLOBAL ============= #}
-  {# x-data vacío activa el subtree — sin él el x-show y los @click son ignorados. #}
   <div x-data x-cloak x-show="$store.ui.confirmState.open"
        @keydown.escape.window="$store.ui.confirmState.open && $store.ui._closeConfirm(false)"
        class="fixed inset-0 z-[110] flex items-center justify-center p-6"
@@ -545,30 +433,17 @@
     </div>
   </div>
 
-  {# ============= I18N: traducciones para JS ============= #}
-  {# Define window._LANG, window._T y window._t — igual que antes, pero desde
-     un fichero externo cacheable en vez de ~25 KB de JSON inline repetidos en
-     cada página. La URL lleva el hash del contenido, así que al cambiar las
-     traducciones el navegador descarga la versión nueva automáticamente.
-
-     Es un <script> clásico (sin defer/async) en el mismo punto del documento
-     que ocupaba el bloque inline: el orden de ejecución respecto a app.js y a
-     los módulos de cada página no cambia. #}
   <script src="/i18n/{{ lang | default('es') }}.js?v={{ i18n_v() }}"></script>
 
   <script src="/static/app.js?v={{ asset_v('app.js') }}"></script>
   <script src="/static/js/motion.js?v={{ asset_v('js/motion.js') }}"></script>
 
-  {# ============= COMPONENTE: BÚSQUEDA GLOBAL DE CARTAS ============= #}
-  {# Vive en base.html porque el input está en el sidebar (siempre visible).
-     Debounce nativo con @input.debounce en el HTML — este componente solo
-     hace fetch y agrupa. #}
   <script>
     function globalCardSearch() {
       return {
         query: '',
         loading: false,
-        results: [],           // groups del backend
+        results: [],
         totalGroups: 0,
         totalInstances: 0,
         totalDecks: 0,
@@ -577,14 +452,10 @@
         pos: { top: 0, left: 0 },
 
         init() {
-          // El <nav> puede tener scroll propio (ventanas bajas): si se mueve
-          // con el desplegable abierto, el desplegable lo acompaña.
           const nav = this.$el.closest('nav');
           if (nav) nav.addEventListener('scroll', () => { if (this.open) this.place(); }, { passive: true });
         },
 
-        /** Coloca el desplegable a la derecha de la barra lateral, a la altura
-         *  del buscador y sin salirse por abajo (su alto máximo es 70vh). */
         place() {
           const input = this.$refs.input;
           if (!input) return;
@@ -605,22 +476,16 @@
             this.open = false;
             return;
           }
-          // Evita race conditions: si el usuario escribe rápido y llegan
-          // respuestas fuera de orden, ignoramos las "viejas" comparando
-          // con la última query que se envió.
           this._lastQuery = q;
           this.loading = true;
           try {
             const r = await fetch(`/api/decks/_/search-cards?q=${encodeURIComponent(q)}`);
             if (!r.ok) throw new Error('Error del servidor');
             const data = await r.json();
-            if (q !== this._lastQuery) return;  // llegó tarde, hay una nueva query en curso
+            if (q !== this._lastQuery) return;
             this.results = data.groups || [];
             this.totalGroups = data.total_groups || 0;
             this.totalInstances = data.total_instances || 0;
-            // Contamos mazos únicos across todos los grupos (backend agrupa
-            // por oracle_id, un mazo puede aparecer en varios grupos si
-            // tiene distintas cartas que matcheen).
             const uniqueDecks = new Set();
             for (const g of this.results) {
               for (const inst of g.instances) uniqueDecks.add(inst.deck_id);
@@ -648,13 +513,8 @@
     }
   </script>
 
-  {# ============= COMPONENTE: SIDEBAR DATA (stats + recent decks) ============= #}
   <script>
     function sidebarData() {
-      // Última respuesta conocida, guardada por pestaña. Con las transiciones
-      // entre páginas la barra lateral se queda fija, y si se vaciaba en cada
-      // navegación hasta que llegaba el fetch se veía un parpadeo evidente.
-      // Se pinta lo cacheado al instante y se refresca en segundo plano.
       const CACHE_KEY = 'mpc-sidebar';
       let cached = null;
       try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null'); } catch (_) {}

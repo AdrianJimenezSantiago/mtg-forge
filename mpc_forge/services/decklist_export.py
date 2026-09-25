@@ -31,8 +31,6 @@ from mpc_forge.models import DeckCard, PrintingCache
 Format = Literal["simple", "with_set", "arena"]
 
 
-# Orden estable de roles al serializar. Los roles no listados (tokens,
-# meld_result, ...) se omiten porque no cuentan como parte importable del mazo.
 _ROLE_ORDER: list[tuple[str, str]] = [
     ("commander", "Commander"),
     ("mainboard", "Deck"),
@@ -49,8 +47,6 @@ async def build_decklist_text(
     include_headers: bool = True,
 ) -> str:
     """Devuelve el texto plano del mazo listo para copiar al portapapeles."""
-    # Cartas + su printing en un solo join. deck_id está indexado, así que
-    # es una única query pequeña.
     rows = (
         await db.execute(
             select(DeckCard, PrintingCache)
@@ -63,7 +59,6 @@ async def build_decklist_text(
     if not rows:
         return ""
 
-    # Agrupar por rol para poder poner cabeceras en el orden estable.
     by_role: dict[str, list[tuple[DeckCard, PrintingCache | None]]] = {}
     for dc, printing in rows:
         by_role.setdefault(dc.role, []).append((dc, printing))
@@ -75,7 +70,7 @@ async def build_decklist_text(
             continue
         if include_headers:
             if lines:
-                lines.append("")  # blank line separator entre secciones
+                lines.append("")
             lines.append(role_label)
         for dc, printing in group:
             lines.append(_format_line(dc, printing, fmt))
@@ -95,14 +90,11 @@ def _format_line(dc: DeckCard, printing: PrintingCache | None, fmt: Format) -> s
     number = printing.collector_number or ""
 
     if not set_code or not number:
-        # Sin datos de printing → cae a simple
         return f"{qty} {name}"
 
     if fmt == "arena":
-        # Arena espera el set en mayúsculas
         return f"{qty} {name} ({set_code.upper()}) {number}"
 
-    # with_set (MTGO/MPCFill): set en minúsculas
     return f"{qty} {name} ({set_code.lower()}) {number}"
 
 

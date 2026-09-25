@@ -26,15 +26,12 @@ from mpc_forge import config as cfg
 log = logging.getLogger(__name__)
 
 
-# Nombres típicos del binario según plataforma y versión
 _BINARY_NAMES = [
-    # Windows
     "autofill.exe",
     "mpc-autofill.exe",
     "mpc_autofill.exe",
     "autofill-windows.exe",
     "autofill-win.exe",
-    # macOS / Linux (compilado con Nuitka o Pyinstaller)
     "autofill",
     "autofill.bin",
     "autofill-macos",
@@ -43,12 +40,10 @@ _BINARY_NAMES = [
 ]
 
 
-# Directorios donde buscar el ejecutable
 def _candidate_dirs() -> list[Path]:
     """Directorios donde probar a encontrar el binario, en orden de prioridad."""
     cands: list[Path] = []
 
-    # 1) Ruta explícita configurada por el usuario en Settings
     user_path = getattr(cfg, "MPC_AUTOFILL_EXE_PATH", "") or ""
     if user_path:
         p = Path(user_path).expanduser()
@@ -57,7 +52,6 @@ def _candidate_dirs() -> list[Path]:
         elif p.is_dir():
             cands.append(p)
 
-    # 2) Carpeta del proyecto (donde el usuario ejecuta la app)
     cwd = Path.cwd()
     cands.extend([
         cwd,
@@ -66,7 +60,6 @@ def _candidate_dirs() -> list[Path]:
         cwd / "tools" / "mpc-autofill",
     ])
 
-    # 3) Carpeta de datos de MPC Forge (por si el usuario lo pone allí)
     data_dir = Path(cfg.PATHS.data_dir) if hasattr(cfg, "PATHS") else None
     if data_dir:
         cands.extend([
@@ -74,7 +67,6 @@ def _candidate_dirs() -> list[Path]:
             data_dir / "autofill",
         ])
 
-    # 4) Ubicaciones comunes en Windows
     if sys.platform == "win32":
         localappdata = os.environ.get("LOCALAPPDATA", "")
         userprofile = os.environ.get("USERPROFILE", "")
@@ -86,7 +78,6 @@ def _candidate_dirs() -> list[Path]:
                 Path(userprofile) / "Downloads" / "mpc-autofill",
             ])
 
-    # Dedup manteniendo orden
     seen: set[Path] = set()
     out = []
     for p in cands:
@@ -102,7 +93,7 @@ class AutofillStatus:
     available: bool
     exe_path: str | None = None
     version: str | None = None
-    source: str = "not_found"  # "user_config" | "path" | "cwd" | "search" | "not_found"
+    source: str = "not_found"
 
 
 def detect() -> AutofillStatus:
@@ -113,20 +104,17 @@ def detect() -> AutofillStatus:
 
     NO ejecuta nada — solo comprueba que el archivo existe y es ejecutable.
     """
-    # 1) Setting explícito
     user_path = getattr(cfg, "MPC_AUTOFILL_EXE_PATH", "") or ""
     if user_path:
         p = Path(user_path).expanduser()
         if p.is_file() and os.access(p, os.X_OK if sys.platform != "win32" else os.F_OK):
             return AutofillStatus(True, str(p.resolve()), source="user_config")
 
-    # 2) PATH
     for name in _BINARY_NAMES:
         found = shutil.which(name)
         if found:
             return AutofillStatus(True, found, source="path")
 
-    # 3) Búsqueda en directorios candidatos
     for d in _candidate_dirs():
         if not d.is_dir():
             continue
@@ -159,16 +147,12 @@ def launch(xml_path: Path) -> int:
             "y colócalo en la carpeta del proyecto, o configura la ruta en Ajustes."
         )
 
-    # El desktop tool acepta --directory apuntando a la carpeta con el XML.
-    # Así arranca ya en el sitio correcto y encuentra el XML automáticamente.
     exe = Path(st.exe_path)
     cmd = [str(exe), "--directory", str(xml_path.parent)]
 
     log.info("Lanzando MPC Autofill: %s", " ".join(cmd))
-    # En Windows, DETACHED_PROCESS + CREATE_NEW_CONSOLE para que salga la ventana propia
     kwargs: dict = {"cwd": str(exe.parent)}
     if sys.platform == "win32":
-        # Constantes de CreationFlags de Windows
         DETACHED_PROCESS = 0x00000008
         CREATE_NEW_CONSOLE = 0x00000010
         kwargs["creationflags"] = DETACHED_PROCESS | CREATE_NEW_CONSOLE
@@ -176,8 +160,5 @@ def launch(xml_path: Path) -> int:
     else:
         kwargs["start_new_session"] = True
 
-    # `cmd` lo construimos nosotros a partir de una ruta ya validada en
-    # disco, y va como lista (sin shell): no hay interpolación de entrada
-    # del usuario que pueda inyectar argumentos.
     proc = subprocess.Popen(cmd, **kwargs)  # noqa: S603
     return proc.pid

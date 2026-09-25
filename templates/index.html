@@ -1,25 +1,12 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/home.js.
-     Se extrajo del bloque embebido que había en el cuerpo de esta
-     plantilla para poder lintarlo, depurarlo con nombres de fichero
-     reales y reutilizar código entre vistas.
-
-     Se declara en este bloque, y no donde estaba, porque base.html lo
-     renderiza en el <head> ANTES de Alpine. Alpine arranca en el
-     microtask siguiente a su propio script diferido, así que un módulo
-     declarado más abajo se ejecutaría demasiado tarde y las funciones
-     de x-data no existirían todavía. Ver la nota en base.html.
-
-     Regenerar con scripts/extract_inline_js.py #}
   <script defer src="/static/js/home.js?v={{ asset_v('js/home.js') }}"></script>
 {% endblock %}
 {% block title %}{{ t.home_title }} · MPC Forge{% endblock %}
 {% block content %}
 <div class="max-w-6xl mx-auto p-8 space-y-8">
 
-  {# ============= HEADER ============= #}
   <div class="flex items-end justify-between gap-4">
     <div>
       <h1 class="text-2xl font-display font-semibold tracking-tight text-fg flex items-center gap-3">
@@ -30,10 +17,8 @@
     </div>
   </div>
 
-  {# ============= IMPORT PANELS ============= #}
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-data="importPanel()" x-init="loadSites()">
 
-    {# URL (Moxfield, Archidekt, TappedOut, MTGGoldfish, Scryfall, CubeCobra) #}
     <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
                 hover:border-accent/30 transition">
       <div class="flex items-center gap-2 mb-3">
@@ -63,7 +48,6 @@
             <span x-text="loading ? '{{ t.home_import_url_loading }}' : '{{ t.home_import_url_btn }}'"></span>
           </button>
         </div>
-        {# Chips con los sitios soportados. Se rellena tras loadSites(). #}
         <div class="flex flex-wrap gap-1.5 mt-2.5" x-show="supportedSites.length > 0">
           <template x-for="site in supportedSites" :key="site.key">
             <span class="text-[10px] font-medium px-2 py-0.5 rounded-full bg-bg-subtle border border-border-subtle
@@ -72,7 +56,6 @@
                   x-text="site.name"></span>
           </template>
         </div>
-        {# Aviso si la URL no matchea ningún sitio soportado (validación local). #}
         <template x-if="urlInput.trim() && !urlSiteHint">
           <p class="text-[11px] text-amber-400 mt-2 flex items-center gap-1">
             <i data-lucide="alert-triangle" class="w-3 h-3"></i>
@@ -96,8 +79,6 @@
       </form>
     </div>
 
-    {# Plain text. `id` = destino del enlace "pégala en Mazos" de la landing;
-       motion.css lo resalta con :target al llegar. #}
     <div id="import-text"
          class="fx-target bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
                 hover:border-accent/30 transition scroll-mt-6">
@@ -132,12 +113,10 @@
       </form>
     </div>
 
-    {# ==== Modal: reporte de cartas no importadas ==== #}
     {% include "_unresolved_modal.html" %}
 
   </div>
 
-  {# ============= DECK LIST ============= #}
   <div>
     <div class="flex items-center gap-2 mb-3">
       <h2 class="text-xs font-medium text-fg-muted uppercase tracking-wider">{{ t.home_decks_section }}</h2>
@@ -155,8 +134,6 @@
         <p class="text-xs text-fg-faint mt-1">{{ t.home_empty_subtitle }}</p>
       </div>
     {% else %}
-      {# data-deal: las portadas se reparten como cartas al entrar (motion.js).
-         data-tilt: cada mazo se inclina bajo el cursor con reflejo foil. #}
       <div x-data="deckListActions()" data-deal
            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {% for deck in decks %}
@@ -164,13 +141,8 @@
                class="group relative bg-bg-elevated border border-border-subtle hover:border-accent/40
                       rounded-xl shadow-card hover:shadow-glow overflow-hidden">
             <a href="/decks/{{ deck.id }}" class="block">
-              {# Arte del commander recortado 63:88 (mismo patrón que /history). #}
-              {# Cargamos con loading="lazy" porque en un usuario con muchos     #}
-              {# mazos la mayoría estarán fuera del viewport inicial.            #}
               <div class="relative aspect-[63/88] bg-bg-inset overflow-hidden">
                 {% if deck.commander_image_url %}
-                  {# data-deck-cover: el script del <head> le da view-transition-name
-                     al navegar, y la portada vuela hasta la cabecera del editor. #}
                   <img src="{{ deck.commander_image_url }}"
                        alt="{{ deck.commander_name or deck.name }}"
                        data-deck-cover="{{ deck.id }}"
@@ -184,10 +156,8 @@
                     </div>
                   </div>
                 {% endif %}
-                {# Overlay gradient inferior — legibilidad del pie sobre imagen #}
                 <div class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg-elevated to-transparent pointer-events-none"></div>
 
-                {# Badge Moxfield arriba a la derecha, si aplica #}
                 {% if deck.moxfield_id %}
                   <span class="absolute top-2 left-2 text-[10px] font-mono text-fg-faint
                                bg-bg-elevated/90 backdrop-blur-sm border border-border-subtle
@@ -198,7 +168,6 @@
                 {% endif %}
               </div>
 
-              {# Pie con nombre + metadata #}
               <div class="p-4 space-y-1.5">
                 <div class="font-display text-base leading-tight truncate group-hover:text-accent-glow transition"
                      title="{{ deck.name }}">{{ deck.name }}</div>
@@ -216,7 +185,6 @@
               </div>
             </a>
 
-            {# Menú de acciones — flotante arriba-derecha, siempre encima de la imagen #}
             <div class="fx-above absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition"
                  x-data="{ open: false }" @click.outside="open = false">
               <button @click="open = !open"

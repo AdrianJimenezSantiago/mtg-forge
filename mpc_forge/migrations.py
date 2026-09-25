@@ -47,9 +47,6 @@ from sqlalchemy import text
 
 log = logging.getLogger(__name__)
 
-# Versión del esquema tal y como quedó en el sistema antiguo, justo antes de
-# introducir este motor. Cualquier BD con una versión <= BASELINE se "adopta"
-# sin destruir nada: se crean las tablas que falten y se sellan a BASELINE.
 BASELINE_VERSION = 8
 
 
@@ -66,10 +63,6 @@ class Migration:
     statements: list[str] = field(default_factory=list)
     callback: Callable[[object], Awaitable[None]] | None = None
 
-
-# ---------------------------------------------------------------------------
-# Helpers reutilizables por las migraciones
-# ---------------------------------------------------------------------------
 
 async def column_exists(conn, table: str, column: str) -> bool:
     """¿Existe la columna? SQLite no tiene ``ADD COLUMN IF NOT EXISTS``."""
@@ -88,7 +81,6 @@ async def table_exists(conn, table: str) -> bool:
 async def add_column_if_missing(conn, table: str, column: str, ddl: str) -> bool:
     """Añade la columna solo si falta. Devuelve True si la añadió."""
     if not await table_exists(conn, table):
-        # La tabla se creará por metadata.create_all con la columna incluida.
         return False
     if await column_exists(conn, table, column):
         return False
@@ -96,14 +88,6 @@ async def add_column_if_missing(conn, table: str, column: str, ddl: str) -> bool
     await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
     return True
 
-
-# ---------------------------------------------------------------------------
-# Columnas que el sistema antiguo añadía en cada arranque.
-#
-# Se conservan aquí porque una BD adoptada desde el sistema viejo puede
-# tenerlas o no según en qué versión se quedó. Se aplican durante la adopción
-# a BASELINE. Para columnas NUEVAS a partir de ahora, crea una Migration.
-# ---------------------------------------------------------------------------
 
 LEGACY_COLUMNS: list[tuple[str, str, str]] = [
     ("decks", "custom_cardback_art_id",
@@ -127,16 +111,11 @@ LEGACY_COLUMNS: list[tuple[str, str, str]] = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# EL LADDER
-# ---------------------------------------------------------------------------
-
 MIGRATIONS: list[Migration] = [
     Migration(
         version=9,
         description="Snapshots de mazo (versionado) + thumbnails de arte",
         statements=[
-            # DeckSnapshot: versionado con nombre. Ver services/snapshots.py.
             """
             CREATE TABLE IF NOT EXISTS deck_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,7 +129,6 @@ MIGRATIONS: list[Migration] = [
             """,
             "CREATE INDEX IF NOT EXISTS ix_deck_snapshots_deck "
             "ON deck_snapshots(deck_id, created_at DESC)",
-            # Ruta relativa del thumbnail WebP generado para cada arte local.
             "ALTER TABLE local_arts ADD COLUMN thumb_path TEXT DEFAULT NULL",
         ],
     ),
@@ -202,11 +180,6 @@ MIGRATIONS: list[Migration] = [
         version=12,
         description="Precios de mercado y legalidades por formato en printings",
         statements=[
-            # Anulables y sin default: NULL significa "aún no lo sabemos".
-            # Las filas ya cacheadas se rellenan cuando Scryfall vuelva a
-            # devolver esa carta (el upsert escribe todos los campos), y
-            # `legalities` vacío hace que la validación caiga a "unknown",
-            # que es el comportamiento actual.
             "ALTER TABLE printings ADD COLUMN price_usd FLOAT",
             "ALTER TABLE printings ADD COLUMN price_usd_foil FLOAT",
             "ALTER TABLE printings ADD COLUMN price_eur FLOAT",
@@ -217,10 +190,6 @@ MIGRATIONS: list[Migration] = [
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
 
-
-# ---------------------------------------------------------------------------
-# Runner
-# ---------------------------------------------------------------------------
 
 async def read_version(conn) -> int | None:
     """Versión actual del esquema, o None si la BD es nueva."""
@@ -234,8 +203,6 @@ async def read_version(conn) -> int | None:
     try:
         return int(row[0])
     except (TypeError, ValueError):
-        # Versiones antiguas guardaban strings raros. Tratamos como baseline:
-        # es una BD del sistema viejo, se adopta sin destruir.
         return BASELINE_VERSION
 
 
@@ -282,14 +249,11 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
     }
 
     if current is None:
-        # BD nueva: create_all ya dejó el esquema completo y al día.
         await stamp_version(conn, LATEST_VERSION)
         log.info("BD nueva inicializada en la versión %d", LATEST_VERSION)
         return report
 
     if current > LATEST_VERSION:
-        # El usuario ha vuelto a una versión anterior de la app. No tocamos
-        # nada: SQLite tolera columnas extra, y destruir sería peor.
         log.warning(
             "La BD está en la versión %d, más nueva que la que soporta esta "
             "build (%d). Se continúa sin migrar — considera actualizar la app.",
@@ -311,8 +275,6 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
         current = BASELINE_VERSION
         report["applied"].append("adopt-legacy")
     else:
-        # Aunque estemos ya en baseline, las columnas legacy pueden faltar si
-        # el usuario vino de una build intermedia. Es idempotente y barato.
         await adopt_legacy(conn)
 
     if not pending:
@@ -324,8 +286,6 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
 
     for migration in pending:
         log.info("Aplicando migración %d: %s", migration.version, migration.description)
-        # SAVEPOINT: si una sentencia falla, deshacemos solo esta migración.
-        # Las anteriores quedan aplicadas y selladas.
         savepoint = f"mig_{migration.version}"
         await conn.execute(text(f"SAVEPOINT {savepoint}"))
         try:

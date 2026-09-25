@@ -1,9 +1,6 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/calibration.js.
-     Se declara aquí porque base.html renderiza este bloque en el <head>, antes
-     de Alpine. Ver la nota en base.html. #}
   <script defer src="/static/js/calibration.js?v={{ asset_v('js/calibration.js') }}"></script>
 {% endblock %}
 
@@ -21,7 +18,6 @@
       <p class="text-sm text-fg-muted mt-2 max-w-2xl">{{ t.calibration_intro }}</p>
     </header>
 
-    {# Indicador de pasos #}
     <ol class="flex items-center gap-2 mb-8 text-xs">
       <template x-for="n in [1, 2, 3]" :key="n">
         <li class="flex items-center gap-2">
@@ -37,7 +33,6 @@
       </template>
     </ol>
 
-    {# ============ PASO 1: IMPRIMIR ============ #}
     <section x-show="step === 1" x-collapse class="space-y-5">
       <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
         <h2 class="text-sm font-semibold text-fg">{{ t.calibration_print_heading }}</h2>
@@ -65,8 +60,6 @@
           </div>
         </div>
 
-        {# El borde de volteo determina sobre qué eje se espeja el reverso, así
-           que elegir mal aquí invierte el signo de la corrección. #}
         <p class="text-[12px] text-fg-muted">{{ t.calibration_flip_hint }}</p>
 
         <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
@@ -89,7 +82,6 @@
       </div>
     </section>
 
-    {# ============ PASO 2: MEDIR ============ #}
     <section x-show="step === 2" x-collapse class="space-y-5">
       <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
         <h2 class="text-sm font-semibold text-fg">{{ t.calibration_measure_heading }}</h2>
@@ -140,14 +132,6 @@
       </div>
     </section>
 
-    {# ============ PASO 3: APLICAR ============ #}
-    {# `x-show` oculta el elemento pero Alpine SIGUE evaluando las expresiones
-       de dentro, así que un `x-text="fmt(result.x)"` revienta mientras
-       `result` es null — es decir, nada más cargar la página.
-
-       `template x-if` no crea el DOM hasta que la condición se cumple, que es
-       lo que hace falta aquí. El `x-show` exterior se conserva solo para la
-       animación de despliegue. #}
     <section x-show="step === 3" x-collapse class="space-y-5">
      <template x-if="result">
       <div class="p-5 rounded-lg bg-bg-elevated border border-border-subtle space-y-4">
@@ -202,8 +186,6 @@
       </div>
      </template>
 
-      {# Segunda pasada: la forma de comprobar que la corrección es correcta es
-         volver a imprimir y ver que la deriva ha desaparecido. #}
       <div class="p-4 rounded-lg bg-bg-subtle/50 border border-border-subtle text-[13px] text-fg-muted">
         <p class="flex items-start gap-2">
           <i data-lucide="repeat" class="w-4 h-4 text-fg-faint shrink-0 mt-0.5"></i>

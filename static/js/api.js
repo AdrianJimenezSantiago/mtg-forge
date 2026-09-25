@@ -1,30 +1,6 @@
-/**
- * Cliente HTTP centralizado.
- *
- * Antes había ~100 llamadas sueltas a `fetch()` repartidas entre los
- * templates: 47 en deck.html, 26 en settings.html, 15 en pdf_studio.html. Cada
- * una decidía por su cuenta si comprobar `res.ok`, cómo extraer el mensaje de
- * error del backend y si mostrar un toast. El resultado era que algunos
- * errores salían como "[object Object]", otros como "Error" a secas y unos
- * cuantos se perdían en silencio.
- *
- * Este módulo concentra esa lógica en un sitio, lo que da gratis:
- *
- *   - mensajes de error coherentes, leídos del campo `detail` de FastAPI
- *   - cancelación con AbortController en cualquier petición
- *   - reintento con backoff para errores de red transitorios
- *   - deduplicación de GET idénticos en vuelo
- *   - un único punto donde añadir cabeceras o cambiar el prefijo de la API
- *
- * Uso:
- *     import { api, ApiError } from '/static/js/api.js'
- *     const deck = await api.decks.get(12)
- */
 (function () {
   'use strict'
 
-
-/** Error con el código HTTP y el detalle que devolvió el backend. */
 class ApiError extends Error {
   constructor(status, detail, url) {
     super(detail)
@@ -34,24 +10,15 @@ class ApiError extends Error {
     this.url = url
   }
 
-  /** ¿Merece la pena reintentar? Los 4xx son culpa de la petición, no del momento. */
   get isRetryable() {
     return this.status === 0 || this.status === 429 || this.status >= 500
   }
 
-  /** ¿Es un fallo de validación de FastAPI (422)? */
   get isValidation() {
     return this.status === 422
   }
 }
 
-/**
- * Extrae un mensaje legible del cuerpo de un error.
- *
- * FastAPI usa `detail`, que puede ser una cadena o —en los 422— una lista de
- * objetos con `loc` y `msg`. Sin este tratamiento, un error de validación se
- * mostraba al usuario como "[object Object]".
- */
 async function extractDetail(res) {
   let body
   try {
@@ -75,22 +42,8 @@ async function extractDetail(res) {
 
 const RETRY_DELAYS_MS = [300, 900, 2400]
 
-/** GET idénticos en vuelo: se comparte la misma promesa en vez de duplicar. */
 const inFlight = new Map()
 
-/**
- * Ejecuta una petición.
- *
- * @param {string} method
- * @param {string} path
- * @param {object} [options]
- * @param {any}    [options.body]    se serializa como JSON
- * @param {object} [options.params]  query string; se omiten null/undefined/''
- * @param {AbortSignal} [options.signal]
- * @param {number} [options.retries] reintentos para errores transitorios
- * @param {boolean} [options.dedupe] compartir GET idénticos en vuelo
- * @param {boolean} [options.raw]    devolver la Response sin parsear
- */
 async function request(method, path, options = {}) {
   const {
     body, params, signal, retries = 0, dedupe = false, raw = false,
@@ -100,8 +53,6 @@ async function request(method, path, options = {}) {
   if (params) {
     const qs = new URLSearchParams()
     for (const [key, value] of Object.entries(params)) {
-      // Omitir vacíos evita `?set=&sort=` en la URL, que además obligaría al
-      // backend a distinguir "no enviado" de "enviado vacío".
       if (value === null || value === undefined || value === '') continue
       if (Array.isArray(value)) {
         if (value.length) qs.set(key, value.join(','))
@@ -133,17 +84,12 @@ async function request(method, path, options = {}) {
           throw new ApiError(res.status, await extractDetail(res), url)
         }
         if (raw) return res
-        // 204 No Content: no hay cuerpo que parsear.
         if (res.status === 204) return null
         const text = await res.text()
         return text ? JSON.parse(text) : null
       } catch (err) {
-        // Una cancelación explícita no es un fallo: se propaga tal cual para
-        // que el llamante distinga "el usuario cerró el modal" de "falló".
         if (err.name === 'AbortError') throw err
 
-        // Un fallo de red no produce Response, así que no hay status: se
-        // normaliza a 0 para que `isRetryable` lo trate como transitorio.
         lastError = err instanceof ApiError
           ? err
           : new ApiError(0, err.message || 'Error de red', url)
@@ -173,13 +119,6 @@ const patch = (path, body, options) => request('PATCH', path, { ...options, body
 const put = (path, body, options) => request('PUT', path, { ...options, body })
 const del = (path, options) => request('DELETE', path, options)
 
-/**
- * Superficie de la API agrupada por dominio.
- *
- * Que las rutas vivan aquí y no repartidas por los templates significa que
- * renombrar un endpoint es un cambio en un solo fichero, y que se puede ver de
- * un vistazo qué consume el frontend.
- */
 const api = {
   decks: {
     list:        (signal) => get('/api/decks/', { signal, dedupe: true }),
@@ -214,37 +153,14 @@ const api = {
                 post(`/api/decks/${deckId}/cards/${cardId}/add-related`, payload),
     changeArt:(deckId, payload) => post(`/api/decks/${deckId}/cards/change-art`, payload),
 
-    /**
-     * Página de opciones de arte.
-     *
-     * Este endpoint puede devolver cientos de resultados, así que siempre se
-     * pasa `signal`: cerrar el modal debe cortar las peticiones en vuelo.
-     */
     prints: (deckId, cardId, { offset = 0, limit = 60, sort = 'released_desc',
                                q = '', only = [], signal } = {}) =>
       get(`/api/decks/${deckId}/cards/${cardId}/prints`, {
         params: { offset, limit, sort, q, only }, signal,
       }),
 
-    /**
-     * Todas las opciones de arte en un único array plano.
-     *
-     * El endpoint pasó de devolver un array a devolver un sobre paginado
-     * (`{items, custom, total, has_more}`). Ese cambio dejó atrás dos
-     * consumidores que seguían haciendo `arts.filter(...)` sobre el sobre y
-     * fallaban con "arts.filter is not a function": el mini selector del PDF
-     * Studio y el panel lateral del editor.
-     *
-     * Este helper existe para que nadie tenga que volver a paginar a mano.
-     * Devuelve exactamente lo que devolvía el contrato antiguo —los artes
-     * custom primero, después las impresiones oficiales— así que un consumidor
-     * que solo quiera "dame todo" no necesita saber que hay paginación.
-     *
-     * Ojo: para una carta muy reimpresa esto son varias peticiones. Si lo que
-     * necesitas es pintar una rejilla, usa `prints()` y ve anexando páginas.
-     */
     allPrints: async (deckId, cardId, { signal, maxPages = 20 } = {}) => {
-      const PAGE = 300     // el máximo que admite el endpoint
+      const PAGE = 300
       const first = await api.cards.prints(deckId, cardId, { limit: PAGE, signal })
       const out = [...(first.custom || []), ...(first.items || [])]
 
@@ -289,8 +205,6 @@ const api = {
   drives: {
     search:     (params, signal) => get('/api/drives/search', { params, signal }),
     cardbacks:  (params, signal) => get('/api/drives/cardbacks', { params, signal }),
-    // `dedupe` porque varias partes de la interfaz consultan las estadísticas
-    // a la vez al abrir el selector.
     stats:      (signal) => get('/api/drives/stats', { signal, dedupe: true }),
     indexBatch: (payload) => post('/api/drives/index-batch', payload),
     indexProgress: (signal) => get('/api/drives/index-progress', { signal }),
@@ -365,16 +279,6 @@ const api = {
   },
 }
 
-/**
- * Envuelve una llamada mostrando un toast si falla.
- *
- * Ahorra el `try/catch` repetido en cada manejador de la interfaz. Devuelve
- * `undefined` cuando hay error, así que el llamante puede comprobarlo si le
- * interesa distinguir el caso.
- *
- *     const deck = await withToast(() => api.decks.get(id), 'No se pudo cargar')
- *     if (!deck) return
- */
 async function withToast(fn, fallbackMessage = '') {
   try {
     return await fn()
@@ -389,21 +293,6 @@ async function withToast(fn, fallbackMessage = '') {
   }
 }
 
-/**
- * Sondea un endpoint hasta que una condición se cumple.
- *
- * Los endpoints de progreso (build de PDF, indexado, bulk data) seguían todos
- * el mismo patrón de `setInterval` copiado y pegado, cada uno con su propia
- * forma de parar y su propia fuga cuando el usuario cambiaba de página.
- *
- * @param {Function} fetcher    devuelve el estado actual
- * @param {Function} isDone     recibe el estado, devuelve true para parar
- * @param {object}  [opts]
- * @param {number}  [opts.intervalMs]
- * @param {number}  [opts.timeoutMs]  0 = sin límite
- * @param {Function}[opts.onTick]     se llama con cada estado intermedio
- * @param {AbortSignal} [opts.signal]
- */
 async function poll(fetcher, isDone, opts = {}) {
   const { intervalMs = 700, timeoutMs = 0, onTick, signal } = opts
   const startedAt = Date.now()
@@ -420,8 +309,6 @@ async function poll(fetcher, isDone, opts = {}) {
   }
 }
 
-// Puente para el código que aún vive inline en los templates y no puede usar
-// `import`. Se elimina cuando toda la interfaz esté modularizada.
 window.api = api
 window.ApiError = ApiError
 window.apiRequest = request

@@ -29,8 +29,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     _get_scryfall,
@@ -40,12 +38,6 @@ from mpc_forge.routes.decks._common import (
 router = make_router()
 
 
-# LOCALIZACIÓN DE ARTE (idioma de las cartas)
-# ================================================================
-
-# Idiomas soportados por Scryfall que exponemos en la UI. La lista completa
-# es más larga (he, la, grc, ar, sa, ph, qya…) pero solo tienen impresiones
-# reales unas pocas: mantenemos las principales para no abrumar al usuario.
 SUPPORTED_LANGS: dict[str, str] = {
     "en": "English",
     "es": "Español",
@@ -62,15 +54,15 @@ SUPPORTED_LANGS: dict[str, str] = {
 
 
 class LocalizeDeckRequest(BaseModel):
-    lang: str  # Uno de los códigos de SUPPORTED_LANGS
+    lang: str
 
 
 class LocalizeDeckResponse(BaseModel):
     lang: str
-    localized: int          # nº de cartas cuyo scryfall_id se cambió al localizado
-    unchanged: int          # nº que ya estaban en ese idioma
-    unavailable: list[str]  # nombres de cartas sin impresión en ese idioma
-    skipped_custom: int     # nº saltadas por tener custom art frontal
+    localized: int
+    unchanged: int
+    unavailable: list[str]
+    skipped_custom: int
 
 
 @router.get("/_/supported-langs")
@@ -115,9 +107,6 @@ async def localize_deck_endpoint(
         )
 
     result = await deck_service.localize_deck(db, scryfall, deck_id, payload.lang)
-    # Solo dejamos huella si algo cambió realmente (o hubo cartas no disponibles
-    # que el usuario debería conocer). Si todo está ya en ese idioma y no hay
-    # unavailables, no ensuciamos el timeline.
     if result["localized"] > 0 or result["unavailable"]:
         await deck_activity.log_event(
             db, deck_id, K.DECK_LOCALIZED,
@@ -153,6 +142,3 @@ async def autocomplete_card(
         import logging
         logging.getLogger(__name__).warning("Autocomplete falló para %r: %s", q, e)
         return []
-
-
-# --- Art picker ----------------------------------------------------------

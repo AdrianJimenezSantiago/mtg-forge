@@ -46,7 +46,7 @@ class TestStatsModal:
         """`x-for` no funciona dentro de <svg> (allí <template> no tiene
         `.content`): los arcos se generan con Jinja."""
         html = _read("templates/deck.html")
-        start = html.index("MODAL DE ESTADÍSTICAS")
+        start = html.index('class="st-overlay')
         for svg in re.findall(r"<svg.*?</svg>", html[start:], flags=re.S):
             assert "x-for" not in svg
 

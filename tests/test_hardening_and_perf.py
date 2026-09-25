@@ -18,9 +18,6 @@ from mpc_forge.models import Deck, DeckCard, PrintingCache
 from mpc_forge.routes.decks import _views
 from mpc_forge.services import deck_validation, thumbnails
 
-# ---------------------------------------------------------------------------
-# TZDateTime
-# ---------------------------------------------------------------------------
 
 class TestTimezoneAwareColumns:
     async def test_datetimes_come_back_aware(self, client):
@@ -39,12 +36,10 @@ class TestTimezoneAwareColumns:
             stored = await db.get(Deck, deck_id)
             assert stored.imported_at.tzinfo is not None
             assert stored.updated_at.tzinfo is not None
-            # La comparación que antes lanzaba TypeError.
             assert stored.imported_at <= datetime.now(UTC)
 
     async def test_roundtrip_preserves_the_instant(self, client):
         """Guardar en una zona y leer en UTC no debe mover el instante."""
-        # 14:30 en UTC+2 son las 12:30 UTC.
         madrid = timezone(timedelta(hours=2))
         moment = datetime(2026, 6, 1, 14, 30, tzinfo=madrid)
 
@@ -59,13 +54,9 @@ class TestTimezoneAwareColumns:
         async with session_scope() as db:
             stored = await db.get(PrintingCache, "tz-1")
             assert stored.fetched_at == moment
-            assert stored.fetched_at.hour == 12   # normalizado a UTC
+            assert stored.fetched_at.hour == 12
             assert stored.fetched_at.tzinfo is not None
 
-
-# ---------------------------------------------------------------------------
-# Troceado de cláusulas IN
-# ---------------------------------------------------------------------------
 
 class TestInClauseChunking:
     def test_chunks_respect_the_limit(self):
@@ -94,10 +85,6 @@ class TestInClauseChunking:
         assert r.status_code == 200
         assert len(r.json()["cards"]) == 1100
 
-
-# ---------------------------------------------------------------------------
-# Miniaturas
-# ---------------------------------------------------------------------------
 
 class TestThumbnailGeneration:
     async def test_concurrent_requests_generate_once(self, tmp_path, monkeypatch):
@@ -136,9 +123,8 @@ class TestThumbnailGeneration:
         monkeypatch.setattr(thumbnails, "MAX_SOURCE_PIXELS", 1000)
 
         source = tmp_path / "bomba.png"
-        Image.new("RGB", (200, 200), "blue").save(source)   # 40.000 px > 1.000
+        Image.new("RGB", (200, 200), "blue").save(source)
 
-        # Degrada limpiamente a None; el endpoint cae a la imagen original.
         assert await thumbnails.ensure_thumb(source) is None
 
     async def test_size_guard_does_not_leak_to_other_code(self, tmp_path, monkeypatch):
@@ -164,10 +150,6 @@ class TestThumbnailGeneration:
             "La generación de miniaturas modificó el límite global de Pillow"
         )
 
-
-# ---------------------------------------------------------------------------
-# Legalidades y precio
-# ---------------------------------------------------------------------------
 
 class TestLegalityChecking:
     def _legal(self, **fmts):
@@ -250,7 +232,6 @@ class TestDeckPricing:
             await db.flush()
             db.add(DeckCard(deck_id=deck.id, scryfall_id="p-1", oracle_id="o-1",
                             name="Cara", quantity=2, role="mainboard", include=True))
-            # El maybeboard no debe contar.
             db.add(DeckCard(deck_id=deck.id, scryfall_id="p-2", oracle_id="o-2",
                             name="Idea", quantity=1, role="maybeboard", include=True))
             deck_id = deck.id
@@ -309,7 +290,6 @@ class TestThumbPathNormalization:
         paths_via_alias = thumbnails.PATHS.with_overrides(art_dir=str(alias))
         monkeypatch.setattr(thumbnails, "PATHS", paths_via_alias)
 
-        # La misma imagen, nombrada por la ruta real y por el alias.
         via_alias = thumbnails.thumb_path_for(alias / "sub" / "Sol Ring.png")
         via_real = thumbnails.thumb_path_for(real / "sub" / "Sol Ring.png")
 

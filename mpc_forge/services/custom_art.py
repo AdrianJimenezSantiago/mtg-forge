@@ -36,12 +36,9 @@ _BACK_MARK_RE = re.compile(r"\[\s*(back|b)\s*\]", re.IGNORECASE)
 _VARIANT_DASH_RE = re.compile(r"\s+-\s+(.+)$")
 _VARIANT_PAREN_RE = re.compile(r"\s*\((.+?)\)\s*$")
 
-# Caracteres que rompen URLs (#, ?) o son inválidos en filesystems Windows
-# (\ / : * " < > |). Los reemplazamos por variantes seguras que preservan la
-# legibilidad del nombre.
 _UNSAFE_FILENAME_CHARS = {
-    "#": "",       # elimina — evita fragment identifier en URLs
-    "?": "",       # elimina — evita query string en URLs
+    "#": "",
+    "?": "",
     "\\": "-",
     "/": "-",
     ":": "-",
@@ -62,7 +59,6 @@ def _sanitize_filename(name: str) -> str:
     out = name
     for bad, good in _UNSAFE_FILENAME_CHARS.items():
         out = out.replace(bad, good)
-    # Colapsar espacios y quitar puntos/espacios al final (Windows los pierde)
     out = re.sub(r"\s+", " ", out).strip(" .")
     return out or "arte"
 
@@ -234,30 +230,21 @@ async def add_from_url(
         if close_client:
             await client.aclose()
 
-    # Deducir extensión del content-type o URL.
     ext = _guess_extension(url, resp.headers.get("content-type", ""))
     if ext.lower() not in _IMAGE_EXTS:
         raise ValueError(f"La URL no devuelve una imagen soportada (ext={ext})")
 
-    # Nombre de archivo con la convención de la app: "Card Name [BACK] - Variant.ext"
     base = card_name.strip()
     if face == "back":
         base += " [BACK]"
     if variant:
         base += f" - {variant}"
-    # Saneamos caracteres problemáticos:
-    #   - '#' rompe URLs (todo lo que va después se interpreta como fragment)
-    #   - '?' rompe URLs (empieza query string)
-    #   - '\\/:*"<>|' son inválidos en Windows filesystems
-    # Los reemplazamos por variantes seguras que preservan la legibilidad.
     base = _sanitize_filename(base)
     filename = f"{base}{ext}"
 
-    # Subcarpeta bajo _downloaded para que el usuario sepa qué añadió por URL.
     subdir = PATHS.custom_art_dir / DOWNLOADED_SUBDIR
     subdir.mkdir(parents=True, exist_ok=True)
 
-    # Evitar colisiones si ya existe:
     target = subdir / filename
     n = 1
     while target.exists():
@@ -289,7 +276,6 @@ def _guess_extension(url: str, content_type: str) -> str:
         primary = content_type.split(";", 1)[0].strip().lower()
         guessed = mimetypes.guess_extension(primary)
         if guessed:
-            # normaliza .jpe → .jpg
             if guessed == ".jpe":
                 return ".jpg"
             return guessed

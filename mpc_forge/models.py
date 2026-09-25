@@ -102,41 +102,26 @@ class PrintingCache(Base):
     textless: Mapped[bool] = mapped_column(Boolean, default=False)
     promo: Mapped[bool] = mapped_column(Boolean, default=False)
     layout: Mapped[str] = mapped_column(String(32), default="normal")
-    # Metadata para ordenar/filtrar sin volver a llamar a Scryfall:
-    mana_cost: Mapped[str] = mapped_column(String(64), default="")           # ej. "{2}{U}{U}"
-    cmc: Mapped[float] = mapped_column(default=0.0)                          # coste convertido
-    type_line: Mapped[str] = mapped_column(String(128), default="")          # "Legendary Creature — Elf"
-    colors: Mapped[str] = mapped_column(String(16), default="")              # csv "W,U,B"
-    color_identity: Mapped[str] = mapped_column(String(16), default="")      # csv "W,U,B"
-    keywords: Mapped[str] = mapped_column(String(512), default="")           # csv
+    mana_cost: Mapped[str] = mapped_column(String(64), default="")
+    cmc: Mapped[float] = mapped_column(default=0.0)
+    type_line: Mapped[str] = mapped_column(String(128), default="")
+    colors: Mapped[str] = mapped_column(String(16), default="")
+    color_identity: Mapped[str] = mapped_column(String(16), default="")
+    keywords: Mapped[str] = mapped_column(String(512), default="")
     image_normal: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_large: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_png: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Para DFC guardamos también los datos de la cara trasera:
     back_image_normal: Mapped[str | None] = mapped_column(Text, nullable=True)
     back_image_large: Mapped[str | None] = mapped_column(Text, nullable=True)
     back_image_png: Mapped[str | None] = mapped_column(Text, nullable=True)
     back_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     artist: Mapped[str | None] = mapped_column(String(128), nullable=True)
     released_at: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    finishes: Mapped[str] = mapped_column(String(64), default="nonfoil")  # csv
-    # Precios de mercado que publica Scryfall, en la moneda indicada. Se
-    # guardan como float anulable: `None` significa "Scryfall no tiene precio
-    # para esta impresión" (habitual en promos y cartas muy antiguas), que es
-    # distinto de 0.
-    #
-    # Son el dato que permite responder a la pregunta por la que alguien usa
-    # esta herramienta: cuánto costaría el mazo en cartas reales frente a lo
-    # que cuesta proxearlo.
+    finishes: Mapped[str] = mapped_column(String(64), default="nonfoil")
     price_usd: Mapped[float | None] = mapped_column(nullable=True)
     price_usd_foil: Mapped[float | None] = mapped_column(nullable=True)
     price_eur: Mapped[float | None] = mapped_column(nullable=True)
-    # Legalidad por formato, como JSON compacto {"commander": "legal", ...}.
-    # Scryfall ya lo devuelve en cada carta; no guardarlo obligaba a que
-    # `deck_validation` solo supiera de Commander.
     legalities: Mapped[str] = mapped_column(Text, default="")
-    # Partes relacionadas: JSON compacto con [{"id":"...", "name":"...", "component":"token|meld_result|meld_part"}, ...]
-    # Antes: solo tokens. Ahora: también meld results/parts para automatizar la adición al mazo.
     related_parts: Mapped[str] = mapped_column(Text, default="")
     fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
@@ -153,12 +138,9 @@ class LocalArt(Base):
     sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     relative_path: Mapped[str] = mapped_column(Text)
     scryfall_id: Mapped[str] = mapped_column(String(64), index=True)
-    face: Mapped[str] = mapped_column(String(16), default="front")  # front|back
+    face: Mapped[str] = mapped_column(String(16), default="front")
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
     fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-    # Ruta relativa (bajo PATHS.thumbs_dir) del thumbnail WebP de 160px que
-    # sirve el art picker. NULL = aún no generado; se crea perezosamente la
-    # primera vez que alguien pide la miniatura. Ver services/thumbnails.py.
     thumb_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
@@ -191,11 +173,11 @@ class CustomArt(Base):
     __tablename__ = "custom_arts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    filename: Mapped[str] = mapped_column(String(512))  # nombre original mostrable
-    relative_path: Mapped[str] = mapped_column(Text)     # bajo PATHS.custom_art_dir
+    filename: Mapped[str] = mapped_column(String(512))
+    relative_path: Mapped[str] = mapped_column(Text)
     card_name_normalized: Mapped[str] = mapped_column(String(256), index=True)
     variant_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    face: Mapped[str] = mapped_column(String(16), default="front")  # front|back
+    face: Mapped[str] = mapped_column(String(16), default="front")
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
     indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
@@ -210,14 +192,9 @@ class Deck(Base):
     format: Mapped[str] = mapped_column(String(32), default="commander")
     commander_scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Cardback específico del mazo. Si != NULL, sustituye al cardback global
-    # (`default_cardback_path()`) al generar reversos en modo backs_content='all_cards'.
-    # Las cartas DFC / MDFC / meld siguen usando su propio reverso — este cardback
-    # SOLO se aplica a los slots que no tienen back_path propio.
     custom_cardback_art_id: Mapped[int | None] = mapped_column(
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
-    # --- Post-processing config (Fase 3 · T9) ---
     imported_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime, default=_utcnow, onupdate=_utcnow
@@ -237,17 +214,13 @@ class DeckCard(Base):
     oracle_id: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(256))
     quantity: Mapped[int] = mapped_column(Integer, default=1)
-    # Impresión "oficial" elegida en Scryfall — se usa como fallback y para meta.
     scryfall_id: Mapped[str] = mapped_column(String(64))
-    # Si != NULL, se usa este arte custom local en lugar del oficial.
     custom_art_front_id: Mapped[int | None] = mapped_column(
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
-    # Solo aplica a DFC: reverso custom.
     custom_art_back_id: Mapped[int | None] = mapped_column(
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
-    # Rol dentro del mazo: commander, mainboard, companion, sideboard, tokens
     role: Mapped[str] = mapped_column(String(32), default="mainboard")
     include: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -281,7 +254,7 @@ class PrintRunItem(Base):
     deck_id: Mapped[int | None] = mapped_column(
         ForeignKey("decks.id", ondelete="SET NULL"), nullable=True
     )
-    deck_name: Mapped[str] = mapped_column(String(256))  # snapshot por si borran el mazo
+    deck_name: Mapped[str] = mapped_column(String(256))
     scryfall_id: Mapped[str] = mapped_column(String(64), index=True)
     oracle_id: Mapped[str] = mapped_column(String(64), index=True)
     card_name: Mapped[str] = mapped_column(String(256))
@@ -300,7 +273,7 @@ class PhysicalInventory(Base):
     deck_id: Mapped[int | None] = mapped_column(
         ForeignKey("decks.id", ondelete="SET NULL"), nullable=True
     )
-    status: Mapped[str] = mapped_column(String(32), default="ready")  # ready|cut|sleeved|lost
+    status: Mapped[str] = mapped_column(String(32), default="ready")
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime, default=_utcnow, onupdate=_utcnow
     )
@@ -329,23 +302,13 @@ class DeckActivity(Base):
     deck_id: Mapped[int | None] = mapped_column(
         ForeignKey("decks.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Snapshot del nombre del mazo — persiste si se borra el mazo, para poder
-    # mantener eventos "huérfanos" en un futuro "historial global".
     deck_name_snapshot: Mapped[str] = mapped_column(String(256), default="")
     created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, index=True)
-    # Tipo de evento. Ver DeckActivityKind en services/deck_activity.py para
-    # el listado canónico. Es string libre a propósito (no Enum) para permitir
-    # extender sin migración.
     kind: Mapped[str] = mapped_column(String(48), index=True)
-    # Snapshot de la carta implicada (si aplica). Muchos eventos no tienen
-    # carta asociada (deck_renamed, xml_generated…) — ahí quedan NULL.
     card_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     card_scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     card_oracle_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Payload JSON con detalles específicos del tipo. Nunca vacío — al menos "{}".
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
-    # Resumen legible pre-computado. El frontend lo usa como fallback si no
-    # tiene renderer específico para ``kind``.
     summary: Mapped[str] = mapped_column(String(512), default="")
 
 
@@ -367,14 +330,13 @@ class ArtSource(Base):
     __tablename__ = "art_sources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(128))          # ej. "Cardstock Con"
-    url: Mapped[str] = mapped_column(String(512))           # URL completa de la carpeta de Drive
+    name: Mapped[str] = mapped_column(String(128))
+    url: Mapped[str] = mapped_column(String(512))
     source_type: Mapped[str] = mapped_column(String(32), default="gdrive")
     description: Mapped[str] = mapped_column(Text, default="")
-    tags: Mapped[str] = mapped_column(String(256), default="")  # csv (ej. "commander,proxy")
-    pinned: Mapped[bool] = mapped_column(Boolean, default=False)  # aparece destacado en editor
+    tags: Mapped[str] = mapped_column(String(256), default="")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     added_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-    # Estado de indexación (fuzzy search interno):
     indexed_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     indexed_files: Mapped[int] = mapped_column(Integer, default=0)
     index_error: Mapped[str] = mapped_column(Text, default="")
@@ -394,22 +356,14 @@ class IndexedArt(Base):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("art_sources.id", ondelete="CASCADE"), index=True
     )
-    file_id: Mapped[str] = mapped_column(String(128), index=True)  # google drive file id
+    file_id: Mapped[str] = mapped_column(String(128), index=True)
     filename: Mapped[str] = mapped_column(String(512), index=True)
-    # Nombre normalizado para búsqueda (lowercase, sin extensión, sin puntuación):
     name_normalized: Mapped[str] = mapped_column(String(512), index=True)
-    folder_path: Mapped[str] = mapped_column(String(1024), default="")  # subruta dentro del drive
+    folder_path: Mapped[str] = mapped_column(String(1024), default="")
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     mime_type: Mapped[str] = mapped_column(String(64), default="")
     indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-    # Tags extraídos del filename y de la ruta de carpeta (CSV, sin espacios en
-    # los tags individuales). Ejemplo: "full_art,retro,anime" para un archivo
-    # llamado "Forest (Full Art) (Retro) [Anime].png".
-    # Los booleanos derivados están en columnas separadas para permitir queries
-    # SQL eficientes con índices simples, sin tener que parsear el CSV en cada
-    # búsqueda. Ver `gdrive_indexer.extract_tags()`.
     tags: Mapped[str] = mapped_column(String(512), default="")
-    # Flags derivados de tags — indexados para filtrado rápido en el picker.
     is_full_art: Mapped[bool] = mapped_column(Boolean, default=False)
     is_borderless: Mapped[bool] = mapped_column(Boolean, default=False)
     is_extended: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -419,53 +373,15 @@ class IndexedArt(Base):
     is_promo: Mapped[bool] = mapped_column(Boolean, default=False)
     is_alt_art: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # --- Metadatos canónicos (Fase 2 · T5) ---
-    # Los usuarios de MPC Autofill convencionalmente etiquetan sus archivos con
-    # `[SET NUM]` (ej. "Opt [DMU 100].png") para indicar exactamente qué
-    # impresión oficial de Scryfall representa el arte custom. Esto permite
-    # vincular sin ambigüedad un arte alternativo a la carta oficial que
-    # reproduce, incluso cuando el `filename` es una traducción, artist rename
-    # o variante estilística.
-    #
-    # `expansion_code`: código del set (3-4 chars, minúsculas). Ej. "dmu", "lea".
-    # `collector_number`: número dentro del set (string por convención Scryfall:
-    #   admite "12★", "4p", "42a" en tokens/promos).
-    # `canonical_source`: cómo se detectó el par (filename, folder_path).
-    #
-    # Ambas columnas son NULL cuando no hay tag `[SET NUM]` — el arte sigue
-    # siendo buscable por nombre igual que antes.
     expansion_code: Mapped[str | None] = mapped_column(String(8), default=None, index=True)
     collector_number: Mapped[str | None] = mapped_column(String(16), default=None)
     canonical_source: Mapped[str] = mapped_column(String(16), default="")
 
-    # --- Perceptual hash para dedupe cross-drive (Fase 2 · T8) ---
-    # Se calcula opcionalmente al indexar (setting `phash.enabled`, off por
-    # default para no gastar bandwidth). El pHash de 64 bits se guarda como
-    # 16 chars hexadecimales — barato de comparar con hamming distance.
-    # Dos artes con hamming ≤ 8 se consideran "misma imagen" (rango típico
-    # para tolerar recompresión/reescalado leve).
-    # NULL = aún no calculado. Ver `phash.py`.
     image_hash: Mapped[str | None] = mapped_column(String(16), default=None, index=True)
 
-    # --- URLs directas para tipos no-gdrive (Fase Extras · T7) ---
-    # Los tipos de source distintos a Google Drive (HTTPListing, futuros
-    # S3/R2, etc.) tienen URLs de descarga y thumbnail arbitrarias que no
-    # se pueden derivar del ``file_id``. Antes las codificábamos en el
-    # propio file_id con base64 (ver ``HTTPListingSourceType``), lo que
-    # limitaba a URLs cortas y complicaba el debug. Estas columnas
-    # opcionales guardan las URLs directamente: si están rellenas, los
-    # helpers `download_url()` / `thumbnail_url()` del source_type las
-    # devuelven tal cual. NULL = usar la derivación heredada (gdrive
-    # sigue funcionando como siempre).
     download_url: Mapped[str | None] = mapped_column(String(1024), default=None)
     thumb_url: Mapped[str | None] = mapped_column(String(1024), default=None)
 
-    # --- Tipo de carta: CARD, CARDBACK o TOKEN (Fase 3) ---
-    # Determinado exclusivamente por la carpeta contenedora, replicando la
-    # lógica de MPC Autofill: si el folder_path contiene un segmento
-    # "Cardbacks" → CARDBACK, "Tokens" → TOKEN, resto → CARD.
-    # Esto es independiente del tag "back" (que también se asigna a archivos
-    # con "(B)" en el nombre, que son caras traseras de DFC, no cardbacks).
     card_type: Mapped[str] = mapped_column(String(16), default="CARD", index=True)
 
 
@@ -554,14 +470,9 @@ class OracleArtistCache(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     oracle_id: Mapped[str] = mapped_column(String(64), index=True)
-    # ``artist_folded`` es el artist con asciifolding + lowercase (misma
-    # normalización que ``recommender._fold``). Indexado para lookup rápido.
     artist_folded: Mapped[str] = mapped_column(String(128), index=True)
-    # Nombre display del artist (con casing/acentos originales) — para UI.
     artist_display: Mapped[str] = mapped_column(String(128), default="")
-    # Cuándo se pobló esta fila. Usado para invalidar por TTL.
     fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-
 
 
 class DeckSnapshot(Base):
@@ -608,8 +519,6 @@ class ArtTheme(Base):
     name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-    # Desnormalizado a propósito: la lista de temas se pinta con el contador y
-    # no queremos un COUNT correlacionado por fila en cada carga.
     entry_count: Mapped[int] = mapped_column(Integer, default=0)
 
     entries: Mapped[list[ArtThemeEntry]] = relationship(
@@ -629,8 +538,6 @@ class ArtThemeEntry(Base):
         ForeignKey("art_themes.id", ondelete="CASCADE"), index=True
     )
     oracle_id: Mapped[str] = mapped_column(String(64), index=True)
-    # Snapshot legible: si el arte desaparece, el usuario sigue viendo de qué
-    # carta se trataba al inspeccionar el tema.
     card_name: Mapped[str] = mapped_column(String(256), default="")
     scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     custom_art_front_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -649,7 +556,6 @@ class BulkSyncState(Base):
     __tablename__ = "bulk_sync_state"
 
     kind: Mapped[str] = mapped_column(String(32), primary_key=True)
-    # El ``updated_at`` que traía el manifiesto de Scryfall, tal cual.
     updated_at: Mapped[str] = mapped_column(String(64), default="")
     synced_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     rows_imported: Mapped[int] = mapped_column(Integer, default=0)

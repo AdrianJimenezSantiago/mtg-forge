@@ -1,43 +1,14 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/settings.js.
-     Se extrajo del bloque embebido que había en el cuerpo de esta
-     plantilla para poder lintarlo, depurarlo con nombres de fichero
-     reales y reutilizar código entre vistas.
-
-     Se declara en este bloque, y no donde estaba, porque base.html lo
-     renderiza en el <head> ANTES de Alpine. Alpine arranca en el
-     microtask siguiente a su propio script diferido, así que un módulo
-     declarado más abajo se ejecutaría demasiado tarde y las funciones
-     de x-data no existirían todavía. Ver la nota en base.html.
-
-     Regenerar con scripts/extract_inline_js.py #}
   <script defer src="/static/js/settings.js?v={{ asset_v('js/settings.js') }}"></script>
 {% endblock %}
 {% block title %}{{ t.settings_title }} · MPC Forge{% endblock %}
 {% block content %}
-{#
-  Vista de Ajustes rediseñada.
-
-  Layout: cabecera sticky arriba con búsqueda y "Restablecer defaults",
-  debajo sidebar de secciones (a la izquierda) + panel de la sección activa.
-
-  Cuando hay búsqueda (searchQuery no vacío), se ignora la sección activa y
-  se pinta una vista "resultados" con todos los settings que matchean, cada
-  uno con badge indicando a qué sección pertenece.
-
-  La sección "Fuentes de arte" en la vista principal es solo un resumen
-  numérico + botón "Gestionar drives" que abre el modal con el panel completo.
-
-  Toda la lógica JS de settings, autofill, drives y debug log se conserva del
-  fichero antiguo — solo cambia el envoltorio visual.
-#}
 <div class="min-h-screen"
      x-data="settingsShell()"
      x-init="load()">
 
-  {# ============ HEADER STICKY ============ #}
   <div class="sticky top-0 z-30 bg-bg-base/95 backdrop-blur border-b border-border-subtle">
     <div class="max-w-6xl mx-auto px-6 lg:px-8 py-4 flex flex-wrap items-center gap-3">
       <div class="flex items-center gap-3">
@@ -52,7 +23,6 @@
 
       <div class="flex-1 min-w-[200px]"></div>
 
-      {# Buscador global #}
       <div class="relative w-full sm:w-72">
         <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint"></i>
         <input type="search" x-model="searchQuery"
@@ -72,10 +42,8 @@
     </div>
   </div>
 
-  {# ============ CUERPO: sidebar + panel activo ============ #}
   <div class="max-w-6xl mx-auto px-4 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
 
-    {# --- Sidebar de secciones (desktop) --- #}
     <aside class="lg:w-52 shrink-0 hidden lg:block">
       <nav class="sticky top-24 space-y-0.5">
         <template x-for="s in sections" :key="s.key">
@@ -91,11 +59,8 @@
       </nav>
     </aside>
 
-    {# --- Sidebar colapsable (mobile/tablet) --- #}
     <div class="lg:hidden">
       <label class="block text-[11px] font-medium text-fg-muted uppercase tracking-wider mb-1">{{ t.settings_section_label }}</label>
-      {# `selectSection` además de x-model: el modelo cambia la sección pero no
-         dispara la carga perezosa que sí hacen los botones del sidebar. #}
       <select x-model="activeSection"
               @change="selectSection($event.target.value)"
               class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm
@@ -106,10 +71,8 @@
       </select>
     </div>
 
-    {# --- Panel activo --- #}
     <main class="flex-1 min-w-0 space-y-5">
 
-      {# Loading global de settings #}
       <template x-if="loading">
         <div class="text-center py-12 text-fg-faint text-sm">
           <i data-lucide="loader-2" class="w-4 h-4 mx-auto mb-2 animate-spin"></i>
@@ -117,9 +80,6 @@
         </div>
       </template>
 
-      {# ============================================================ #}
-      {# VISTA DE BÚSQUEDA (si hay query, ignora sección activa)      #}
-      {# ============================================================ #}
       <template x-if="searchQuery && !loading">
         <div class="space-y-4">
           <div class="text-xs text-fg-muted">
@@ -160,9 +120,6 @@
         </div>
       </template>
 
-      {# ============================================================ #}
-      {# SECCIÓN: GENERAL                                              #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'general' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
@@ -178,9 +135,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: PRECIOS Y ENVÍO                                      #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'prices' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
@@ -196,9 +150,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: RED Y CONEXIÓN                                       #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'network' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
           <div class="flex items-center gap-2">
@@ -211,7 +162,6 @@
               <div x-html="renderRow(def)"></div>
             </template>
           </div>
-          {# Aviso claro cuando el ssl_insecure está activo — es peligroso y merece énfasis #}
           <template x-if="values.ssl_insecure">
             <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
               <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
@@ -226,9 +176,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: MPC AUTOFILL                                         #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'autofill' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4"
              x-data="autofillStatus()" x-init="load()">
@@ -286,10 +233,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: MODO OFFLINE (bulk data de Scryfall)                #}
-      {# Antes solo se podía arrancar con un POST manual desde /docs. #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'offline' && !loading"
            x-data="bulkData()" x-init="init()"
            x-cloak class="space-y-4">
@@ -300,7 +243,6 @@
           </div>
           <p class="text-sm text-fg-muted">{{ t.settings_offline_desc }}</p>
 
-          {# --- Estado actual --- #}
           <div class="grid grid-cols-2 gap-3">
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
               <div class="text-xs text-fg-muted">{{ t.settings_offline_printings }}</div>
@@ -314,7 +256,6 @@
             </div>
           </div>
 
-          {# --- Barra de progreso (solo durante la importación) --- #}
           <div x-show="active" x-cloak class="space-y-2">
             <div class="flex justify-between text-xs text-fg-muted">
               <span x-text="progress.kind || ''"></span>
@@ -331,7 +272,6 @@
             </button>
           </div>
 
-          {# --- Acciones --- #}
           <div class="flex items-center gap-2" x-show="!active">
             <button @click="start(false)" :disabled="starting"
                     class="px-3 py-1.5 text-sm rounded-md bg-accent/20 border border-accent/50
@@ -353,13 +293,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: FUENTES DE ARTE (resumen + botón "Gestionar drives") #}
-      {# ============================================================ #}
-      {# Nota: NO usamos x-data aquí (a diferencia de las otras secciones)   #}
-      {# para que showDrivesModal y selectSection sean accesibles del scope  #}
-      {# del shell directamente, sin necesidad de $parent (que Alpine 3 no   #}
-      {# expone como magic property).                                       #}
       <div x-show="!searchQuery && activeSection === 'art-sources' && !loading"
            x-init="loadArtSourcesSummary()"
            x-cloak class="space-y-4">
@@ -372,7 +305,6 @@
             {{ t.settings_drives_desc }}
           </p>
 
-          {# Grid de stats #}
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
               <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_drives_col }}</div>
@@ -396,7 +328,6 @@
             </div>
           </div>
 
-          {# Aviso sobre Google API key #}
           <template x-if="!hasGoogleApiKey">
             <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
               <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
@@ -420,9 +351,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: ARTE CUSTOM                                          #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'custom-art' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
@@ -441,7 +369,6 @@
             </li>
           </ol>
 
-          {# Convenciones de nombre — colapsable #}
           <div x-data="{ open: false }" class="pt-2 border-t border-border-subtle">
             <button @click="open = !open"
                     class="w-full flex items-center justify-between text-sm text-fg-muted hover:text-fg transition">
@@ -462,7 +389,6 @@
             </div>
           </div>
 
-          {# Cardback: como parte de "arte custom" propio del usuario #}
           <div class="pt-4 border-t border-border-subtle">
             <div class="text-sm font-medium mb-1.5 flex items-center gap-2">
               <i data-lucide="layout-template" class="w-3.5 h-3.5 text-fg-muted"></i>
@@ -480,9 +406,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: BACKUP Y DATOS                                       #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'backup' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
@@ -490,9 +413,6 @@
             <h2 class="font-medium">{{ t.settings_backup_title }}</h2>
           </div>
           <p class="text-sm text-fg-muted">{{ t.settings_backup_desc }}</p>
-          {# Cuánto va a ocupar el zip antes de crearlo. Sale del desglose de
-             almacenamiento, que esta sección ya carga para pintar el tamaño de
-             cada carpeta. Evita la sorpresa de un backup de varios GB. #}
           <template x-if="storage">
             <p class="text-xs text-fg-faint flex items-start gap-1.5">
               <i data-lucide="hard-drive" class="w-3.5 h-3.5 mt-0.5 shrink-0"></i>
@@ -522,11 +442,6 @@
             </div>
           </template>
 
-          {# ==============================================================
-             Rutas de datos — dinámicas (leídas de /api/settings/paths) y
-             editables. Los directorios de contenido admiten override; la BD
-             es fija en el arranque por seguridad.
-             ============================================================== #}
           <div class="pt-4 border-t border-border-subtle space-y-3">
             <div class="flex items-center justify-between">
               <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">
@@ -540,12 +455,10 @@
               </button>
             </div>
 
-            {# Paths description #}
             <p class="text-xs text-fg-muted">
               <code class="text-fg font-mono" x-text="paths.install_root + '/user-settings/'"></code>
             </p>
 
-            {# Warning importante: el cambio no mueve ficheros ni actualiza mounts HTTP #}
             <div class="bg-warning-bg border border-warning-border rounded-lg p-3 text-xs space-y-1">
               <div class="flex items-center gap-1.5 text-warning font-medium">
                 <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
@@ -557,7 +470,6 @@
               </ul>
             </div>
 
-            {# BD fija — solo lectura, muestra la ruta actual #}
             <div class="flex items-start gap-2 text-xs font-mono py-1">
               <span class="text-fg-faint shrink-0 w-28">{{ t.settings_db_label }}:</span>
               <span class="text-fg-muted break-all" x-text="paths.db_path || '…'"></span>
@@ -574,8 +486,6 @@
                 <div class="flex items-center justify-between gap-2">
                   <div class="text-xs text-fg font-medium" x-text="pathConfig.label"></div>
                   <div class="flex items-center gap-2 shrink-0">
-                    {# Lo que ocupa ahora mismo esa carpeta. Es el dato que
-                       falta para decidir si merece la pena moverla de disco. #}
                     <template x-if="pathConfig.bytes !== null">
                       <span class="text-[10px] font-mono text-fg-muted bg-bg-subtle border border-border-subtle
                                    rounded px-1.5 py-0.5"
@@ -609,7 +519,6 @@
               </div>
             </template>
 
-            {# Botón guardar — visible solo si hay cambios pendientes #}
             <div class="pt-2 flex items-center justify-end gap-2" x-show="pathsDirty">
               <button @click="discardPathChanges()"
                       class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded transition">
@@ -628,18 +537,8 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: ALMACENAMIENTO                                       #}
-      {# ============================================================ #}
-      {#
-        El desglose lo calcula GET /api/storage/ recorriendo el disco en un
-        hilo aparte. Se carga al entrar en la sección (ver selectSection), no
-        al abrir Ajustes: en una instalación con el arte de varios drives
-        cacheado son decenas de miles de ficheros.
-      #}
       <div x-show="!searchQuery && activeSection === 'storage' && !loading" x-cloak class="space-y-4">
 
-        {# --- Desglose por categoría --- #}
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
             <i data-lucide="hard-drive" class="w-4 h-4 text-accent"></i>
@@ -667,8 +566,6 @@
 
           <template x-if="storage">
             <div class="space-y-4">
-              {# Total + barra apilada. El color lo pone kindColor() inline:
-                 Tailwind purga las clases que no ve en el HTML. #}
               <div>
                 <div class="flex items-end justify-between gap-3 mb-2">
                   <div>
@@ -700,7 +597,6 @@
                 </div>
               </template>
 
-              {# Una fila por categoría, de la que más ocupa a la que menos. #}
               <div>
                 <template x-for="cat in storageRows" :key="cat.key">
                   <div class="flex items-start gap-3 py-2.5 border-t border-border-subtle/40">
@@ -740,16 +636,12 @@
           </template>
         </div>
 
-        {# --- Espacio libre por unidad --- #}
         <template x-if="storage && storage.volumes.length">
           <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
             <div class="flex items-center gap-2">
               <i data-lucide="database" class="w-4 h-4 text-accent"></i>
               <h2 class="font-medium">{{ t.storage_disk_title }}</h2>
             </div>
-            {# Si el usuario ha movido el arte a otro disco, aparece una unidad
-               por cada uno: es justo la información que hace falta para decidir
-               si la mudanza valió la pena. #}
             <template x-for="vol in storage.volumes" :key="vol.mount">
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between gap-3 text-xs">
@@ -768,7 +660,6 @@
           </div>
         </template>
 
-        {# --- Limpieza --- #}
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
           <div class="flex items-center gap-2">
             <i data-lucide="trash-2" class="w-4 h-4 text-accent"></i>
@@ -813,9 +704,6 @@
         </div>
       </div>
 
-      {# ============================================================ #}
-      {# SECCIÓN: LOG DE DEPURACIÓN                                    #}
-      {# ============================================================ #}
       <div x-show="!searchQuery && activeSection === 'log' && !loading" x-cloak class="space-y-4">
         <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4"
              x-data="debugLogPanel()" x-init="load()">
@@ -871,7 +759,6 @@
             </button>
           </div>
 
-          {# Modal con las últimas líneas (se conserva del template antiguo) #}
           <template x-if="showTail">
             <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
                  @click="showTail = false" @keydown.escape.window="showTail = false">
@@ -915,27 +802,14 @@
     </main>
   </div>
 
-  {# ============================================================================ #}
-  {# MODAL: GESTIONAR DRIVES                                                       #}
-  {# Contiene el panel completo de art sources (add form, index controls, lista)   #}
-  {#                                                                               #}
-  {# Estructura Alpine importante: el x-data="artSourcesPanel()" NO va en el root  #}
-  {# del modal, sino en un div interior. Los botones de cerrar (X + backdrop) y    #}
-  {# el @keydown.escape quedan en el scope del shell (settingsShell), así pueden   #}
-  {# tocar `showDrivesModal` directamente sin necesidad de $parent/$root — que en  #}
-  {# Alpine 3 no cruzan barreras de x-data.                                        #}
-  {# ============================================================================ #}
   <template x-if="showDrivesModal">
     <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
          @click="showDrivesModal = false"
          @keydown.escape.window="showDrivesModal = false">
       <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
            @click.stop>
-        {# El body del modal es un componente Alpine independiente. Solo el         #}
-        {# botón X y el backdrop quedan fuera para poder cerrar el modal.           #}
         <div x-data="artSourcesPanel()" x-init="load()" class="flex flex-col min-h-0 flex-1">
 
-          {# Header del modal #}
           <div class="flex items-center justify-between gap-3 p-5 border-b border-border-subtle">
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
@@ -966,19 +840,13 @@
                 <span x-show="!showAdd">{{ t.settings_add_drive }}</span>
                 <span x-show="showAdd">{{ t.common_cancel }}</span>
               </button>
-              {# El botón de cerrar NO está dentro del scope de artSourcesPanel:     #}
-              {# se coloca fuera (tras cerrar el div de x-data) para que pueda      #}
-              {# acceder a showDrivesModal del shell. Ver más abajo.                #}
             </div>
           </div>
 
-          {# Cuerpo del modal — scrollable #}
           <div class="flex-1 overflow-y-auto p-5 space-y-4">
 
-          {# Panel de índice global — alterna entre vista normal y progreso batch #}
           <div class="bg-info-bg border border-info-border rounded-lg p-3 space-y-2">
 
-            {# === Vista NORMAL (sin batch corriendo) === #}
             <template x-if="!batchProgress">
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
@@ -1025,10 +893,8 @@
               </div>
             </template>
 
-            {# === Vista PROGRESO BATCH === #}
             <template x-if="batchProgress">
               <div class="space-y-3">
-                {# Cabecera con porcentaje y botón cancelar #}
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
                     <i data-lucide="loader-2" class="w-4 h-4 text-info"
@@ -1053,7 +919,6 @@
                   </div>
                 </div>
 
-                {# Barra de progreso global #}
                 <div class="space-y-1">
                   <div class="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 ease-out"
@@ -1072,7 +937,6 @@
                   </div>
                 </div>
 
-                {# Drive activo #}
                 <template x-if="batchProgress.active">
                   <div class="bg-bg-subtle/60 border border-info/20 rounded-md px-3 py-2 space-y-1">
                     <div class="flex items-center gap-2">
@@ -1087,9 +951,7 @@
                   </div>
                 </template>
 
-                {# Cola y completados compactos #}
                 <div class="max-h-40 overflow-y-auto space-y-0.5">
-                  {# Cola pendiente #}
                   <template x-for="item in batchProgress.queued.slice(0, 5)" :key="item.source_id">
                     <div class="flex items-center gap-2 text-[10px] text-fg-faint px-1 py-0.5">
                       <span class="w-3 h-3 flex items-center justify-center text-fg-faint">○</span>
@@ -1101,7 +963,6 @@
                       … y <span x-text="batchProgress.queued.length - 5"></span> más en cola
                     </div>
                   </template>
-                  {# Completados (últimos 5, más recientes arriba) #}
                   <template x-for="item in batchProgress.completed.slice(-5).reverse()" :key="item.source_id">
                     <div class="flex items-center gap-2 text-[10px] px-1 py-0.5"
                          :class="item.status === 'done' ? 'text-success' : item.status === 'error' ? 'text-danger' : 'text-fg-faint'">
@@ -1129,7 +990,6 @@
 
           </div>
 
-          {# Form añadir #}
           <div x-show="showAdd" x-transition
                class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 space-y-2">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1198,7 +1058,6 @@
             </div>
           </div>
 
-          {# Lista de drives #}
           <template x-if="sources.length === 0 && !loading">
             <div class="text-sm text-fg-faint text-center py-8">
               {{ t.settings_no_drives }}
@@ -1298,9 +1157,7 @@
 
 </div>
 
-
 <style>
-  /* Ocultar el "flash" inicial mientras Alpine evalúa x-show / x-if */
   [x-cloak] { display: none !important; }
 </style>
 {% endblock %}

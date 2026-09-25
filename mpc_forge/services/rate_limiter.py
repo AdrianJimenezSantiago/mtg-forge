@@ -63,7 +63,7 @@ class TieredRateLimiter:
     def __init__(self, general: float, heavy: float) -> None:
         self._general = general
         self._heavy = heavy
-        self._slots: list[float] = []   # reservas recientes/futuras, ordenadas
+        self._slots: list[float] = []
         self._next_heavy = 0.0
 
     def reserve(self, heavy: bool = False) -> float:

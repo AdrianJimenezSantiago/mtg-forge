@@ -1,17 +1,3 @@
-/**
- * Pruebas del cliente API en un DOM simulado.
- *
- * La suite de Python cubre el backend y la estructura del frontend, pero no
- * ejecuta la lógica JavaScript. Este fichero cubre el hueco para la parte del
- * cliente que más daño hace cuando falla: la que adapta contratos de la API.
- *
- * Motivo concreto: `/prints` pasó de devolver un array a devolver un sobre
- * paginado, y dos consumidores se quedaron atrás haciendo `.filter()` sobre el
- * sobre. `allPrints` existe para que eso no vuelva a pasar, así que conviene
- * que esté probado de verdad y no solo por inspección del código.
- *
- * Uso:  node scripts/check_api_client.mjs
- */
 import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
 
@@ -26,7 +12,6 @@ function check(name, condition, detail = '') {
   }
 }
 
-/** Crea un window con api.js cargado y un servidor falso paginado. */
 function makeWindow({ total, customs = 2 }) {
   const dom = new JSDOM('<body></body>', {
     runScripts: 'outside-only', url: 'http://localhost/',
@@ -92,7 +77,6 @@ console.log('\nallPrints — casos límite')
   check('un conjunto vacío devuelve []', Array.isArray(arts) && arts.length === 0)
 }
 {
-  // Un servidor que nunca baje `has_more` no debe colgar el navegador.
   const { w, state } = makeWindow({ total: 999999 })
   const arts = await w.api.cards.allPrints(1, 2, { maxPages: 3 })
   check('respeta el tope de páginas', state.calls <= 3, `hizo ${state.calls}`)
@@ -105,8 +89,6 @@ console.log('\nExtracción de errores')
     runScripts: 'outside-only', url: 'http://localhost/',
   })
   const w = dom.window
-  // Un 422 de FastAPI trae `detail` como lista de objetos; sin tratarlo, el
-  // usuario veía "[object Object]".
   w.fetch = async () => ({
     ok: false, status: 422, statusText: 'Unprocessable',
     json: async () => ({ detail: [{ loc: ['body', 'name'], msg: 'obligatorio' }] }),

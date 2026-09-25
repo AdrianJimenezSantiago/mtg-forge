@@ -33,10 +33,6 @@ class MoxfieldSite(ImportSite):
     host_names: ClassVar[tuple[str, ...]] = ("www.moxfield.com", "moxfield.com")
     example_url: ClassVar[str] = "https://www.moxfield.com/decks/…"
 
-    # Cache temporal del último payload descargado. Se rellena en
-    # retrieve_card_list y se consulta en retrieve_deck_name para no
-    # hacer un segundo fetch. Usamos un dict con clave = deck_id para
-    # evitar colisiones en llamadas concurrentes improbables.
     _payload_cache: ClassVar[dict[str, dict]] = {}
 
     @classmethod
@@ -91,7 +87,6 @@ class MoxfieldSite(ImportSite):
         le puso al mazo, ej. "Ultimate Cloud Deck".
         """
         deck_id, payload = await cls._fetch_payload(url)
-        # Limpiar cache tras leer el nombre para no acumular memoria
         cls._payload_cache.pop(deck_id, None)
         deck_name = (payload.get("name") or "").strip()
         return deck_name if deck_name else None
@@ -132,9 +127,6 @@ def _payload_to_text(payload: dict) -> str:
             cn = (card.get("cn") or card.get("collectorNumber") or "").strip()
 
             if set_code and cn:
-                # Formato estándar con set+CN: resolución exacta, sin fuzz.
-                # Especialmente crítico para DFCs ("Front // Back") donde el
-                # nombre puede tener espacios y // que confunden al fuzzy matcher.
                 out.append(f"{qty} {name} ({set_code}) {cn}")
             else:
                 out.append(f"{qty} {name}")

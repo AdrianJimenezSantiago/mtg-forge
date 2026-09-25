@@ -1,29 +1,14 @@
 {% extends "base.html" %}
 
 {% block view_module %}
-  {# La lógica de esta vista vive en /static/js/pdf-studio.js.
-     Se extrajo del bloque embebido que había en el cuerpo de esta
-     plantilla para poder lintarlo, depurarlo con nombres de fichero
-     reales y reutilizar código entre vistas.
-
-     Se declara en este bloque, y no donde estaba, porque base.html lo
-     renderiza en el <head> ANTES de Alpine. Alpine arranca en el
-     microtask siguiente a su propio script diferido, así que un módulo
-     declarado más abajo se ejecutaría demasiado tarde y las funciones
-     de x-data no existirían todavía. Ver la nota en base.html.
-
-     Regenerar con scripts/extract_inline_js.py #}
   <script defer src="/static/js/pdf-studio.js?v={{ asset_v('js/pdf-studio.js') }}"></script>
 {% endblock %}
 {% block title %}{{ t.pdf_title }} · {{ deck.name }} · MPC Forge{% endblock %}
 {% block content %}
 
 <style>
-  /* Feedback visual al pasar el ratón sobre una carta clickable del preview.
-     Los elementos con data-slot-kind son emitidos por svgMarkupForPage(). */
   .preview-page [data-slot-kind] { transition: opacity 120ms ease; }
   .preview-page:hover [data-slot-kind][data-slot-kind]:hover { opacity: 0.82; }
-  /* Un halo sutil sobre el rect transparente que hay encima de cada slot. */
   .preview-page rect[data-slot-kind]:hover {
     stroke: #d4af37;
     stroke-width: 0.35;
@@ -31,14 +16,9 @@
   }
 </style>
 
-{# ============================================================
-   PDF Studio v2 — inspirado en proxxied.com/app
-   3 columnas: sumario+acciones · preview scrollable · settings
-   ============================================================ #}
 <div class="h-[calc(100vh-3.5rem)] flex flex-col bg-bg-base text-fg"
      x-data="pdfStudio({{ deck.id }})" x-init="init()" x-cloak>
 
-  {# ---------- HEADER ---------- #}
   <div class="flex items-center h-11 border-b border-border-subtle bg-bg-inset px-4 gap-4 text-sm">
     <a href="/decks/{{ deck.id }}"
        class="text-fg-muted hover:text-accent transition font-medium">
@@ -57,7 +37,6 @@
     </span>
   </div>
 
-  {# ---------- BARRA DE PROGRESO (fixed, mientras hay build) ---------- #}
   <div x-show="buildProgress && buildProgress.total > 0 && !buildProgress.done"
        x-transition
        class="border-b border-border-subtle bg-bg-inset px-4 py-2">
@@ -82,16 +61,11 @@
     </div>
   </div>
 
-  {# ---------- CUERPO 3-COLUMNAS ---------- #}
   <div class="flex-1 grid grid-cols-[260px_1fr_320px] min-h-0 overflow-hidden">
 
-    {# =========================================================
-       COLUMNA IZQUIERDA — resumen + acciones
-       ========================================================= #}
     <aside class="border-r border-border-subtle bg-bg-inset overflow-y-auto">
       <div class="p-4 space-y-5">
 
-        {# --- Deck summary --- #}
         <div>
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_deck_label }}</div>
           <div class="text-sm font-medium truncate" x-text="deck ? deck.name : '{{ deck.name }}'"></div>
@@ -100,7 +74,6 @@
           </div>
         </div>
 
-        {# --- Grid resumen --- #}
         <div class="bg-bg-subtle rounded p-3 space-y-1.5 text-[11px]">
           <div class="flex justify-between">
             <span class="text-fg-muted">{{ t.pdf_summary_layout }}</span>
@@ -134,7 +107,6 @@
           </div>
         </div>
 
-        {# --- Botones de acción principales --- #}
         <div class="space-y-2">
           <button @click="buildPdf(true)"
                   :disabled="buildingPdf || !deck || totalPages === 0"
@@ -151,7 +123,6 @@
             </span>
           </button>
 
-          {# NUEVO v2: {{ t.pdf_export_zip }} de imágenes #}
           <button @click="exportImages()"
                   :disabled="exportingImages || !deck || totalSlots === 0"
                   class="w-full h-9 rounded font-medium text-xs border border-border-subtle
@@ -174,7 +145,6 @@
           </label>
         </div>
 
-        {# --- Presets rápidos --- #}
         <div>
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_presets_label }}</div>
           <div class="grid grid-cols-2 gap-1.5">
@@ -209,12 +179,8 @@
       </div>
     </aside>
 
-    {# =========================================================
-       COLUMNA CENTRAL — preview con VERTICAL SCROLL (v2)
-       ========================================================= #}
     <main class="overflow-auto bg-bg-base relative" x-ref="canvasScroll">
 
-      {# Barra flotante — sin paginación, solo zoom + toggles #}
       <div class="sticky top-0 z-10 bg-bg-inset/95 backdrop-blur border-b border-border-subtle
                   px-4 py-2 flex items-center gap-4 text-xs">
         <div class="font-mono text-fg-muted">
@@ -254,7 +220,6 @@
         </span>
       </div>
 
-      {# ---- Vertical scroll: TODAS las páginas apiladas, no paginación ---- #}
       <div class="p-6 flex flex-col items-center gap-6">
         <div x-show="!deck" class="text-center py-16 text-fg-faint">{{ t.pdf_loading_deck }}</div>
 
@@ -265,7 +230,6 @@
           </a>
         </div>
 
-        {# Loop de páginas. Cada una se pinta con x-html sobre svgMarkupForPage() #}
         <template x-for="(page, idx) in allPages" :key="page.key">
           <div class="flex flex-col items-center gap-1.5">
             <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono">
@@ -283,15 +247,11 @@
       </div>
     </main>
 
-    {# =========================================================
-       COLUMNA DERECHA — settings colapsables
-       ========================================================= #}
     <aside class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
         page: true, positioning: false, card_guides: true, page_guides: false,
         duplex_guides: false, bleed: false, regmarks: false, backs: false, range: false } }">
       <div class="p-3 space-y-2 text-xs">
 
-        {# ---- PANEL: Página ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.page = !open.page"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -339,7 +299,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Posicionamiento (offsets + gaps) ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.positioning = !open.positioning"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -399,7 +358,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Guías por CARTA ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.card_guides = !open.card_guides"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -492,7 +450,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Guías de PÁGINA ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.page_guides = !open.page_guides"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -515,7 +472,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Duplex hide-flags ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.duplex_guides = !open.duplex_guides"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -545,7 +501,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Bleed ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.bleed = !open.bleed"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -568,7 +523,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Marcas de registro ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.regmarks = !open.regmarks"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -593,7 +547,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Reversos ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.backs = !open.backs"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -641,7 +594,6 @@
               </p>
             </label>
 
-            {# ---- Compact fill (solo en modo append) ---- #}
             <label class="flex items-start gap-2 cursor-pointer text-[11px] p-2 rounded
                           border border-border-subtle bg-bg-subtle/50"
                    x-show="opts.backs_layout === 'append'">
@@ -655,7 +607,6 @@
               </span>
             </label>
 
-            {# ---- Cardback específico del mazo (v2, feature Sefirot) ---- #}
             <div class="border-t border-border-subtle pt-3"
                  x-show="opts.backs_content === 'all_cards'">
               <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">
@@ -706,7 +657,6 @@
           </div>
         </div>
 
-        {# ---- PANEL: Rango + Pie ---- #}
         <div class="border border-border-subtle rounded">
           <button @click="open.range = !open.range"
                   class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
@@ -731,21 +681,12 @@
     </aside>
   </div>
 
-  {# ============================================================
-     MODAL: Cardback picker
-     Reutiliza los endpoints existentes:
-       - GET  /api/custom-art/                    (lista de custom arts locales)
-       - GET  /api/drives/search?q=...            (búsqueda en Google Drives)
-       - POST /api/custom-art/from-url            (importar de URL / GDrive)
-       - PUT  /api/decks/{id}/cardback-settings   (guardar selección)
-     ============================================================ #}
   <div x-show="cardbackModalOpen" x-transition x-cloak
        class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
        @click.self="closeCardbackPicker()">
     <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
                 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
 
-      {# --- Modal header --- #}
       <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
         <div class="flex items-center gap-2">
           <i data-lucide="images" class="w-4 h-4 text-accent"></i>
@@ -757,10 +698,8 @@
         </button>
       </div>
 
-      {# --- Modal body --- #}
       <div class="flex-1 overflow-y-auto p-5 space-y-5">
 
-        {# Estado actual + acciones rápidas #}
         <div class="flex items-center gap-4 p-3 bg-bg-subtle rounded">
           <div class="w-16 h-24 rounded border border-border-subtle bg-bg-base
                       overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -792,7 +731,6 @@
           </button>
         </div>
 
-        {# --- Añadir desde URL / Google Drive --- #}
         <div>
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">
             {{ t.picker_add_url }}
@@ -819,7 +757,6 @@
           </p>
         </div>
 
-        {# --- Cardbacks de Google Drives (precargados) + búsqueda --- #}
         <div>
           <div class="flex items-center justify-between mb-2">
             <div class="text-[10px] uppercase tracking-wider text-fg-faint">
@@ -841,12 +778,10 @@
                  class="w-full bg-bg-subtle border border-border-subtle rounded
                         px-3 py-2 text-sm focus:outline-none focus:border-accent">
 
-          {# --- Spinner de carga (búsqueda o default) --- #}
           <div x-show="cbDriveSearching || cbDefaultLoading" class="text-center py-4 text-fg-faint text-xs">
             Cargando cardbacks…
           </div>
 
-          {# --- Resultados de búsqueda (cuando hay query) --- #}
           <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length > 0"
                class="grid grid-cols-4 gap-2 mt-3">
             <template x-for="hit in cbDriveHits" :key="hit.file_id">
@@ -871,7 +806,6 @@
             </template>
           </div>
 
-          {# --- Cardbacks por defecto (cuando NO hay query) --- #}
           <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length > 0"
                class="mt-3">
             <div class="text-[10px] text-fg-muted mb-2">
@@ -901,7 +835,6 @@
             </div>
           </div>
 
-          {# --- Sin resultados de búsqueda --- #}
           <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length === 0"
                class="text-center py-4 text-fg-faint text-xs">
             No results. Try another keyword, or check in
@@ -909,7 +842,6 @@
             that drives are indexed.
           </div>
 
-          {# --- Sin cardbacks por defecto --- #}
           <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length === 0"
                class="text-center py-4 text-fg-faint text-xs">
             No se encontraron cardbacks en los drives indexados. Verifica en
@@ -918,7 +850,6 @@
           </div>
         </div>
 
-        {# --- Custom arts locales --- #}
         <div>
           <div class="flex items-center justify-between mb-2">
             <div class="text-[10px] uppercase tracking-wider text-fg-faint">
@@ -958,7 +889,6 @@
 
       </div>
 
-      {# --- Modal footer --- #}
       <div class="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3
                   bg-bg-inset/50">
         <button @click="closeCardbackPicker()"
@@ -970,11 +900,6 @@
     </div>
   </div>
 
-  {# ============================================================
-     MODAL: Mini art picker (click sobre una carta del preview)
-     Solo lista impresiones existentes; para búsqueda avanzada
-     ofrece un botón "Abrir en el editor completo".
-     ============================================================ #}
   <div x-show="miniPickerOpen" x-transition x-cloak
        class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
        @click.self="closeMiniArtPicker()"
@@ -982,7 +907,6 @@
     <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
                 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
 
-      {# Header #}
       <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
         <div class="flex items-center gap-3 min-w-0">
           <template x-if="miniPickerCard?.thumbnail_url && miniPickerFace === 'front'">
@@ -1019,7 +943,6 @@
         </div>
       </div>
 
-      {# Body #}
       <div class="flex-1 overflow-y-auto p-4">
         <div x-show="miniPickerLoading" class="text-center py-12 text-fg-faint text-sm">
           <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i>
@@ -1077,7 +1000,6 @@
                   </div>
                 </template>
               </div>
-              {# Badges #}
               <div class="absolute top-1 left-1 flex flex-wrap gap-0.5 max-w-[70%]">
                 <span x-show="art.is_chosen"
                       class="text-[9px] px-1.5 py-0.5 rounded bg-accent text-bg-base font-bold">
@@ -1087,7 +1009,6 @@
                       class="text-[9px] px-1.5 py-0.5 rounded bg-accent/80 text-bg-base"
                       title="{{ t.pdf_globally_preferred }}">★</span>
               </div>
-              {# Spinner mientras se aplica #}
               <div x-show="miniPickerBusyKey === miniArtKey(art)"
                    class="absolute inset-0 bg-black/50 flex items-center justify-center">
                 <i data-lucide="loader-2" class="w-5 h-5 animate-spin text-accent"></i>
@@ -1106,9 +1027,6 @@
     </div>
   </div>
 
-  {# ============================================================
-     MODAL: Guía de opciones
-     ============================================================ #}
   <div x-show="guideOpen" x-transition x-cloak
        class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
        @click.self="closeGuide()"
@@ -1116,7 +1034,6 @@
     <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
                 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
 
-      {# Header #}
       <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
         <div class="flex items-center gap-2">
           <i data-lucide="circle-help" class="w-4 h-4 text-accent"></i>
@@ -1128,7 +1045,6 @@
         </button>
       </div>
 
-      {# Body — 2 columnas: TOC + contenido #}
       <div class="flex-1 overflow-hidden grid grid-cols-[200px_1fr] min-h-0">
         <nav class="border-r border-border-subtle bg-bg-subtle/40 overflow-y-auto p-3">
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2 px-2">Secciones</div>
@@ -1430,7 +1346,6 @@
         </div>
       </div>
 
-      {# Footer #}
       <div class="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3
                   bg-bg-inset/50">
         <button @click="closeGuide()"
@@ -1443,6 +1358,5 @@
   </div>
 
 </div>
-
 
 {% endblock %}

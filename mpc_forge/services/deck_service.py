@@ -21,23 +21,14 @@ from mpc_forge.models import ArtPreference, BulkSyncState, Deck, DeckCard, Print
 
 log = logging.getLogger(__name__)
 
-# SQLite limita el número de parámetros por sentencia; los ``IN (...)`` grandes
-# se trocean para no rozar ese límite en instalaciones con SQLite antiguo.
 _IN_CHUNK = 500
 
-# Una impresión cacheada se da por buena para resolver imports durante este
-# tiempo. Scryfall pide cachear al menos 24 h, y los datos que usa el import
-# (id, oracle_id, nombre, layout, partes relacionadas) casi nunca cambian.
 RESOLVE_CACHE_TTL = timedelta(days=7)
 
-# Memoria de proceso: nombre normalizado → scryfall_id que devolvió Scryfall.
-# Permite que el segundo import con Sol Ring no vuelva a preguntar por él, y
-# garantiza que se elige la MISMA impresión que habría elegido Scryfall.
 _NAME_MEMO_TTL = 24 * 3600.0
 _NAME_MEMO_MAX = 20_000
 _name_memo: dict[str, tuple[str, float]] = {}
 
-# Oracle_ids cuyas impresiones completas ya se descargaron en este proceso.
 _PRINTS_MEMO_TTL = 24 * 3600.0
 _prints_complete: dict[str, float] = {}
 
@@ -125,7 +116,6 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
     back_img: dict[str, str] = {}
     back_name = None
 
-    # Datos base de la carta (para tipo, coste, colores)
     mana_cost = card.get("mana_cost") or ""
     type_line = card.get("type_line") or ""
     colors = card.get("colors") or []
@@ -133,7 +123,6 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
     if is_double_faced(card):
         faces = card.get("card_faces", [])
         front_img = faces[0].get("image_uris", front_img) if faces else front_img
-        # En DFC, mana_cost/type/colors del frente están en la primera cara
         if faces:
             mana_cost = faces[0].get("mana_cost", mana_cost) or mana_cost
             type_line = faces[0].get("type_line", type_line) or type_line
@@ -394,8 +383,6 @@ async def resolve_cards(
             index_card(c)
             _memo_name(c.get("name", ""), c["id"])
 
-    # Pre-cachear las meld_result (bulk lookup) para que create_deck_from_entries
-    # pueda añadirlas sin más queries. Solo las que no estén ya en local.
     if meld_result_ids:
         have = set(
             (
@@ -461,8 +448,6 @@ async def create_deck_from_entries(
     """
     import json as _json
 
-    # Roles que siempre se importan: comandante y mazo principal.
-    # El resto (companion/sideboard/tokens/maybeboard) solo si include_extras=True.
     _CORE_ROLES = {"commander", "mainboard"}
 
     deck = Deck(
@@ -476,10 +461,6 @@ async def create_deck_from_entries(
 
     added_scryfall_ids: set[str] = set()
 
-    # --- OPTIMIZACIÓN: batch prefetch de ArtPreferences ---
-    # En lugar de N queries db.get(ArtPreference, oid), traemos todas de golpe
-    # con un WHERE ... IN (?). Un mazo commander tiene ~100 cartas → pasamos
-    # de 100 queries a 1.
     oracle_ids_needed = {
         e.get("oracle_id", "") for e in entries
         if e.get("resolved") and e.get("oracle_id")
@@ -518,9 +499,6 @@ async def create_deck_from_entries(
         if role == "commander":
             deck.commander_scryfall_id = chosen
 
-    # --- OPTIMIZACIÓN: prefetch batch de printings para detección de meld ---
-    # Necesitamos leer .layout y .related_parts de cada carta que se añadió.
-    # Antes: N queries db.get(PrintingCache, sfid). Ahora: 1 query WHERE IN.
     meld_results_added: set[str] = set()
     printings_map: dict[str, PrintingCache] = {}
     if added_scryfall_ids:
@@ -531,8 +509,6 @@ async def create_deck_from_entries(
         ).all()
         printings_map = {p.scryfall_id: p for p in rows}
 
-    # También pre-fetcheamos las meld_result que vayamos a necesitar. Los ids
-    # los sabemos leyendo related_parts de cada printing meld.
     meld_result_ids_needed: set[str] = set()
     for e in entries:
         if not e.get("resolved"):
@@ -560,8 +536,6 @@ async def create_deck_from_entries(
         ).all()
         meld_printings_map = {p.scryfall_id: p for p in rows}
 
-    # Auto-añadir meld_result: siempre, incluso sin include_extras
-    # (Brisela es parte del mazo tanto como Bruna).
     for e in entries:
         if not e.get("resolved"):
             continue
@@ -674,13 +648,9 @@ async def import_from_plaintext(
     Desktop y ahorra al usuario horas de confusión.
     """
     entries = parse_plain_decklist(text)
-    # El parser ya asigna roles según cabeceras `//Sideboard`, etc.
-    # (state machine). Solo aplicamos default para entradas sin rol
-    # explícito por retro-compatibilidad con parsers antiguos.
     for e in entries:
         e.setdefault("role", "mainboard")
 
-    # DFC pre-processing: revertir backs a fronts usando el cache local.
     await _revert_dfc_backs_to_fronts(db, entries)
 
     resolved = await resolve_cards(db, scryfall, entries)
@@ -713,24 +683,17 @@ async def _revert_dfc_backs_to_fronts(
 
     from mpc_forge.models import DFCPair
 
-    # Recolectamos los names únicos (case-insensitive) que necesitamos verificar.
     names_by_lower: dict[str, list[dict[str, Any]]] = {}
     for e in entries:
         n = (e.get("name") or "").strip()
         if not n or e.get("scryfall_id"):
             continue
-        # Si el nombre ya contiene " // " es un nombre DFC completo (ambas caras).
-        # Enviarlo a Scryfall tal cual es correcto — NO intentar revertirlo,
-        # porque sólo los nombres de BACK-face puro (sin //) son candidatos.
-        # Revertir "Zanarkand, Ancient Metropolis // Lasting Fayth" podría
-        # transformarlo erróneamente si el caché tiene datos inconsistentes.
         if " // " in n:
             continue
         names_by_lower.setdefault(n.lower(), []).append(e)
     if not names_by_lower:
         return
 
-    # Buscar los que aparecen como BACK en el cache. Un solo query IN.
     rows = (await db.execute(
         select(DFCPair.front_name, DFCPair.back_name).where(
             func.lower(DFCPair.back_name).in_(list(names_by_lower.keys()))
@@ -746,8 +709,6 @@ async def _revert_dfc_backs_to_fronts(
             revert_count += 1
 
     if revert_count > 0:
-        # No es un error — el user tenía una lista con backs y los normalizamos.
-        # Log en debug para no llenar la salida en imports masivos.
         import logging as _lg
         _lg.getLogger(__name__).info(
             "DFC pre-processing: revertidos %d backs a fronts vía cache local", revert_count,
@@ -791,9 +752,6 @@ async def import_from_url(
         raise ImportSiteError(f"{site_cls.name} devolvió una lista vacía")
 
     if not name:
-        # 1) Intentar obtener el nombre real del mazo desde el sitio.
-        #    retrieve_deck_name() reutiliza el payload ya cacheado por
-        #    retrieve_card_list (sin segundo fetch) cuando el sitio lo soporta.
         try:
             site_name = await site_cls.retrieve_deck_name(url)
         except Exception:
@@ -802,8 +760,6 @@ async def import_from_url(
         if site_name:
             name = site_name[:256]
         else:
-            # 2) Fallback: autogenerar a partir del último segmento de la URL.
-            #    Ej: https://www.moxfield.com/decks/AbCdEf → "Moxfield · AbCdEf"
             from urllib.parse import urlparse
             segments = [
                 s for s in (urlparse(url).path or "").split("/") if s and s.lower() != "decks"
@@ -837,20 +793,14 @@ async def try_localize_card(
     - hay un error de red
     """
     if lang == "en":
-        # Los printings ingleses son "el default" de Scryfall — no requiere lookup extra
         return await db.get(PrintingCache, scryfall_id)
 
     base = await db.get(PrintingCache, scryfall_id)
     if not base or not base.set_code or not base.collector_number:
         return None
-    # Si ya está en el idioma pedido, no hace falta llamar a Scryfall
     if base.lang == lang:
         return base
 
-    # ¿Ya lo tenemos cacheado bajo el mismo (set, collector_number, lang)?
-    # PrintingCache no está indexado por (set, number, lang) — hacemos scan.
-    # En la práctica hay pocas rows por oracle_id, así que compensa filtrar por
-    # oracle_id primero (que sí está indexado).
     if base.oracle_id:
         candidates = (
             await db.scalars(
@@ -905,9 +855,6 @@ async def localize_deck(
         )
     ).all()
 
-    # --- OPTIMIZACIÓN: batch prefetch de printings actuales ---
-    # Antes: db.get(PrintingCache, dc.scryfall_id) por cada carta (N queries).
-    # Ahora: 1 query WHERE IN para todas las de golpe.
     current_sfids = {dc.scryfall_id for dc in cards if not dc.custom_art_front_id}
     current_by_sfid: dict[str, PrintingCache] = {}
     if current_sfids:
@@ -925,7 +872,6 @@ async def localize_deck(
 
     for dc in cards:
         if dc.custom_art_front_id:
-            # Respetamos el arte custom del usuario — no cambiamos scryfall_id
             skipped_custom += 1
             continue
 
@@ -954,8 +900,6 @@ async def localize_deck(
     }
 
 
-# Oracle_ids por búsqueda al precargar. 15 mantiene la URL corta (~800
-# caracteres) y acota lo que se pierde si una búsqueda falla.
 PRINTS_BATCH_SIZE = 15
 
 
@@ -995,8 +939,6 @@ async def fetch_printings_for_oracle(
         return rows
 
     prints = await scryfall.prints_by_oracle_id(oracle_id)
-    # Se memoriza también una respuesta vacía: si Scryfall no conoce ese
-    # oracle_id, preguntar otra vez en cada apertura del mazo no lo arregla.
     _prints_complete[oracle_id] = time.monotonic()
     if prints:
         await upsert_printings(db, prints)

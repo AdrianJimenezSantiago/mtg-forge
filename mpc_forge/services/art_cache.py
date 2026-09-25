@@ -26,13 +26,8 @@ log = logging.getLogger(__name__)
 Face = Literal["front", "back"]
 Prefer = Literal["png", "large", "normal"]
 
-# CDN de Scryfall (cards.scryfall.io) tolera ~10 req/s antes de 429/403.
-# Interpretado como "espaciado mínimo entre inicios de descarga": permite
-# solapar respuestas y usar el ancho de banda real, respetando la cadencia.
 _DOWNLOAD_INTERVAL = 0.11
 
-# Concurrencia máxima de descargas simultáneas. Con 8 tenemos throughput
-# real cerca de 1/_DOWNLOAD_INTERVAL sin machacar el CDN.
 _DOWNLOAD_CONCURRENCY = 8
 
 
@@ -40,8 +35,6 @@ class ArtCache:
     """Descargador y dedupe de imágenes."""
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        # IMPORTANTE: `cards.scryfall.io` bloquea User-Agents por defecto de
-        # httpx / requests con 403. Debemos identificarnos explícitamente.
         self._client = client or httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,
@@ -55,22 +48,6 @@ class ArtCache:
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-    async def ensure(
-        self,
-        db: AsyncSession,
-        scryfall_id: str,
-        face: Face = "front",
-        prefer: Prefer = "png",
-    ) -> LocalArt | None:
-        """Descarga (si hace falta) y devuelve el ``LocalArt`` para un par
-        ``(scryfall_id, face)``. Commit implícito.
-
-        Para procesar muchas cartas de una tacada usa :meth:`ensure_many`, que
-        paraleliza descargas y hace un único commit final.
-        """
-        results = await self.ensure_many(db, [(scryfall_id, face)], prefer=prefer)
-        return results.get((scryfall_id, face))
 
     async def ensure_many(
         self,
@@ -90,9 +67,6 @@ class ArtCache:
              la cadencia del CDN y un ``Semaphore`` para acotar concurrencia).
           4. Escribe archivos y ``LocalArt`` de forma secuencial (misma sesión
              async → no se puede paralelizar) y hace UN commit al final.
-
-        Comparado con llamar ``ensure()`` en un bucle: ahorra ``2*N`` queries
-        de lookup, ``N`` commits, y compone las descargas en paralelo.
         """
         if not requests:
             return {}
@@ -161,8 +135,6 @@ class ArtCache:
 
         downloads = await asyncio.gather(*(_fetch(*t) for t in needs_download))
 
-        # Escritura de disco y BD: secuencial (aiosqlite serialize writes de
-        # todos modos, y AsyncSession no soporta uso concurrente).
         dirty = False
         for sfid, face, url, data in downloads:
             key = (sfid, face)
@@ -243,5 +215,4 @@ def _extension_for(url: str) -> str:
 
 
 def _hash_relpath(digest: str, ext: str) -> str:
-    # Sharding en dos niveles para no meter miles de archivos en una carpeta.
     return f"{digest[:2]}/{digest[2:4]}/{digest}{ext}"

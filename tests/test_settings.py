@@ -8,9 +8,6 @@ class TestSettingsRedesign:
         assert r.status_code == 200
         data = r.json()
         groups = sorted({d["group"] for d in data["definitions"]})
-        # 6 grupos: los 4 originales + "Ubicación de datos" (overrides de
-        # paths.*) + "Búsqueda avanzada" (settings de pHash cross-drive
-        # añadido en Fase 2 · T8).
         assert groups == [
             "Búsqueda avanzada", "General", "MPC Autofill",
             "Precios y envío", "Red y conexión", "Ubicación de datos",
@@ -36,7 +33,6 @@ class TestSettingsRedesign:
     async def test_ssl_insecure_toggle_propagates_to_runtime(self, client):
         from mpc_forge import ssl_config
 
-        # Estado inicial: False
         assert ssl_config.ssl_insecure() is False
 
         r = await client.put("/api/settings/", json={"values": {"ssl_insecure": True}})
@@ -56,14 +52,13 @@ class TestSettingsHTML:
         r = await client.get("/settings")
         assert r.status_code == 200
         html = r.text
-        # Pilares del rediseño
         for needle in [
-            'sticky top-0',           # header sticky
-            'x-model="searchQuery"',   # buscador global
-            'showDrivesModal',         # modal de drives
-            'Red y conexión',          # sección
-            'MPC Autofill',            # sección
-            'ssl_insecure',            # setting
-            'resetAll',                # botón restablecer
+            'sticky top-0',
+            'x-model="searchQuery"',
+            'showDrivesModal',
+            'Red y conexión',
+            'MPC Autofill',
+            'ssl_insecure',
+            'resetAll',
         ]:
             assert needle in html, f"Falta {needle!r} en settings.html"

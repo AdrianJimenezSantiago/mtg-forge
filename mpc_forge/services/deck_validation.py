@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 class IllegalCard:
     """Una carta que no se puede jugar en el formato del mazo."""
     name: str
-    status: str   # 'banned' | 'restricted' | 'not_legal'
+    status: str
     role: str
 
 
@@ -34,7 +34,7 @@ class DeckValidationResult:
     counted: int
     is_valid: bool
     message: str
-    level: str  # 'ok' | 'warn' | 'error'
+    level: str
     breakdown: dict[str, int]
     illegal: list[IllegalCard] = field(default_factory=list)
     """Cartas baneadas, restringidas o no legales en el formato.
@@ -46,11 +46,9 @@ class DeckValidationResult:
     """
 
 
-# Roles que cuentan para el "tamaño oficial" del mazo por formato.
-# Todo lo demás (companion, sideboard, maybeboard, tokens) queda fuera.
 _COUNTING_ROLES_BY_FORMAT: dict[str, set[str]] = {
     "commander": {"commander", "mainboard"},
-    "oathbreaker": {"commander", "mainboard"},  # 60 (Oathbreaker + Signature + 58)
+    "oathbreaker": {"commander", "mainboard"},
     "brawl": {"commander", "mainboard"},
     "standard": {"mainboard"},
     "modern": {"mainboard"},
@@ -73,14 +71,9 @@ _EXPECTED_BY_FORMAT: dict[str, int] = {
 }
 
 
-# Estados de Scryfall que impiden jugar la carta. `restricted` (Vintage) sí
-# permite jugarla, pero solo una copia: se reporta aparte porque el usuario
-# necesita saberlo aunque no sea un error de legalidad.
 _BLOCKING_STATUSES = {"banned", "not_legal"}
 _REPORTED_STATUSES = _BLOCKING_STATUSES | {"restricted"}
 
-# Roles cuyas cartas se comprueban. Maybeboard queda fuera: es una lista de
-# ideas, no parte del mazo.
 _LEGALITY_ROLES = {"commander", "mainboard", "sideboard", "companion"}
 
 
@@ -111,7 +104,6 @@ def check_legalities(
         try:
             legalities = json.loads(legalities_json)
         except (ValueError, TypeError):
-            # Un JSON corrupto en cache no debe romper la vista del mazo.
             log.debug("Legalidades ilegibles para %r", name)
             continue
         status = legalities.get(fmt)

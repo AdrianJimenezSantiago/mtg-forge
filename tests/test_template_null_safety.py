@@ -50,8 +50,6 @@ VIEWS = {
     "landing.html": "landing.js",
 }
 
-# Atributos de Alpine cuyo contenido es una expresión que se evalúa siempre,
-# aunque el elemento esté oculto por x-show.
 EAGER_ATTRS = ("x-text", "x-html", "x-model", ":class", ":style", ":href",
                ":src", ":value", ":disabled", "x-show")
 
@@ -114,18 +112,13 @@ def unsafe_dereferences(html: str, prop: str) -> list[str]:
         expression = match.group(2)
         if not deref.search(expression):
             continue
-        # `prop?.algo` es seguro.
         if re.search(r"\b" + re.escape(prop) + r"\?\.", expression):
             continue
-        # Guardas en línea dentro de la propia expresión, que también evitan
-        # la desreferencia: `prop && prop.x` y `prop ? prop.x : otra_cosa`.
-        # Son idiomáticas en Alpine y perfectamente correctas.
         inline_guard = re.compile(
             r"\b" + re.escape(prop) + r"\b\s*(&&|\?[^.])"
         )
         if inline_guard.search(expression):
             continue
-        # Dentro de un template x-if sobre esa misma propiedad, también.
         if any(start <= match.start() <= end for start, end in guarded):
             continue
         offenders.append(f'{match.group(1)}="{expression[:80]}"')
@@ -143,8 +136,6 @@ def test_no_unguarded_null_dereference(template, module):
     problems: list[str] = []
 
     for prop in sorted(nullable_properties(module)):
-        # Las privadas (guiones bajos) son referencias internas, no estado que
-        # la plantilla lea.
         if prop.startswith("_"):
             continue
         for offender in unsafe_dereferences(html, prop):

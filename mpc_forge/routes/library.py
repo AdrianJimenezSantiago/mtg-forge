@@ -34,8 +34,6 @@ def _csv_ints(value: str | None) -> list[int]:
         try:
             out.append(int(item))
         except ValueError:
-            # Un id no numérico en la query se ignora en vez de devolver 422:
-            # viene de la URL, que el usuario puede haber editado o compartido.
             continue
     return out
 
@@ -54,10 +52,6 @@ def _filters_from_query(
         tags_include=_csv(tags),
     )
 
-
-# ---------------------------------------------------------------------------
-# Biblioteca de arte
-# ---------------------------------------------------------------------------
 
 @router.get("/api/library/overview")
 async def library_overview(db: DbDep) -> dict[str, Any]:
@@ -154,15 +148,8 @@ async def library_variants() -> dict[str, Any]:
             "sorts": list(art_library.SORT_OPTIONS.keys())}
 
 
-# ---------------------------------------------------------------------------
-# Calibración de dúplex
-# ---------------------------------------------------------------------------
-
 class CalibrationRequest(BaseModel):
     """Lo que el usuario ha medido en la hoja impresa."""
-    # Rango generoso: si alguien mide 40 mm es que algo va muy mal, pero
-    # rechazarlo de plano no le ayuda a entender qué. El servicio devuelve un
-    # aviso en su lugar.
     measured_x_mm: float = Field(..., ge=-50, le=50)
     measured_y_mm: float = Field(..., ge=-50, le=50)
     flip_edge: Literal["long", "short"] = "long"
@@ -194,7 +181,6 @@ async def calibration_sheet(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado"
         )
-    # ReportLab es bloqueante; sin to_thread se congelaría el event loop.
     path = await asyncio.to_thread(
         calibration.build_sheet, None, page_size=page_size, flip_edge=flip_edge
     )
@@ -202,8 +188,5 @@ async def calibration_sheet(
         path,
         media_type="application/pdf",
         filename="calibracion-duplex.pdf",
-        # `no-store`: la hoja se regenera en cada petición según el tamaño y el
-        # borde de volteo elegidos, y servir una versión cacheada con la
-        # configuración anterior arruinaría la calibración en silencio.
         headers={"Cache-Control": "no-store"},
     )

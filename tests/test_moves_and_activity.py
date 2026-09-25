@@ -13,7 +13,6 @@ class TestMoveBetweenSections:
         assert r.json()["role"] == "sideboard"
 
     async def test_clear_role_removes_all_cards(self, client, deck):
-        # Movemos 2 cartas a sideboard
         for name in ["Sol Ring", "Command Tower"]:
             c = next(c for c in deck["cards"] if c["name"] == name)
             await client.patch(f"/api/decks/{deck['id']}/cards/{c['id']}",
@@ -40,12 +39,10 @@ class TestActivityTimeline:
         r = await client.get(f"/api/decks/{deck['id']}/activity")
         assert r.status_code == 200
         events = r.json()
-        # Al crear el mazo se emite deck_created
         assert len(events) >= 1
-        assert events[-1]["kind"] == "deck_created"  # el más antiguo
+        assert events[-1]["kind"] == "deck_created"
 
     async def test_activity_ordered_desc_by_date(self, client, deck):
-        # Encadenamos operaciones
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
         await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
                            json={"role": "sideboard"})
@@ -53,7 +50,6 @@ class TestActivityTimeline:
 
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         kinds = [e["kind"] for e in events]
-        # El más reciente primero, el más antiguo (creation) al final
         assert kinds[0] == "deck_renamed"
         assert kinds[1] == "card_moved"
         assert kinds[-1] == "deck_created"

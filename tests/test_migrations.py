@@ -78,7 +78,6 @@ class TestFreshDatabase:
             await conn.execute(text(
                 "CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT)"
             ))
-            # Sin fila schema_version → read_version devuelve None → BD nueva.
             report = await migrations.run(conn)
         assert report["fresh"] is True
         assert report["to_version"] == migrations.LATEST_VERSION
@@ -102,8 +101,6 @@ class TestLegacyAdoption:
 
     async def test_legacy_db_keeps_its_decks(self, tmp_path):
         db = tmp_path / "legacy.sqlite3"
-        # Simulamos una BD escrita por una versión vieja de la app: esquema
-        # mínimo, versión 3, y datos reales del usuario dentro.
         conn = sqlite3.connect(db)
         conn.executescript("""
             CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT);
@@ -126,7 +123,6 @@ class TestLegacyAdoption:
             report = await migrations.run(c)
         await engine.dispose()
 
-        # Los mazos siguen ahí. Esto es lo que el sistema antiguo destruía.
         conn = sqlite3.connect(db)
         names = [r[0] for r in conn.execute("SELECT name FROM decks ORDER BY id")]
         version = conn.execute(
@@ -180,7 +176,6 @@ class TestIncrementalUpgrade:
 
         assert report["to_version"] == migrations.LATEST_VERSION
         conn = sqlite3.connect(db)
-        # La migración 9 crea deck_snapshots y añade local_arts.thumb_path.
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
@@ -306,7 +301,5 @@ class TestNoDropAllRemains:
         source = (
             Path(__file__).parent.parent / "mpc_forge" / "migrations.py"
         ).read_text(encoding="utf-8")
-        # El módulo menciona drop_all en la documentación explicando por qué
-        # no lo usa; lo que no puede haber es una llamada real.
         assert "run_sync(Base.metadata.drop_all" not in source
         assert ".drop_all(" not in source

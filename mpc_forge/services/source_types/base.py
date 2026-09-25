@@ -39,7 +39,6 @@ from typing import ClassVar
 
 from mpc_forge.models import ArtSource
 
-# Registry poblado por ``__init_subclass__`` en cada subclase.
 _REGISTRY: dict[str, type[ArtSourceType]] = {}
 
 
@@ -48,9 +47,9 @@ class SourceFile:
     """Un archivo descubierto durante el listado. Estructura común que el
     indexer sabe cómo persistir independientemente del tipo de source.
     """
-    file_id: str            # identificador único DENTRO del source (path o gdrive file id)
-    filename: str           # nombre visible al usuario (incluida extensión)
-    folder_path: str = ""   # subruta relativa dentro del source (para tags jerárquicos)
+    file_id: str
+    filename: str
+    folder_path: str = ""
     size_bytes: int = 0
     mime_type: str = ""
 
@@ -62,8 +61,6 @@ class IndexProgress:
     """
     files_seen: int = 0
     folders_visited: int = 0
-    # Errores no fatales encontrados (ej. una subcarpeta que devolvió 403).
-    # No abortan el indexado, pero se reportan al final.
     warnings: list[str] = field(default_factory=list)
 
 
@@ -102,7 +99,6 @@ class ArtSourceType:
             raise TypeError(f"ArtSourceType subclass {cls.__name__} lacks `label`")
         _REGISTRY[cls.key] = cls
 
-    # --- API opcional -------------------------------------------------------
     @classmethod
     def validate_url(cls, url: str) -> str:
         """Normaliza y valida una URL para este tipo. Lanza ValueError si es
@@ -110,7 +106,6 @@ class ArtSourceType:
         """
         return url.strip()
 
-    # --- API obligatoria ---------------------------------------------------
     @classmethod
     def download_url(cls, source: ArtSource, file_id: str) -> str:
         raise NotImplementedError
@@ -132,7 +127,7 @@ class ArtSourceType:
         ``async def list_files(...)`` con ``yield``.
         """
         raise NotImplementedError
-        yield  # unreachable — para type check
+        yield
 
 
 def resolve(source_type: str) -> type[ArtSourceType] | None:

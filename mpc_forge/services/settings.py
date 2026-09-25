@@ -29,9 +29,6 @@ from mpc_forge.models import KeyValue
 log = logging.getLogger(__name__)
 
 
-# Snapshot cacheado en memoria del último ``get_all``. La app es single-process
-# y todos los writes pasan por ``set_many``, así que invalidar ahí basta para
-# mantener la coherencia. Ver ``get_all`` / ``set_many``.
 _cached_snapshot: dict[str, Any] | None = None
 
 SettingType = Literal["str", "float", "int", "bool", "json", "path"]
@@ -63,15 +60,10 @@ class SettingDef:
     """
 
 
-# Centinela para vaciar un secreto explícitamente desde la UI. Hace falta
-# porque "" ya significa "el usuario no ha tocado el campo".
-SECRET_CLEAR = "__CLEAR__"  # noqa: S105 — centinela, no una credencial
+SECRET_CLEAR = "__CLEAR__"  # noqa: S105
 
 
-# Registry de settings expuestos en la UI.
-# Los defaults se toman de config.py — si se cambia allí, se propaga al primer arranque.
 DEFINITIONS: list[SettingDef] = [
-    # --- General (impresión + preferencias de arte + idioma) ---
     SettingDef(
         key="default_cardstock",
         label="Stock por defecto",
@@ -127,7 +119,6 @@ DEFINITIONS: list[SettingDef] = [
         description="Al abrir la galería, activa el filtro «Sin borde» automáticamente.",
     ),
 
-    # --- Precios y envío ---
     SettingDef(
         key="usd_to_eur",
         label="Tipo de cambio USD → EUR",
@@ -156,7 +147,6 @@ DEFINITIONS: list[SettingDef] = [
         min_value=0.0, max_value=100.0,
     ),
 
-    # --- Red y conexión ---
     SettingDef(
         key="moxfield_user_agent",
         label="User-Agent para Moxfield",
@@ -192,7 +182,6 @@ DEFINITIONS: list[SettingDef] = [
         ),
     ),
 
-    # --- MPC Autofill ---
     SettingDef(
         key="mpc_autofill_exe_path",
         label="Ejecutable de MPC Autofill",
@@ -206,11 +195,6 @@ DEFINITIONS: list[SettingDef] = [
         ),
     ),
 
-    # --- Ubicación de datos ---
-    # Todos son opcionales. Si están vacíos (default), se usa la ruta bajo
-    # ``<install>/user-settings/<nombre>/``. Solo directorios de contenido —
-    # la BD siempre queda en ``<install>/user-settings/`` para evitar mover
-    # una BD con handles abiertos.
     SettingDef(
         key="paths.art_dir",
         label="Cache de artes (Scryfall)",
@@ -269,7 +253,6 @@ DEFINITIONS: list[SettingDef] = [
             "de fichero desde el editor. Vacío = usa el default junto al ejecutable."
         ),
     ),
-    # --- Búsqueda avanzada (Fase 2 · T8) ---
     SettingDef(
         key="phash.enabled",
         label="Detectar imágenes duplicadas (pHash)",
@@ -313,9 +296,6 @@ def _coerce(sd: SettingDef, raw: str) -> Any:
     if sd.type == "json":
         return json.loads(raw)
     if sd.type == "path":
-        # Guardamos el path como string tal cual — la validación real (existencia
-        # del padre, permisos de escritura) la hace Paths.with_overrides() al
-        # aplicarlo. Aquí solo aseguramos que sea un string sin espacios laterales.
         return raw.strip()
     return raw
 
@@ -326,9 +306,6 @@ def _serialize(sd: SettingDef, value: Any) -> str:
     if sd.type == "json":
         return json.dumps(value, ensure_ascii=False)
     if sd.type == "path":
-        # Normalizamos: strip + collapse de espacios. NO resolvemos absolute path
-        # aquí para respetar exactamente lo que el usuario escribió (útil para
-        # ver "vacío" vs "ruta explícita").
         return str(value).strip()
     return str(value)
 
@@ -383,9 +360,6 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
             if text == SECRET_CLEAR:
                 value = ""
             elif not text:
-                # Cadena vacía = "el usuario no tocó el campo". La UI recibe
-                # "" al leer, así que un PUT ingenuo del formulario completo
-                # borraría la credencial sin querer.
                 continue
             else:
                 value = text
@@ -451,23 +425,12 @@ def apply_to_config(values: dict[str, Any]) -> None:
         elif key == "google_api_key":
             cfg.GOOGLE_API_KEY = str(value).strip()
         elif key == "ssl_insecure":
-            # Propaga al módulo ssl_config, que combina este flag con la env var.
-            # Cambiar en runtime marca el flag pero NO reconfigura los clientes
-            # HTTPX ya instanciados — la UI advierte que hace falta reiniciar.
             from mpc_forge import ssl_config as _ssl
             _ssl.set_runtime_insecure(bool(value))
-        # foil_default, prefer_*, preferred_language los consume solo el frontend.
 
-    # --- Paths personalizables ---
-    # Se procesan aparte porque cambiar cualquiera implica recomponer cfg.PATHS
-    # entero con with_overrides(). Solo lo hacemos si hay al menos un path.* en
-    # los updates (evita rebuild innecesario cuando el usuario solo tocó, por
-    # ejemplo, el tipo de cambio USD→EUR).
     path_keys = {"paths.art_dir", "paths.custom_art_dir", "paths.exports_dir",
                  "paths.backups_dir", "paths.cardbacks_dir"}
     if path_keys & values.keys():
-        # Partimos SIEMPRE de los defaults (no del cfg.PATHS actual). Así, si el
-        # usuario acaba de vaciar un override, restauramos su default correctamente.
         base = cfg.Paths.default()
         cfg.PATHS = base.with_overrides(
             art_dir=values.get("paths.art_dir") or None,

@@ -1,9 +1,3 @@
-// Comprueba que, en la vista previa de PDF Studio, cada carta y cada
-// placeholder (p. ej. "Cardback" sin imagen) caen exactamente sobre una guía
-// de corte, para todas las combinaciones de sangrado, separación, offset de
-// reversos y espejado dúplex. Lo ejecuta tests/test_pdf_preview_alignment.py.
-//
-// Uso: node pdf_preview_alignment.mjs static/js/pdf-studio.js
 import fs from 'fs'; import vm from 'vm';
 const src = fs.readFileSync(process.argv[2], 'utf8');
 const ctx = { window: { _t: k => k }, console, localStorage: { getItem(){return null}, setItem(){} } };

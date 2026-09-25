@@ -1,30 +1,3 @@
-/**
- * Historial y línea de tiempo
- *
- * Extraído de `templates/history.html`, donde vivía como un bloque `<script>`
- * de 328 líneas. La lógica es idéntica: solo ha cambiado de fichero.
- *
- * Las funciones que Alpine necesita resolver desde los atributos `x-data` del
- * HTML se publican en `window` al final del módulo. Es deliberado: Alpine
- * evalúa `x-data` como una expresión en el ámbito global, así que un `export`
- * por sí solo no basta.
- *
- * Regenerar con:  python scripts/extract_inline_js.py
- */
-// ============================================================================
-// PÁGINA DE HISTORIAL
-// ============================================================================
-// Toda la vista es un componente Alpine. Los datos se cargan vía fetch a los
-// tres endpoints: /api/decks/_/with-activity, /api/runs y /api/decks/{id}/activity.
-//
-// El renderizado del timeline usa una tabla de metadata (KIND_META) por tipo
-// con icono, tono (color) y renderer opcional. Los eventos sin renderer caen
-// al summary pre-computado por el backend — así añadir un tipo nuevo solo
-// requiere una entrada en KIND_META y un caso en el backend.
-// ============================================================================
-
-// Escape de HTML — usado en TODOS los renderers para no inyectar el payload
-// crudo (viene del usuario indirectamente: nombres de mazo, de carta, etc.)
 function esc(s) {
   if (s == null) return '';
   return String(s)
@@ -32,8 +5,6 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// Metadata por tipo de evento. Añadir uno nuevo: agrega entrada aquí + emite
-// desde el backend con el mismo string. Sin renderer → usa event.summary.
 function buildKindMeta() {
   const _t = window._t || ((k) => k);
   return {
@@ -151,8 +122,6 @@ function buildKindMeta() {
   };
 }
 
-// FILTER_GROUPS se construye lazy la primera vez que se llama a historyPage()
-// para que _t() ya tenga window._T disponible.
 function buildFilterGroups() {
   const _t = window._t || ((k) => k);
   return [
@@ -165,7 +134,6 @@ function buildFilterGroups() {
   ];
 }
 
-
 function historyPage() {
   const KIND_META = buildKindMeta();
   const FILTER_GROUPS = buildFilterGroups();
@@ -174,7 +142,6 @@ function historyPage() {
     decks: [],
     runs: [],
 
-    // Modal timeline
     timelineOpen: false,
     timelineDeck: null,
     timelineLoading: false,
@@ -183,8 +150,6 @@ function historyPage() {
 
     filterOptions: FILTER_GROUPS.map(g => ({ ...g, count: undefined })),
 
-    // Undo. Cargamos la lista de kinds reversibles al montar (una única vez).
-    // Fallback pesimista: si el fetch falla, ninguno es reversible.
     undoableKinds: [],
     undoingEventId: null,
 
@@ -192,7 +157,6 @@ function historyPage() {
       return this.decks.reduce((sum, d) => sum + (d.activity_count || 0), 0);
     },
 
-    // El filtro se computa client-side sobre el array ya cargado.
     get filteredActivity() {
       const g = FILTER_GROUPS.find(f => f.value === this.activeFilter);
       if (!g || !g.kinds) return this.activity;
@@ -231,7 +195,6 @@ function historyPage() {
         window.toast && window.toast(window._t('history_error_timeline'), e.message);
       } finally {
         this.timelineLoading = false;
-        // Actualizar counts en las pills de filtro
         this.filterOptions = FILTER_GROUPS.map(g => ({
           ...g,
           count: g.kinds === null ? this.activity.length
@@ -246,8 +209,6 @@ function historyPage() {
       this.timelineDeck = null;
       this.activity = [];
     },
-
-    // ---- Helpers de render ----
 
     iconForKind(kind) {
       return (KIND_META[kind] && KIND_META[kind].icon) || 'circle';
@@ -280,7 +241,6 @@ function historyPage() {
       return esc(ev.summary || ev.kind);
     },
 
-    // ---- Undo ----
     canUndo(ev) {
       if (!this.undoableKinds.includes(ev.kind)) return false;
       if (ev.payload && ev.payload.undone_event_id) return false;
@@ -316,7 +276,6 @@ function historyPage() {
       }
     },
 
-    // Relative time — locale-aware via window._LANG
     relativeTime(iso) {
       if (!iso) return '';
       const then = new Date(iso).getTime();
@@ -339,10 +298,6 @@ function historyPage() {
   };
 }
 
-
-// --- Puente con Alpine -------------------------------------
-// Alpine resuelve las expresiones de `x-data` contra el ámbito
-// global, así que estas funciones tienen que estar en `window`.
 window.buildFilterGroups = buildFilterGroups
 window.buildKindMeta = buildKindMeta
 window.esc = esc

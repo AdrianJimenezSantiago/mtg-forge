@@ -21,42 +21,12 @@ import pytest
 
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 
-# Escala de tiempos: fracción de los valores reales. A escalas menores el
-# jitter del event loop (pocos ms) se come el margen de seguridad del cliente y
-# el test mediría el scheduler de Python, no la lógica de reserva.
-#
-# En Windows hay que multiplicar la escala. El temporizador por defecto del
-# sistema tiene una granularidad de ~15,6 ms, así que con GENERAL = 20 ms y un
-# 5 % de tolerancia el margen real era de UN milisegundo: dos peticiones
-# separadas correctamente podían aterrizar en el mismo tick del reloj y el
-# servidor falso las contaba como violación, devolviendo 429 y haciendo fallar
-# el test por un problema de resolución del reloj, no del código.
-#
-# Con x5 los huecos quedan muy por encima de esa granularidad. Cuesta unos
-# segundos más en Windows y es el único sitio de la suite donde la plataforma
-# cambia una constante.
-# x5 en Windows (granularidad del temporizador ~15,6 ms) y x2 en el resto.
-# El x2 no es cosmético: con GENERAL a 20 ms el margen absoluto eran 2 ms, y
-# el test fallaba de forma intermitente al ejecutarse dentro de la suite
-# completa —donde hay contención de CPU— aunque pasara siempre en aislado.
-# Un test que solo falla acompañado es peor que uno lento.
 _SCALE = 5 if sys.platform == "win32" else 2
 
-HEAVY = 0.10 * _SCALE       # real: 0.5 s
-GENERAL = 0.02 * _SCALE     # real: 0.1 s
-COOLDOWN = 0.3 * _SCALE     # real: 30 s
+HEAVY = 0.10 * _SCALE
+GENERAL = 0.02 * _SCALE
+COOLDOWN = 0.3 * _SCALE
 
-# Presupuesto de ruido del planificador, en segundos absolutos.
-#
-# El cliente reserva su hueco correctamente, pero entre la reserva y el
-# momento en que la corrutina llega a enviar de verdad puede pasar un rato: si
-# la petición N se retrasa 40 ms y la N+1 no, ambas llegan al servidor más
-# juntas de lo que el cliente pretendía. Eso NO es un fallo del limitador.
-#
-# Expresarlo como milisegundos absolutos en vez de como un porcentaje del
-# hueco dice lo que de verdad se está tolerando, y no se descuadra si mañana
-# se cambia la escala de tiempos. Una violación real es de espaciado ~0, muy
-# por debajo de este margen, así que el test sigue detectándolas.
 JITTER = 0.06 if sys.platform == "win32" else 0.008
 
 
@@ -90,7 +60,6 @@ class FakeScryfall:
             self.force_429 -= 1
             self.blocked_until = now + self.cooldown
             return self._limited()
-        # Se descuenta JITTER (ver arriba) del hueco exigido.
         if path in HEAVY_PATHS:
             if now - self.last_heavy < self.heavy - JITTER:
                 self.violations += 1
@@ -158,7 +127,6 @@ class TestTieredLimits:
         start = time.monotonic()
         await asyncio.gather(*(sc.named(f"card {i}") for i in range(5)))
         elapsed = time.monotonic() - start
-        # 5 peticiones → 4 huecos pesados como mínimo.
         assert elapsed >= 4 * HEAVY
         assert server.rate_limited == 0
         await sc.aclose()
@@ -189,7 +157,6 @@ class TestRateLimitCooldown:
         elapsed = time.monotonic() - start
         assert all(r.get("id") for r in results)
         assert elapsed >= COOLDOWN
-        # Solo el 429 forzado: nadie siguió disparando durante el bloqueo.
         assert server.rate_limited == 1
         assert sc.stats["rate_limited"] == 1
         await sc.aclose()
@@ -240,15 +207,10 @@ class TestDeduplication:
         sc = make_client(server)
         idents = [{"name": "Sol Ring"}] * 80 + [{"name": "Arcane Signet"}]
         out = await sc.collection(idents)
-        # 81 identificadores, 2 únicos → 1 petición en vez de 2.
         assert server.calls.count("/cards/collection") == 1
         assert len(out) == 2
         await sc.aclose()
 
-
-# ---------------------------------------------------------------------------
-# Import: resolución desde caché local
-# ---------------------------------------------------------------------------
 
 class _CountingScryfall:
     """Envuelve el fake de conftest contando identificadores enviados."""
@@ -385,7 +347,6 @@ class TestTieredRateLimiter:
         now = frozen["now"]
         assert lim.reserve(True) == now
         assert lim.reserve(True) == pytest.approx(now + 0.5)
-        # Una ligera no espera a la segunda pesada: entra en el hueco.
         assert lim.reserve(False) == pytest.approx(now + 0.1)
 
 
@@ -418,10 +379,9 @@ class TestBatchedPreload:
         monkeypatch.setattr(deck_service, "PRINTS_BATCH_SIZE", 2)
         state = await preloader.start(deck["id"], counting)
         await state.task
-        assert sorted(len(b) for b in batches) == [1, 2]      # 3 cartas → 2 búsquedas
+        assert sorted(len(b) for b in batches) == [1, 2]
         assert state.done == state.total == 3
 
-        # Segunda apertura del mazo: todo en memoria, cero búsquedas.
         batches.clear()
         state = await preloader.start(deck["id"], counting)
         await state.task

@@ -23,10 +23,6 @@ log = logging.getLogger(__name__)
 
 SSL_INSECURE_ENV = "MPC_FORGE_INSECURE_SSL"
 
-# Flag runtime alimentado desde settings.apply_to_config. Se combina con la
-# env var: cualquiera de las dos "on" desactiva la verificación. Así el
-# usuario puede alternar desde la UI sin tocar variables de entorno, y el
-# admin puede seguir imponiendo el modo insecure desde el sistema si quiere.
 _runtime_insecure: bool = False
 
 

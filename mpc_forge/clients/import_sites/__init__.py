@@ -21,9 +21,6 @@ from .mtggoldfish import MTGGoldfishSite
 from .scryfall import ScryfallSite
 from .tappedout import TappedOutSite
 
-# El registro se rellena por side effect en cada import de arriba. Las clases
-# están declaradas con ``__auto_register__ = True`` en base.py, así al definirse
-# se añaden ellas mismas al REGISTRY del módulo base.
 _REGISTRY = get_registry()
 
 
@@ -38,12 +35,10 @@ def resolve_site(url: str) -> type[ImportSite] | None:
         return None
     if not host:
         return None
-    # Match exacto primero
     for site_cls in _REGISTRY:
         for h in site_cls.host_names:
             if host == h.lower():
                 return site_cls
-    # Match ignorando www.
     stripped = host[4:] if host.startswith("www.") else host
     for site_cls in _REGISTRY:
         for h in site_cls.host_names:
@@ -74,7 +69,6 @@ __all__ = [
     "ImportSiteError",
     "InvalidURLError",
     "MTGGoldfishSite",
-    # Sitios individuales (uso puntual)
     "MoxfieldSite",
     "ScryfallSite",
     "TappedOutSite",

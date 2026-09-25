@@ -1,38 +1,21 @@
-/**
- * Pantalla de inicio
- *
- * Extraído de `templates/index.html`, donde vivía como un bloque `<script>`
- * de 205 líneas. La lógica es idéntica: solo ha cambiado de fichero.
- *
- * Las funciones que Alpine necesita resolver desde los atributos `x-data` del
- * HTML se publican en `window` al final del módulo. Es deliberado: Alpine
- * evalúa `x-data` como una expresión en el ámbito global, así que un `export`
- * por sí solo no basta.
- *
- * Regenerar con:  python scripts/extract_inline_js.py
- */
 function importPanel() {
   return {
-    // ---- URL import unificado (Moxfield, Archidekt, TappedOut, MTGGoldfish, Scryfall, CubeCobra) ----
     urlInput: '',
     includeExtrasUrl: false,
-    supportedSites: [],           // [{key, name, example_url, host_names}]
+    supportedSites: [],
     urlPlaceholder: 'https://www.moxfield.com/decks/XXXXXXXXXX',
 
-    // ---- Plain text ----
     deckName: '',
     deckText: '',
     includeExtrasText: false,
 
     loading: false,
 
-    // Reporte de cartas no importadas — se muestra en un modal tras el import
-    // cuando hay al menos una entrada que Scryfall no resolvió.
     unresolvedModal: {
       open: false,
       deckId: null,
       deckName: '',
-      unresolved: [],  // [{name, quantity, raw_line, set, number, reason}]
+      unresolved: [],
       resolvedCount: 0,
       totalEntries: 0,
     },
@@ -42,17 +25,13 @@ function importPanel() {
         const r = await fetch('/api/decks/import/supported-sites');
         if (!r.ok) return;
         this.supportedSites = await r.json();
-        // Rotamos el placeholder entre ejemplos cada vez que se carga la home.
         if (this.supportedSites.length > 0) {
           const pick = this.supportedSites[Math.floor(Math.random() * this.supportedSites.length)];
           if (pick.example_url) this.urlPlaceholder = pick.example_url;
         }
-      } catch (e) { /* silent — el import sigue funcionando aunque no pintemos chips */ }
+      } catch (e) {}
     },
 
-    // Getter: nombre del sitio detectado en el input, o null si no matchea.
-    // Detección puramente local (mismo criterio que resolve_site en backend),
-    // sirve solo para dar feedback visual antes del submit.
     get urlSiteHint() {
       const raw = (this.urlInput || '').trim();
       if (!raw) return null;
@@ -72,9 +51,6 @@ function importPanel() {
     },
 
     async _handleImportResult(data) {
-      // data = ImportResult (schema del backend). Si hay no-resueltas, abre
-      // el modal para que el usuario las revise antes de navegar al mazo.
-      // Si todo salió bien, navega directamente.
       if (data.unresolved && data.unresolved.length > 0) {
         this.unresolvedModal = {
           open: true,
@@ -131,9 +107,6 @@ function importPanel() {
     },
 
     _unresolvedAsText() {
-      // Reconstruye una lista pegable con la línea original si la teníamos
-      // (import de texto), o "N Nombre" si venía de una URL (Moxfield,
-      // Archidekt, etc.).
       return this.unresolvedModal.unresolved.map(u => {
         if (u.raw_line) return u.raw_line;
         return `${u.quantity} ${u.name}`;
@@ -164,9 +137,6 @@ function importPanel() {
     },
 
     closeUnresolvedAndReload() {
-      // El mazo se ha creado igual (con las cartas que sí resolvieron), así que
-      // refrescamos la lista principal para que aparezca. El usuario puede
-      // entrar a editarlo cuando quiera.
       this.unresolvedModal.open = false;
       window.location.reload();
     },
@@ -216,9 +186,5 @@ function deckListActions() {
   }
 }
 
-
-// --- Puente con Alpine -------------------------------------
-// Alpine resuelve las expresiones de `x-data` contra el ámbito
-// global, así que estas funciones tienen que estar en `window`.
 window.deckListActions = deckListActions
 window.importPanel = importPanel

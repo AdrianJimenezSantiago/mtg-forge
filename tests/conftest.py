@@ -25,16 +25,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-# --- Redirigir directorios de datos ANTES de importar la app ---
-# La app lee PATHS al importar; si no reasignamos antes, escribiría en la
-# carpeta real del usuario. Hacemos esto a nivel de módulo para que los
-# imports posteriores (fixtures, tests) vean los paths correctos.
 _TMP_ROOT = Path(tempfile.mkdtemp(prefix="mtgforge_pytest_"))
 os.environ["APPDATA"] = str(_TMP_ROOT)
 os.environ["XDG_DATA_HOME"] = str(_TMP_ROOT)
 
-# Asegurar que el package raíz está en sys.path (permite ejecutar `pytest`
-# desde la raíz del proyecto sin instalarlo).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -65,15 +59,12 @@ def _init_paths() -> Paths:
 
 PATHS = _init_paths()
 
-# Reload de db.py para que capture el path nuevo (el engine se crea al import).
 import importlib
 
 import mpc_forge.db as _db_mod
 
 importlib.reload(_db_mod)
 
-
-# --- Datos de prueba compartidos ---
 
 def _card_stub(name: str, sfid: str, cn: str, set_code: str = "c21", **overrides):
     """Genera un dict con la forma que devolvería Scryfall para una carta.
@@ -97,12 +88,11 @@ def _card_stub(name: str, sfid: str, cn: str, set_code: str = "c21", **overrides
     return base
 
 
-# Set canónico de cartas de prueba. Los tests pueden asumir que estas existen.
 SAMPLE_CARDS: dict[str, dict] = {
     "Sol Ring": _card_stub("Sol Ring", "sr-en", "263"),
     "Sol Ring ES": _card_stub(
         "Anillo solar", "sr-es", "263",
-        oracle_id="oracle-sol-ring",  # mismo oracle, distinta lang
+        oracle_id="oracle-sol-ring",
         lang="es",
     ),
     "Sol Ring ALT": _card_stub("Sol Ring", "sr-alt", "999", set_code="mps"),
@@ -137,7 +127,7 @@ def fake_scryfall():
 
     async def collection(idents):
         out = []
-        seen: set[str] = set()  # evita duplicar Sol Ring cuando llegan varios formatos
+        seen: set[str] = set()
         for i in idents:
             name = (i.get("name") or "").lower().strip()
             sfid = i.get("id")
@@ -153,13 +143,12 @@ def fake_scryfall():
     async def by_set_and_number(set_code: str, number: str, lang: str | None = None):
         for v in SAMPLE_CARDS.values():
             if v["set"] == set_code and v["collector_number"] == number:
-                # Si piden lang específico, buscamos otra versión del mismo (set, num)
                 if lang and v["lang"] != lang:
                     for v2 in SAMPLE_CARDS.values():
                         if (v2["set"] == set_code and v2["collector_number"] == number
                                 and v2["lang"] == lang):
                             return v2
-                    return {}  # no hay versión localizada
+                    return {}
                 return v
         return {}
 
@@ -211,7 +200,6 @@ async def client(fake_scryfall) -> AsyncIterator:
     from mpc_forge.db import Base, engine, init_db
     from mpc_forge.services.art_cache import ArtCache
 
-    # Reset limpio de la BD entre tests
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await init_db()
@@ -222,11 +210,6 @@ async def client(fake_scryfall) -> AsyncIterator:
     app.state.art_cache = ArtCache()
 
     transport = ASGITransport(app=app)
-    # base_url con un host real (no "http://test"): `LocalhostGuardMiddleware`
-    # valida la cabecera Host para cerrar el DNS rebinding, y un host inventado
-    # se rechaza con 400 — igual que lo haría en producción. Mantener aquí un
-    # host permitido hace que los tests ejerciten el mismo camino que el
-    # navegador del usuario.
     async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8765") as ac:
         yield ac
 

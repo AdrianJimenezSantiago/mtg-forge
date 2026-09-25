@@ -1,8 +1,5 @@
 name: Release
 
-# Se dispara cuando pusheas un tag v*, ej:
-#   git tag v1.0.0 && git push origin v1.0.0
-# También se puede lanzar manualmente desde la pestaña Actions.
 on:
   push:
     tags:
@@ -10,11 +7,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # necesario para crear la release y subir assets
+  contents: write
 
 jobs:
-  # Gate de calidad: una release nunca debe publicarse con los tests en rojo.
-  # Antes este workflow compilaba y publicaba sin ejecutar ni un test.
   test:
     name: Tests antes de publicar
     runs-on: windows-latest
@@ -24,15 +19,6 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      # `shell: bash` explícito. En los runners de Windows el shell por defecto
-      # es PowerShell, que NO aborta cuando falla un comando intermedio de un
-      # bloque multilínea: solo cuenta el código de salida del último. Un fallo
-      # del `pip install` del lockfile quedaba enmascarado por el `pip install
-      # pytest` siguiente, el paso salía en VERDE, y el error real aparecía
-      # después disfrazado de ModuleNotFoundError en pytest.
-      #
-      # `shell: bash` en Actions implica `set -eo pipefail`, así que el paso
-      # falla en el primer comando que devuelva error.
       - name: Install dependencies
         shell: bash
         run: |
@@ -41,9 +27,6 @@ jobs:
           pip install pytest pytest-asyncio
 
       - name: Verificar dependencias
-        # Comprobación barata y explícita: si el lockfile no llegó a aplicarse,
-        # lo dice aquí con un mensaje claro en vez de salir enterrado en el
-        # traceback de pytest.
         shell: bash
         run: python -c "import sqlalchemy, fastapi, PIL, reportlab; print('deps OK')"
 
@@ -56,8 +39,6 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
-      # Sin fail-fast: si el build de macOS falla, el de Windows (que es la
-      # plataforma principal de distribución) debe publicarse igualmente.
       fail-fast: false
       matrix:
         include:
@@ -81,12 +62,6 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        # `--require-hashes` contra el lockfile: dos builds del mismo tag
-        # llevan exactamente las mismas versiones, y un paquete alterado en
-        # PyPI no llega a una release.
-        #
-        # `shell: bash` para que un fallo aquí rompa el paso también en el
-        # runner de Windows (ver la nota del job `test`).
         shell: bash
         run: |
           python -m pip install --upgrade pip
@@ -99,9 +74,6 @@ jobs:
           node-version: '22'
 
       - name: Compilar assets locales
-        # static/vendor/ está versionado, pero lo regeneramos aquí para
-        # garantizar que el .exe lleva un CSS coherente con los templates
-        # actuales aunque alguien olvidara recompilarlo al hacer el commit.
         shell: bash
         run: |
           npm ci
@@ -109,10 +81,6 @@ jobs:
           npm run build:css
 
       - name: Build with PyInstaller
-        # "python -m PyInstaller" (misma razón que en build.ps1): más robusto
-        # que llamar "pyinstaller" si Scripts/ no está en el PATH. La spec
-        # detecta la plataforma sola (icono condicional, BUNDLE en macOS).
-        # shell: bash en los tres runners para no duplicar el paso.
         shell: bash
         run: |
           python -m PyInstaller \
@@ -152,8 +120,6 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ASSET="MPC-Forge-${VERSION}-${{ matrix.asset_suffix }}.zip"
           cd packaging/dist
-          # `ditto` en lugar de `zip`: preserva los atributos extendidos del
-          # .app, sin los cuales macOS lo trata como una carpeta y no se abre.
           if [ -d "MPC Forge.app" ]; then
             ditto -c -k --sequesterRsrc --keepParent "MPC Forge.app" "$ASSET"
           else
@@ -167,21 +133,12 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           ASSET="MPC-Forge-${VERSION}-${{ matrix.asset_suffix }}.tar.gz"
-          # tar.gz en vez de zip: conserva el bit de ejecución, que zip pierde
-          # y obligaría al usuario a hacer `chmod +x` a mano.
           tar -czf "packaging/dist/${ASSET}" -C packaging/dist MPC-Forge
           echo "ASSET_NAME=$ASSET" >> "$GITHUB_ENV"
 
       - name: Smoke test del binario
-        # Comprobación mínima de que arranca de verdad. El fallo clásico de
-        # PyInstaller es compilar bien y morir al abrir por un hiddenimport
-        # que falta: eso solo se ve ejecutándolo.
         shell: bash
         env:
-          # Cinturón y tirantes: el launcher acepta --port, pero también
-          # respeta esta variable. Si alguien vuelve a tocar el parseo de
-          # argumentos, el puerto sigue siendo el correcto y el fallo se ve
-          # como lo que es en vez de como "no responde".
           MPC_FORGE_PORT: '8791'
         run: |
           set -u
@@ -193,9 +150,6 @@ jobs:
             BIN="packaging/dist/MPC-Forge/MPC-Forge"
           fi
 
-          # `--no-browser` importa: sin él el launcher abre el navegador del
-          # sistema, que en un runner headless es ruido y en macOS puede
-          # tardar en dar el control.
           "$BIN" --no-browser --port 8791 > smoke.log 2>&1 &
           PID=$!
 
@@ -216,11 +170,6 @@ jobs:
           kill "$PID" 2>/dev/null || true
           wait "$PID" 2>/dev/null || true
 
-          # El log del binario SIEMPRE se vuelca. Sin esto, un arranque fallido
-          # solo dejaba "no respondió en 45s", que no dice nada: la primera
-          # versión de este paso pasaba --port a un launcher que ni siquiera
-          # parseaba argumentos, así que el servidor escuchaba en 8765 y el
-          # curl fallaba para siempre sin ninguna pista en el log.
           echo "--- salida del binario ---"
           cat smoke.log || true
 

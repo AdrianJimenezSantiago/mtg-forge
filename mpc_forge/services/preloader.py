@@ -42,7 +42,6 @@ class PreloadState:
     total: int = 0
     done: int = 0
     in_progress: bool = False
-    # El task no se serializa; solo lo usamos internamente para cancelar.
     task: asyncio.Task[Any] | None = field(default=None, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,7 +53,6 @@ class PreloadState:
         }
 
 
-# Registro global: deck_id → estado. Vive lo que viva el proceso.
 _states: dict[int, PreloadState] = {}
 
 
@@ -92,9 +90,6 @@ async def cancel(deck_id: int) -> None:
 
 _PRELOAD_CONCURRENCY = 3
 
-# Semáforo compartido por todas las precargas. Se crea perezosamente y ligado
-# al event loop en curso (asyncio.Semaphore no puede cruzar loops, algo que sí
-# ocurre entre tests).
 _semaphore: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
 
 

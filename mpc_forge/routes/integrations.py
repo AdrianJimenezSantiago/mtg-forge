@@ -37,10 +37,6 @@ router = APIRouter(prefix="/api", tags=["integrations"])
 DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-# ============================================================================
-# MPC Autofill desktop tool (chilli-axe)
-# ============================================================================
-
 class AutofillStatusResponse(BaseModel):
     available: bool
     exe_path: str | None = None
@@ -87,10 +83,6 @@ async def autofill_launch(payload: AutofillLaunchRequest) -> dict[str, Any]:
     return {"launched": True, "pid": pid, "xml_path": str(xml_path)}
 
 
-# ============================================================================
-# Art Sources (gestión manual de drives comunitarios)
-# ============================================================================
-
 class ArtSourceView(BaseModel):
     id: int
     name: str
@@ -99,7 +91,7 @@ class ArtSourceView(BaseModel):
     description: str
     tags: list[str]
     pinned: bool
-    indexed_at: str | None = None       # ISO8601 o None
+    indexed_at: str | None = None
     indexed_files: int = 0
     index_error: str = ""
 
@@ -198,10 +190,6 @@ async def catalog_info() -> CatalogInfoResponse:
     return CatalogInfoResponse(total_curated=art_sources.catalog_size())
 
 
-# ============================================================================
-# Indexado + búsqueda fuzzy de arte en Google Drives
-# ============================================================================
-
 class IndexResponse(BaseModel):
     source_id: int
     files_added: int
@@ -222,7 +210,6 @@ async def _run_index_task(source_id: int) -> None:
             await gdrive_indexer.index_source(db, source_id)
     except Exception as e:
         log.exception("Fallo indexando source %d", source_id)
-        # Segundo intento: marcar el source con el error en su propia sesión.
         try:
             from datetime import datetime
 
@@ -257,7 +244,6 @@ async def index_source(
             used_api_key=result.used_api_key,
             error=result.error,
         )
-    # Async: lanzamos y devolvemos "iniciado"
     background.add_task(_run_index_task, source_id)
     return IndexResponse(
         source_id=source_id, files_added=0, files_updated=0,
@@ -272,13 +258,6 @@ async def clear_index(source_id: int, db: DbDep) -> dict:
     n = await gdrive_indexer.clear_index(db, source_id)
     return {"deleted": n}
 
-
-# ============================================================================
-# Indexado en batch con cola centralizada
-# ============================================================================
-# Reemplaza el patrón de N requests independientes que causaba "database is
-# locked" y excedía la cuota de Google Drive API. Un único worker procesa
-# los drives secuencialmente; el frontend hace polling de progreso.
 
 class IndexBatchRequest(BaseModel):
     """Lista de source_ids a indexar en batch."""
@@ -319,7 +298,6 @@ async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchRespon
 
     queue = _get_index_queue()
 
-    # Si ya hay un batch corriendo, no permitir otro
     if queue.is_running():
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -327,14 +305,12 @@ async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchRespon
             "con POST /drives/index-cancel.",
         )
 
-    # Cargar los sources para filtrar según el modo y obtener nombres
     sources_by_id: dict[int, ArtSource] = {}
     for sid in payload.source_ids:
         src = await db.get(ArtSource, sid)
         if src:
             sources_by_id[sid] = src
 
-    # Filtrar según modo
     final_ids: list[int] = []
     skipped = 0
     for sid, src in sources_by_id.items():
@@ -344,7 +320,6 @@ async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchRespon
         if payload.mode == "pinned" and not src.pinned:
             skipped += 1
             continue
-        # No indexar sources tipo gdrive-file (archivos sueltos)
         if src.source_type == "gdrive-file":
             skipped += 1
             continue
@@ -442,10 +417,8 @@ class SearchHit(BaseModel):
     is_textless: bool = False
     is_promo: bool = False
     is_alt_art: bool = False
-    # Metadatos canónicos [SET NUM] (Fase 2 · T5)
     expansion_code: str | None = None
     collector_number: str | None = None
-    # Extras · F2/T8: perceptual hash para dedupe cross-drive y "similares".
     image_hash: str | None = None
 
 
@@ -457,8 +430,6 @@ def _parse_csv_list(raw: str | None) -> list[str] | None:
     return parts or None
 
 
-# Tamaño máximo de página de /drives/search. El selector de arte pagina con
-# `offset` hasta cubrir `X-Total-Count`.
 DRIVE_SEARCH_MAX_PAGE = 500
 
 
@@ -574,13 +545,6 @@ async def drives_stats(db: DbDep) -> DriveStatsResponse:
     return DriveStatsResponse(**s)
 
 
-# ============================================================================
-# Servir archivos de sources tipo local-folder (Fase 2 · T7)
-# ============================================================================
-
-# El router usa prefix="/api" por defecto; pero queremos /local-source/... sin
-# el prefijo (más natural como URL de imagen). Usamos un sub-router propio
-# aquí para evitar el prefijo. Se incluye en app.py junto al principal.
 _local_source_router = APIRouter(tags=["integrations"])
 
 
@@ -621,10 +585,6 @@ async def serve_local_source_file(
         raise HTTPException(400, str(e)) from e
     return FileResponse(path)
 
-
-# ============================================================================
-# DFC pairs cache (precomputado desde Scryfall bulk data)
-# ============================================================================
 
 def _get_scryfall(request: Request) -> ScryfallClient:
     return request.app.state.scryfall
@@ -706,8 +666,6 @@ async def dfc_pairs_sync(
     scryfall = _get_scryfall(request)
 
     if force:
-        # Truco: marcamos como stale borrando el timestamp, para que
-        # sync_if_stale considere que hay que refrescar.
         from mpc_forge.models import KeyValue
         kv = await db.get(KeyValue, "dfc_pairs.last_synced_at")
         if kv:
@@ -729,16 +687,8 @@ async def dfc_pairs_sync(
     )
 
 
-# Se re-exporta para que `app.py` pueda incluirlo. Vive en un router aparte
-# porque necesitamos que las URLs sean `/local-source/...` (sin el prefijo
-# `/api` del router principal). Es el path que devuelven `download_url()`
-# y `thumbnail_url()` de `LocalFolderSourceType`.
 local_source_router = _local_source_router
 
-
-# ============================================================================
-# pHash cross-drive dedupe (Fase 2 · T8)
-# ============================================================================
 
 class PHashStatsResponse(BaseModel):
     available: bool
@@ -794,7 +744,6 @@ async def _phash_compute_task(source_id: int, limit: int) -> None:
     from mpc_forge.services import phash
     try:
         async with session_scope() as db:
-            # httpx client dedicado (sin depender del art_cache)
             import httpx
 
             from mpc_forge.ssl_config import ssl_insecure
@@ -837,7 +786,6 @@ async def phash_compute(
         return PHashComputeResponse(computed=0, failed=0, skipped=0,
                                     error="scheduled in background")
 
-    # Inline execution — solo recomendable para limit pequeño.
     import httpx
 
     from mpc_forge.ssl_config import ssl_insecure
@@ -931,7 +879,6 @@ async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
 
     from mpc_forge.models import KeyValue
 
-    # Verificar que FTS5 está disponible primero
     kv = await db.get(KeyValue, "fts5_available")
     if not kv or kv.value != "1":
         raise HTTPException(
@@ -985,11 +932,6 @@ async def canonical_details(
     return await _canonical.get_canonical_details(
         db, expansion_code, collector_number,
     )
-
-
-# ============================================================================
-# Validate source antes de guardarlo (Extras · F2/T7)
-# ============================================================================
 
 
 class ValidateSourceRequest(BaseModel):
@@ -1049,7 +991,6 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
             error="URL vacía",
         )
 
-    # Autodetección o forzar tipo
     if payload.source_type:
         type_cls = resolve(payload.source_type)
         if type_cls is None:
@@ -1071,7 +1012,6 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
             canonical_url=canonical, label=type_cls.label,
         )
 
-    # Auto-detect
     try:
         detected_type, canonical = _asources._detect_source_type(raw)
     except Exception as e:
@@ -1125,7 +1065,6 @@ async def phash_similar(
         exclude_file_id=file_id,
         limit=limit,
     )
-    # Serialización manual — no queremos exponer todos los campos.
     return SimilarArtsResponse(
         reference_file_id=file_id,
         reference_hash=reference.image_hash,

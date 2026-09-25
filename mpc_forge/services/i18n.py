@@ -15,16 +15,9 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Diccionario maestro de traducciones
-# ---------------------------------------------------------------------------
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {
-    # -----------------------------------------------------------------------
-    # ESPAÑOL — idioma base de la aplicación
-    # -----------------------------------------------------------------------
     "es": {
-        # --- Navegación sidebar -------------------------------------------
         "nav_decks":            "Mazos",
         "nav_history":          "Historial",
         "nav_settings":         "Ajustes",
@@ -47,7 +40,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_recent_title":     "Recientes",
         "nav_no_decks":         "Sin mazos aún",
 
-        # --- Collection page ------------------------------------------------
         "coll_title":           "Mi Colección",
         "coll_subtitle":        "Marca las cartas que tienes por expansión",
         "coll_search_set":      "Buscar expansión…",
@@ -76,7 +68,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "coll_prev":            "Anterior",
         "coll_next":            "Siguiente",
 
-        # --- Común ----------------------------------------------------------
         "common_cancel":        "Cancelar",
         "common_confirm":       "Confirmar",
         "common_close":         "Cerrar",
@@ -107,7 +98,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "common_none":          "Ninguno",
         "common_open_in_editor": "Abrir en editor completo",
 
-        # --- Index / Home ---------------------------------------------------
         "home_title":                 "Mazos",
         "home_subtitle":              "Importa desde una URL soportada o pega una lista para empezar.",
         "home_import_url_title":      "Desde URL",
@@ -143,7 +133,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "home_unresolved_copy":        "Copiar lista de fallos",
         "home_unresolved_continue":    "Continuar al mazo",
 
-        # --- Estadísticas del mazo y fondo animado ---
         "stats_subtitle": "Estadísticas del mazo",
         "stats_total": "Total de cartas",
         "stats_unique": "{n} entradas únicas",
@@ -195,7 +184,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "ambient_turn_off": "Desactivar el fondo animado",
         "ambient_turn_on": "Activar el fondo animado",
 
-        # --- Inicio (landing) y página 404 -------------------------------
         "nav_home": "Inicio",
         "landing_title": "Inicio",
         "landing_hero_title": "Del decklist a la hoja impresa.",
@@ -283,7 +271,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nf_decks": "Ver mis mazos",
         "nf_suggest": "O ve directamente a",
 
-        # --- Deck editor ----------------------------------------------------
         "deck_back_link":             "← Mazos",
         "deck_rename_hint":           "Doble click para renombrar",
         "deck_format":                "Formato",
@@ -360,7 +347,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_role_maybeboard":       "Maybeboard",
         "deck_role_companion":        "Compañero",
 
-        # --- Art picker (deck editor) ----------------------------------------
         "picker_loading_more":   "cargando más…",
         "planner_title":   "Planificador de tiradas",
         "planner_subtitle":   "Agrupa mazos en pedidos de MPC y compara el coste real por carta",
@@ -513,7 +499,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "picker_footer_hover":        "Hover: zoom en alta resolución",
         "picker_footer_esc":          "Esc para cerrar",
 
-        # --- PDF Studio -----------------------------------------------------
         "pdf_title":                  "PDF Studio",
         "pdf_back":                   "← Mazo",
         "pdf_generate":               "Generar PDF",
@@ -528,7 +513,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "pdf_picker_footer_dblclick": "Doble click: recordar globalmente",
         "pdf_picker_footer_hover":    "Hover: zoom",
 
-        # --- History --------------------------------------------------------
         "history_empty":              "Aún no has generado ningún XML o PDF.",
         "history_total":              "Total",
         "history_cards":              "cartas",
@@ -537,16 +521,13 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_runs":               "Runs",
         "history_download":           "Descargar",
 
-        # --- Settings -------------------------------------------------------
 
-        # --- Rarity labels --------------------------------------------------
         "rarity_mythic":              "Mítica",
         "rarity_rare":                "Rara",
         "rarity_uncommon":            "Infrecuente",
         "rarity_common":              "Común",
         "rarity_special":             "Especial",
 
-        # --- PDF Studio (panel izquierdo + opciones) -------------------------
         "pdf_generating_dots":        "Generando…",
         "pdf_preparing":              "Preparando…",
         "pdf_deck_label":             "Mazo",
@@ -627,11 +608,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "pdf_guide_subtitle":         "qué hace cada opción",
         "pdf_export_zip":             "Export ZIP",
 
-        # --- Settings -------------------------------------------------------
         "settings_title":             "Ajustes",
         "settings_saved":             "Ajustes guardados",
 
-        # --- Modo offline (bulk data de Scryfall) --------------------------
         "settings_nav_offline":       "Modo offline",
         "settings_offline_title":     "Datos de cartas en local",
         "settings_offline_desc":      (
@@ -713,7 +692,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_default_path":      "Ruta por defecto",
         "settings_reload_paths":      "Recargar rutas efectivas",
 
-        # --- Almacenamiento (Ajustes → Almacenamiento) ----------------------
         "storage_title":              "Almacenamiento local",
         "storage_desc":               "Todo lo que MPC Forge guarda en este equipo, carpeta por carpeta. El arte y las miniaturas se vuelven a generar; la base de datos y tu arte custom, no.",
         "storage_total":              "Total en disco",
@@ -766,7 +744,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "storage_cat_other":          "Otros ficheros",
         "storage_cat_other_desc":     "Lo que queda en la carpeta de datos y no encaja en las demás categorías.",
 
-        # --- History --------------------------------------------------------
         "history_title":              "Historial",
         "history_subtitle":           "Timeline de cambios por mazo y registro de tiradas de impresión.",
         "history_decks_section":      "Mazos",
@@ -785,10 +762,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_no_filter":          "Ningún evento coincide con el filtro.",
         "history_undo":               "Deshacer",
 
-        # --- Proof view -----------------------------------------------------
         "proof_loading":              "Cargando…",
 
-        # --- JS: toast / confirm defaults -----------------------------------
         "js_toast_success_fallback":  "✓ Operación completada correctamente",
         "js_toast_error_fallback":    "Ha ocurrido un error inesperado. Revisa la consola para más detalles.",
         "js_toast_warning_fallback":  "La operación se completó con advertencias.",
@@ -797,7 +772,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "js_error_async":             "Error asíncrono",
         "js_check_console":           "Revisa la consola (F12)",
 
-        # --- JS: deck list actions ------------------------------------------
         "js_new_deck_name_prompt":    "Nuevo nombre para el mazo:",
         "js_deck_copy_suffix":        "(copia)",
         "js_duplicate_prompt":        "Nombre del nuevo mazo:\n\nSe duplicarán todas las cartas, roles, y arte custom.\nNo se copia el enlace a Moxfield ni el historial.",
@@ -812,7 +786,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "js_entries_clipboard":       "entradas al portapapeles",
         "js_delete_deck_confirm":     "¿Eliminar el mazo \"{name}\"?\n\nSe perderán las cartas y elecciones de arte. Los archivos descargados NO se borran.",
 
-        # --- JS: history page -----------------------------------------------
         "history_loading_decks":      "Cargando mazos…",
         "history_no_decks_yet":       "Aún no has creado ningún mazo.",
         "history_no_activity_reg":    "Sin actividad registrada",
@@ -832,14 +805,12 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_relative_min":       "hace {n} min",
         "history_relative_h":         "hace {n} h",
         "history_relative_d":         "hace {n} d",
-        # History filter labels
         "history_filter_all":         "Todos",
         "history_filter_cards":       "Cartas",
         "history_filter_art":         "Arte",
         "history_filter_lang":        "Idioma",
         "history_filter_exports":     "Impresión",
         "history_filter_meta":        "Mazo",
-        # History event kind labels
         "history_kind_created":       "Creación",
         "history_kind_renamed":       "Renombrado",
         "history_kind_localized":     "Idioma",
@@ -852,7 +823,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_kind_cleared":       "Sección vaciada",
         "history_kind_related":       "Relacionadas",
 
-        # --- JS: settings page ----------------------------------------------
         "settings_loading":           "Cargando ajustes…",
         "settings_results_for":       "Resultados para",
         "settings_match_singular":    "coincidencia",
@@ -933,7 +903,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_index_pinned_btn":  "Indexar pinned",
         "settings_index_all_btn":     "Indexar todos",
         "settings_files_indexed_count": "archivos indexados",
-        # Section nav labels for JS
         "settings_nav_general":       "General",
         "settings_nav_prices":        "Precios y envío",
         "settings_nav_network":       "Red y conexión",
@@ -943,14 +912,12 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_nav_backup":        "Backup y datos",
         "settings_nav_storage":       "Almacenamiento",
         "settings_nav_log":           "Log de depuración",
-        # Group names used by backend (must match settings.py group names)
         "settings_group_general":     "General",
         "settings_group_prices":      "Precios y envío",
         "settings_group_network":     "Red y conexión",
         "settings_group_autofill":    "MPC Autofill",
         "settings_group_paths":       "Ubicación de datos",
 
-        # --- JS: deck editor ------------------------------------------------
         "deck_title_xml_generate":    "Generar XML para MPC Autofill",
         "deck_title_download_autofill":"Descargar MPC Autofill desktop tool",
         "deck_title_change_lang":     "Cambiar el idioma del arte oficial (Scryfall)",
@@ -1015,7 +982,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_confirmdelete_msg":     "¿Eliminar '{name}' del mazo?\n\nEsta acción no se puede deshacer.",
         "deck_confirmbulk_msg":       "¿Eliminar todas las cartas de {role}?",
 
-        # --- PDF Studio JS strings ------------------------------------------
         "pdf_hide_card_guides_fronts":"Ocultar guías por carta en frentes",
         "pdf_hide_page_guides_fronts":"Ocultar guías de página en frentes",
         "pdf_hide_card_guides_backs": "Ocultar guías por carta en reversos",
@@ -1033,11 +999,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "pdf_duplex_btn":             "Duplex",
     },
 
-    # -----------------------------------------------------------------------
-    # ENGLISH
-    # -----------------------------------------------------------------------
     "en": {
-        # --- Sidebar nav ----------------------------------------------------
         "nav_decks":            "Decks",
         "nav_history":          "History",
         "nav_settings":         "Settings",
@@ -1060,7 +1022,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nav_recent_title":     "Recent",
         "nav_no_decks":         "No decks yet",
 
-        # --- Collection page ------------------------------------------------
         "coll_title":           "My Collection",
         "coll_subtitle":        "Track cards you own by expansion",
         "coll_search_set":      "Search expansion…",
@@ -1089,7 +1050,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "coll_prev":            "Previous",
         "coll_next":            "Next",
 
-        # --- Common ---------------------------------------------------------
         "common_cancel":        "Cancel",
         "common_confirm":       "Confirm",
         "common_close":         "Close",
@@ -1120,7 +1080,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "common_none":          "None",
         "common_open_in_editor": "Open in full editor",
 
-        # --- Index / Home ---------------------------------------------------
         "home_title":                 "Decks",
         "home_subtitle":              "Import from a supported URL or paste a list to get started.",
         "home_import_url_title":      "From URL",
@@ -1156,7 +1115,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "home_unresolved_copy":        "Copy failed list",
         "home_unresolved_continue":    "Continue to deck",
 
-        # --- Deck statistics and animated background ---
         "stats_subtitle": "Deck statistics",
         "stats_total": "Total cards",
         "stats_unique": "{n} unique entries",
@@ -1208,7 +1166,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "ambient_turn_off": "Turn off the animated background",
         "ambient_turn_on": "Turn on the animated background",
 
-        # --- Home (landing) and 404 page ---------------------------------
         "nav_home": "Home",
         "landing_title": "Home",
         "landing_hero_title": "From decklist to printed sheet.",
@@ -1296,7 +1253,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nf_decks": "See my decks",
         "nf_suggest": "Or go straight to",
 
-        # --- Deck editor ----------------------------------------------------
         "deck_back_link":             "← Decks",
         "deck_rename_hint":           "Double click to rename",
         "deck_format":                "Format",
@@ -1373,7 +1329,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_role_maybeboard":       "Maybeboard",
         "deck_role_companion":        "Companion",
 
-        # --- Art picker -----------------------------------------------------
         "picker_loading_more":   "loading more…",
         "planner_title":   "Print planner",
         "planner_subtitle":   "Group decks into MPC orders and compare the real cost per card",
@@ -1526,7 +1481,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "picker_footer_hover":        "Hover: high-res zoom",
         "picker_footer_esc":          "Esc to close",
 
-        # --- PDF Studio -----------------------------------------------------
         "pdf_title":                  "PDF Studio",
         "pdf_back":                   "← Deck",
         "pdf_generate":               "Generate PDF",
@@ -1541,7 +1495,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "pdf_picker_footer_dblclick": "Double click: remember globally",
         "pdf_picker_footer_hover":    "Hover: zoom",
 
-        # --- History --------------------------------------------------------
         "history_empty":              "You haven't generated any XML or PDF yet.",
         "history_total":              "Total",
         "history_cards":              "cards",
@@ -1550,16 +1503,13 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_runs":               "Runs",
         "history_download":           "Download",
 
-        # --- Settings -------------------------------------------------------
 
-        # --- Rarity labels --------------------------------------------------
         "rarity_mythic":              "Mythic",
         "rarity_rare":                "Rare",
         "rarity_uncommon":            "Uncommon",
         "rarity_common":              "Common",
         "rarity_special":             "Special",
 
-        # --- PDF Studio -----------------------------------------------------
         "pdf_generating_dots":        "Generating…",
         "pdf_preparing":              "Preparing…",
         "pdf_deck_label":             "Deck",
@@ -1640,11 +1590,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "pdf_guide_subtitle":         "what each option does",
         "pdf_export_zip":             "Export ZIP",
 
-        # --- Settings -------------------------------------------------------
         "settings_title":             "Settings",
         "settings_saved":             "Settings saved",
 
-        # --- Offline mode (Scryfall bulk data) -----------------------------
         "settings_nav_offline":       "Offline mode",
         "settings_offline_title":     "Local card data",
         "settings_offline_desc":      (
@@ -1726,7 +1674,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_default_path":      "Default path",
         "settings_reload_paths":      "Reload effective paths",
 
-        # --- Storage (Settings → Storage) -----------------------------------
         "storage_title":              "Local storage",
         "storage_desc":               "Everything MPC Forge keeps on this machine, folder by folder. Art and thumbnails can be rebuilt; the database and your custom art cannot.",
         "storage_total":              "Total on disk",
@@ -1779,7 +1726,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "storage_cat_other":          "Other files",
         "storage_cat_other_desc":     "Whatever else sits in the data folder and does not fit the other categories.",
 
-        # --- History --------------------------------------------------------
         "history_title":              "History",
         "history_subtitle":           "Change timeline per deck and print run log.",
         "history_decks_section":      "Decks",
@@ -1798,10 +1744,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_no_filter":          "No events match the filter.",
         "history_undo":               "Undo",
 
-        # --- Proof view -----------------------------------------------------
         "proof_loading":              "Loading…",
 
-        # --- JS: toast / confirm defaults -----------------------------------
         "js_toast_success_fallback":  "✓ Operation completed successfully",
         "js_toast_error_fallback":    "An unexpected error occurred. Check the console for details.",
         "js_toast_warning_fallback":  "The operation completed with warnings.",
@@ -1810,7 +1754,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "js_error_async":             "Async error",
         "js_check_console":           "Check the console (F12)",
 
-        # --- JS: deck list actions ------------------------------------------
         "js_new_deck_name_prompt":    "New deck name:",
         "js_deck_copy_suffix":        "(copy)",
         "js_duplicate_prompt":        "New deck name:\n\nAll cards, roles and custom art will be duplicated.\nMoxfield link and history are not copied.",
@@ -1825,7 +1768,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "js_entries_clipboard":       "entries copied to clipboard",
         "js_delete_deck_confirm":     "Delete deck \"{name}\"?\n\nCards and art choices will be lost. Downloaded files are NOT deleted.",
 
-        # --- JS: history page -----------------------------------------------
         "history_loading_decks":      "Loading decks…",
         "history_no_decks_yet":       "You haven't created any decks yet.",
         "history_no_activity_reg":    "No activity registered",
@@ -1845,14 +1787,12 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_relative_min":       "{n} min ago",
         "history_relative_h":         "{n} h ago",
         "history_relative_d":         "{n} d ago",
-        # History filter labels
         "history_filter_all":         "All",
         "history_filter_cards":       "Cards",
         "history_filter_art":         "Art",
         "history_filter_lang":        "Language",
         "history_filter_exports":     "Print",
         "history_filter_meta":        "Deck",
-        # History event kind labels
         "history_kind_created":       "Created",
         "history_kind_renamed":       "Renamed",
         "history_kind_localized":     "Language",
@@ -1865,7 +1805,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "history_kind_cleared":       "Section cleared",
         "history_kind_related":       "Related",
 
-        # --- JS: settings page ----------------------------------------------
         "settings_loading":           "Loading settings…",
         "settings_results_for":       "Results for",
         "settings_match_singular":    "match",
@@ -1946,7 +1885,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_index_pinned_btn":  "Index pinned",
         "settings_index_all_btn":     "Index all",
         "settings_files_indexed_count": "files indexed",
-        # Section nav labels for JS
         "settings_nav_general":       "General",
         "settings_nav_prices":        "Pricing & shipping",
         "settings_nav_network":       "Network & connection",
@@ -1956,14 +1894,12 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "settings_nav_backup":        "Backup & data",
         "settings_nav_storage":       "Storage",
         "settings_nav_log":           "Debug log",
-        # Group names for search (must match backend group names via _T)
         "settings_group_general":     "General",
         "settings_group_prices":      "Precios y envío",
         "settings_group_network":     "Red y conexión",
         "settings_group_autofill":    "MPC Autofill",
         "settings_group_paths":       "Ubicación de datos",
 
-        # --- JS: deck editor ------------------------------------------------
         "deck_title_xml_generate":    "Generate XML for MPC Autofill",
         "deck_title_download_autofill":"Download MPC Autofill desktop tool",
         "deck_title_change_lang":     "Change official art language (Scryfall)",
@@ -2028,7 +1964,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "deck_confirmdelete_msg":     "Remove '{name}' from the deck?\n\nThis action cannot be undone.",
         "deck_confirmbulk_msg":       "Delete all cards from {role}?",
 
-        # --- PDF Studio JS strings ------------------------------------------
         "pdf_hide_card_guides_fronts":"Hide per-card guides on fronts",
         "pdf_hide_page_guides_fronts":"Hide page guides on fronts",
         "pdf_hide_card_guides_backs": "Hide per-card guides on backs",
@@ -2047,20 +1982,17 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 }
 
-# Idiomas disponibles para el selector
 SUPPORTED_LANGS: list[tuple[str, str]] = [
     ("es", "Español"),
     ("en", "English"),
 ]
 
-# Flags/emojis para el selector de idioma
 LANG_FLAGS: dict[str, str] = {
     "es": "🇪🇸",
     "en": "🇬🇧",
 }
 
 
-# Idioma base: el que se usa como respaldo cuando a otro le falta una clave.
 BASE_LANG = "es"
 
 
@@ -2139,15 +2071,6 @@ def detect_lang(request_or_cookie: Any) -> str:
         cookie = "es"
     return cookie if cookie in _TRANSLATIONS else "es"
 
-
-# ---------------------------------------------------------------------------
-# Bundle JS de traducciones
-# ---------------------------------------------------------------------------
-# Antes, las ~740 cadenas se serializaban dentro de un <script> inline en CADA
-# página: unos 25 KB de JSON repetidos en cada navegación, imposibles de
-# cachear porque van dentro del HTML. Sirviéndolas como un fichero JS aparte
-# con una URL versionada, el navegador las descarga una vez y las reutiliza
-# hasta que cambian las traducciones.
 
 _BUNDLE_CACHE: dict[str, str] = {}
 _VERSION_CACHE: str | None = None

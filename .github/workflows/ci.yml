@@ -1,9 +1,5 @@
 name: CI
 
-# Se ejecuta en cada push y en cada PR. Hasta ahora el único workflow era
-# `release.yml`, que solo compilaba el .exe: la suite de tests existía pero
-# nunca corría automáticamente, así que una regresión solo se detectaba cuando
-# un usuario la sufría.
 on:
   push:
     branches: [main, development]
@@ -11,8 +7,6 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Un push nuevo sobre la misma rama cancela el run anterior: no tiene sentido
-  # gastar minutos validando un commit que ya está obsoleto.
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
@@ -29,23 +23,12 @@ jobs:
       - name: Instalar herramientas
         run: pip install ruff mypy
       - name: Ruff
-        # Bloqueante. El ruleset de pyproject.toml ya no es el set por defecto:
-        # incluye DTZ (datetimes naive), LOG/G (logging correcto, que es de lo
-        # que depende el filtro de redacción de secretos), S (bandit) y B.
-        # Las reglas que quedan por limpiar están listadas como ignores
-        # explícitos en pyproject.toml, así que esto pasa en verde y cualquier
-        # regresión nueva lo pone en rojo.
         run: ruff check mpc_forge tests
       - name: Formato
         run: ruff format --check mpc_forge tests
-        # No bloqueante todavía: el formateo del código existente se está
-        # normalizando de forma gradual para no ensuciar el historial con un
-        # commit gigante de reformateo.
         continue-on-error: true
       - name: Mypy
         run: mypy mpc_forge --ignore-missing-imports
-        # Igual que arriba: `strict` está desactivado y se va endureciendo
-        # módulo a módulo. Ver la sección de tipos en el README.
         continue-on-error: true
 
   test:
@@ -54,9 +37,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows es la plataforma de release, Ubuntu es la de desarrollo.
-        # Ambas se prueban porque el proyecto toca rutas del sistema de
-        # ficheros y nombres de archivo, que es justo donde divergen.
         os: [ubuntu-latest, windows-latest]
         python: ['3.11', '3.12']
     steps:
@@ -66,12 +46,6 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - name: Instalar dependencias
-        # `shell: bash` explícito: este job corre también en windows-latest, y
-        # allí el shell por defecto es PowerShell, que no aborta ante el fallo
-        # de un comando intermedio de un bloque multilínea (solo cuenta el
-        # código de salida del último). Sin esto, un fallo instalando
-        # requirements.txt saldría en verde y reaparecería más tarde como un
-        # ModuleNotFoundError confuso durante los tests.
         shell: bash
         run: |
           python -m pip install --upgrade pip
@@ -89,10 +63,6 @@ jobs:
   assets:
     name: Assets vendorizados al día
     runs-on: ubuntu-latest
-    # La app carga sus CSS/JS desde static/vendor/, que está versionado. Si
-    # alguien cambia tailwind.config.js o los templates y olvida recompilar, la
-    # release saldría con estilos obsoletos o clases purgadas de más. Este job
-    # reconstruye y comprueba que no hay diferencias.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -115,10 +85,6 @@ jobs:
   browser:
     name: Las páginas arrancan en un navegador
     runs-on: ubuntu-latest
-    # La suite de Python comprueba la estructura del frontend, pero no ejecuta
-    # los scripts. Este job carga las páginas de verdad y falla si Alpine no
-    # resuelve alguna expresión — la clase de fallo que dejó las vistas en
-    # blanco pese a tener todos los tests en verde.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -139,8 +105,6 @@ jobs:
             sleep 1
           done
       - name: Cliente API
-        # Cubre la lógica JavaScript que adapta contratos de la API, que la
-        # suite de Python no puede ejecutar.
         run: node scripts/check_api_client.mjs
 
       - name: Humo de arranque de la interfaz

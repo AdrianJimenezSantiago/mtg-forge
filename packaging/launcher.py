@@ -75,7 +75,6 @@ def _data_dir_hint() -> str:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    # Cabecera amistosa
     print("=" * 60)
     print("  MPC Forge — proxy printing pipeline for MTG")
     print("=" * 60)
@@ -104,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             host=host,
             port=port,
             log_level="info",
-            access_log=False,   # menos ruido en consola
+            access_log=False,
         )
     except KeyboardInterrupt:
         print("\n  Cerrando MPC Forge...")
@@ -116,11 +115,6 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print("  Revisa el log en:")
         print(f"    {_data_dir_hint()}logs/mpc-forge.log")
-        # El `input()` solo tiene sentido si hay una consola interactiva: sirve
-        # para que la ventana no se cierre de golpe al hacer doble clic. Sin
-        # tty (CI, servicio, salida redirigida) colgaría el proceso hasta el
-        # timeout, que es exactamente lo que no quieres cuando algo ya ha
-        # fallado.
         if sys.stdin is not None and sys.stdin.isatty():
             print()
             print("  Pulsa Enter para cerrar.")

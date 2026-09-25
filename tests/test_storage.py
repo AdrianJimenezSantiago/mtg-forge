@@ -56,13 +56,12 @@ def disk_content(tmp_path, monkeypatch):
         thumbs_dir=tmp_path / "thumbs",
     )
     monkeypatch.setattr(cfg, "PATHS", p)
+
     def write(path, size):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"x" * size)
         return path
 
-    # El arte va en subcarpetas: el sharding por hash mete las imágenes dos
-    # niveles abajo y el recorrido tiene que ser recursivo.
     write(p.art_dir / "ab" / "cd" / "art.png", 5000)
     write(p.custom_art_dir / "mio.jpg", 400)
     write(p.cardbacks_dir / "back.png", 300)
@@ -72,11 +71,8 @@ def disk_content(tmp_path, monkeypatch):
     write(p.backups_dir / "mpc-forge-backup-20250102-010101-pre-migration.zip", 80)
     write(p.backups_dir / "mpc-forge-backup-20250103-010101.zip", 90)
     write(p.data_dir / "logs" / "mpc-forge.log.1", 60)
-    # Fichero suelto en la carpeta de datos: el caso que cubre "other".
     write(p.data_dir / "tag_vocabulary.json", 25)
 
-    # Sin teardown: `tmp_path` lo limpia pytest, y con PATHS restaurado por
-    # monkeypatch no queda nada apuntando aquí.
     return p
 
 
@@ -123,19 +119,16 @@ class TestSnapshot:
 
     def test_marks_what_can_be_freed(self, disk_content):
         rows = {c["key"]: c for c in storage.compute()["categories"]}
-        # Recuperable: se regenera, se vuelve a descargar o ya se entregó.
         assert rows["thumbs"]["reclaimable"] and rows["thumbs"]["purge_target"] == "thumbs"
         assert rows["exports"]["reclaimable"]
         assert rows["backups"]["reclaimable"]
         assert rows["logs"]["reclaimable"]
-        # Irrecuperable: no se ofrece borrarlo desde la app bajo ningún concepto.
         for key in ("database", "custom_art", "cardbacks"):
             assert not rows[key]["reclaimable"]
             assert rows[key]["purge_target"] is None
 
     def test_reclaimable_total_excludes_user_data(self, disk_content):
         snap = storage.compute()
-        # thumbs + exports + backups + logs, nunca el arte custom ni la BD.
         assert snap["totals"]["reclaimable_bytes"] == 150 + 900 + 240 + 60
 
     def test_backup_estimate_covers_what_the_zip_includes(self, disk_content):
@@ -154,7 +147,7 @@ class TestSnapshot:
     def test_counts_backups_by_origin(self, disk_content):
         backups = storage.compute()["backups"]
         assert backups["count"] == 3
-        assert backups["automatic"] == 2   # las que llevan -pre-migration
+        assert backups["automatic"] == 2
         assert backups["manual"] == 1
 
     def test_reports_free_space_per_volume(self, disk_content):
@@ -189,7 +182,6 @@ class TestNoDoubleCounting:
             snap = storage.compute()
             sizes = {c["key"]: c["bytes"] for c in snap["categories"]}
             assert sizes["exports"] == 1234
-            # El arte sigue valiendo lo suyo: no se ha tragado la subcarpeta.
             assert sizes["art"] == 5000
             assert snap["totals"]["bytes"] == sum(c["bytes"] for c in snap["categories"])
         finally:
@@ -227,13 +219,13 @@ class TestPurge:
         le importa. La poda es únicamente para los automáticos."""
         storage.purge(["backups"], keep_backups=1)
         remaining = sorted(p.name for p in cfg.PATHS.backups_dir.glob("*.zip"))
-        assert "mpc-forge-backup-20250103-010101.zip" in remaining   # manual
+        assert "mpc-forge-backup-20250103-010101.zip" in remaining
         assert "mpc-forge-backup-20250102-010101-pre-migration.zip" in remaining
         assert "mpc-forge-backup-20250101-010101-pre-migration.zip" not in remaining
 
     def test_invalidates_the_cached_snapshot(self, disk_content):
         before = storage.compute()["totals"]["bytes"]
-        storage.peek()  # no cachea: compute() es directo
+        storage.peek()
         storage.purge(["thumbs"])
         assert storage.peek() is None, (
             "tras purgar, el snapshot viejo no puede seguir disponible: la "
@@ -257,7 +249,6 @@ class TestEndpoints:
         await client.get("/api/storage/")
         second = await client.get("/api/storage/")
         assert second.json()["cached"] is True
-        # …y `refresh=true` vuelve a tocar disco.
         assert (await client.get("/api/storage/?refresh=true")).json()["cached"] is False
 
     async def test_purge_rejects_protected_targets(self, client):
@@ -274,7 +265,5 @@ class TestEndpoints:
         assert r.status_code == 200
         body = r.json()
         assert body["freed_bytes"] == 150
-        # El desglose viene ya recalculado en la misma respuesta para que la
-        # interfaz no parpadee con cifras viejas mientras pide otro GET.
         thumbs = next(c for c in body["storage"]["categories"] if c["key"] == "thumbs")
         assert thumbs["bytes"] == 0

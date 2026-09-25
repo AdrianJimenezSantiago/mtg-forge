@@ -38,12 +38,8 @@ from .base import ArtSourceType, ArtSourceTypeError, SourceFile
 
 log = logging.getLogger(__name__)
 
-# Extensiones aceptadas — mismo criterio que el gdrive_indexer.
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-# Ficheros que se recogen por cada salto al hilo de I/O. Bastante grande para
-# que el coste del cambio de contexto sea despreciable, bastante pequeño para
-# que el event loop no se quede sin atender más de unos milisegundos.
 _SCAN_BATCH = 200
 
 
@@ -88,10 +84,8 @@ class LocalFolderSourceType(ArtSourceType):
         raw = (url or "").strip()
         if not raw:
             raise ValueError("La ruta no puede estar vacía")
-        # Aceptamos file:// como prefijo por comodidad al copiar del explorador.
         if raw.startswith("file://"):
             raw = raw[7:]
-            # Windows: file:///C:/… → /C:/… → C:/…
             if len(raw) >= 3 and raw[0] == "/" and raw[2] == ":":
                 raw = raw[1:]
         path = Path(raw).expanduser()
@@ -99,22 +93,14 @@ class LocalFolderSourceType(ArtSourceType):
             raise ValueError(f"La ruta no existe: {path}")
         if not path.is_dir():
             raise ValueError(f"La ruta no es un directorio: {path}")
-        # Devolvemos la ruta absoluta resuelta como URL canónica.
         return str(path.resolve())
 
     @classmethod
     def download_url(cls, source: ArtSource, file_id: str) -> str:
-        # Servida por la ruta HTTP `/local-source/{source_id}/{file_id}` que
-        # se registrará como TODO. Por ahora devolvemos ese path relativo
-        # y el frontend lo trata como URL absoluta contra el host actual.
         return f"/local-source/{source.id}/{file_id}"
 
     @classmethod
     def thumbnail_url(cls, source: ArtSource, file_id: str) -> str:
-        # Sin transformación de tamaño servidor por ahora — devolvemos el
-        # fichero completo. Para índices muy grandes convendría un endpoint
-        # que sirva un thumbnail redimensionado on-the-fly (Pillow).
-        # Ver TODO Fase 2/3 pHash.
         return cls.download_url(source, file_id)
 
     @classmethod
@@ -130,7 +116,6 @@ class LocalFolderSourceType(ArtSourceType):
         except Exception as e:
             raise ArtSourceTypeError(f"file_id inválido: {e}") from e
         candidate = (base / relpath).resolve()
-        # Path traversal defense: candidate.is_relative_to(base) requiere 3.9+.
         try:
             candidate.relative_to(base)
         except ValueError as e:
@@ -149,20 +134,9 @@ class LocalFolderSourceType(ArtSourceType):
                 f"La carpeta del source '{source.name}' no existe: {base}"
             )
 
-        # `rglob` y los `stat()` que lleva detrás son I/O síncrona: sobre una
-        # carpeta grande (un NAS con 50k imágenes, o peor, uno montado por
-        # red) bloquean el event loop varios segundos. Durante ese rato la app
-        # entera deja de responder, incluido el endpoint de progreso que la UI
-        # consulta para pintar la barra del indexado.
-        #
-        # Se recorre por lotes en un hilo: el escaneo avanza fuera del loop y
-        # entre lote y lote el loop recupera el control para atender
-        # peticiones. El generador sigue siendo perezoso, así que la memoria no
-        # crece con el tamaño de la carpeta.
         def _scan_batch(iterator, size: int) -> list[SourceFile]:
             out: list[SourceFile] = []
             for entry in iterator:
-                # Filtrar dirs ignoradas — chequeo por segmentos del path.
                 if any(seg in cls._IGNORE_DIRS for seg in entry.parts):
                     continue
                 if entry.name.startswith("."):

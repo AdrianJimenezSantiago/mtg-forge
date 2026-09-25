@@ -41,7 +41,6 @@ from mpc_forge.models import IndexedArt, PrintingCache
 
 log = logging.getLogger(__name__)
 
-# Scryfall permite hasta 75 identifiers por /cards/collection request.
 _SCRYFALL_BATCH_SIZE = 75
 
 
@@ -67,7 +66,6 @@ async def validate_and_enrich(
     - "cache_hits": ya teníamos la printing en `PrintingCache` — no hubo
       llamada de red.
     """
-    # 1) Recolectar artes con canonical no vacío
     stmt = (
         select(IndexedArt)
         .where(IndexedArt.expansion_code.is_not(None))
@@ -80,16 +78,11 @@ async def validate_and_enrich(
     if not arts:
         return {"checked": 0, "valid": 0, "invalid": 0, "cache_hits": 0}
 
-    # 2) Deduplicar por (set, num) — muchos artes = misma impresión canónica
     by_key: dict[tuple[str, str], list[IndexedArt]] = {}
     for a in arts:
         key = (a.expansion_code, a.collector_number)
         by_key.setdefault(key, []).append(a)
 
-    # 3) Chequear cache local en un único query. `tuple_.in_` genera
-    # ``WHERE (set_code, collector_number) IN ((?, ?), …)`` — SQLite lo
-    # optimiza si hay índice combinado; si no, escanea una sola vez. Antes:
-    # una SELECT por clave (N queries).
     from sqlalchemy import tuple_
     resolved: dict[tuple[str, str], PrintingCache] = {}
     keys = list(by_key.keys())
@@ -106,7 +99,6 @@ async def validate_and_enrich(
     cache_hits = len(resolved)
     to_query: list[tuple[str, str]] = [k for k in keys if k not in resolved]
 
-    # 4) Batches a Scryfall /cards/collection para las (set, num) faltantes
     valid = 0
     invalid = 0
     for i in range(0, len(to_query), _SCRYFALL_BATCH_SIZE):
@@ -120,7 +112,6 @@ async def validate_and_enrich(
         except Exception as e:
             log.warning("Scryfall.collection batch falló, saltando: %s", e)
             continue
-        # Los results de Scryfall vienen sin garantía de orden. Reindexar por (set, num).
         from mpc_forge.services.deck_service import upsert_printings
         cached = await upsert_printings(db, cards)
         found_keys: set[tuple[str, str]] = set()
@@ -132,7 +123,6 @@ async def validate_and_enrich(
             found_keys.add(key)
             resolved[key] = cached[c["id"]]
             valid += 1
-        # Marca los que NO aparecieron en la respuesta como inválidos
         for key in batch:
             if key not in found_keys:
                 invalid += 1
@@ -142,7 +132,6 @@ async def validate_and_enrich(
                     art.canonical_source = "invalid"
     await db.commit()
 
-    # 5) Sumar los cache hits al total válido (para stats coherentes)
     valid += cache_hits
 
     return {

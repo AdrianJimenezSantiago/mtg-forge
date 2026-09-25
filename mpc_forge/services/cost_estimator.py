@@ -22,7 +22,6 @@ class TierEstimate:
     subtotal_usd: float
     per_card_effective_usd: float
 
-    # Conversiones EUR + shipping
     subtotal_eur: float = 0.0
     shipping_eur: float = 0.0
     shipping_base_eur: float = 0.0
@@ -30,7 +29,6 @@ class TierEstimate:
     total_eur: float = 0.0
     per_card_effective_eur: float = 0.0
 
-    # Sugerencia siguiente tier
     next_tier_size: int | None = None
     cards_to_next_tier: int | None = None
     next_tier_subtotal_usd: float | None = None
@@ -58,7 +56,6 @@ def estimate(
     total_eur = subtotal_eur + shipping
     per_card_eur = total_eur / max(total_cards, 1)
 
-    # Siguiente tier
     next_tier: dict[str, float] | None = None
     for t in tiers_sorted:
         if int(t["size"]) > tier_size:
@@ -86,7 +83,6 @@ def estimate(
     n_sub_eur = n_sub_usd * cfg.USD_TO_EUR
     n_total_eur = n_sub_eur + shipping
     cards_to_next = max(n_size - total_cards, 0)
-    # Solo ofrecemos si baja el total en EUR (comparación real, con envío):
     saves_eur = total_eur - n_total_eur if n_total_eur < total_eur else None
 
     return TierEstimate(

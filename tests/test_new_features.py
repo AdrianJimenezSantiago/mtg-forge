@@ -2,9 +2,6 @@
 deshacer eventos y progreso de build."""
 from __future__ import annotations
 
-# =============================================================================
-# Duplicar mazo
-# =============================================================================
 
 class TestDuplicateDeck:
     async def test_duplicate_copies_cards_and_metadata(self, client, deck):
@@ -12,10 +9,8 @@ class TestDuplicateDeck:
         assert r.status_code == 201, r.text
         new = r.json()
 
-        # Nombre por defecto = "{original} (copia)"
         assert new["name"] == f"{deck['name']} (copia)"
         assert new["id"] != deck["id"]
-        # Todas las cartas se copian con quantity/role
         assert len(new["cards"]) == len(deck["cards"])
         original_names = sorted(c["name"] for c in deck["cards"])
         new_names = sorted(c["name"] for c in new["cards"])
@@ -31,7 +26,6 @@ class TestDuplicateDeck:
         r = await client.post(f"/api/decks/{deck['id']}/duplicate", json={})
         new = r.json()
 
-        # Al nuevo mazo se le añade un deck_created con source: duplicated
         events = (await client.get(f"/api/decks/{new['id']}/activity")).json()
         assert len(events) == 1
         assert events[0]["kind"] == "deck_created"
@@ -43,15 +37,10 @@ class TestDuplicateDeck:
         assert r.status_code == 404
 
     async def test_duplicate_with_empty_name_falls_back_to_default(self, client, deck):
-        # Empty string → HTTP 400 (evita mazos sin nombre)
         r = await client.post(f"/api/decks/{deck['id']}/duplicate",
                               json={"name": "   "})
         assert r.status_code == 400
 
-
-# =============================================================================
-# Búsqueda global de cartas
-# =============================================================================
 
 class TestGlobalCardSearch:
     async def test_search_finds_cards_in_deck(self, client, deck):
@@ -63,7 +52,6 @@ class TestGlobalCardSearch:
         assert "Sol Ring" in names
 
     async def test_search_groups_across_multiple_decks(self, client, deck):
-        # Duplicamos el mazo → ahora Sol Ring está en 2 mazos
         await client.post(f"/api/decks/{deck['id']}/duplicate", json={})
 
         r = await client.get("/api/decks/_/search-cards?q=sol+ring")
@@ -90,7 +78,6 @@ class TestGlobalCardSearch:
         assert data["groups"] == []
 
     async def test_search_prefix_match_ranks_first(self, client, deck):
-        # "sol" debería devolver "Sol Ring" antes que "Arcane Signet"
         r = await client.get("/api/decks/_/search-cards?q=sol")
         data = r.json()
         assert data["groups"][0]["canonical_name"] == "Sol Ring"
@@ -108,16 +95,11 @@ class TestGlobalCardSearch:
         assert data["total_groups"] == 0
 
 
-# =============================================================================
-# Deshacer eventos
-# =============================================================================
-
 class TestUndo:
     async def test_undoable_kinds_endpoint(self, client):
         r = await client.get("/api/decks/_/undoable-kinds")
         assert r.status_code == 200
         kinds = r.json()
-        # Los tipos "difíciles" (deck_created, role_cleared, localized) NO son reversibles.
         assert "card_moved" in kinds
         assert "card_added" in kinds
         assert "card_art_changed" in kinds
@@ -127,22 +109,18 @@ class TestUndo:
 
     async def test_undo_card_moved(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        # Movemos Sol Ring a sideboard
         await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
                            json={"role": "sideboard"})
 
-        # Buscamos el evento card_moved
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         moved_event = next(e for e in events if e["kind"] == "card_moved")
 
-        # Deshacer → Sol Ring debe volver a mainboard
         r = await client.post(
             f"/api/decks/{deck['id']}/activity/{moved_event['id']}/undo"
         )
         assert r.status_code == 200
         assert "mainboard" in r.json()["summary"]
 
-        # Verificamos el estado actual del mazo
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
         sol = next(c for c in deck_after["cards"] if c["name"] == "Sol Ring")
         assert sol["role"] == "mainboard"
@@ -158,7 +136,7 @@ class TestUndo:
         assert r.status_code == 200
 
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
-        assert deck_after["name"] == "Test Deck"  # nombre original
+        assert deck_after["name"] == "Test Deck"
 
     async def test_undo_card_qty_changed(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Command Tower")
@@ -178,7 +156,6 @@ class TestUndo:
         assert ct["quantity"] == 1
 
     async def test_undo_card_added_removes_the_card(self, client, deck):
-        # Añadimos una carta nueva (Lightning Bolt no está en el deck base)
         r = await client.post(f"/api/decks/{deck['id']}/cards", json={
             "name": "Lightning Bolt", "quantity": 1, "role": "mainboard",
         })
@@ -196,27 +173,21 @@ class TestUndo:
         assert not any(c["name"] == "Lightning Bolt" for c in deck_after["cards"])
 
     async def test_undo_returns_409_if_state_diverged(self, client, deck):
-        # Movemos a sideboard, luego movemos otra vez a maybeboard,
-        # después intentamos deshacer el PRIMER movimiento → 409
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
         await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
                            json={"role": "sideboard"})
-        # Recuperamos ID del primer evento antes del segundo cambio
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         first_move = next(e for e in events if e["kind"] == "card_moved")
 
-        # Segundo movimiento
         await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
                            json={"role": "maybeboard"})
 
-        # Intentar deshacer el primero → 409 (ya no está en sideboard)
         r = await client.post(
             f"/api/decks/{deck['id']}/activity/{first_move['id']}/undo"
         )
         assert r.status_code == 409
 
     async def test_undo_non_reversible_returns_400(self, client, deck):
-        # deck_created no es reversible
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         created = next(e for e in events if e["kind"] == "deck_created")
 
@@ -237,14 +208,9 @@ class TestUndo:
 
         events_after = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         assert len(events_after) == len(events_before) + 1
-        # El evento nuevo tiene undone_event_id en su payload
         newest = events_after[0]
         assert newest["payload"].get("undone_event_id") == moved["id"]
 
-
-# =============================================================================
-# Progreso de build
-# =============================================================================
 
 class TestBuildProgress:
     async def test_progress_endpoint_returns_inactive_by_default(self, client, deck):
@@ -281,10 +247,6 @@ class TestBuildProgress:
         build_progress.clear(deck["id"])
 
 
-# =============================================================================
-# Performance: endpoint de validation ligero + caching HTTP + list_decks ligero
-# =============================================================================
-
 class TestPerformanceEndpoints:
     async def test_validation_endpoint_returns_only_validation(self, client, deck):
         """Nuevo endpoint /validation: alternativa ligera a GET /{id} para
@@ -292,7 +254,6 @@ class TestPerformanceEndpoints:
         r = await client.get(f"/api/decks/{deck['id']}/validation")
         assert r.status_code == 200
         val = r.json()
-        # DeckValidation tiene estos campos, y solo estos
         assert "format" in val
         assert "expected" in val
         assert "counted" in val
@@ -300,8 +261,6 @@ class TestPerformanceEndpoints:
         assert "message" in val
         assert "level" in val
         assert "breakdown" in val
-        # NO debe incluir las cartas (esa es la mejora — se ahorra ~50-80KB
-        # de payload para un mazo commander)
         assert "cards" not in val
 
     async def test_validation_endpoint_404_for_missing_deck(self, client):
@@ -314,12 +273,9 @@ class TestPerformanceEndpoints:
         assert r.status_code == 200
         summaries = r.json()
         s = next(d for d in summaries if d["id"] == deck["id"])
-        # Contiene lo esencial
         assert "card_count" in s
         assert s["card_count"] == 3
-        # NO trae las cartas (esa es la optimización)
         assert "cards" not in s
-        # NO trae validation (era muy pesada para un listing)
         assert "validation" not in s
 
     async def test_static_endpoints_have_cache_control(self, client):
@@ -332,16 +288,11 @@ class TestPerformanceEndpoints:
         assert "cache-control" in {k.lower() for k in r.headers}
 
 
-# =============================================================================
-# Ubicación de datos: paths portables y overrides
-# =============================================================================
-
 class TestPathOverrides:
     async def test_paths_endpoint_returns_effective_paths(self, client):
         r = await client.get("/api/settings/paths")
         assert r.status_code == 200
         data = r.json()
-        # Todas las claves esperadas están presentes
         for key in ("install_root", "data_dir", "db_path", "art_dir",
                     "custom_art_dir", "exports_dir", "backups_dir", "cardbacks_dir"):
             assert key in data, f"Falta {key}"
@@ -351,11 +302,6 @@ class TestPathOverrides:
         """Cuando la carpeta de instalación es escribible, el default apunta
         a install_root()/user-settings/ (modo portable)."""
         from mpc_forge.paths import install_root
-        # En el entorno de test, install_root() apunta a /home/claude/work
-        # (dev mode) y es escribible.
-        # Nota: si el test corre después de una app real, PATHS ya está
-        # redirigido a /tmp por conftest — este test valida el método puro.
-        # Solo comprobamos la lógica que INTENTARÍA usar install_root primero.
         try:
             (install_root() / "user-settings").mkdir(parents=True, exist_ok=True)
             probe = install_root() / "user-settings" / ".write_test"
@@ -365,9 +311,6 @@ class TestPathOverrides:
         except OSError:
             portable_ok = False
         if portable_ok:
-            # Confirmamos que si es escribible, Paths.default lo elige.
-            # No podemos llamar Paths.default() aquí sin ensuciar cfg.PATHS,
-            # pero al menos verificamos que la carpeta existe y funciona.
             assert (install_root() / "user-settings").exists()
 
     async def test_with_overrides_never_changes_data_dir(self):
@@ -376,36 +319,26 @@ class TestPathOverrides:
         from mpc_forge import config as cfg
         original_data_dir = cfg.PATHS.data_dir
         original_db_path = cfg.PATHS.db_path
-        # Rutas construidas con Path y el tempdir del sistema, no literales
-        # POSIX: "/tmp/x" en Windows se resuelve contra la unidad actual y
-        # acaba como "D:\\tmp\\x", así que comparar la cadena tal cual
-        # fallaba allí. Los tests corren también en windows-latest.
         import tempfile
         from pathlib import Path
         new_art = Path(tempfile.gettempdir()) / "mtg_new_art"
         new_custom = Path(tempfile.gettempdir()) / "mtg_new_custom"
 
-        # Intentamos override, pero data_dir y db_path deben ignorar el intento
         new_paths = cfg.PATHS.with_overrides(
             art_dir=str(new_art),
             custom_art_dir=str(new_custom),
         )
         assert new_paths.data_dir == original_data_dir
         assert new_paths.db_path == original_db_path
-        # Comparación entre Path resueltos: en Windows el tempdir puede llegar
-        # en forma corta 8.3 ("RUNNER~1") y la config guardarlo en la larga
-        # ("runneradmin"). Son la misma carpeta.
         assert Path(new_paths.art_dir).resolve() == new_art.resolve()
         assert Path(new_paths.custom_art_dir).resolve() == new_custom.resolve()
-        # Restauramos cfg.PATHS por si el test siguiente lo lee
-        # (with_overrides devuelve nuevo objeto, no muta el original)
 
     async def test_with_overrides_empty_string_keeps_default(self):
         """Un override vacío = usa el default (no rompe la app)."""
         from mpc_forge import config as cfg
         new_paths = cfg.PATHS.with_overrides(
-            art_dir="",  # vacío → default
-            exports_dir="   ",  # solo espacios → default
+            art_dir="",
+            exports_dir="   ",
         )
         assert new_paths.art_dir == cfg.PATHS.art_dir
         assert new_paths.exports_dir == cfg.PATHS.exports_dir
@@ -415,12 +348,9 @@ class TestPathOverrides:
         sin lanzar excepción — la UI ya validó, pero por si acaso no
         dejamos la app rota."""
         from mpc_forge import config as cfg
-        # Un path con null byte es siempre inválido en todo OS — mkdir lanza
-        # ValueError o OSError sin depender de permisos del sistema.
         new_paths = cfg.PATHS.with_overrides(
             art_dir="/tmp/\x00/invalid",
         )
-        # Cae al default sin lanzar excepción — la app sigue funcionando.
         assert new_paths.art_dir == cfg.PATHS.art_dir
 
     async def test_saving_path_override_persists_and_applies(self, client):
@@ -437,20 +367,12 @@ class TestPathOverrides:
         })
         assert r.status_code == 200
 
-        # Ahora cfg.PATHS.art_dir refleja el override.
-        # `.resolve()` en ambos lados: en Windows `mkdtemp` devuelve la ruta
-        # corta 8.3 (C:\\Users\\RUNNER~1\\...) mientras la config almacena la
-        # larga (C:\\Users\\runneradmin\\...). Apuntan a la misma carpeta.
         from pathlib import Path
         assert Path(cfg.PATHS.art_dir).resolve() == Path(custom_dir).resolve()
 
-        # El endpoint /paths también lo devuelve. Misma normalización que
-        # arriba: la comparación de cadenas falla en Windows por la forma
-        # corta 8.3, no porque la ruta sea distinta.
         r = await client.get("/api/settings/paths")
         assert Path(r.json()["art_dir"]).resolve() == Path(custom_dir).resolve()
 
-        # Reset: vaciar override para no afectar tests siguientes
         r = await client.put("/api/settings/", json={
             "values": {"paths.art_dir": ""}
         })
@@ -462,7 +384,7 @@ class TestPathOverrides:
         r = await client.get("/api/settings/")
         defs = r.json()["definitions"]
         path_defs = [d for d in defs if d["key"].startswith("paths.")]
-        assert len(path_defs) == 5  # art, custom_art, exports, backups, cardbacks
+        assert len(path_defs) == 5
         for d in path_defs:
             assert d["type"] == "path"
             assert d["group"] == "Ubicación de datos"

@@ -33,8 +33,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     _get_moxfield,
@@ -64,8 +62,6 @@ async def import_moxfield(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
-    # Registro del import en el timeline del propio mazo — el usuario lo verá
-    # como primer evento cuando abra su historial.
     await deck_activity.log_event(
         db, deck.id, K.DECK_CREATED,
         payload={

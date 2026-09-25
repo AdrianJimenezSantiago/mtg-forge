@@ -29,7 +29,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import ArtTheme, ArtThemeEntry, Deck, DeckCard
@@ -132,7 +132,7 @@ async def create_from_deck(
 
     theme = ArtTheme(name=name.strip() or "Tema sin nombre", description=description)
     db.add(theme)
-    await db.flush()   # necesitamos el id para las entradas
+    await db.flush()
 
     seen: set[str] = set()
     count = 0
@@ -144,9 +144,6 @@ async def create_from_deck(
         if only_customized and not has_custom:
             continue
         if not card.oracle_id or card.oracle_id in seen:
-            # Un mazo puede llevar varias copias de la misma carta con artes
-            # distintos (tierras básicas). Gana la primera: un tema es una
-            # elección por carta, no por copia.
             continue
         seen.add(card.oracle_id)
 
@@ -282,7 +279,7 @@ async def preview_apply(
         "deck_name": deck.name,
         "would_change": len(would_change),
         "unaffected": len(cards) - len(would_change),
-        "cards": would_change[:100],   # tope: la vista previa no es un informe
+        "cards": would_change[:100],
     }
 
 
@@ -290,9 +287,6 @@ async def delete_theme(db: AsyncSession, theme_id: int) -> bool:
     theme = await db.get(ArtTheme, theme_id)
     if theme is None:
         return False
-    # El cascade del modelo borra las entradas, pero se hace explícito para no
-    # depender de que la FK tenga ON DELETE CASCADE activo en SQLite (que solo
-    # se aplica con PRAGMA foreign_keys=ON).
     await db.execute(
         delete(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)
     )
@@ -313,17 +307,3 @@ async def rename_theme(
         theme.description = description
     await db.commit()
     return await get_theme(db, theme_id)
-
-
-async def recount(db: AsyncSession, theme_id: int) -> int:
-    """Resincroniza el contador desnormalizado. Reparación, no camino normal."""
-    total = (await db.scalar(
-        select(func.count())
-        .select_from(ArtThemeEntry)
-        .where(ArtThemeEntry.theme_id == theme_id)
-    )) or 0
-    theme = await db.get(ArtTheme, theme_id)
-    if theme is not None:
-        theme.entry_count = int(total)
-        await db.commit()
-    return int(total)

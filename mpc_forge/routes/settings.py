@@ -40,8 +40,8 @@ class PathsResponse(BaseModel):
     el usuario personalizaba una. Todos los valores son strings con la ruta
     absoluta resuelta.
     """
-    install_root: str        # Carpeta del .exe o proyecto
-    data_dir: str            # Raíz de datos (contiene BD y logs) — no editable
+    install_root: str
+    data_dir: str
     db_path: str
     art_dir: str
     custom_art_dir: str

@@ -32,8 +32,6 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "templates"
 
-# Vistas que renderizan una plantilla completa, con el módulo que cada una debe
-# cargar. `proof.html` queda fuera: no usa Alpine.
 PAGES = {
     "index.html": "home.js",
     "landing.html": "landing.js",
@@ -50,7 +48,6 @@ PAGES = {
 ALPINE = "alpine.min.js"
 API_CLIENT = "api.js"
 
-# Cualquier etiqueta script con src, incluidas las que ocupan varias líneas.
 SCRIPT_TAG = re.compile(
     r"<script\b(?P<attrs>[^>]*?)\bsrc=[\"'](?P<src>[^\"']+)[\"'][^>]*>",
     re.DOTALL,
@@ -78,7 +75,6 @@ def render(template_name: str) -> str:
         url = _FakeUrl()
 
     template = templates.env.get_template(template_name)
-    # Contexto mínimo: solo interesa la posición de las etiquetas, no los datos.
     return template.render(
         t=i18n.get_translations("es"),
         lang="es",
@@ -210,20 +206,15 @@ class TestRenderedPagesAreCoherent:
         """
         html = rendered[page]
 
-        # 1) Lo que publica el módulo de la vista.
         js = (ROOT / "static" / "js" / module).read_text(encoding="utf-8")
         exposed = set(re.findall(r"^window\.([\w$]+)\s*=", js, re.MULTILINE))
-        # api.js también publica en window, y algún x-data podría usarlo.
         api_js = (ROOT / "static" / "js" / "api.js").read_text(encoding="utf-8")
         exposed |= set(re.findall(r"^window\.([\w$]+)\s*=", api_js, re.MULTILINE))
 
-        # 2) Lo que declaran los scripts embebidos que quedan (base.html).
         for inline in re.finditer(
             r"<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)</script>", html
         ):
             body = inline.group(1)
-            # El cuerpo del script viene indentado dentro del HTML, así que
-            # las declaraciones de nivel superior NO empiezan en la columna 0.
             exposed |= set(re.findall(
                 r"^[ \t]*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(",
                 body, re.MULTILINE,

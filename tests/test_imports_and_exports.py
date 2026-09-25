@@ -36,10 +36,8 @@ class TestDecklistExport:
         r = await client.get(f"/api/decks/{deck['id']}/decklist?format=simple")
         assert r.status_code == 200
         text = r.json()["text"]
-        # Formato simple: solo "N Nombre" por línea
         assert "1 Sol Ring" in text
         assert "1 Command Tower" in text
-        # No debe incluir códigos de set
         assert "(c21)" not in text
         assert "(C21)" not in text
 
@@ -76,22 +74,18 @@ class TestLocalization:
         assert langs.get("ja") == "日本語"
 
     async def test_localize_to_spanish_updates_card(self, client, deck):
-        # Solo Sol Ring tiene versión ES en SAMPLE_CARDS
         r = await client.post(f"/api/decks/{deck['id']}/localize", json={"lang": "es"})
         assert r.status_code == 200
         result = r.json()
         assert result["localized"] == 1
-        # Command Tower y Arcane Signet no tienen ES → van a unavailable
         assert len(result["unavailable"]) == 2
 
-        # Verificamos que Sol Ring apunta ahora al printing ES
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
         sol = next(c for c in deck_after["cards"] if "Sol Ring" in c["name"] or "Anillo" in c["name"])
         assert sol["scryfall_id"] == "sr-es"
 
     async def test_localize_idempotent(self, client, deck):
         await client.post(f"/api/decks/{deck['id']}/localize", json={"lang": "es"})
-        # Segunda llamada: ya está localizado, unchanged=1
         r = await client.post(f"/api/decks/{deck['id']}/localize", json={"lang": "es"})
         result = r.json()
         assert result["localized"] == 0

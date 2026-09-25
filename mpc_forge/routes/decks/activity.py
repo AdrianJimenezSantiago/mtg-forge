@@ -28,8 +28,6 @@ from mpc_forge.services import (
 log = logging.getLogger(__name__)
 
 
-# --- Import / CRUD -------------------------------------------------------
-
 from mpc_forge.routes.decks._common import (
     DbDep,
     make_router,
@@ -37,12 +35,6 @@ from mpc_forge.routes.decks._common import (
 
 router = make_router()
 
-
-# TIMELINE DE ACTIVIDAD DEL MAZO
-# ================================================================
-# El frontend de /history usa estos endpoints para pintar:
-# - El grid de mazos con arte del commander (list_decks_with_activity)
-# - El timeline del modal al hacer clic en una card (list_activity)
 
 class ActivityEntry(BaseModel):
     """Evento del timeline serializado.
@@ -81,8 +73,6 @@ class DeckWithActivityView(BaseModel):
     last_activity_kind: str | None
     last_activity_summary: str | None
     commander_scryfall_id: str | None
-    # Arte para la card: usamos el image_normal del printing del commander.
-    # Si no hay commander, ``None`` y el frontend pinta un placeholder.
     commander_name: str | None
     commander_image_url: str | None
 
@@ -99,7 +89,6 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     """
     from mpc_forge.models import DeckActivity as _DA
 
-    # --- BATCH 1: mazos + count de cartas ---
     deck_rows = (
         await db.execute(
             select(Deck, func.count(DeckCard.id).label("card_count"))
@@ -112,7 +101,6 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     if not deck_rows:
         return []
 
-    # --- BATCH 2: contadores de actividad por deck_id ---
     activity_counts: dict[int, int] = dict(
         (await db.execute(
             select(_DA.deck_id, func.count(_DA.id))
@@ -121,10 +109,6 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         )).all()
     )
 
-    # --- BATCH 3: último evento por mazo ---
-    # Con SQLite la forma más portable sin CTE es una subquery correlacionada.
-    # Usamos MAX(id) porque los ids son autoincremental → correlaciona con
-    # created_at DESC. Un solo query en vez de N (era el N+1 anterior).
     last_id_subq = (
         select(func.max(_DA.id).label("last_id"), _DA.deck_id.label("d"))
         .where(_DA.deck_id.isnot(None))
@@ -142,10 +126,8 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         for deck_id, created_at, kind, summary in last_rows
     }
 
-    # --- BATCH 4: portadas (el arte que el mazo usa para su commander) ---
     covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
 
-    # --- Composición sin más queries ---
     out: list[DeckWithActivityView] = []
     for deck, card_count in deck_rows:
         cover = covers.get(deck.id, deck_covers.EMPTY)
@@ -175,7 +157,7 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
 async def list_activity(
     deck_id: int,
     db: DbDep,
-    kinds: str | None = None,   # csv: "card_added,card_moved"
+    kinds: str | None = None,
     limit: int = 500,
 ) -> list[ActivityEntry]:
     """Devuelve las últimas ``limit`` entradas del timeline de un mazo.
@@ -187,12 +169,10 @@ async def list_activity(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
     kinds_list = [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
-    limit = max(1, min(limit, 2000))  # bound duro para evitar payloads absurdos
+    limit = max(1, min(limit, 2000))
     rows = await deck_activity.list_for_deck(db, deck_id, kinds=kinds_list, limit=limit)
 
     def _parse_payload(raw: str) -> dict:
-        # payload_json puede estar corrupto en teoría (edición manual de la BD,
-        # migración fallida…). No queremos romper la vista por eso.
         import json as _json
         try:
             v = _json.loads(raw or "{}")
@@ -249,7 +229,6 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
     try:
         result = await undo_svc.undo_event(db, event)
     except undo_svc.UndoNotSupported as e:
-        # Estado en BD no permite el undo (409 Conflict es semánticamente correcto)
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
 
     return UndoResponse(ok=True, summary=result["summary"], deck_id=deck_id)
@@ -266,6 +245,3 @@ async def get_undoable_kinds(response: Response) -> list[str]:
     from mpc_forge.services import undo as undo_svc
     response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)
-
-
-# ================================================================

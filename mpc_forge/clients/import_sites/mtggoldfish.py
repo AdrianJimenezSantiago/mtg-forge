@@ -46,7 +46,6 @@ class MTGGoldfishSite(ImportSite):
         path = urlparse(url).path or ""
         parts = [p for p in path.split("/") if p]
         if len(parts) >= 2 and parts[0] == "archetype":
-            # /archetype/some-archetype-name → Some Archetype Name
             slug = parts[1].split("#", 1)[0]
             title = _slug_to_title(slug)
             return title if title else None

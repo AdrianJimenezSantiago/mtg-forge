@@ -58,19 +58,11 @@ from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
 
-# Volcados que tiene sentido importar.
-#   default_cards → una fila por impresión en inglés (lo que necesita el
-#                   selector de arte). Es el que queremos.
-#   oracle_cards  → una fila por carta única. Mucho más pequeño, pero no sirve
-#                   para el selector porque no trae las impresiones.
 BULK_KINDS = ("default_cards", "oracle_cards")
 DEFAULT_KIND = "default_cards"
 
-# Filas por transacción. 2.000 mantiene el uso de memoria bajo y evita que una
-# sola transacción bloquee la BD durante segundos con WAL.
 BATCH_SIZE = 2000
 
-# Cada cuántas filas se refresca el progreso que consulta la interfaz.
 PROGRESS_EVERY = 5000
 
 
@@ -83,7 +75,7 @@ class BulkProgress:
     cuello de botella real es la descarga, no el parseo.
     """
     kind: str = DEFAULT_KIND
-    phase: str = "idle"          # idle|manifest|downloading|importing|done|error
+    phase: str = "idle"
     rows_seen: int = 0
     rows_written: int = 0
     bytes_downloaded: int = 0
@@ -117,8 +109,6 @@ class BulkProgress:
         }
 
 
-# Una importación a la vez. Descargar dos volcados en paralelo saturaría la
-# red y multiplicaría la contención de escritura en SQLite sin ganar nada.
 _progress = BulkProgress()
 
 
@@ -134,10 +124,6 @@ async def cancel() -> bool:
     _progress._task.cancel()
     return True
 
-
-# ---------------------------------------------------------------------------
-# Manifiesto
-# ---------------------------------------------------------------------------
 
 async def fetch_manifest(kind: str = DEFAULT_KIND) -> dict[str, Any]:
     """Devuelve la entrada del catálogo de bulk data para ``kind``."""
@@ -180,10 +166,6 @@ async def needs_sync(db: AsyncSession, kind: str = DEFAULT_KIND) -> tuple[bool, 
     return (False, f"Ya está al día ({state.updated_at[:10]})")
 
 
-# ---------------------------------------------------------------------------
-# Parseo en streaming
-# ---------------------------------------------------------------------------
-
 def _ijson_available() -> bool:
     try:
         import ijson  # noqa: F401
@@ -210,9 +192,9 @@ class _IncrementalArrayParser:
 
     def __init__(self) -> None:
         self._buf = ""
-        self._pos = 0          # hasta dónde se ha escaneado ya
+        self._pos = 0
         self._depth = 0
-        self._start = -1       # inicio del objeto en curso, o -1
+        self._start = -1
         self._in_string = False
         self._escaped = False
 
@@ -245,32 +227,22 @@ class _IncrementalArrayParser:
                         yield json.loads(raw)
                     except json.JSONDecodeError:
                         log.warning("Objeto ilegible en el volcado; se omite")
-                    # Se descarta todo lo consumido: el buffer nunca crece más
-                    # allá del objeto en curso más el último trozo recibido.
                     buf = buf[i + 1:]
                     self._buf = buf
                     i = 0
                     continue
             i += 1
 
-        # Si estamos a mitad de un objeto, se recorta lo anterior a su inicio
-        # y se reajustan los índices para no volver a escanearlo.
         if self._depth > 0 and self._start > 0:
             self._buf = buf[self._start:]
             i -= self._start
             self._start = 0
         elif self._depth == 0 and self._start < 0:
-            # Entre objetos solo quedan comas y espacios: no vale la pena
-            # conservarlos.
             self._buf = ""
             i = 0
 
         self._pos = i
 
-
-# ---------------------------------------------------------------------------
-# Mapeo a PrintingCache
-# ---------------------------------------------------------------------------
 
 def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
     """Convierte un objeto de Scryfall en una fila de ``PrintingCache``.
@@ -285,8 +257,6 @@ def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     layout = card.get("layout") or "normal"
-    # `art_series` y `double_faced_token` no son cartas jugables; ocupan sitio
-    # y ensucian el selector.
     if layout in ("art_series", "double_faced_token"):
         return None
 
@@ -375,10 +345,6 @@ async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
-# ---------------------------------------------------------------------------
-# Importación
-# ---------------------------------------------------------------------------
-
 async def sync(
     db: AsyncSession,
     kind: str = DEFAULT_KIND,
@@ -465,9 +431,6 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
             row = card_to_row(card)
             if row is None:
                 return
-            # El volcado no repite ids, pero un fallo de red que provoque
-            # un reintento parcial sí podría. Insertar dos veces la misma
-            # PK en un solo lote rompe el upsert de SQLite.
             if row["scryfall_id"] in seen_ids:
                 return
             seen_ids.add(row["scryfall_id"])
@@ -477,9 +440,6 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
                 batch.clear()
                 seen_ids.clear()
                 _progress.rows_written = written
-                # Cede el control: sin esto el event loop se queda
-                # bloqueado y la interfaz deja de responder al polling
-                # de progreso durante toda la importación.
                 await asyncio.sleep(0)
 
         if use_ijson:

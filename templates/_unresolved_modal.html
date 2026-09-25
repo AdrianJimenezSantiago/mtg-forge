@@ -1,9 +1,3 @@
-{# Modal: reporte de cartas no importadas.
-
-   Parcial compartido por la biblioteca (index.html) y la landing
-   (landing.html). Tiene que incluirse DENTRO de un componente
-   `importPanel()` (home.js): usa su estado `unresolvedModal` y sus métodos
-   copyUnresolved / closeUnresolvedAndReload / continueToDeck. #}
     <template x-if="unresolvedModal.open">
       <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
            @keydown.escape.window="unresolvedModal.open = false"
@@ -11,7 +5,6 @@
         <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal animate-scale-in max-w-2xl w-full
                     max-h-[85vh] flex flex-col"
              @click.outside="unresolvedModal.open = false">
-          {# Header #}
           <div class="flex items-start gap-3 p-5 border-b border-border-subtle">
             <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
               <i data-lucide="alert-triangle" class="w-5 h-5"></i>
@@ -31,7 +24,6 @@
             </button>
           </div>
 
-          {# Body: lista de fallos con línea original + motivo probable #}
           <div class="flex-1 overflow-y-auto p-5 space-y-2">
             <p class="text-xs text-fg-muted mb-2">
               {{ t.home_unresolved_hint }}
@@ -54,7 +46,6 @@
             </div>
           </div>
 
-          {# Footer: acciones #}
           <div class="border-t border-border-subtle p-4 flex flex-wrap items-center gap-2 justify-end">
             <button @click="copyUnresolved()"
                     class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg

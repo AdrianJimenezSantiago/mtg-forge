@@ -106,10 +106,6 @@ class HTTPListingSourceType(ArtSourceType):
 
     @classmethod
     def thumbnail_url(cls, source: ArtSource, file_id: str) -> str:
-        # En esta primera iteración no distinguimos thumb del original —
-        # devolvemos la URL completa. Si el manifest tiene thumb_urls
-        # distintos y los queremos preservar, requiere columna extra en
-        # IndexedArt (ver TODO en el docstring del módulo).
         return cls.download_url(source, file_id)
 
     @classmethod
@@ -145,10 +141,9 @@ class HTTPListingSourceType(ArtSourceType):
             filename = entry.get("filename")
             if not url or not filename:
                 continue
-            # Preferimos el file_id explícito; si falta, derivamos de la URL.
             fid = entry.get("file_id") or _encode_url(str(url))
             yield SourceFile(
-                file_id=str(fid)[:128],  # respeta el límite de la columna
+                file_id=str(fid)[:128],
                 filename=str(filename),
                 folder_path=str(entry.get("folder_path") or ""),
                 size_bytes=int(entry.get("size_bytes") or 0),

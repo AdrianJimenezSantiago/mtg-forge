@@ -29,9 +29,6 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "templates"
 JS_DIR = ROOT / "static" / "js"
 
-# Template → nombre del módulo destino. `base.html` queda fuera: sus bloques
-# son configuración de arranque muy pequeña, y moverlos añadiría una petición
-# extra en la ruta crítica de cada página para ahorrar 90 líneas.
 TARGETS = {
     "deck.html": "deck-editor.js",
     "pdf_studio.html": "pdf-studio.js",
@@ -62,8 +59,6 @@ HEADER = """/**
  */
 """
 
-# Símbolos que el HTML referencia desde atributos de Alpine y que, por tanto,
-# tienen que seguir siendo globales tras la extracción.
 GLOBAL_DECL_RE = re.compile(
     r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", re.MULTILINE
 )
@@ -73,7 +68,6 @@ def collect_globals(js: str) -> list[str]:
     """Nombres de funciones declaradas en el nivel superior del bloque."""
     names = []
     for match in GLOBAL_DECL_RE.finditer(js):
-        # Solo las de nivel superior: las anidadas van indentadas.
         line_start = js.rfind("\n", 0, match.start()) + 1
         if js[line_start:match.start()].strip() == "":
             names.append(match.group(1))
@@ -159,28 +153,6 @@ def process(check_only: bool) -> int:
         JS_DIR.mkdir(parents=True, exist_ok=True)
         module_path.write_text(content, encoding="utf-8")
 
-        # Sustituir el bloque por la etiqueta que carga el módulo.
-        # El bloque embebido se ELIMINA de su sitio y el módulo se declara en
-        # `{% block view_module %}`, que base.html renderiza en el <head>
-        # ANTES de Alpine.
-        #
-        # No es un detalle cosmético: la build CDN de Alpine arranca con
-        # `queueMicrotask(() => Alpine.start())`, es decir en cuanto termina su
-        # propio script diferido. Los `defer` y los `type="module"` comparten
-        # el mismo orden de ejecución (orden de documento), así que un módulo
-        # declarado más abajo en la página se ejecuta DESPUÉS de que Alpine
-        # haya empezado a recorrer el DOM, y las funciones de `x-data` aún no
-        # están en `window`. Resultado: "xxx is not defined" y vista en blanco.
-        #
-        # OJO también: el comentario NO puede contener la palabra "script"
-        # entre ángulos. Si la contiene, la expresión regular de este mismo
-        # script la detecta como bloque embebido en la siguiente pasada y
-        # `--check` reporta un desfase permanente.
-        #
-        # `asset_v()` añade el mtime como query para invalidar la caché del
-        # navegador al actualizar la app: los módulos se sirven con
-        # max-age=1 día, así que sin esto un usuario que actualiza seguiría
-        # ejecutando el JavaScript viejo durante 24 horas.
         block_declaration = (
             f'{{% block view_module %}}\n'
             f'  {{# La lógica de esta vista vive en /static/js/{module_name}.\n'
@@ -204,8 +176,6 @@ def process(check_only: bool) -> int:
 
         html = html[:block.start()] + replacement + html[block.end():]
 
-        # El bloque se inserta justo después de `{% extends %}`, que siempre
-        # es la primera línea de una plantilla hija.
         marker = "{% extends"
         if marker not in html:
             print(f"  ERROR  {template} no extiende de base.html")

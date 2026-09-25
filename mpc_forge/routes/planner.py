@@ -23,16 +23,10 @@ DbDep = Annotated[AsyncSession, Depends(get_session)]
 router = APIRouter(tags=["planner"])
 
 
-# ---------------------------------------------------------------------------
-# Planificador de tiradas
-# ---------------------------------------------------------------------------
-
 class PlanRequest(BaseModel):
     deck_ids: list[int] = Field(default_factory=list, max_length=50)
-    # Techo por pedido. None = usar el tier máximo de MPC.
     max_tier: int | None = None
     keep_decks_together: bool = True
-    # Si se activa, se descuentan las cartas que el usuario ya posee.
     subtract_collection: bool = False
     match_mode: Literal["oracle", "exact"] = "oracle"
     include_basics: bool = True
@@ -59,9 +53,6 @@ async def build_plan(payload: PlanRequest, db: DbDep) -> dict[str, Any]:
         )
         return {**plan.to_dict(), "subtracted_collection": False}
 
-    # Con la colección descontada, las contribuciones ya no son "el mazo
-    # entero" sino "lo que falta", así que se construyen a mano en vez de
-    # dejar que el planificador las lea de la BD.
     needs = await print_needs.compute_for_decks(
         db, payload.deck_ids,
         match_mode=payload.match_mode,
@@ -116,10 +107,6 @@ async def compare(
     return {"options": print_planner.compare_alternatives(total_cards)}
 
 
-# ---------------------------------------------------------------------------
-# Diff colección ↔ mazo
-# ---------------------------------------------------------------------------
-
 @router.get("/api/decks/{deck_id}/print-needs")
 async def deck_print_needs(
     deck_id: int,
@@ -140,8 +127,6 @@ class MultiNeedsRequest(BaseModel):
     deck_ids: list[int] = Field(default_factory=list, max_length=50)
     match_mode: Literal["oracle", "exact"] = "oracle"
     include_basics: bool = True
-    # Reparte las copias poseídas entre los mazos en vez de contarlas para
-    # todos. Ver la explicación en services/print_needs.py.
     shared_collection: bool = True
 
 
@@ -165,10 +150,6 @@ async def multi_deck_needs(
     }
 
 
-# ---------------------------------------------------------------------------
-# Temas de arte
-# ---------------------------------------------------------------------------
-
 class CreateThemeRequest(BaseModel):
     deck_id: int
     name: str = Field(..., min_length=1, max_length=128)
@@ -184,8 +165,6 @@ class RenameThemeRequest(BaseModel):
 class ApplyThemeRequest(BaseModel):
     deck_id: int
     overwrite_custom: bool = True
-    # Snapshot previo: aplicar un tema toca decenas de cartas de golpe y debe
-    # poder deshacerse de un clic.
     create_snapshot: bool = True
 
 
@@ -263,10 +242,6 @@ async def apply_art_theme(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema o mazo no encontrado")
     return {**result.to_dict(), "snapshot": snapshot}
 
-
-# ---------------------------------------------------------------------------
-# Snapshots de mazo
-# ---------------------------------------------------------------------------
 
 class CreateSnapshotRequest(BaseModel):
     label: str = Field("", max_length=256)

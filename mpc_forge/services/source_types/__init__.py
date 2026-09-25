@@ -19,9 +19,6 @@ from .base import (
     list_registered,
     resolve,
 )
-
-# Los imports siguientes solo existen para provocar el side-effect del
-# __init_subclass__ que rellena el registry. No se re-exportan.
 from .gdrive import GDriveFileSourceType, GDriveSourceType  # noqa: F401
 from .http import HTTPListingSourceType  # noqa: F401
 from .local_folder import LocalFolderSourceType  # noqa: F401

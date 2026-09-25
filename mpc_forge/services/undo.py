@@ -51,8 +51,6 @@ from mpc_forge.services.deck_activity import DeckActivityKind as K
 log = logging.getLogger(__name__)
 
 
-# Kinds que sabemos revertir. Usado por el frontend para saber qué eventos
-# muestran el botón "Deshacer".
 UNDOABLE_KINDS: set[str] = {
     K.CARD_MOVED,
     K.CARD_QTY_CHANGED,
@@ -85,7 +83,6 @@ async def can_undo(event: DeckActivity) -> tuple[bool, str]:
         return False, "Payload corrupto"
 
     if event.kind == K.CARD_ART_CHANGED:
-        # Cambios a custom art no se deshacen: el archivo podría no existir.
         if payload.get("kind") == "custom":
             return False, "Cambios a arte custom no se pueden deshacer automáticamente"
         if not payload.get("old_scryfall_id"):
@@ -120,14 +117,10 @@ async def undo_event(db: AsyncSession, event: DeckActivity) -> dict[str, Any]:
     kind = event.kind
     handler = _HANDLERS.get(kind)
     if handler is None:
-        # Guardaespaldas — no debería pasar porque UNDOABLE_KINDS lo cubre
         raise UndoNotSupported(f"Sin handler para {kind}")
 
     summary = await handler(db, event, payload, deck)
 
-    # Nuevo evento en el timeline reflejando el undo. Reutilizamos el kind
-    # opuesto cuando existe, para que la vista lo pinte con su icono normal;
-    # si no, ponemos un kind genérico "undone".
     inverse_kind = _INVERSE_KIND.get(kind, "undone")
     await deck_activity.log_event(
         db, deck_id, inverse_kind,
@@ -146,8 +139,6 @@ async def undo_event(db: AsyncSession, event: DeckActivity) -> dict[str, Any]:
     return summary
 
 
-# --- Handlers por kind ----------------------------------------------------
-
 async def _undo_card_moved(
     db: AsyncSession, event: DeckActivity, payload: dict, deck: Deck,
 ) -> dict[str, Any]:
@@ -156,9 +147,6 @@ async def _undo_card_moved(
     if not from_role or not to_role:
         raise UndoNotSupported("Snapshot incompleto de roles")
 
-    # Buscamos la carta por scryfall_id + rol actual. Si el usuario la ha
-    # movido otra vez desde entonces, ya no está en `to_role` — no podemos
-    # revertir con seguridad.
     dc = (await db.scalars(
         select(DeckCard).where(
             DeckCard.deck_id == deck.id,
@@ -232,8 +220,6 @@ async def _undo_card_art_changed(
     if not old_sfid or not new_sfid:
         raise UndoNotSupported("Snapshot incompleto del arte")
 
-    # La carta debería estar aún con new_scryfall_id. Si el usuario cambió el
-    # arte de nuevo, ya no está — no revertimos.
     dc = (await db.scalars(
         select(DeckCard).where(
             DeckCard.deck_id == deck.id,
@@ -243,8 +229,6 @@ async def _undo_card_art_changed(
     if not dc:
         raise UndoNotSupported("El arte ha cambiado desde entonces — ya no coincide")
 
-    # El printing anterior debería seguir cacheado (nunca borramos rows de
-    # PrintingCache). Si por lo que sea no está, damos error legible.
     old_printing = await db.get(PrintingCache, old_sfid)
     if not old_printing:
         raise UndoNotSupported("La impresión anterior ya no está en caché")
@@ -287,8 +271,6 @@ async def _undo_deck_renamed(
 async def _undo_card_added(
     db: AsyncSession, event: DeckActivity, payload: dict, deck: Deck,
 ) -> dict[str, Any]:
-    # Deshacer un add = eliminar la carta. Si se hizo stack (quantity +=),
-    # deberíamos revertir solo la cantidad añadida, no borrar la carta entera.
     stacked = payload.get("stacked", False)
     added_qty = payload.get("quantity", 1)
     role = payload.get("role", "mainboard")
@@ -304,7 +286,6 @@ async def _undo_card_added(
         raise UndoNotSupported("La carta ya no está en el mazo")
 
     if stacked:
-        # Revertir solo la cantidad añadida. Si eso deja quantity<=0, borramos.
         new_qty = dc.quantity - added_qty
         if new_qty <= 0:
             await db.delete(dc)
@@ -318,7 +299,6 @@ async def _undo_card_added(
             "payload_extras": {"old_qty": dc.quantity + added_qty, "new_qty": new_qty},
         }
 
-    # No stacked: la carta fue creada por ese add. La borramos entera.
     if dc.quantity != added_qty:
         raise UndoNotSupported(
             f"La cantidad ha cambiado desde entonces ({added_qty} → {dc.quantity})"
@@ -333,8 +313,6 @@ async def _undo_card_added(
 async def _undo_card_removed(
     db: AsyncSession, event: DeckActivity, payload: dict, deck: Deck,
 ) -> dict[str, Any]:
-    # Deshacer un remove = re-crear la carta con los datos del snapshot.
-    # Si ya existe (el usuario la ha vuelto a añadir a mano), fallamos.
     quantity = payload.get("quantity", 1)
     role = payload.get("role", "mainboard")
 
@@ -353,7 +331,6 @@ async def _undo_card_removed(
             f"'{event.card_name}' ya está en {role} — no se puede duplicar"
         )
 
-    # El printing debería seguir en cache (no lo borramos nunca).
     printing = await db.get(PrintingCache, event.card_scryfall_id)
     if not printing:
         raise UndoNotSupported("La impresión ya no está en caché")
@@ -385,8 +362,6 @@ _HANDLERS: dict[str, Any] = {
 }
 
 
-# Mapping para el kind del evento generado por el undo. Emitimos el kind
-# "opuesto" para que se pinte con el icono correcto en el timeline.
 _INVERSE_KIND: dict[str, str] = {
     K.CARD_ADDED: K.CARD_REMOVED,
     K.CARD_REMOVED: K.CARD_ADDED,

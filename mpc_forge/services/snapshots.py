@@ -35,18 +35,15 @@ from mpc_forge.models import Deck, DeckCard, DeckSnapshot
 
 log = logging.getLogger(__name__)
 
-# Cuántos snapshots automáticos se conservan por mazo.
 MAX_AUTO_SNAPSHOTS = 10
 
-# Versión del formato de `payload_json`. Si algún día cambia la estructura,
-# `restore` puede migrar los antiguos en vez de fallar en silencio.
 PAYLOAD_VERSION = 1
 
 
 @dataclass
 class DiffEntry:
     name: str
-    change: str          # added | removed | quantity | art | role
+    change: str
     before: Any = None
     after: Any = None
 
@@ -274,8 +271,6 @@ def _diff_lists(
         for card in cards:
             key = card.get("oracle_id") or card.get("name", "")
             if key in out:
-                # Copias con artes distintos: se suman las cantidades y gana la
-                # primera para el resto de campos.
                 out[key]["quantity"] += card.get("quantity", 0)
             else:
                 out[key] = dict(card)

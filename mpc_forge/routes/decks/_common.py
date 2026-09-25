@@ -18,8 +18,6 @@ from mpc_forge.db import get_session
 
 log = logging.getLogger(__name__)
 
-# Todos los sub-routers comparten prefijo y etiqueta: las rutas resultantes son
-# exactamente las mismas que cuando todo vivía en un único fichero.
 ROUTER_PREFIX = "/api/decks"
 ROUTER_TAGS = ["decks"]
 

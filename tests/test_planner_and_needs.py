@@ -21,10 +21,6 @@ def contribution(deck_id: int, count: int, name: str = "") -> DeckContribution:
     )
 
 
-# ===========================================================================
-# Planificador
-# ===========================================================================
-
 class TestTierSelection:
     def test_tiers_are_sorted_ascending(self):
         sizes = [int(t["size"]) for t in print_planner.tiers()]
@@ -100,7 +96,6 @@ class TestPlanRuns:
         decks = [contribution(1, 300), contribution(2, 300), contribution(3, 300)]
         runs = print_planner.plan_runs(decks)
         for run in runs:
-            # Ningún mazo aparece en dos pedidos distintos.
             assert len(run.deck_ids) == len(set(run.deck_ids))
         appearances = [d for r in runs for d in r.deck_ids]
         assert sorted(appearances) == [1, 2, 3]
@@ -184,7 +179,6 @@ class TestFillerSuggestions:
         sizes = [int(t["size"]) for t in print_planner.tiers()]
         if len(sizes) < 2:
             pytest.skip("Se necesitan al menos dos tiers")
-        # Justo una carta por encima del tier pequeño: quitar una baja de tier.
         tier = print_planner.smallest_tier_for(sizes[0] + 1)
         run = RunPlan(
             index=0, tier_size=int(tier["size"]),
@@ -196,10 +190,6 @@ class TestFillerSuggestions:
         assert downgrade["remove_cards"] == 1
         assert downgrade["saving_usd"] > 0
 
-
-# ===========================================================================
-# Diff colección ↔ mazo
-# ===========================================================================
 
 class TestBasicLandDetection:
     @pytest.mark.parametrize("name", [

@@ -45,13 +45,10 @@ class GDriveSourceType(ArtSourceType):
 
     @classmethod
     async def list_files(cls, source: ArtSource) -> AsyncIterator[SourceFile]:
-        # No usado — la ruta de indexado de Drive es específica y vive en
-        # gdrive_indexer.reindex_source_by_id(). El dispatcher en el módulo
-        # `indexer` la llama directamente cuando source_type == "gdrive".
         raise NotImplementedError(
             "GDrive usa su propia ruta de indexado en gdrive_indexer, no la genérica"
         )
-        yield  # unreachable
+        yield
 
 
 class GDriveFileSourceType(GDriveSourceType, register=True):
@@ -64,6 +61,5 @@ class GDriveFileSourceType(GDriveSourceType, register=True):
 
     @classmethod
     async def list_files(cls, source: ArtSource) -> AsyncIterator[SourceFile]:
-        # Un archivo suelto no se indexa como fuente. Devolvemos vacío.
         return
-        yield  # unreachable
+        yield

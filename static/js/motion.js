@@ -1,46 +1,5 @@
-/**
- * MPC Forge · capa de movimiento (parte interactiva).
- *
- * Complemento de /static/motion.css. Aquí solo vive lo que necesita saber
- * dónde está el cursor o cuándo cambia un valor; el aspecto está en el CSS.
- *
- * Qué aporta
- * ----------
- *   [data-tilt]            Inclinación 3D + reflejo que sigue al cursor.
- *                          `data-tilt="foil"` añade la película de colores.
- *                          `data-tilt-max="8"` limita el ángulo (grados).
- *   [data-deal]            Reparte sus hijos como cartas al cargar la página
- *                          (una vez por sesión, o al recargar).
- *   [data-reveal]          Añade .is-revealed la primera vez que el elemento
- *                          entra en pantalla (la animación la define el CSS).
- *   [data-scroll-fade]     Contenedor con scroll propio: recibe .fx-more-below
- *                          mientras quede contenido por debajo.
- *   .bg-accent (botones)   Destello que nace en el punto exacto del clic.
- *
- *   Directivas de Alpine:
- *   x-auto-animate         FLIP automático de la lista (entradas, salidas,
- *                          reordenaciones) con @formkit/auto-animate.
- *                          `.lazy` no anima la primera carga de datos.
- *                          `.toasts` usa la variante para notificaciones.
- *   x-flip="expr"          Voltea el elemento cuando `expr` cambia (p. ej. al
- *                          elegir un arte nuevo). Si hay un ancestro con
- *                          [data-flash-row] lo ilumina un instante.
- *   x-tween.N="expr"       Interpola un número hasta su nuevo valor con N
- *                          decimales. Sufijo opcional en data-suffix.
- *                          `.from0` cuenta desde 0 también la primera vez.
- *
- * Por qué es un script clásico y no un módulo: igual que app.js. Se ejecuta
- * durante el parseo, antes que el `defer` de Alpine, así que el listener de
- * `alpine:init` está registrado a tiempo. Ver la nota de api.js.
- *
- * Todo degrada en silencio: sin Element.animate, sin ResizeObserver (jsdom),
- * o con "reducir movimiento" activado en el sistema, las funciones no hacen
- * nada y la interfaz se comporta exactamente como antes.
- */
 (function () {
   'use strict';
-
-  // ── Utilidades ─────────────────────────────────────────────────────────
 
   function media(query) {
     try {
@@ -65,14 +24,9 @@
     ? window.requestAnimationFrame.bind(window)
     : null;
 
-  /**
-   * Relanza una animación CSS basada en clase aunque ya se estuviera
-   * ejecutando, y retira la clase al terminar para no dejar estado colgado.
-   */
   function replay(el, className) {
     if (!el || !el.classList) return;
     el.classList.remove(className);
-    // Forzar reflow: sin esto el navegador fusiona quitar+poner y no relanza.
     void el.offsetWidth;
     el.classList.add(className);
     var done = function (ev) {
@@ -87,8 +41,6 @@
 
   var EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
   var EASE_IN = 'cubic-bezier(0.55, 0, 1, 0.45)';
-
-  // ── 1 · Inclinación 3D de cartas ───────────────────────────────────────
 
   (function tilt() {
     var active = null;
@@ -131,8 +83,6 @@
         leaveActive();
         if (!target || prefersReducedMotion() || !hasFinePointer()) return;
         active = target;
-        // El rectángulo se toma al entrar, antes de inclinar: medirlo en
-        // cada frame devolvería la caja ya rotada y la carta temblaría.
         rect = target.getBoundingClientRect();
         var m = parseFloat(target.getAttribute('data-tilt-max'));
         maxDeg = isFinite(m) ? m : 10;
@@ -148,11 +98,8 @@
 
     document.documentElement.addEventListener('pointerleave', leaveActive);
     window.addEventListener('blur', leaveActive);
-    // Al hacer scroll la caja cacheada deja de ser válida.
     document.addEventListener('scroll', leaveActive, { capture: true, passive: true });
   })();
-
-  // ── 2 · Reparto de cartas al cargar ────────────────────────────────────
 
   (function deal() {
     var root = document.documentElement;
@@ -174,10 +121,8 @@
           replay(child, 'fx-deal');
         });
       });
-      // En el mismo frame que las clases: el `fill-mode: both` del keyframe
-      // mantiene las cartas ocultas durante su retardo.
       root.classList.remove('fx-dealing');
-      try { sessionStorage.setItem(DEAL_KEY, '1'); } catch (_) { /* modo privado */ }
+      try { sessionStorage.setItem(DEAL_KEY, '1'); } catch (_) {}
     }
 
     if (!canAnimate || prefersReducedMotion()) {
@@ -190,12 +135,6 @@
       run();
     }
   })();
-
-  // ── 2b · Aparición al entrar en pantalla ──────────────────────────────
-  // [data-reveal] recibe .is-revealed la primera vez que se ve. El estado
-  // oculto solo existe bajo html.fx-reveal-ready, que se pone aquí: sin JS,
-  // sin IntersectionObserver o con movimiento reducido, todo se ve desde el
-  // principio.
 
   (function reveal() {
     var targets = document.querySelectorAll('[data-reveal]');
@@ -218,11 +157,6 @@
     Array.prototype.forEach.call(targets, function (el) { io.observe(el); });
   })();
 
-  // ── 2c · Aviso de "hay más abajo" en contenedores con scroll ─────────────
-  // La barra lateral es fija y, en ventanas bajas, su navegación hace scroll
-  // interno. Sin una pista visual, la lista de recientes y el buscador
-  // quedarían ocultos sin que nada lo indique.
-
   (function scrollFade() {
     var boxes = document.querySelectorAll('[data-scroll-fade]');
     if (!boxes.length) return;
@@ -234,7 +168,6 @@
       update(box);
       box.addEventListener('scroll', function () { update(box); }, { passive: true });
       if (typeof ResizeObserver !== 'undefined') {
-        // El contenido crece al llegar los datos (recientes, resultados).
         var ro = new ResizeObserver(function () { update(box); });
         ro.observe(box);
         Array.prototype.forEach.call(box.children, function (child) { ro.observe(child); });
@@ -244,8 +177,6 @@
       Array.prototype.forEach.call(boxes, update);
     }, { passive: true });
   })();
-
-  // ── 3 · Destello de los botones primarios ──────────────────────────────
 
   document.addEventListener('pointerdown', function (e) {
     var btn = e.target && e.target.closest
@@ -258,9 +189,6 @@
     replay(btn, 'fx-burst');
   }, { passive: true });
 
-  // ── 4 · Directivas de Alpine ───────────────────────────────────────────
-
-  /** Toasts: la entrada la pinta el CSS; aquí solo salida y recolocación. */
   function toastPlugin(el, action, oldCoords, newCoords) {
     if (action === 'add') {
       return new KeyframeEffect(el, [{ opacity: 1 }, { opacity: 1 }], { duration: 1 });
@@ -316,9 +244,6 @@
       }
 
       if (modifiers.indexOf('lazy') !== -1) {
-        // La lista se rellena de golpe al llegar los datos (cien cartas a la
-        // vez). Animar eso sería ruido: se engancha cuando lleva un rato
-        // quieta, y a partir de ahí anima solo lo que el usuario provoca.
         var settle = function () {
           clearTimeout(settleTimer);
           settleTimer = setTimeout(function () {
@@ -358,8 +283,6 @@
 
       utils.effect(function () {
         getValue(function (value) {
-          // Pasar de "sin valor" a un valor es la carga inicial (el dato llega
-          // por fetch después de montar la vista), no un cambio del usuario.
           if (first || last == null || last === '') {
             first = false;
             last = value;
@@ -370,8 +293,6 @@
             return;
           }
           last = value;
-          // Esperar a que la imagen nueva esté decodificada: si no, el
-          // volteo enseña la vieja y cambia de golpe a mitad de giro.
           var img = el.tagName === 'IMG' ? el : el.querySelector('img');
           if (img && !img.complete) {
             var fired = false;

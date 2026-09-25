@@ -49,7 +49,6 @@ class CubeCobraSite(ImportSite):
             f"/cube/download/plaintext/{cube_id}?{_DOWNLOAD_QUERY}"
         )
         text = resp.text or ""
-        # CubeCobra emite líneas como `# mainboard` que rompen el parseo.
         cleaned = "\n".join(
             line for line in text.splitlines() if not line.startswith("# ")
         )

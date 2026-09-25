@@ -47,10 +47,8 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Espaciado mínimo entre inicios de petición, con ~10 % de margen sobre el
-# límite oficial.
-GENERAL_INTERVAL = 0.11   # límite oficial: 100 ms
-HEAVY_INTERVAL = 0.55     # límite oficial: 500 ms
+GENERAL_INTERVAL = 0.11
+HEAVY_INTERVAL = 0.55
 
 HEAVY_PATHS = frozenset({
     "/cards/search",
@@ -59,16 +57,15 @@ HEAVY_PATHS = frozenset({
     "/cards/collection",
 })
 
-# Duración del bloqueo que aplica Scryfall tras un 429.
 RATE_LIMIT_COOLDOWN = 30.0
 
-_RETRY_MAX_ATTEMPTS = 4       # 1 intento inicial + 3 reintentos (red / 5xx)
-_RETRY_MAX_429 = 1            # tras un 429 solo se reintenta una vez, ya enfriado
-_RETRY_BASE_DELAY = 0.5       # segundos; se dobla en cada reintento
+_RETRY_MAX_ATTEMPTS = 4
+_RETRY_MAX_429 = 1
+_RETRY_BASE_DELAY = 0.5
 _RETRY_MAX_DELAY = 8.0
 _RETRYABLE_5XX = {500, 502, 503, 504}
 
-_COLLECTION_CHUNK = 75        # máximo de identificadores por POST /cards/collection
+_COLLECTION_CHUNK = 75
 
 
 def _is_heavy(url: str) -> bool:
@@ -99,15 +96,10 @@ class ScryfallClient:
         self._cooldown = cooldown
         self._cooldown_until = 0.0
         self._inflight: dict[Any, asyncio.Future[Any]] = {}
-        # Contadores para diagnóstico (logs / tests).
         self.stats = {"requests": 0, "rate_limited": 0, "deduplicated": 0}
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-    # ------------------------------------------------------------------
-    # Rate limit
-    # ------------------------------------------------------------------
 
     @property
     def cooling_down(self) -> bool:
@@ -132,14 +124,8 @@ class ScryfallClient:
         while True:
             await self._wait_cooldown()
             await self._limiter.acquire(heavy)
-            # Si otra petición recibió un 429 mientras esperábamos turno, no
-            # salir: esperar a que acabe el bloqueo y pedir turno de nuevo.
             if not self.cooling_down:
                 return
-
-    # ------------------------------------------------------------------
-    # Transporte
-    # ------------------------------------------------------------------
 
     async def _request_with_retry(
         self,
@@ -233,7 +219,7 @@ class ScryfallClient:
                 if self._inflight.get(key) is f:
                     del self._inflight[key]
                 if not f.cancelled():
-                    f.exception()  # marca la excepción como recuperada
+                    f.exception()
 
             fut.add_done_callback(_cleanup)
         else:
@@ -264,10 +250,6 @@ class ScryfallClient:
             resp.raise_for_status()
             page = resp.json()
         return results
-
-    # ------------------------------------------------------------------
-    # Endpoints
-    # ------------------------------------------------------------------
 
     async def search_all(self, query: str, **params: Any) -> list[dict[str, Any]]:
         """Todas las cartas de una búsqueda, recorriendo la paginación."""
@@ -365,31 +347,10 @@ class ScryfallClient:
         return list(payload.get("data", []) if payload else [])
 
 
-# Utilidades para extraer info de las respuestas -----------------------------
-
 def is_double_faced(card: dict[str, Any]) -> bool:
     """True si la carta tiene dos caras físicas (DFC/MDFC/transform)."""
     layout = card.get("layout", "normal")
     return layout in {"transform", "modal_dfc", "double_faced_token", "reversible_card"}
-
-
-def get_face_images(card: dict[str, Any]) -> tuple[dict[str, str] | None, dict[str, str] | None]:
-    """Devuelve (front_uris, back_uris) o (front, None) para cartas normales."""
-    if is_double_faced(card):
-        faces = card.get("card_faces", [])
-        front = faces[0].get("image_uris") if len(faces) > 0 else None
-        back = faces[1].get("image_uris") if len(faces) > 1 else None
-        return front, back
-    return card.get("image_uris"), None
-
-
-def token_ids_from_card(card: dict[str, Any]) -> list[str]:
-    """scryfall_ids de tokens creados por esta carta (según 'all_parts')."""
-    tokens = []
-    for part in card.get("all_parts", []) or []:
-        if part.get("component") == "token":
-            tokens.append(part["id"])
-    return tokens
 
 
 def related_parts_from_card(card: dict[str, Any]) -> list[dict[str, str]]:
