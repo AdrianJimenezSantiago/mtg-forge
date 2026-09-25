@@ -19,6 +19,8 @@ Qué se protege aquí
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from mpc_forge import config as cfg
@@ -67,9 +69,10 @@ def disk_content(tmp_path, monkeypatch):
     write(p.cardbacks_dir / "back.png", 300)
     write(p.thumbs_dir / "thumb.webp", 150)
     write(p.exports_dir / "deck.pdf", 900)
-    write(p.backups_dir / "mpc-forge-backup-20250101-010101-pre-migration.zip", 70)
-    write(p.backups_dir / "mpc-forge-backup-20250102-010101-pre-migration.zip", 80)
-    write(p.backups_dir / "mpc-forge-backup-20250103-010101.zip", 90)
+    for day, suffix, size in ((1, "-pre-migration", 70), (2, "-pre-migration", 80), (3, "", 90)):
+        backup = write(p.backups_dir / f"mpc-forge-backup-2025010{day}-010101{suffix}.zip", size)
+        mtime = 1_735_693_261 + (day - 1) * 86_400
+        os.utime(backup, (mtime, mtime))
     write(p.data_dir / "logs" / "mpc-forge.log.1", 60)
     write(p.data_dir / "tag_vocabulary.json", 25)
 
