@@ -30,7 +30,7 @@
     <span class="text-fg-faint">·</span>
     <span class="font-semibold">{{ t.pdf_title }}</span>
     <span class="text-fg-faint">·</span>
-    <span class="text-fg-muted" x-text="deck ? deck.name : '{{ deck.name }}'"></span>
+    <span class="text-fg-muted" x-text='deck ? deck.name : {{ deck.name | tojson }}'></span>
     <div class="flex-1"></div>
     <span class="text-fg-faint text-xs" x-show="deck">
       <span x-text="totalSlots"></span> {{ t.history_cards_count }} · <span x-text="totalPages"></span> {{ t.pdf_summary_page | lower }}s
@@ -68,7 +68,7 @@
 
         <div>
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_deck_label }}</div>
-          <div class="text-sm font-medium truncate" x-text="deck ? deck.name : '{{ deck.name }}'"></div>
+          <div class="text-sm font-medium truncate" x-text='deck ? deck.name : {{ deck.name | tojson }}'></div>
           <div class="text-[11px] text-fg-muted mt-1" x-show="deck">
             <span x-text="uniqueCards"></span> · <span x-text="totalSlots"></span> slots
           </div>

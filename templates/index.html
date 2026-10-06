@@ -196,19 +196,19 @@
               <div x-show="open" x-transition.origin.top.right
                    class="absolute right-0 top-9 z-10 bg-bg-elevated border border-border-strong
                           rounded-lg shadow-modal py-1 min-w-[180px]">
-                <button @click="rename({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
+                <button @click='rename({{ deck.id }}, {{ deck.name | tojson }}); open = false'
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-bg-subtle text-fg-muted hover:text-fg">
                   <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                   {{ t.home_deck_rename }}
                 </button>
-                <button @click="duplicate({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
+                <button @click='duplicate({{ deck.id }}, {{ deck.name | tojson }}); open = false'
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-bg-subtle text-fg-muted hover:text-fg">
                   <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                   {{ t.home_deck_duplicate }}
                 </button>
-                <button @click="del({{ deck.id }}, '{{ deck.name|replace("'", "\\'") }}'); open = false"
+                <button @click='del({{ deck.id }}, {{ deck.name | tojson }}); open = false'
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs
                                hover:bg-danger/10 text-danger">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
