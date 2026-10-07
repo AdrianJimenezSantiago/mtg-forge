@@ -5,7 +5,7 @@ import re
 from typing import ClassVar
 from urllib.parse import urlparse
 
-from .base import ImportSite, ImportSiteError, InvalidURLError
+from .base import ImportSite, ImportSiteError, InvalidURLError, PayloadCache
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class MoxfieldSite(ImportSite):
     host_names: ClassVar[tuple[str, ...]] = ("www.moxfield.com", "moxfield.com")
     example_url: ClassVar[str] = "https://www.moxfield.com/decks/…"
 
-    _payload_cache: ClassVar[dict[str, dict]] = {}
+    _payload_cache: ClassVar[PayloadCache] = PayloadCache()
 
     @classmethod
     def get_headers(cls) -> dict[str, str]:
@@ -40,8 +40,9 @@ class MoxfieldSite(ImportSite):
         if not deck_id:
             raise InvalidURLError(url)
 
-        if deck_id in cls._payload_cache:
-            return deck_id, cls._payload_cache[deck_id]
+        cached = cls._payload_cache.get(deck_id)
+        if cached is not None:
+            return deck_id, cached
 
         payload = None
         last_err: Exception | None = None
@@ -57,7 +58,7 @@ class MoxfieldSite(ImportSite):
         if payload is None:
             raise ImportSiteError(f"No se pudo obtener el mazo {deck_id!r} de Moxfield: {last_err}")
 
-        cls._payload_cache[deck_id] = payload
+        cls._payload_cache.put(deck_id, payload)
         return deck_id, payload
 
     @classmethod
@@ -68,7 +69,7 @@ class MoxfieldSite(ImportSite):
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
         deck_id, payload = await cls._fetch_payload(url)
-        cls._payload_cache.pop(deck_id, None)
+        cls._payload_cache.pop(deck_id)
         deck_name = (payload.get("name") or "").strip()
         return deck_name if deck_name else None
 

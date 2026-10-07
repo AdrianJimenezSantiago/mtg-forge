@@ -4,7 +4,7 @@ import re
 from typing import ClassVar
 from urllib.parse import urlparse
 
-from .base import ImportSite, ImportSiteError, InvalidURLError
+from .base import ImportSite, ImportSiteError, InvalidURLError, PayloadCache
 
 _ARCHIDEKT_ID_RE = re.compile(r"^/decks/(\d+)")
 
@@ -16,7 +16,7 @@ class ArchidektSite(ImportSite):
     example_url: ClassVar[str] = "https://archidekt.com/decks/1234567/deck-name"
     base_url: ClassVar[str] = "archidekt.com"
 
-    _payload_cache: ClassVar[dict[str, dict]] = {}
+    _payload_cache: ClassVar[PayloadCache] = PayloadCache()
 
     @classmethod
     async def _fetch_payload(cls, url: str) -> tuple[str, dict]:
@@ -26,14 +26,15 @@ class ArchidektSite(ImportSite):
             raise InvalidURLError(url)
         deck_id = m.group(1)
 
-        if deck_id in cls._payload_cache:
-            return deck_id, cls._payload_cache[deck_id]
+        cached = cls._payload_cache.get(deck_id)
+        if cached is not None:
+            return deck_id, cached
 
         resp = await cls.request(f"/api/decks/{deck_id}/")
         payload = resp.json()
         if not (payload.get("cards") or []):
             raise ImportSiteError("El mazo de Archidekt no contiene cartas")
-        cls._payload_cache[deck_id] = payload
+        cls._payload_cache.put(deck_id, payload)
         return deck_id, payload
 
     @classmethod
@@ -44,7 +45,7 @@ class ArchidektSite(ImportSite):
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
         deck_id, payload = await cls._fetch_payload(url)
-        cls._payload_cache.pop(deck_id, None)
+        cls._payload_cache.pop(deck_id)
         deck_name = (payload.get("name") or "").strip()
         return deck_name if deck_name else None
 

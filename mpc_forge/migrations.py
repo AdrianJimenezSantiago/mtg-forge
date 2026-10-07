@@ -138,6 +138,17 @@ MIGRATIONS: list[Migration] = [
             "ALTER TABLE printings ADD COLUMN legalities TEXT NOT NULL DEFAULT ''",
         ],
     ),
+    Migration(
+        version=13,
+        description="Elimina índices duplicados o cubiertos por índices compuestos",
+        statements=[
+            "DROP INDEX IF EXISTS ix_deck_cards_deck_id",
+            "DROP INDEX IF EXISTS ix_collection_set",
+            "DROP INDEX IF EXISTS ix_collection_oracle",
+            "DROP INDEX IF EXISTS ix_printings_oracle_id",
+            "DROP INDEX IF EXISTS ix_deck_activity_deck_id",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

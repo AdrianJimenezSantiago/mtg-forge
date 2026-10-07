@@ -46,7 +46,7 @@ class PrintingCache(Base):
     __tablename__ = "printings"
 
     scryfall_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    oracle_id: Mapped[str] = mapped_column(String(64), index=True)
+    oracle_id: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(256), index=True)
     set_code: Mapped[str] = mapped_column(String(16))
     set_name: Mapped[str] = mapped_column(String(128))
@@ -215,7 +215,7 @@ class DeckActivity(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     deck_id: Mapped[int | None] = mapped_column(
-        ForeignKey("decks.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("decks.id", ondelete="SET NULL"), nullable=True
     )
     deck_name_snapshot: Mapped[str] = mapped_column(String(256), default="")
     created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, index=True)

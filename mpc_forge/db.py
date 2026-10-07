@@ -42,7 +42,6 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSe
 
 
 EXTRA_INDEXES: list[str] = [
-    "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_id ON deck_cards(deck_id)",
     "CREATE INDEX IF NOT EXISTS ix_deck_cards_scryfall_id ON deck_cards(scryfall_id)",
     "CREATE INDEX IF NOT EXISTS ix_deck_cards_role ON deck_cards(role)",
     "CREATE INDEX IF NOT EXISTS ix_deck_cards_deck_role ON deck_cards(deck_id, role)",
@@ -73,8 +72,6 @@ EXTRA_INDEXES: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_indexed_art_phash "
     "ON indexed_art(image_hash) WHERE image_hash IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS ix_indexed_art_card_type ON indexed_art(card_type)",
-    "CREATE INDEX IF NOT EXISTS ix_collection_set ON collection_entries(set_code)",
-    "CREATE INDEX IF NOT EXISTS ix_collection_oracle ON collection_entries(oracle_id)",
     "CREATE INDEX IF NOT EXISTS ix_print_run_items_run ON print_run_items(run_id)",
     "CREATE INDEX IF NOT EXISTS ix_print_runs_created ON print_runs(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS ix_printings_name_lower ON printings(lower(name))",

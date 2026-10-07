@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, ClassVar
 
 import httpx
@@ -25,6 +26,32 @@ class InvalidURLError(ImportSiteError):
     def __init__(self, url: str) -> None:
         super().__init__(f"URL no válida para este sitio: {url}")
         self.url = url
+
+
+class PayloadCache:
+    def __init__(self, ttl_seconds: float = 120.0, max_entries: int = 32) -> None:
+        self._ttl = ttl_seconds
+        self._max = max_entries
+        self._entries: dict[str, tuple[float, dict]] = {}
+
+    def get(self, key: str) -> dict | None:
+        hit = self._entries.get(key)
+        if hit is None:
+            return None
+        stored_at, payload = hit
+        if time.monotonic() - stored_at > self._ttl:
+            self._entries.pop(key, None)
+            return None
+        return payload
+
+    def put(self, key: str, payload: dict) -> None:
+        if len(self._entries) >= self._max:
+            oldest = min(self._entries, key=lambda k: self._entries[k][0])
+            self._entries.pop(oldest, None)
+        self._entries[key] = (time.monotonic(), payload)
+
+    def pop(self, key: str) -> None:
+        self._entries.pop(key, None)
 
 
 def _slug_to_title(slug: str) -> str:
