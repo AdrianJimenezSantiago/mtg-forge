@@ -1,0 +1,48 @@
+{
+  "ci": {
+    "collect": {
+      "url": [
+        "http://127.0.0.1:8000/",
+        "http://127.0.0.1:8000/decks",
+        "http://127.0.0.1:8000/settings",
+        "http://127.0.0.1:8000/decks/1",
+        "http://127.0.0.1:8000/decks/1/pdf"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "chromeFlags": "--headless=new --no-sandbox",
+        "onlyCategories": ["performance", "accessibility", "best-practices"]
+      }
+    },
+    "assert": {
+      "assertMatrix": [
+        {
+          "matchingUrlPattern": ".*",
+          "assertions": {
+            "categories:accessibility": ["error", { "minScore": 0.95 }],
+            "categories:best-practices": ["error", { "minScore": 0.9 }],
+            "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }]
+          }
+        },
+        {
+          "matchingUrlPattern": "^(?!.*/decks/1$).*$",
+          "assertions": {
+            "categories:performance": ["error", { "minScore": 0.9 }]
+          }
+        },
+        {
+          "matchingUrlPattern": ".*/decks/1$",
+          "assertions": {
+            "categories:performance": ["error", { "minScore": 0.6 }],
+            "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }]
+          }
+        }
+      ]
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci"
+    }
+  }
+}

@@ -137,3 +137,34 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Accesibilidad (axe-core)
         run: python scripts/check_accessibility.py http://127.0.0.1:8000
+
+  lighthouse:
+    name: Lighthouse (rendimiento y mazo grande)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+      - name: Sembrar un mazo de 300 cartas sin red
+        run: PYTHONPATH=. python scripts/seed_benchmark_deck.py 300
+      - name: Arrancar el servidor
+        run: |
+          python -m uvicorn mpc_forge.app:app --port 8000 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/ >/dev/null && break
+            sleep 1
+          done
+      - name: Lighthouse CI
+        run: npx --yes @lhci/cli@0.15.x autorun
+      - name: Informes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse
+          path: .lighthouseci

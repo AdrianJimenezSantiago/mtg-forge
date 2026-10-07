@@ -1,6 +1,9 @@
+const ROW_CHUNK = 30;
+
 function deckEditor(deckId) {
   return {
     deckId,
+    rowLimit: ROW_CHUNK,
     deck: null,
     cards: [],
     estimate: null,
@@ -317,6 +320,26 @@ function deckEditor(deckId) {
     get displayGroups() {
       return this.groupMode === 'type' ? this.cardGroupsByType : this.cardGroups;
     },
+    visibleRows(group) {
+      if (this.rowLimit === Infinity) return group.cards;
+      let before = 0;
+      for (const g of this.displayGroups) {
+        if (g.role === group.role) break;
+        before += g.cards.length;
+      }
+      const room = Math.max(0, this.rowLimit - before);
+      return group.cards.length > room ? group.cards.slice(0, room) : group.cards;
+    },
+    _growRows() {
+      if (this.rowLimit >= this.cards.length) {
+        this.rowLimit = Infinity;
+        return;
+      }
+      requestAnimationFrame(() => setTimeout(() => {
+        this.rowLimit += ROW_CHUNK;
+        this._growRows();
+      }));
+    },
     get totalCards() { return this.cards.reduce((n, c) => n + (c.include ? c.quantity : 0), 0); },
     get uniqueCards() { return this.cards.filter(c => c.include).length; },
     get customArts() { return this.allArts.filter(a => a.kind === 'custom'); },
@@ -336,6 +359,7 @@ function deckEditor(deckId) {
       const d = await r.json();
       this.deck = d;
       this.cards = d.cards;
+      this._growRows();
       this.loadEstimate();
 
       this.$watch('sortMode',   v => localStorage.setItem('deckPref_sortMode', v));

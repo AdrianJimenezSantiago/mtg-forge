@@ -118,7 +118,7 @@
                 x-text="opts.card_guides_style"></span>
         </button>
         <input type="checkbox" x-model="opts.card_guides_enabled" aria-label="{{ t.pdf_card_guides }}"
-               class="accent-accent mr-2.5">
+               class="accent-accent w-4 h-4 m-1 mr-2.5">
       </div>
       <div x-show="open.card_guides" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.card_guides_enabled ? 'opacity-50 pointer-events-none' : ''">
@@ -258,7 +258,7 @@
                 class="flex-1 flex items-center p-2.5 text-left">
           <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="droplet" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_bleed }}</span>
         </button>
-        <input type="checkbox" x-model="opts.bleed_enabled" aria-label="{{ t.pdf_summary_bleed }}" class="accent-accent mr-2.5">
+        <input type="checkbox" x-model="opts.bleed_enabled" aria-label="{{ t.pdf_summary_bleed }}" class="accent-accent w-4 h-4 m-1 mr-2.5">
       </div>
       <div x-show="open.bleed" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.bleed_enabled ? 'opacity-50 pointer-events-none' : ''">
@@ -282,7 +282,7 @@
                 class="flex-1 flex items-center p-2.5 text-left">
           <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="target" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_registration_marks }}</span>
         </button>
-        <input type="checkbox" x-model="opts.reg_marks_enabled" aria-label="{{ t.pdf_registration_marks }}" class="accent-accent mr-2.5">
+        <input type="checkbox" x-model="opts.reg_marks_enabled" aria-label="{{ t.pdf_registration_marks }}" class="accent-accent w-4 h-4 m-1 mr-2.5">
       </div>
       <div x-show="open.regmarks" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.reg_marks_enabled ? 'opacity-50 pointer-events-none' : ''">
@@ -308,7 +308,7 @@
                 class="flex-1 flex items-center p-2.5 text-left">
           <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="rotate-3d" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_backs_section_label }}</span>
         </button>
-        <input type="checkbox" x-model="opts.include_backs" aria-label="{{ t.pdf_backs_section_label }}" class="accent-accent mr-2.5">
+        <input type="checkbox" x-model="opts.include_backs" aria-label="{{ t.pdf_backs_section_label }}" class="accent-accent w-4 h-4 m-1 mr-2.5">
       </div>
       <div x-show="open.backs" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.include_backs ? 'opacity-50 pointer-events-none' : ''">

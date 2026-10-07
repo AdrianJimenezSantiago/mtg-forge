@@ -66,3 +66,4 @@ Desktop.ini
 *.tmp
 .ipynb_checkpoints/
 *.ipynb
+.lighthouseci/
