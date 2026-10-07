@@ -60,7 +60,7 @@
                     ? 'bg-accent/10 border border-accent/30 text-accent-glow'
                     : 'hover:bg-bg-subtle text-fg-muted hover:text-fg border border-transparent'">
             <template x-if="s.icon_svg_uri">
-              <img :src="s.icon_svg_uri"
+              <img alt="" :src="s.icon_svg_uri"
                    class="w-6 h-6 shrink-0 opacity-60 group-hover:opacity-100 transition"
                    style="filter: invert(0.8);" loading="lazy">
             </template>
@@ -109,7 +109,7 @@
             <div class="flex items-center justify-between gap-4">
               <div class="flex items-center gap-3 min-w-0">
                 <template x-if="selectedSet.icon_svg_uri">
-                  <img :src="selectedSet.icon_svg_uri" class="w-7 h-7 opacity-80 shrink-0"
+                  <img alt="" :src="selectedSet.icon_svg_uri" class="w-7 h-7 opacity-80 shrink-0"
                        style="filter: invert(0.8);">
                 </template>
                 <div class="min-w-0">
@@ -195,7 +195,7 @@
                             : 'border-transparent opacity-45 hover:opacity-90 grayscale hover:grayscale-0'"
                           :title="c.name + ' #' + c.collector_number">
                     <template x-if="c.image_normal || c.image_small">
-                      <img :src="cardWidth >= 200 ? (c.image_normal || c.image_small) : (c.image_small || c.image_normal)"
+                      <img alt="" :src="cardWidth >= 200 ? (c.image_normal || c.image_small) : (c.image_small || c.image_normal)"
                            :alt="c.name"
                            class="w-full aspect-[488/680] object-cover rounded-md bg-bg-subtle"
                            loading="lazy">

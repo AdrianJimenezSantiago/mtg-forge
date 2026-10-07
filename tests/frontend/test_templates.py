@@ -351,6 +351,16 @@ class TestAccessibility:
                 problems.append(f"{path.relative_to(TEMPLATES)}:{line}")
         assert not problems, "Botones sin nombre accesible:\n" + "\n".join(problems)
 
+    def test_every_image_declares_its_alternative_text(self):
+        missing = []
+        for path in sorted(TEMPLATES.rglob("*.html")):
+            html = read(path)
+            for match in re.finditer(r"<img\b(?:=>|[^>])*>", html):
+                if not re.search(r"\s:?alt=", match.group(0)):
+                    line = html[: match.start()].count("\n") + 1
+                    missing.append(f"{path.relative_to(TEMPLATES)}:{line}")
+        assert not missing, "Imágenes sin alt:\n" + "\n".join(missing)
+
     def test_the_layout_has_a_single_main_landmark(self):
         offenders = [
             str(path.relative_to(TEMPLATES))

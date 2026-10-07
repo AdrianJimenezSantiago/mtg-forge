@@ -9,11 +9,11 @@
     <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
       <div class="flex items-center gap-3 min-w-0">
         <template x-if="miniPickerCard?.thumbnail_url && miniPickerFace === 'front'">
-          <img :src="miniPickerCard.thumbnail_url"
+          <img alt="" :src="miniPickerCard.thumbnail_url"
                class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
         </template>
         <template x-if="miniPickerCard?.back_thumbnail_url && miniPickerFace === 'back'">
-          <img :src="miniPickerCard.back_thumbnail_url"
+          <img alt="" :src="miniPickerCard.back_thumbnail_url"
                class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
         </template>
         <div class="min-w-0">
@@ -72,7 +72,7 @@
                          disabled:opacity-60 disabled:cursor-wait
                          focus:outline-none focus:ring-2 focus:ring-accent">
             <div class="aspect-[63/88] bg-bg-base overflow-hidden">
-              <img x-show="art.image_small"
+              <img alt="" x-show="art.image_small"
                    :src="art.image_small"
                    :data-preview="art.image_small"
                    class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
