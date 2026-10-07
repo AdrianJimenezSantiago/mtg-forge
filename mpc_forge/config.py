@@ -5,6 +5,8 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
+from mpc_forge.paths import install_root
+
 APP_NAME = "MPC-Forge"
 APP_AUTHOR: str | bool = False
 
@@ -64,7 +66,6 @@ class Paths:
 
     @classmethod
     def default(cls) -> Paths:
-        from mpc_forge.paths import install_root
 
         portable = install_root() / "user-settings"
         root: Path

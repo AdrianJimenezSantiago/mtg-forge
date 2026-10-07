@@ -221,7 +221,6 @@ async def plan_deck_slots(
     db: AsyncSession,
     deck: Deck,
 ) -> list[DeckCardResolved]:
-    from mpc_forge.models import PrintingCache
 
     cards = (
         await db.scalars(

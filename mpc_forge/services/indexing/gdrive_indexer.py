@@ -12,7 +12,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
-from mpc_forge.models import ArtSource, IndexedArt
+from mpc_forge.models import ArtSource, IndexedArt, KeyValue
+from mpc_forge.services.art import phash
+from mpc_forge.services.indexing.source_types import resolve
+from mpc_forge.services.system.logging_setup import redact
 from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
@@ -883,9 +886,7 @@ _DEFAULT_TAG_VOCABULARY: dict[str, frozenset[str]] = {
 def _load_user_vocab_overrides() -> dict[str, frozenset[str]]:
     import json
 
-    from mpc_forge import config as _cfg
-
-    path = _cfg.PATHS.data_dir / "tag_vocabulary.json"
+    path = cfg.PATHS.data_dir / "tag_vocabulary.json"
     if not path.exists():
         return {}
     try:
@@ -1374,8 +1375,6 @@ async def _index_via_scraping(
             r.raise_for_status()
             html = r.text
         except (httpx.HTTPError, httpx.HTTPStatusError) as e:
-            from mpc_forge.services.system.logging_setup import redact
-
             return IndexResult(
                 source_id=source.id,
                 files_added=0,
@@ -1517,8 +1516,6 @@ async def index_source(
             error="Los sources tipo 'archivo suelto' no se indexan.",
         )
     else:
-        from mpc_forge.services.indexing.source_types import resolve
-
         type_cls = resolve(stype)
         if type_cls is None:
             result = IndexResult(
@@ -1566,20 +1563,16 @@ async def index_source(
 async def _index_generic(
     db: AsyncSession, source: ArtSource, type_cls, on_progress=None
 ) -> IndexResult:
-    from mpc_forge.services.art import phash as _phash
 
-    phash_active = await _phash.enabled(db)
+    phash_active = await phash.enabled(db)
     phash_client = None
     if phash_active:
         import httpx
 
-        from mpc_forge import config as _cfg
-        from mpc_forge.ssl_config import ssl_insecure
-
         phash_client = httpx.AsyncClient(
             timeout=15.0,
             verify=not ssl_insecure(),
-            headers={"User-Agent": _cfg.MOXFIELD_USER_AGENT},
+            headers={"User-Agent": cfg.MOXFIELD_USER_AGENT},
         )
 
     files_added = 0
@@ -1643,9 +1636,9 @@ async def _index_generic(
                 for flag, value in tag_flags.items():
                     setattr(existing, flag, value)
                 if phash_active and phash_client is not None and not existing.image_hash:
-                    thumb = _phash._default_thumb_url(existing, source)
+                    thumb = phash._default_thumb_url(existing, source)
                     if thumb:
-                        h = await _phash.compute_from_url(phash_client, thumb)
+                        h = await phash.compute_from_url(phash_client, thumb)
                         if h:
                             existing.image_hash = h
                 files_updated += 1
@@ -1668,9 +1661,9 @@ async def _index_generic(
                     **tag_flags,
                 )
                 if phash_active and phash_client is not None:
-                    thumb = _phash._default_thumb_url(new_art, source)
+                    thumb = phash._default_thumb_url(new_art, source)
                     if thumb:
-                        h = await _phash.compute_from_url(phash_client, thumb)
+                        h = await phash.compute_from_url(phash_client, thumb)
                         if h:
                             new_art.image_hash = h
                 db.add(new_art)
@@ -1725,7 +1718,6 @@ _NORMALIZATION_VERSION_KEY = "gdrive.normalization_version"
 
 
 async def backfill_normalized_names(db: AsyncSession) -> int:
-    from mpc_forge.models import KeyValue
 
     kv = await db.get(KeyValue, _NORMALIZATION_VERSION_KEY)
     try:

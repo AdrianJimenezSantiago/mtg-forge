@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import ArtSource
+from mpc_forge.services.indexing.source_types import resolve
 
 log = logging.getLogger(__name__)
 
@@ -236,7 +237,6 @@ async def list_sources(db: AsyncSession) -> list[ArtSource]:
 
 
 def _detect_source_type(url: str) -> tuple[str, str]:
-    from mpc_forge.services.indexing.source_types import resolve
 
     raw = (url or "").strip()
 
@@ -297,8 +297,6 @@ async def add_source(
         raise ValueError("La URL no puede estar vacía")
 
     if source_type:
-        from mpc_forge.services.indexing.source_types import resolve
-
         type_cls = resolve(source_type)
         if type_cls is None:
             raise ValueError(f"Tipo de source desconocido: {source_type!r}")
@@ -338,8 +336,6 @@ async def update_source(
         src.name = name.strip()
     if url is not None:
         if source_type:
-            from mpc_forge.services.indexing.source_types import resolve
-
             type_cls = resolve(source_type)
             if type_cls is None:
                 raise ValueError(f"Tipo de source desconocido: {source_type!r}")
@@ -348,8 +344,6 @@ async def update_source(
         else:
             src.source_type, src.url = _detect_source_type(url)
     elif source_type is not None:
-        from mpc_forge.services.indexing.source_types import resolve
-
         type_cls = resolve(source_type)
         if type_cls is None:
             raise ValueError(f"Tipo de source desconocido: {source_type!r}")

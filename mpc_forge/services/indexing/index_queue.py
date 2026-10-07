@@ -9,6 +9,10 @@ from datetime import UTC
 from enum import StrEnum
 from typing import Any
 
+from mpc_forge.db import session_scope
+from mpc_forge.models import ArtSource
+from mpc_forge.services.indexing import gdrive_indexer
+
 log = logging.getLogger(__name__)
 
 
@@ -199,8 +203,6 @@ class IndexQueue:
             self._batch_started_at = None
 
     async def _worker(self) -> None:
-        from mpc_forge.db import session_scope
-        from mpc_forge.services.indexing import gdrive_indexer
 
         log.info("IndexQueue worker arrancado")
 
@@ -242,8 +244,6 @@ class IndexQueue:
                 if not result.error:
                     try:
                         async with session_scope() as db:
-                            from mpc_forge.models import ArtSource
-
                             src = await db.get(ArtSource, sid)
                             if src:
                                 job.files_total = src.indexed_files or 0
@@ -258,8 +258,6 @@ class IndexQueue:
                 try:
                     async with session_scope() as db:
                         from datetime import datetime
-
-                        from mpc_forge.models import ArtSource
 
                         src = await db.get(ArtSource, sid)
                         if src:

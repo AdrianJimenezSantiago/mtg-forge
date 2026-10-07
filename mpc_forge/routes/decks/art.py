@@ -45,6 +45,7 @@ from mpc_forge.routes.decks._common import (
 from mpc_forge.routes.decks._views import (
     _deckcard_to_view,
 )
+from mpc_forge.services.art import recommender
 
 router = make_router()
 
@@ -388,7 +389,6 @@ async def recommend_by_artist(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: ScryfallDep,
 ) -> ArtistRecommendResponse:
-    from mpc_forge.services.art.recommender import recommend_by_artist as _rec
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
@@ -405,7 +405,7 @@ async def recommend_by_artist(
     oracle_ids = [r[0] for r in rows if r[0]]
     total_unique = len(set(oracle_ids))
 
-    result = await _rec(scryfall, oracle_ids, payload.artist, db=db)
+    result = await recommender.recommend_by_artist(scryfall, oracle_ids, payload.artist, db=db)
     return ArtistRecommendResponse(
         artist_query=result.artist_query,
         matched=[ArtistMatchView(**vars(m)) for m in result.matched],
@@ -456,7 +456,6 @@ async def recommend_by_style_endpoint(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: ScryfallDep,
 ) -> StyleRecommendResponse:
-    from mpc_forge.services.art.recommender import recommend_by_style
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
@@ -476,7 +475,7 @@ async def recommend_by_style_endpoint(
     oracle_ids = [r[0] for r in rows if r[0]]
     total_unique = len(set(oracle_ids))
 
-    result = await recommend_by_style(
+    result = await recommender.recommend_by_style(
         scryfall,
         oracle_ids,
         set_code=payload.set_code,

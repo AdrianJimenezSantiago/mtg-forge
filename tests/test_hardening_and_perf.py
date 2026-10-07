@@ -6,12 +6,12 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
+from mpc_forge import config as cfg
 from mpc_forge.db import session_scope
 from mpc_forge.models import Deck, DeckCard, PrintingCache
-from mpc_forge import config as cfg
-from mpc_forge.routes.decks import _views
 from mpc_forge.services.art import thumbnails
 from mpc_forge.services.decks import deck_validation
+from mpc_forge.utils.iterables import chunked
 
 
 class TestTimezoneAwareColumns:
@@ -55,12 +55,12 @@ class TestTimezoneAwareColumns:
 class TestInClauseChunking:
     def test_chunks_respect_the_limit(self):
         items = list(range(1201))
-        chunks = list(_views._chunks(items, 500))
+        chunks = list(chunked(items, 500))
         assert [len(c) for c in chunks] == [500, 500, 201]
         assert [i for c in chunks for i in c] == items
 
     def test_empty_input_yields_nothing(self):
-        assert list(_views._chunks([], 500)) == []
+        assert list(chunked([], 500)) == []
 
     async def test_view_survives_a_deck_larger_than_the_sqlite_limit(self, client):
         async with session_scope() as db:

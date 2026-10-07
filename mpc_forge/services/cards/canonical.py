@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import IndexedArt, PrintingCache
+from mpc_forge.services.cards.printings import upsert_printings
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +67,6 @@ async def validate_and_enrich(
         except Exception as e:
             log.warning("Scryfall.collection batch falló, saltando: %s", e)
             continue
-        from mpc_forge.services.cards.printings import upsert_printings
 
         cached = await upsert_printings(db, cards)
         found_keys: set[tuple[str, str]] = set()

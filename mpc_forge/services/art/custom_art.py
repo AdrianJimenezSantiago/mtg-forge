@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
 from mpc_forge.models import CustomArt
+from mpc_forge.services.indexing.art_sources import to_download_url
 from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
@@ -159,7 +160,6 @@ async def add_from_url(
     variant: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> CustomArt:
-    from mpc_forge.services.indexing.art_sources import to_download_url
 
     url = to_download_url(url.strip())
 

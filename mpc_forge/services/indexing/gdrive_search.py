@@ -7,7 +7,7 @@ from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mpc_forge.models import ArtSource, IndexedArt
+from mpc_forge.models import ArtSource, IndexedArt, KeyValue
 from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
 log = logging.getLogger(__name__)
@@ -102,8 +102,6 @@ async def _fts5_available(db: AsyncSession) -> bool:
     if _fts5_available_cache is not None:
         return _fts5_available_cache
     try:
-        from mpc_forge.models import KeyValue
-
         kv = await db.get(KeyValue, "fts5_available")
         _fts5_available_cache = bool(kv and kv.value == "1")
     except Exception:

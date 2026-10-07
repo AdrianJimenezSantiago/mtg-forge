@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from mpc_forge import config as cfg
 from mpc_forge import migrations
 from mpc_forge.models import Base
+from mpc_forge.services.system import backup as backup_service
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +91,6 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         def _make_backup():
-            from mpc_forge.services.system import backup as backup_service
 
             return backup_service.create_backup(tag="pre-migration")
 

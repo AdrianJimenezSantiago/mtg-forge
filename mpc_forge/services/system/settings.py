@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
+from mpc_forge import ssl_config
 from mpc_forge.models import KeyValue
 
 log = logging.getLogger(__name__)
@@ -374,9 +375,7 @@ def apply_to_config(values: dict[str, Any]) -> None:
         elif key == "google_api_key":
             cfg.GOOGLE_API_KEY = str(value).strip()
         elif key == "ssl_insecure":
-            from mpc_forge import ssl_config as _ssl
-
-            _ssl.set_runtime_insecure(bool(value))
+            ssl_config.set_runtime_insecure(bool(value))
 
     path_keys = {
         "paths.art_dir",

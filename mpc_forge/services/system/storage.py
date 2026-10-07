@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mpc_forge import config as cfg
+from mpc_forge.services.system import backup as backup_service
+from mpc_forge.services.system import logging_setup
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +159,6 @@ def _mount_point(path: Path) -> Path:
 
 
 def _backups_summary() -> dict[str, Any]:
-    from mpc_forge.services.system import backup as backup_service
 
     try:
         items = backup_service.list_backups(cfg.PATHS.backups_dir)
@@ -318,7 +319,6 @@ def _purge_exports(older_than_days: int) -> tuple[int, int]:
 
 
 def _purge_logs() -> tuple[int, int]:
-    from mpc_forge.services.system import logging_setup
 
     directory = _logs_dir()
     if not directory.is_dir():
@@ -330,7 +330,6 @@ def _purge_logs() -> tuple[int, int]:
 
 
 def _purge_backups(keep: int) -> tuple[int, int]:
-    from mpc_forge.services.system import backup as backup_service
 
     directory = cfg.PATHS.backups_dir
     before = {b["path"]: int(b["bytes_size"]) for b in backup_service.list_backups(directory)}

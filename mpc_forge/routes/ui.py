@@ -7,14 +7,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from mpc_forge.models import Deck
+from mpc_forge.clients.import_sites import list_supported_sites
+from mpc_forge.middleware import is_same_origin
+from mpc_forge.models import CollectionEntry, Deck
 from mpc_forge.paths import static_dir, template_dir
 from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.cards import bulk_data
 from mpc_forge.services.decks import deck_covers
+from mpc_forge.services.indexing import gdrive_search
 from mpc_forge.services.system import i18n as i18n_service
 from mpc_forge.services.system.i18n import (
+    BASE_LANG,
     LANG_FLAGS,
     SUPPORTED_LANGS,
     detect_lang,
@@ -52,8 +56,7 @@ router = APIRouter(tags=["ui"])
 
 def _t_context(request: Request) -> dict:
     lang = detect_lang(request)
-    tr = get_translations(lang)
-    return {"t": tr, "lang": lang, "_T": tr.as_dict()}
+    return {"t": get_translations(lang), "lang": lang}
 
 
 _I18N_CACHE_CONTROL = "public, max-age=31536000, immutable"
@@ -76,11 +79,8 @@ async def set_language(
     lang: str = Form(...),
     next_url: str = Form(default="/"),
 ) -> Response:
-    from mpc_forge.middleware import is_same_origin
-    from mpc_forge.services.system.i18n import _TRANSLATIONS
-
-    if lang not in _TRANSLATIONS:
-        lang = "es"
+    if lang not in dict(SUPPORTED_LANGS):
+        lang = BASE_LANG
     target = request.headers.get("referer") or next_url
     if not is_same_origin(request, target):
         target = "/"
@@ -106,10 +106,6 @@ async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list
 
 
 async def _workshop_status(db: AsyncSession) -> dict:
-    from mpc_forge.models import CollectionEntry
-    from mpc_forge.services.cards import bulk_data
-    from mpc_forge.services.indexing import gdrive_search
-
     status = {
         "printings": 0,
         "offline": False,
@@ -184,8 +180,6 @@ def render_not_found(request: Request, kind: str = "page") -> HTMLResponse:
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: DbDep) -> HTMLResponse:
-    from mpc_forge.clients.import_sites import list_supported_sites
-
     ctx = _t_context(request)
     recent = await _decks_with_covers(db, limit=8)
     return templates.TemplateResponse(
@@ -214,7 +208,7 @@ async def deck_library(request: Request, db: DbDep) -> HTMLResponse:
 
 @router.get("/decks/{deck_id}", response_class=HTMLResponse)
 async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
-    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    deck = await db.get(Deck, deck_id)
     if not deck:
         return render_not_found(request, "deck")
     cover = await deck_covers.cover_for_deck(db, deck)
@@ -228,7 +222,7 @@ async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
 
 @router.get("/decks/{deck_id}/proof", response_class=HTMLResponse)
 async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
-    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    deck = await db.get(Deck, deck_id)
     if not deck:
         return render_not_found(request, "deck")
     return templates.TemplateResponse(
@@ -240,7 +234,7 @@ async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
 
 @router.get("/decks/{deck_id}/pdf", response_class=HTMLResponse)
 async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
-    deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
+    deck = await db.get(Deck, deck_id)
     if not deck:
         return render_not_found(request, "deck")
     return templates.TemplateResponse(

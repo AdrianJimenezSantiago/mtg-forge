@@ -13,6 +13,7 @@ from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.ssl_config import ssl_insecure
+from mpc_forge.utils.rate_limiter import AsyncRateLimiter
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
@@ -129,10 +130,6 @@ async def set_cards(
     scryfall: ScryfallDep,
 ) -> list[SetCardInfo]:
     import httpx
-
-    from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
-    from mpc_forge.ssl_config import ssl_insecure
-    from mpc_forge.utils.rate_limiter import AsyncRateLimiter
 
     all_cards: list[dict] = []
     async with httpx.AsyncClient(

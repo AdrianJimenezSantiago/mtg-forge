@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import IndexedArt
+from mpc_forge.services.indexing.source_types import resolve
+from mpc_forge.services.system import settings as settings_service
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +52,6 @@ def is_available() -> bool:
 async def enabled(db: AsyncSession) -> bool:
     if not is_available():
         return False
-    from mpc_forge.services.system import settings as settings_service
 
     settings = await settings_service.get_all(db)
     val = settings.get("phash.enabled", False)
@@ -203,9 +204,7 @@ def _default_thumb_url(art: IndexedArt, source: Any | None = None) -> str:
 
     if source is not None:
         try:
-            from mpc_forge.services.indexing.source_types import resolve as _resolve_type
-
-            type_cls = _resolve_type(source.source_type)
+            type_cls = resolve(source.source_type)
             if type_cls:
                 return type_cls.thumbnail_url(source, art.file_id)
         except Exception as e:

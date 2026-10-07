@@ -20,8 +20,10 @@ from mpc_forge.services.decks import deck_activity, deck_covers
 log = logging.getLogger(__name__)
 
 
+from mpc_forge.models import DeckActivity
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.decks import undo as undo_svc
 
 router = make_router()
 
@@ -57,7 +59,6 @@ class DeckWithActivityView(BaseModel):
 
 @router.get("/_/with-activity", response_model=list[DeckWithActivityView])
 async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
-    from mpc_forge.models import DeckActivity as _DA
 
     deck_rows = (
         await db.execute(
@@ -74,24 +75,27 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     activity_counts: dict[int, int] = dict(
         (
             await db.execute(
-                select(_DA.deck_id, func.count(_DA.id))
-                .where(_DA.deck_id.isnot(None))
-                .group_by(_DA.deck_id)
+                select(DeckActivity.deck_id, func.count(DeckActivity.id))
+                .where(DeckActivity.deck_id.isnot(None))
+                .group_by(DeckActivity.deck_id)
             )
         ).all()
     )
 
     last_id_subq = (
-        select(func.max(_DA.id).label("last_id"), _DA.deck_id.label("d"))
-        .where(_DA.deck_id.isnot(None))
-        .group_by(_DA.deck_id)
+        select(func.max(DeckActivity.id).label("last_id"), DeckActivity.deck_id.label("d"))
+        .where(DeckActivity.deck_id.isnot(None))
+        .group_by(DeckActivity.deck_id)
         .subquery()
     )
     last_rows = (
         await db.execute(
-            select(_DA.deck_id, _DA.created_at, _DA.kind, _DA.summary).join(
-                last_id_subq, _DA.id == last_id_subq.c.last_id
-            )
+            select(
+                DeckActivity.deck_id,
+                DeckActivity.created_at,
+                DeckActivity.kind,
+                DeckActivity.summary,
+            ).join(last_id_subq, DeckActivity.id == last_id_subq.c.last_id)
         )
     ).all()
     last_activity: dict[int, tuple[datetime, str, str]] = {
@@ -176,10 +180,8 @@ class UndoResponse(BaseModel):
 
 @router.post("/{deck_id}/activity/{event_id}/undo", response_model=UndoResponse)
 async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
-    from mpc_forge.models import DeckActivity as _DA
-    from mpc_forge.services.decks import undo as undo_svc
 
-    event = await db.get(_DA, event_id)
+    event = await db.get(DeckActivity, event_id)
     if not event or event.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Evento no encontrado")
 
@@ -197,7 +199,6 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
 
 @router.get("/_/undoable-kinds")
 async def get_undoable_kinds(response: Response) -> list[str]:
-    from mpc_forge.services.decks import undo as undo_svc
 
     response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)
