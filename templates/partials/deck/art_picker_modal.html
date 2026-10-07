@@ -328,7 +328,7 @@
                   <img :src="art.__thumb" :alt="art.__label" :data-preview="art.image_small"
                        loading="lazy" decoding="async"
                        class="w-full h-full object-cover object-top bg-bg-subtle"
-                       onerror="if(this.dataset.fellBack!=='1'){this.dataset.fellBack='1';this.src=this.dataset.preview}else{this.style.opacity=0.3}">
+                       @error="if ($el.dataset.fellBack !== '1') { $el.dataset.fellBack = '1'; $el.src = $el.dataset.preview } else { $el.style.opacity = 0.3 }">
                   <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent
                               p-1.5 text-left">
                     <div class="text-[10px] text-white font-mono truncate" x-text="art.__label"></div>

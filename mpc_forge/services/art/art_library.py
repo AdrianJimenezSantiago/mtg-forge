@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, TypeVar, Unpack
+from typing import Any, TypeVar
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +65,7 @@ class LibraryFilters:
         )
 
 
-_Stmt = TypeVar("_Stmt", bound=Select[Unpack[tuple[Any, ...]]])
+_Stmt = TypeVar("_Stmt", bound=Select[*tuple[Any, ...]])
 
 
 def _apply_filters(stmt: _Stmt, filters: LibraryFilters) -> _Stmt:

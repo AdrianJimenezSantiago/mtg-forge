@@ -1945,7 +1945,7 @@ function renderManaCost(manaCost) {
   if (!manaCost) return '';
   const symbols = manaCost.match(/\{[^}]+\}/g) || [];
   const parts = symbols.map(sym => {
-    const inner = sym.slice(1, -1).toLowerCase().replace(/\//g, '');
+    const inner = sym.slice(1, -1).toLowerCase().replace(/[^a-z0-9]/g, '');
     return `<i class="ms ms-${inner} ms-cost"></i>`;
   });
   return `<span class="mana-cost">${parts.join('')}</span>`;

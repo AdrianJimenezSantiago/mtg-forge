@@ -80,7 +80,7 @@
                       <div class="aspect-[63/88] bg-bg-subtle relative">
                         <img :src="m.image_small" :alt="m.card_name"
                              loading="lazy" class="w-full h-full object-cover object-top"
-                             onerror="this.style.opacity=0.3">
+                             @error="$el.style.opacity = 0.3">
                         <div class="absolute top-1.5 right-1.5">
                           <input type="checkbox" :value="true"
                                  x-model="artistApplyChecked[m.oracle_id]"

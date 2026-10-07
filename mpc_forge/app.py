@@ -14,7 +14,11 @@ from starlette.types import Scope
 
 from mpc_forge import config as cfg
 from mpc_forge.lifespan import lifespan, preload_path_overrides
-from mpc_forge.middleware import DEFAULT_ALLOWED_HOSTS, LocalhostGuardMiddleware
+from mpc_forge.middleware import (
+    DEFAULT_ALLOWED_HOSTS,
+    LocalhostGuardMiddleware,
+    SecurityHeadersMiddleware,
+)
 from mpc_forge.paths import static_dir
 from mpc_forge.routes import ROUTERS, ui
 
@@ -97,6 +101,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(LocalhostGuardMiddleware, allowed_hosts=_allowed_hosts())
     _mount_static(app)
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)

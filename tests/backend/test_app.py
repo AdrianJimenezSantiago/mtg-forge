@@ -87,6 +87,16 @@ class TestLocalhostGuard:
         assert _hostname("127.0.0.1:8765") == "127.0.0.1"
         assert _hostname("LocalHost") == "localhost"
 
+    async def test_every_response_carries_the_security_headers(self, client):
+        for url in ("/", "/api/settings/", "/static/css/app.css", "/no-existe"):
+            r = await client.get(url)
+            csp = r.headers["content-security-policy"]
+            assert "default-src 'self'" in csp and "frame-ancestors 'none'" in csp, url
+            assert "'unsafe-inline'" not in csp.split("script-src", 1)[1].split(";", 1)[0], url
+            assert r.headers["x-content-type-options"] == "nosniff", url
+            assert r.headers["x-frame-options"] == "DENY", url
+            assert r.headers["referrer-policy"] == "same-origin", url
+
     async def test_cross_site_writes_are_rejected(self, client, deck):
         url = f"/api/decks/{deck['id']}"
         same = await client.patch(

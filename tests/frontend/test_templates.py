@@ -23,7 +23,7 @@ from tests.frontend._support import (
     template_source,
 )
 
-MAX_INLINE_JS_LINES = 5
+INLINE_HANDLER = re.compile(r"\son[a-z]+\s*=", re.IGNORECASE)
 
 EAGER_ATTRS = (
     "x-text",
@@ -96,9 +96,17 @@ class TestPageScripts:
                 problems.append(f"{page}: no carga {module} en el bloque view_module")
             elif "defer" not in tag.group(0) or f"asset_v('js/{module}')" not in tag.group(0):
                 problems.append(f"{page}: {module} sin defer o sin asset_v")
-            inline = "\n".join(INLINE_SCRIPT.findall(template_source(page)))
-            if len([ln for ln in inline.splitlines() if ln.strip()]) > MAX_INLINE_JS_LINES:
-                problems.append(f"{page}: acumula JS embebido; muévelo a static/js/")
+        assert not problems, "\n".join(problems)
+
+    def test_templates_need_no_inline_script_under_the_csp(self):
+        problems = []
+        for path in sorted(TEMPLATES.rglob("*.html")):
+            html = read(path)
+            name = path.relative_to(TEMPLATES)
+            if any(body.strip() for body in INLINE_SCRIPT.findall(html)):
+                problems.append(f"{name}: <script> embebido; muévelo a static/js/")
+            if INLINE_HANDLER.search(html):
+                problems.append(f"{name}: manejador on*= inline; usa @evento de Alpine")
         assert not problems, "\n".join(problems)
 
     def test_x_data_factories_are_exposed_on_window(self, rendered):
@@ -293,7 +301,10 @@ class TestAmbientBackground:
             assert "defer" not in tag.group(0) and "async" not in tag.group(0)
 
         head = r.text.split("</head>", 1)[0]
-        assert "mpc-ambient" in head and "fx-ambient-off" in head
+        boot = re.search(r"<script[^>]*/static/js/core/boot\.js[^>]*>", head)
+        assert boot and "defer" not in boot.group(0) and "async" not in boot.group(0)
+        boot_js = read(JS / "core/boot.js")
+        assert "mpc-ambient" in boot_js and "fx-ambient-off" in boot_js
 
     async def test_toggle_is_translated_and_motion_preferences_respected(self, client):
         r = await client.get("/", headers=HTML)

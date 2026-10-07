@@ -32,6 +32,26 @@ jobs:
       - name: Mypy (strict)
         run: mypy
 
+  security:
+    name: Auditoría de dependencias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: pip-audit sobre el lockfile de release
+        run: |
+          pip install pip-audit
+          pip-audit --require-hashes -r requirements.lock
+      - name: npm audit
+        run: npm audit --audit-level=critical
+
   test:
     name: Tests (${{ matrix.os }} · py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
