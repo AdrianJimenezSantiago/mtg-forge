@@ -9,7 +9,7 @@
     "check:api": "node scripts/check_api_client.mjs"
   },
   "devDependencies": {
-    "@alpinejs/collapse": "3.13.5",
+    "@alpinejs/collapse": "3.17.4",
     "@alpinejs/focus": "3.13.5",
     "@formkit/auto-animate": "0.10.0",
     "alpinejs": "3.13.5",
