@@ -1,0 +1,415 @@
+<template x-if="artPickerOpen">
+  <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+       @click="closeArtPicker()"
+       @keydown.escape.window="closeArtPicker()">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-[1600px]
+                h-[92vh] flex flex-col overflow-hidden"
+         @click.stop>
+
+      <div class="flex items-center justify-between p-4 border-b border-border-subtle shrink-0 gap-4">
+        <div class="flex items-center gap-3 min-w-0">
+          <template x-if="pickerCard && pickerCard.thumbnail_url">
+            <img :src="pickerCard?.thumbnail_url" :data-preview="pickerCard?.thumbnail_url"
+                 class="w-11 h-14 rounded object-cover object-top border border-border-subtle shrink-0">
+          </template>
+          <div class="min-w-0">
+            <div class="text-[10px] uppercase tracking-widest text-fg-faint">{{ t.picker_title }}</div>
+            <div class="font-display text-lg text-accent-glow truncate" x-text="pickerCard?.name || ''"></div>
+            <div class="text-xs text-fg-muted mt-0.5 flex items-center gap-2">
+              <template x-if="!pickerLoading">
+                <span>
+                  <span x-text="pickerFilteredCount"></span>
+                  <span> de </span>
+                  <span x-text="pickerTotalCount"></span>
+                  <span> opciones</span>
+                </span>
+              </template>
+              <template x-if="pickerStreaming && !pickerLoading">
+                <span class="text-[10px] text-fg-faint flex items-center gap-1">
+                  <i data-lucide="loader-2" class="w-3 h-3 animate-spin-slow"></i>
+                  <span x-text="window._t('picker_loading_more')"></span>
+                </span>
+              </template>
+              <template x-if="pickerLoading">
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                  Cargando…
+                </span>
+              </template>
+            </div>
+          </div>
+        </div>
+        <button @click="closeArtPicker()"
+                class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
+                title="{{ t.deck_close_esc }}">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 min-h-0 flex overflow-hidden">
+
+        <aside class="w-64 shrink-0 border-r border-border-subtle overflow-y-auto p-4 space-y-4 text-xs
+                      bg-bg-inset/50">
+
+          <div>
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Buscar</label>
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint"></i>
+              <input type="text" x-model="pickerFilters.q"
+                     placeholder="{{ t.deck_placeholder_picker }}"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded pl-8 pr-2 py-1.5
+                            focus:outline-none focus:border-accent">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Fuente</label>
+            <div class="space-y-1">
+              <template x-for="opt in [
+                {v:'all',      l:window._T.picker_source_all,        c:pickerCounts.all},
+                {v:'custom',   l:window._T.picker_source_custom,      c:pickerCounts.custom},
+                {v:'drives',   l:window._T.picker_source_drives,      c:pickerCounts.drives},
+                {v:'scryfall', l:window._T.picker_source_official,  c:pickerCounts.scryfall},
+              ]" :key="opt.v">
+                <label class="flex items-center justify-between gap-2 py-1 px-2 rounded cursor-pointer
+                              hover:bg-bg-subtle transition"
+                       :class="pickerFilters.source === opt.v ? 'bg-bg-subtle text-accent' : 'text-fg-muted'">
+                  <div class="flex items-center gap-2">
+                    <input type="radio" :value="opt.v" x-model="pickerFilters.source"
+                           class="accent-accent w-3 h-3">
+                    <span x-text="opt.l"></span>
+                  </div>
+                  <span class="text-[10px] font-mono text-fg-faint" x-text="opt.c"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="pickerAvailableSets.length > 1 && (pickerFilters.source === 'all' || pickerFilters.source === 'scryfall')">
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Set</label>
+            <select x-model="pickerFilters.set"
+                    class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                           focus:outline-none focus:border-accent">
+              <option value="">{{ t.picker_set_all }}</option>
+              <template x-for="s in pickerAvailableSets" :key="s.code">
+                <option :value="s.code" x-text="s.code.toUpperCase() + ' — ' + s.name"></option>
+              </template>
+            </select>
+          </div>
+
+          <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'scryfall'">
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Tipo de arte</label>
+            <div class="space-y-1">
+              <template x-for="opt in [
+                {v:'borderless', l:'Borderless'},
+                {v:'full_art',   l:'Full art'},
+                {v:'textless',   l:'Textless'},
+                {v:'retro',      l:'Retro frame (1997)'},
+                {v:'promo',      l:'Promo'},
+              ]" :key="opt.v">
+                <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                  <input type="checkbox" :value="opt.v" x-model="pickerFilters.artTypes"
+                         class="accent-accent w-3 h-3">
+                  <span x-text="opt.l"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'scryfall'">
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">Rareza</label>
+            <div class="space-y-1">
+              <template x-for="opt in [
+                {v:'mythic',   l:'Mythic',   c:'text-amber-400'},
+                {v:'rare',     l:'Rare',     c:'text-yellow-500'},
+                {v:'uncommon', l:'Uncommon', c:'text-slate-300'},
+                {v:'common',   l:'Common',   c:'text-fg-muted'},
+                {v:'special',  l:'Special',  c:'text-purple-400'},
+              ]" :key="opt.v">
+                <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle"
+                       :class="opt.c">
+                  <input type="checkbox" :value="opt.v" x-model="pickerFilters.rarities"
+                         class="accent-accent w-3 h-3">
+                  <span x-text="opt.l"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">
+              Etiquetas en drives
+              <span class="text-fg-faint/70 font-normal normal-case tracking-normal ml-1">(según nombre)</span>
+            </label>
+            <div class="space-y-1">
+              <template x-for="opt in [
+                {v:'full_art',   l:'Full art'},
+                {v:'borderless', l:'Borderless'},
+                {v:'extended',   l:'Extended art'},
+                {v:'showcase',   l:'Showcase'},
+                {v:'retro',      l:'Retro frame'},
+                {v:'textless',   l:'Textless'},
+                {v:'promo',      l:'Promo'},
+                {v:'alt_art',    l:'Alt art'},
+              ]" :key="opt.v">
+                <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                  <input type="checkbox" :value="opt.v"
+                         x-model="pickerFilters.driveTagsInclude"
+                         @change="onDriveFiltersChanged()"
+                         class="accent-accent w-3 h-3">
+                  <span x-text="opt.l"></span>
+                </label>
+              </template>
+            </div>
+            <div x-data="{open: false}" class="mt-2">
+              <button type="button" @click="open = !open"
+                      class="text-[10px] text-fg-faint hover:text-fg-muted underline underline-offset-2">
+                <span x-show="!open">Excluir etiquetas…</span>
+                <span x-show="open">Ocultar excluidos</span>
+              </button>
+              <div x-show="open" x-transition class="space-y-1 mt-1.5">
+                <template x-for="opt in [
+                  {v:'full_art',   l:window._T.deck_exclude_full_art},
+                  {v:'borderless', l:window._T.deck_exclude_borderless},
+                  {v:'retro',      l:window._T.deck_exclude_retro},
+                  {v:'promo',      l:window._T.deck_exclude_promo},
+                  {v:'alt_art',    l:window._T.deck_exclude_alt_art},
+                ]" :key="'ex-'+opt.v">
+                  <label class="flex items-center gap-2 py-0.5 px-2 rounded cursor-pointer hover:bg-bg-subtle text-fg-muted">
+                    <input type="checkbox" :value="opt.v"
+                           x-model="pickerFilters.driveTagsExclude"
+                           @change="onDriveFiltersChanged()"
+                           class="accent-red-400 w-3 h-3">
+                    <span x-text="opt.l"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1.5">
+              Set canónico
+              <span class="text-fg-faint/70 font-normal normal-case tracking-normal ml-1">(tag [SET NUM])</span>
+            </label>
+            <input type="text"
+                   x-model="pickerFilters.driveExpansionCode"
+                   @input.debounce.400ms="onDriveFiltersChanged()"
+                   placeholder="dmu, lea, mom…"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                          text-[11px] uppercase tracking-wider
+                          focus:outline-none focus:border-accent">
+            <p class="text-[9px] text-fg-faint mt-1 leading-tight">
+              Solo artes con tag [SET NUM] del set indicado (case-insensitive).
+            </p>
+          </div>
+
+          <div x-show="pickerFilters.source === 'all' || pickerFilters.source === 'drives'">
+            <label class="flex items-center gap-2 py-1 px-1 cursor-pointer text-fg-muted hover:text-fg">
+              <input type="checkbox"
+                     x-model="pickerFilters.dedupSimilar"
+                     class="accent-accent w-3.5 h-3.5">
+              <span class="text-xs">Colapsar duplicados</span>
+            </label>
+            <p class="text-[9px] text-fg-faint px-1 leading-tight">
+              Agrupa artes de drives distintos con la misma imagen (pHash).
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-[10px] uppercase tracking-wider text-fg-faint mb-1">Ordenar</label>
+            <select x-model="pickerFilters.sort"
+                    class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5
+                           focus:outline-none focus:border-accent">
+              <option value="recent">Más recientes</option>
+              <option value="old">Más antiguas</option>
+              <option value="set">Set (A-Z)</option>
+              <option value="artist">Artista (A-Z)</option>
+            </select>
+          </div>
+
+          <button @click="resetPickerFilters()"
+                  class="w-full py-1.5 rounded border border-border-subtle text-fg-faint hover:text-fg
+                         hover:bg-bg-subtle transition flex items-center justify-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+            Reset filtros
+          </button>
+        </aside>
+
+        <div class="flex-1 min-w-0 overflow-y-auto p-5" @scroll="onPickerScroll($event)" x-ref="pickerScroll">
+
+          <div x-show="pickerFilters.source === 'custom'" class="mb-4">
+            <div x-data="{open: false}">
+              <button @click="open = !open"
+                      class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg
+                             px-3 py-1.5 rounded transition flex items-center gap-1.5">
+                <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                <span x-show="!open">Añadir arte por URL</span>
+                <span x-show="open">Cancelar</span>
+              </button>
+              <div x-show="open" x-transition class="mt-2 flex gap-2">
+                <input type="text" x-model="pickerAddUrl"
+                       placeholder="https://…imagen"
+                       class="flex-1 bg-bg-subtle border border-border-subtle rounded px-3 py-1.5 text-xs
+                              focus:outline-none focus:border-accent">
+                <button @click="addCustomFromUrl(); open = false"
+                        :disabled="!pickerAddUrl.trim() || addingUrl"
+                        class="bg-accent hover:bg-accent-glow text-bg-base text-xs font-medium px-3 py-1.5 rounded
+                               disabled:opacity-50 transition">
+                  <span x-show="!addingUrl">Descargar</span>
+                  <span x-show="addingUrl">…</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <template x-if="!pickerLoading && driveIndexStats.total_files === 0">
+            <div class="text-[11px] text-fg-faint bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+              <i data-lucide="info" class="w-3.5 h-3.5 shrink-0"></i>
+              <span>Ningún drive indexado todavía. Ve a Ajustes → Gestionar drives → "Indexar todos" para que aparezcan artes de la comunidad aquí.</span>
+            </div>
+          </template>
+          <template x-if="!pickerLoading && driveIndexStats.total_files > 0 && driveSearchState.error">
+            <div class="text-[11px] text-warning bg-warning-bg/40 border border-warning-border rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5 shrink-0"></i>
+              <span>Búsqueda en drives falló: <span x-text="driveSearchState.error"></span></span>
+            </div>
+          </template>
+          <template x-if="!pickerLoading && driveIndexStats.total_files > 0 && driveSearchState.hits === 0 && !driveSearchState.error">
+            <div class="text-[11px] text-fg-faint bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+              <i data-lucide="search-x" class="w-3.5 h-3.5 shrink-0"></i>
+              <span>
+                0 coincidencias en <span x-text="driveIndexStats.total_files.toLocaleString()"></span> archivos de <span x-text="driveIndexStats.sources_indexed"></span> drives.
+                Esta carta no está en los drives indexados.
+              </span>
+            </div>
+          </template>
+
+          <template x-if="driveSearchState.loading && driveSearchState.hits > 0 && driveSearchState.total > driveSearchState.hits">
+            <div class="text-[11px] text-fg-muted bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+              <span class="spinner-ring spinner-ring--sm"></span>
+              <span x-text="window._T.picker_drives_progress
+                              .replace('{loaded}', driveSearchState.hits.toLocaleString())
+                              .replace('{total}', driveSearchState.total.toLocaleString())"></span>
+            </div>
+          </template>
+          <template x-if="!driveSearchState.loading && driveSearchState.capped">
+            <div class="text-[11px] text-fg-muted bg-bg-subtle/40 border border-border-subtle rounded-md px-3 py-2 mb-3 flex items-center gap-2">
+              <i data-lucide="info" class="w-3.5 h-3.5 shrink-0"></i>
+              <span x-text="window._T.picker_drives_capped.replaceAll('{total}', driveSearchState.total.toLocaleString())"></span>
+            </div>
+          </template>
+
+          <template x-if="!pickerLoading && pickerFilteredArts.length === 0">
+            <div class="text-center py-16">
+              <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
+                <i data-lucide="image-off" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm text-fg-muted">Ningún arte coincide con los filtros.</p>
+              <button @click="resetPickerFilters()"
+                      class="mt-3 text-xs text-accent hover:text-accent-glow underline">
+                Reset filtros
+              </button>
+            </div>
+          </template>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            <template x-for="art in pickerVisibleArts" :key="art.__key">
+              <div class="group relative">
+                <button @click="pickArt(art, false)"
+                        @dblclick="pickArt(art, true)"
+                        data-tilt="foil" data-tilt-max="12"
+                        class="block w-full aspect-[63/88] rounded-md overflow-hidden border-2
+                               hover:z-10 relative"
+                        :class="art.is_chosen ? 'border-accent shadow-glow' :
+                                art.is_preferred ? 'border-emerald-500/50' :
+                                'border-border-subtle hover:border-accent/60'"
+                        :title="art.__tooltip">
+                  <img :src="art.__thumb" :alt="art.__label" :data-preview="art.image_small"
+                       loading="lazy" decoding="async"
+                       class="w-full h-full object-cover object-top bg-bg-subtle"
+                       onerror="if(this.dataset.fellBack!=='1'){this.dataset.fellBack='1';this.src=this.dataset.preview}else{this.style.opacity=0.3}">
+                  <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent
+                              p-1.5 text-left">
+                    <div class="text-[10px] text-white font-mono truncate" x-text="art.__label"></div>
+                    <div class="text-[9px] text-white/60 truncate" x-text="art.__sublabel" x-show="art.__sublabel"></div>
+                  </div>
+                  <div class="absolute top-1 right-1 flex flex-col gap-1 items-end">
+                    <template x-if="art.is_chosen">
+                      <span class="text-[9px] font-bold bg-accent text-bg-base rounded px-1 py-0.5">USANDO</span>
+                    </template>
+                    <template x-if="art.is_preferred && !art.is_chosen">
+                      <span class="text-[9px] font-bold bg-emerald-500/90 text-white rounded px-1 py-0.5"
+                            title="{{ t.deck_global_pref }}">GLOBAL</span>
+                    </template>
+                    <template x-if="art.is_last_used && !art.is_chosen && !art.is_preferred">
+                      <span class="text-[9px] font-bold bg-indigo-500/80 text-white rounded px-1 py-0.5"
+                            title="{{ t.deck_last_used }}">LAST</span>
+                    </template>
+                  </div>
+                  <div class="absolute top-1 left-1 flex flex-col gap-0.5 items-start">
+                    <template x-for="b in art.__badges" :key="b">
+                      <span class="text-[8px] font-mono bg-black/70 text-accent-glow rounded px-1"
+                            x-text="b"></span>
+                    </template>
+                    <template x-if="art.__dup_count > 0">
+                      <span class="text-[9px] font-bold bg-indigo-500/90 text-white rounded px-1 py-0.5"
+                            :title="`Este arte también está en ${art.__dup_count} drive(s) más`">
+                        +<span x-text="art.__dup_count"></span> iguales
+                      </span>
+                    </template>
+                  </div>
+                </button>
+                <template x-if="art.kind === 'custom'">
+                  <button @click.stop="deleteCustom(art)"
+                          class="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                 bg-red-500/90 hover:bg-red-500 text-white rounded p-1"
+                          title="{{ t.deck_delete_art_title }}">
+                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                  </button>
+                </template>
+                <template x-if="art.kind === 'drive' && art.image_hash">
+                  <button @click.stop="openSimilar(art)"
+                          class="absolute bottom-8 right-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                 bg-indigo-500/90 hover:bg-indigo-500 text-white rounded p-1"
+                          title="Ver otros drives con la misma imagen">
+                    <i data-lucide="link-2" class="w-3 h-3"></i>
+                  </button>
+                </template>
+                <template x-if="art.artist && art.artist.length > 0">
+                  <button @click.stop="openArtistApply(art)"
+                          class="absolute bottom-8 left-1 z-10 opacity-0 group-hover:opacity-100 transition
+                                 bg-emerald-500/90 hover:bg-emerald-500 text-white rounded p-1"
+                          :title="'Buscar más cartas del mazo con arte de ' + art.artist">
+                    <i data-lucide="users" class="w-3 h-3"></i>
+                  </button>
+                </template>
+              </div>
+            </template>
+          </div>
+
+          <div x-show="pickerVisibleCount < pickerFilteredArts.length && !pickerLoading"
+               class="text-center py-4 text-xs text-fg-faint">
+            <button @click="pickerVisibleCount = Math.min(pickerVisibleCount + 60, pickerFilteredArts.length)"
+                    class="bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted
+                           hover:text-fg px-4 py-2 rounded transition">
+              Cargar más (<span x-text="pickerVisibleCount"></span> de <span x-text="pickerFilteredArts.length"></span>)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-4 py-2.5 border-t border-border-subtle bg-bg-inset text-[11px] text-fg-faint shrink-0
+                  flex items-center justify-between">
+        <span>
+          <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> {{ t.picker_footer_click }} ·
+          <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">{{ t.picker_footer_dblclick_key }}</kbd> {{ t.picker_footer_dblclick }} ·
+          <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Hover</kbd> {{ t.picker_footer_hover }}
+        </span>
+        <span>
+          <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Esc</kbd> {{ t.picker_footer_esc }}
+        </span>
+      </div>
+    </div>
+  </div>
+</template>

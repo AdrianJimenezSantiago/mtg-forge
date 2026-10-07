@@ -1,0 +1,25 @@
+<div x-show="!searchQuery && activeSection === 'network' && !loading" x-cloak class="space-y-4">
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
+    <div class="flex items-center gap-2">
+      <i data-lucide="wifi" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.settings_network }}</h2>
+    </div>
+    <p class="text-xs text-fg-muted">{{ t.settings_network_desc }}</p>
+    <div class="space-y-4 pt-1">
+      <template x-for="def in defsInGroup('Red y conexión')" :key="def.key">
+        <div x-html="renderRow(def)"></div>
+      </template>
+    </div>
+    <template x-if="values.ssl_insecure">
+      <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+        <div>
+          <div class="font-medium">{{ t.settings_ssl_disabled }}</div>
+          <div class="text-fg-muted mt-0.5">
+            {{ t.settings_ssl_restart_hint }}
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>

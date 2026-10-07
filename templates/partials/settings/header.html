@@ -1,0 +1,32 @@
+<div class="sticky top-0 z-30 bg-bg-base/95 backdrop-blur border-b border-border-subtle">
+  <div class="max-w-6xl mx-auto px-6 lg:px-8 py-4 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
+        <i data-lucide="settings" class="w-4 h-4"></i>
+      </div>
+      <div>
+        <h1 class="font-display font-semibold tracking-tight text-lg leading-none">{{ t.settings_title }}</h1>
+        <p class="text-[11px] text-fg-faint mt-0.5">{{ t.settings_subtitle }}</p>
+      </div>
+    </div>
+
+    <div class="flex-1 min-w-[200px]"></div>
+
+    <div class="relative w-full sm:w-72">
+      <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint"></i>
+      <input type="search" x-model="searchQuery"
+             placeholder="{{ t.settings_search_placeholder }}"
+             class="w-full bg-bg-subtle border border-border-subtle rounded-md pl-9 pr-3 py-2 text-sm
+                    focus:outline-none focus:border-accent transition">
+    </div>
+
+    <button @click="resetAll()"
+            class="text-xs bg-bg-subtle hover:bg-danger-bg border border-border-strong hover:border-danger-border
+                   text-fg-muted hover:text-danger px-3 py-2 rounded-md transition flex items-center gap-1.5"
+            title="{{ t.settings_reset_defaults }}">
+      <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+      <span class="hidden sm:inline">{{ t.settings_reset_defaults }}</span>
+      <span class="sm:hidden">{{ t.settings_reset_short }}</span>
+    </button>
+  </div>
+</div>

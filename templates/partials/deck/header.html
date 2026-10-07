@@ -1,0 +1,59 @@
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div class="min-w-0 flex-1">
+    <div class="flex items-center gap-3">
+      <a href="/decks" class="text-fg-muted hover:text-fg text-sm">{{ t.deck_back_link }}</a>
+    </div>
+    <div class="flex items-center gap-3 mt-2 flex-wrap">
+      {% if commander_image_url %}
+        <img src="{{ commander_image_url }}" alt=""
+             data-preview="{{ commander_image_url }}"
+             :src='coverUrl || {{ commander_image_url | tojson }}'
+             :data-preview='coverUrl || {{ commander_image_url | tojson }}'
+             x-flip="coverUrl"
+             class="fx-deck-cover w-12 aspect-[63/88] object-cover object-top rounded-md shrink-0">
+      {% else %}
+        <template x-if="coverUrl">
+          <img :src="coverUrl" :data-preview="coverUrl" alt=""
+               class="w-12 aspect-[63/88] object-cover object-top rounded-md shrink-0 fx-flip">
+        </template>
+      {% endif %}
+      <div class="flex items-center gap-2 min-w-0">
+        <template x-if="!editingName">
+          <h1 @dblclick="startRename()" class="text-2xl font-semibold tracking-tight truncate cursor-text hover:text-accent transition"
+              title="{{ t.deck_rename_hint }}">{{ deck.name }}</h1>
+        </template>
+        <template x-if="editingName">
+          <input type="text" x-model="editNameValue" x-ref="nameInput"
+                 @keydown.enter="saveRename()" @keydown.escape="editingName = false"
+                 @blur="saveRename()"
+                 class="text-2xl font-semibold bg-bg-subtle border border-accent rounded px-2 py-0.5">
+        </template>
+
+        <template x-if="deck && deck.validation && deck.validation.expected > 0">
+          <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border"
+                :class="{
+                  'bg-green-500/10 text-green-400 border-green-500/30': deck.validation.level === 'ok',
+                  'bg-amber-500/10 text-amber-400 border-amber-500/30': deck.validation.level === 'warn',
+                  'bg-red-500/10 text-red-400 border-red-500/30': deck.validation.level === 'error'
+                }">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5" x-show="deck.validation.level === 'ok'"></i>
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5" x-show="deck.validation.level !== 'ok'"></i>
+            <span x-text="deck.validation.message"></span>
+          </span>
+        </template>
+      </div>
+    </div>
+
+    <div class="text-xs text-fg-muted mt-1 flex items-center gap-2 flex-wrap">
+      <span>{{ deck.format }}</span>
+      {% if deck.source_url %}
+        · <a href="{{ deck.source_url }}" target="_blank" class="hover:text-accent">Moxfield ↗</a>
+      {% endif %}
+      <span>·</span>
+      <a href="/decks/{{ deck.id }}/proof" class="hover:text-accent">{{ t.deck_proof_link }}</a>
+      <span>·</span>
+      <button @click="deleteDeck()" class="text-red-400/70 hover:text-red-400">{{ t.deck_delete }}</button>
+    </div>
+  </div>
+
+</div>

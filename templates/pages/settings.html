@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block view_module %}
+  <script defer src="/static/js/pages/settings.js?v={{ asset_v('js/pages/settings.js') }}"></script>
+{% endblock %}
+{% block title %}{{ t.settings_title }} · MPC Forge{% endblock %}
+{% block content %}
+<div class="min-h-screen"
+     x-data="settingsShell()"
+     x-init="load()">
+
+  {% include "partials/settings/header.html" %}
+
+  <div class="max-w-6xl mx-auto px-4 lg:px-8 py-6 flex flex-col lg:flex-row gap-6">
+
+    {% include "partials/settings/navigation.html" %}
+
+    <main class="flex-1 min-w-0 space-y-5">
+
+      <template x-if="loading">
+        <div class="text-center py-12 text-fg-faint text-sm">
+          <i data-lucide="loader-2" class="w-4 h-4 mx-auto mb-2 animate-spin"></i>
+          {{ t.settings_loading }}
+        </div>
+      </template>
+
+      {% include "partials/settings/search_results.html" %}
+
+      {% include "partials/settings/section_general.html" %}
+
+      {% include "partials/settings/section_prices.html" %}
+
+      {% include "partials/settings/section_network.html" %}
+
+      {% include "partials/settings/section_autofill.html" %}
+
+      {% include "partials/settings/section_offline.html" %}
+
+      {% include "partials/settings/section_art_sources.html" %}
+
+      {% include "partials/settings/section_custom_art.html" %}
+
+      {% include "partials/settings/section_backup.html" %}
+
+      {% include "partials/settings/section_storage.html" %}
+
+      {% include "partials/settings/section_log.html" %}
+
+    </main>
+  </div>
+
+  {% include "partials/settings/drives_modal.html" %}
+
+</div>
+
+{% endblock %}

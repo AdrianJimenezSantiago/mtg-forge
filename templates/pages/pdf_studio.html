@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block view_module %}
+  <script defer src="/static/js/pages/pdf-studio.js?v={{ asset_v('js/pages/pdf-studio.js') }}"></script>
+{% endblock %}
+{% block title %}{{ t.pdf_title }} · {{ deck.name }} · MPC Forge{% endblock %}
+{% block content %}
+
+<div class="h-[calc(100vh-3.5rem)] flex flex-col bg-bg-base text-fg"
+     x-data="pdfStudio({{ deck.id }})" x-init="init()" x-cloak>
+
+  {% include "partials/pdf_studio/top_bar.html" %}
+
+  {% include "partials/pdf_studio/build_progress.html" %}
+
+  <div class="flex-1 grid grid-cols-[260px_1fr_320px] min-h-0 overflow-hidden">
+
+    {% include "partials/pdf_studio/layout_panel.html" %}
+
+    {% include "partials/pdf_studio/preview.html" %}
+
+    {% include "partials/pdf_studio/settings_panel.html" %}
+  </div>
+
+  {% include "partials/pdf_studio/cardback_modal.html" %}
+
+  {% include "partials/pdf_studio/mini_picker_modal.html" %}
+
+  {% include "partials/pdf_studio/guide_modal.html" %}
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,57 @@
+<div x-show="!searchQuery && activeSection === 'art-sources' && !loading"
+     x-init="loadArtSourcesSummary()"
+     x-cloak class="space-y-4">
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+    <div class="flex items-center gap-2">
+      <i data-lucide="image" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.settings_art_sources_title }}</h2>
+    </div>
+    <p class="text-xs text-fg-muted">
+      {{ t.settings_drives_desc }}
+    </p>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_drives_col }}</div>
+        <div class="text-2xl font-semibold text-fg mt-1" x-text="artSources.length"></div>
+        <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_configured }}</div>
+      </div>
+      <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_indexed_col }}</div>
+        <div class="text-2xl font-semibold text-fg mt-1" x-text="driveStats.sources_indexed"></div>
+        <div class="text-[10px] text-fg-faint mt-0.5"><span x-text="pctIndexed + '%'"></span> {{ t.settings_of_total }}</div>
+      </div>
+      <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_files_col }}</div>
+        <div class="text-2xl font-semibold text-fg mt-1" x-text="driveStats.total_files.toLocaleString()"></div>
+        <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_fuzzy_search }}</div>
+      </div>
+      <div class="bg-bg-subtle border border-border-subtle rounded-lg p-3">
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.settings_pinned_col }}</div>
+        <div class="text-2xl font-semibold text-accent mt-1" x-text="pinnedCount"></div>
+        <div class="text-[10px] text-fg-faint mt-0.5">{{ t.settings_favorites }}</div>
+      </div>
+    </div>
+
+    <template x-if="!hasGoogleApiKey">
+      <div class="text-xs bg-warning-bg border border-warning-border text-warning rounded-md p-3 flex items-start gap-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+        <div>{{ t.settings_no_api_key_warn }}</div>
+      </div>
+    </template>
+
+    <div class="flex flex-wrap items-center gap-2 pt-2">
+      <button @click="showDrivesModal = true"
+              class="bg-accent hover:bg-accent-soft text-black text-sm font-medium
+                     px-4 py-2 rounded-md transition flex items-center gap-1.5">
+        <i data-lucide="settings-2" class="w-4 h-4"></i>
+        {{ t.settings_manage_drives_btn }}
+      </button>
+      <a href="/api/drives/stats" target="_blank"
+         class="text-xs text-fg-muted hover:text-fg px-3 py-2 rounded-md transition flex items-center gap-1.5">
+        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+        {{ t.settings_drives_json }}
+      </a>
+    </div>
+  </div>
+</div>

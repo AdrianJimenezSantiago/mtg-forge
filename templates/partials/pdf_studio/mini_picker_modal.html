@@ -1,0 +1,126 @@
+<div x-show="miniPickerOpen" x-transition x-cloak
+     class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+     @click.self="closeMiniArtPicker()"
+     @keydown.escape.window="closeMiniArtPicker()">
+  <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
+              w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+
+    <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <template x-if="miniPickerCard?.thumbnail_url && miniPickerFace === 'front'">
+          <img :src="miniPickerCard.thumbnail_url"
+               class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
+        </template>
+        <template x-if="miniPickerCard?.back_thumbnail_url && miniPickerFace === 'back'">
+          <img :src="miniPickerCard.back_thumbnail_url"
+               class="w-9 h-12 rounded-sm object-cover border border-border-subtle">
+        </template>
+        <div class="min-w-0">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.pdf_mini_picker_title }}</div>
+          <div class="font-semibold text-fg truncate"
+               x-text="(miniPickerFace === 'back' && miniPickerCard?.back_name)
+                 ? miniPickerCard.back_name
+                 : (miniPickerCard?.name || '')"></div>
+          <div class="text-[11px] text-fg-faint"
+               x-show="miniPickerCard?.is_dfc"
+               x-text="`${miniPickerFace === 'back' ? 'Face B' : 'Face A'}`"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="openFullEditor()"
+                class="text-[11px] text-fg-muted hover:text-accent transition
+                       inline-flex items-center gap-1.5 px-2 py-1 rounded
+                       hover:bg-bg-subtle"
+                title="Búsqueda avanzada (drives, URLs, filtros)">
+          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+          Editor completo
+        </button>
+        <button @click="closeMiniArtPicker()" class="text-fg-faint hover:text-fg transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4">
+      <div x-show="miniPickerLoading" class="text-center py-12 text-fg-faint text-sm">
+        <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i>
+        Cargando impresiones…
+      </div>
+      <div x-show="!miniPickerLoading && miniPickerArts.length === 0"
+           class="text-center py-12 text-fg-faint">
+        <i data-lucide="image-off" class="w-8 h-8 mx-auto mb-2 opacity-60"></i>
+        <p class="text-sm">{{ t.pdf_mini_picker_no_arts }}</p>
+        <button @click="openFullEditor()"
+                class="mt-3 text-xs text-accent hover:text-accent-glow underline">
+          Abrir en el editor completo →
+        </button>
+      </div>
+
+      <div x-show="!miniPickerLoading && miniPickerArts.length > 0"
+           class="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2.5">
+        <template x-for="art in miniPickerArts" :key="miniArtKey(art)">
+          <button @click="pickMiniArt(art, false)"
+                  @dblclick="art.kind === 'scryfall' && pickMiniArt(art, true)"
+                  :disabled="miniPickerBusy"
+                  :class="art.is_chosen
+                    ? 'ring-2 ring-accent border-accent'
+                    : 'border-border-subtle hover:border-accent'"
+                  data-tilt="foil" data-tilt-max="12"
+                  class="relative bg-bg-subtle rounded border overflow-hidden
+                         text-left group
+                         disabled:opacity-60 disabled:cursor-wait
+                         focus:outline-none focus:ring-2 focus:ring-accent">
+            <div class="aspect-[63/88] bg-bg-base overflow-hidden">
+              <img x-show="art.image_small"
+                   :src="art.image_small"
+                   :data-preview="art.image_small"
+                   class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                   loading="lazy">
+              <div x-show="!art.image_small"
+                   class="w-full h-full flex items-center justify-center text-fg-faint">
+                <i data-lucide="image-off" class="w-6 h-6"></i>
+              </div>
+            </div>
+            <div class="px-2 py-1.5 text-[10px] leading-tight">
+              <template x-if="art.kind === 'scryfall'">
+                <div>
+                  <div class="font-medium text-fg truncate"
+                       x-text="`${(art.set_code || '').toUpperCase()} · #${art.collector_number || '?'}`"></div>
+                  <div class="text-fg-faint truncate" x-text="art.artist || '—'"></div>
+                </div>
+              </template>
+              <template x-if="art.kind === 'custom'">
+                <div>
+                  <div class="font-medium text-fg truncate"
+                       x-text="art.filename || 'Custom'"></div>
+                  <div class="text-fg-faint truncate"
+                       x-text="art.variant_label || 'local'"></div>
+                </div>
+              </template>
+            </div>
+            <div class="absolute top-1 left-1 flex flex-wrap gap-0.5 max-w-[70%]">
+              <span x-show="art.is_chosen"
+                    class="text-[9px] px-1.5 py-0.5 rounded bg-accent text-bg-base font-bold">
+                {{ t.deck_card_printed }}
+              </span>
+              <span x-show="art.is_preferred"
+                    class="text-[9px] px-1.5 py-0.5 rounded bg-accent/80 text-bg-base"
+                    title="{{ t.pdf_globally_preferred }}">★</span>
+            </div>
+            <div x-show="miniPickerBusyKey === miniArtKey(art)"
+                 class="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <i data-lucide="loader-2" class="w-5 h-5 animate-spin text-accent"></i>
+            </div>
+          </button>
+        </template>
+      </div>
+
+      <p x-show="!miniPickerLoading && miniPickerArts.length > 0"
+         class="text-[10px] text-fg-faint mt-3 text-center">
+        <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Click</kbd> {{ t.pdf_picker_footer_click }} ·
+        <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Dbl</kbd> {{ t.pdf_picker_footer_dblclick }} ·
+        <kbd class="bg-bg-subtle border border-border-subtle rounded px-1">Hover</kbd> {{ t.pdf_picker_footer_hover }}
+      </p>
+    </div>
+  </div>
+</div>

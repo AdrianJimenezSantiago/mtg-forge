@@ -1,0 +1,130 @@
+<div x-show="!searchQuery && activeSection === 'backup' && !loading" x-cloak class="space-y-4">
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+    <div class="flex items-center gap-2">
+      <i data-lucide="archive" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.settings_backup_title }}</h2>
+    </div>
+    <p class="text-sm text-fg-muted">{{ t.settings_backup_desc }}</p>
+    <template x-if="storage">
+      <p class="text-xs text-fg-faint flex items-start gap-1.5">
+        <i data-lucide="hard-drive" class="w-3.5 h-3.5 mt-0.5 shrink-0"></i>
+        <span x-text="backupEstimateText()"></span>
+      </p>
+    </template>
+    <div class="flex items-center gap-2">
+      <button @click="createBackup()"
+              :disabled="backingUp"
+              class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                     disabled:opacity-50 transition flex items-center gap-1.5">
+        <i data-lucide="download" class="w-3.5 h-3.5" x-show="!backingUp"></i>
+        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="backingUp"></i>
+        <span x-text="backingUp ? '{{ t.settings_backup_compressing }}' : '{{ t.settings_backup_create }}'"></span>
+      </button>
+    </div>
+    <template x-if="lastBackup">
+      <div class="text-xs bg-success-bg border border-success-border rounded-lg p-3 space-y-1">
+        <div class="text-success font-medium flex items-center gap-1.5">
+          <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+          {{ t.settings_backup_created }}
+        </div>
+        <div class="text-fg-muted font-mono break-all" x-text="lastBackup.path"></div>
+        <div class="text-fg-faint">
+          {{ t.settings_backup_size }} <span x-text="(lastBackup.size_bytes / 1e6).toFixed(2)"></span> MB
+        </div>
+      </div>
+    </template>
+
+    <div class="pt-4 border-t border-border-subtle space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">
+          Ubicación de datos
+        </div>
+        <button @click="loadPaths()"
+                class="text-[11px] text-fg-faint hover:text-fg flex items-center gap-1"
+                title="{{ t.settings_reload_paths }}">
+          <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+          {{ t.settings_refresh_btn }}
+        </button>
+      </div>
+
+      <p class="text-xs text-fg-muted">
+        <code class="text-fg font-mono" x-text="paths.install_root + '/user-settings/'"></code>
+      </p>
+
+      <div class="bg-warning-bg border border-warning-border rounded-lg p-3 text-xs space-y-1">
+        <div class="flex items-center gap-1.5 text-warning font-medium">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+          {{ t.settings_before_change }}
+        </div>
+        <ul class="text-fg-muted space-y-0.5 list-disc list-inside">
+          <li>{{ t.settings_no_move_warning }}</li>
+          <li>{{ t.settings_restart_warning }}</li>
+        </ul>
+      </div>
+
+      <div class="flex items-start gap-2 text-xs font-mono py-1">
+        <span class="text-fg-faint shrink-0 w-28">{{ t.settings_db_label }}:</span>
+        <span class="text-fg-muted break-all" x-text="paths.db_path || '…'"></span>
+        <template x-if="sizeForCategory('database') !== null">
+          <span class="ml-auto shrink-0 text-[10px] text-fg-muted bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5"
+                x-text="fmtBytes(sizeForCategory('database'))"></span>
+        </template>
+        <span class="shrink-0 text-[10px] text-fg-faint bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5"
+              :class="sizeForCategory('database') === null ? 'ml-auto' : ''">{{ t.settings_db_fixed }}</span>
+      </div>
+
+      <template x-for="pathConfig in customPathsConfig" :key="pathConfig.key">
+        <div class="space-y-1.5 py-2 border-t border-border-subtle/40">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs text-fg font-medium" x-text="pathConfig.label"></div>
+            <div class="flex items-center gap-2 shrink-0">
+              <template x-if="pathConfig.bytes !== null">
+                <span class="text-[10px] font-mono text-fg-muted bg-bg-subtle border border-border-subtle
+                             rounded px-1.5 py-0.5"
+                      x-text="fmtBytes(pathConfig.bytes)"></span>
+              </template>
+              <div class="text-[10px] text-fg-faint" x-text="pathConfig.hint"></div>
+            </div>
+          </div>
+          <p class="text-[11px] text-fg-muted" x-text="pathConfig.description"></p>
+          <div class="flex items-center gap-2">
+            <input type="text"
+                   :placeholder="pathConfig.effectivePath || '{{ t.settings_default_path }}'"
+                   x-model="pathOverrides[pathConfig.key]"
+                   @change="markPathDirty(pathConfig.key)"
+                   class="flex-1 bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5
+                          text-xs font-mono focus:outline-none focus:border-accent">
+            <button @click="resetPath(pathConfig.key)"
+                    class="text-[11px] text-fg-faint hover:text-fg px-2 py-1.5 rounded
+                           hover:bg-bg-subtle border border-border-subtle transition
+                           flex items-center gap-1 shrink-0"
+                    :disabled="!pathOverrides[pathConfig.key]"
+                    :class="!pathOverrides[pathConfig.key] ? 'opacity-40 cursor-not-allowed' : ''"
+                    title="{{ t.settings_clear_override }}">
+              <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+              {{ t.common_reset }}
+            </button>
+          </div>
+          <div class="text-[10px] text-fg-faint font-mono break-all pl-1">
+            {{ t.settings_in_use }} <span class="text-fg-muted" x-text="pathConfig.effectivePath"></span>
+          </div>
+        </div>
+      </template>
+
+      <div class="pt-2 flex items-center justify-end gap-2" x-show="pathsDirty">
+        <button @click="discardPathChanges()"
+                class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded transition">
+          {{ t.settings_discard }}
+        </button>
+        <button @click="savePathOverrides()"
+                :disabled="savingPaths"
+                class="text-xs bg-accent hover:bg-accent-soft text-black font-medium px-3 py-1.5 rounded
+                       disabled:opacity-50 transition flex items-center gap-1.5">
+          <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="savingPaths"></i>
+          <i data-lucide="save" class="w-3.5 h-3.5" x-show="!savingPaths"></i>
+          <span x-text="savingPaths ? '{{ t.settings_saving }}' : '{{ t.settings_save_changes }}'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

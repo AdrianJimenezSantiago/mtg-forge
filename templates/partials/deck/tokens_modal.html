@@ -1,0 +1,141 @@
+<template x-if="tokensOpen">
+  <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+       @click="closeTokens()"
+       @keydown.escape.window="closeTokens()">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl
+                max-h-[92vh] flex flex-col overflow-hidden"
+         @click.stop>
+
+      <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="font-display text-lg text-accent-glow truncate" x-text="deck ? deck.name : ''"></div>
+            <div class="text-xs text-fg-muted mt-0.5">
+              <template x-if="tokensLoading">
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                  Analizando cartas…
+                </span>
+              </template>
+              <template x-if="!tokensLoading">
+                <span>
+                  Tokens que este mazo genera ·
+                  <span class="text-accent" x-text="tokensData.total_unique"></span> únicos
+                  (<span class="text-success" x-text="tokensData.already_in_deck"></span> ya en mazo,
+                  <span :class="tokensData.missing > 0 ? 'text-warning' : 'text-fg-muted'"
+                        x-text="tokensData.missing"></span> faltan)
+                </span>
+              </template>
+            </div>
+          </div>
+        </div>
+        <button @click="closeTokens()"
+                class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
+                title="{{ t.deck_close_esc }}">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5">
+        <template x-if="!tokensLoading && tokensData.tokens.length === 0">
+          <div class="text-center py-16">
+            <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
+              <i data-lucide="ghost" class="w-6 h-6"></i>
+            </div>
+            <p class="text-sm text-fg-muted">Ninguna carta de este mazo genera tokens.</p>
+            <p class="text-xs text-fg-faint mt-1">
+              Los datos vienen de <code>related_parts</code> de Scryfall.
+            </p>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <template x-for="token in tokensData.tokens" :key="token.scryfall_id">
+            <div class="bg-bg-subtle/40 border rounded-lg overflow-hidden transition"
+                 :class="token.in_deck
+                         ? 'border-success/40'
+                         : 'border-warning/40 hover:border-warning/70'">
+              <div class="flex gap-3 p-3">
+                <div class="w-16 h-[92px] rounded overflow-hidden bg-bg-inset shrink-0
+                            border border-border-subtle relative">
+                  <template x-if="token.image_url">
+                    <img :src="token.image_url" :data-preview="token.image_url"
+                         :alt="token.name" loading="lazy"
+                         class="w-full h-full object-cover object-top">
+                  </template>
+                  <template x-if="!token.image_url">
+                    <div class="w-full h-full flex items-center justify-center text-fg-faint">
+                      <i data-lucide="image-off" class="w-4 h-4"></i>
+                    </div>
+                  </template>
+                </div>
+                <div class="flex-1 min-w-0 flex flex-col">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium truncate" x-text="token.name"></div>
+                      <div class="text-[11px] text-fg-muted truncate" x-text="token.type_line || 'Token'"></div>
+                    </div>
+                    <template x-if="token.in_deck">
+                      <span class="shrink-0 text-[9px] font-bold bg-success/15 text-success rounded px-1.5 py-0.5
+                                   flex items-center gap-1">
+                        <i data-lucide="check" class="w-2.5 h-2.5"></i>
+                        EN MAZO
+                      </span>
+                    </template>
+                    <template x-if="!token.in_deck">
+                      <span class="shrink-0 text-[9px] font-bold bg-warning/15 text-warning rounded px-1.5 py-0.5">
+                        FALTA
+                      </span>
+                    </template>
+                  </div>
+                  <div class="mt-1.5 text-[11px] text-fg-faint">
+                    <span>Lo genera</span>
+                    <span x-text="token.generated_by.length"></span>
+                    <span x-text="token.generated_by.length === 1 ? 'carta:' : 'cartas:'"></span>
+                  </div>
+                  <div class="text-[11px] text-fg-muted line-clamp-2 mt-0.5"
+                       :title="token.generated_by.map(g => g.name).join(', ')"
+                       x-text="token.generated_by.map(g => g.name).join(', ')"></div>
+                  <template x-if="!token.in_deck">
+                    <button @click="addOneToken(token)"
+                            :disabled="tokensAdding"
+                            class="mt-auto self-start text-[11px] bg-accent hover:bg-accent-glow text-bg-base
+                                   font-medium px-2 py-1 rounded transition flex items-center gap-1
+                                   disabled:opacity-50">
+                      <i data-lucide="plus" class="w-3 h-3"></i>
+                      Añadir al mazo
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t border-border-subtle bg-bg-inset shrink-0
+                  flex items-center justify-between gap-3 flex-wrap">
+        <div class="text-[11px] text-fg-faint">
+          Los tokens se añaden con rol <code class="text-accent-glow">tokens</code> —
+          <strong class="text-fg-muted">no cuentan al mazo</strong> pero
+          <strong class="text-fg-muted">sí se incluyen</strong> en el PDF y XML.
+        </div>
+        <button @click="addAllMissingTokens()"
+                :disabled="tokensAdding || tokensData.missing === 0"
+                class="bg-accent hover:bg-accent-glow text-bg-base font-medium text-sm px-4 py-2 rounded-md
+                       transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+          <i data-lucide="plus-circle" class="w-4 h-4" x-show="!tokensAdding"></i>
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin" x-show="tokensAdding"></i>
+          <span x-show="!tokensAdding">
+            Añadir <span x-text="tokensData.missing"></span>
+            <span x-text="tokensData.missing === 1 ? 'token que falta' : 'tokens que faltan'"></span>
+          </span>
+          <span x-show="tokensAdding">Añadiendo…</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

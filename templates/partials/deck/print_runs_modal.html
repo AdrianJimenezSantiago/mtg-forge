@@ -1,0 +1,184 @@
+<template x-if="printRunsOpen">
+  <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+       @click="closePrintRuns()"
+       @keydown.escape.window="closePrintRuns()">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
+                max-h-[92vh] flex flex-col overflow-hidden"
+         @click.stop>
+
+      <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+            <i data-lucide="split-square-vertical" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-lg font-semibold text-fg">Print runs</h2>
+            <p class="text-xs text-fg-faint">
+              MPC solo acepta pedidos de tamaño fijo (18, 36, …, 612). Aquí ves cómo se dividiría tu mazo.
+            </p>
+          </div>
+        </div>
+        <button @click="closePrintRuns()"
+                class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition"
+                title="{{ t.deck_close_esc }}">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-5 border-b border-border-subtle bg-bg-subtle/30 space-y-3 shrink-0">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-fg-muted">Modo:</label>
+            <div class="flex bg-bg-subtle border border-border-subtle rounded overflow-hidden">
+              <button @click="printRunsMode = 'greedy'; loadPrintRuns()"
+                      :class="printRunsMode === 'greedy' ? 'bg-accent text-black' : 'text-fg-muted hover:bg-border-subtle'"
+                      class="text-xs px-3 py-1.5 transition">
+                Rápido
+              </button>
+              <button @click="printRunsMode = 'optimized'; loadPrintRuns()"
+                      :class="printRunsMode === 'optimized' ? 'bg-accent text-black' : 'text-fg-muted hover:bg-border-subtle'"
+                      class="text-xs px-3 py-1.5 transition"
+                      title="Solver DP: minimiza wasted slots">
+                Óptimo (menos wasted)
+              </button>
+            </div>
+          </div>
+          <div x-show="printRunsMode === 'greedy'" class="flex items-center gap-2">
+            <label class="text-xs text-fg-muted">Techo por run:</label>
+            <select x-model="printRunsMaxTier" @change="loadPrintRuns()"
+                    class="text-xs bg-bg-subtle border border-border-subtle rounded px-2 py-1
+                           focus:outline-none focus:border-accent">
+              <option value="">Sin límite (612)</option>
+              <option value="108">108 max</option>
+              <option value="180">180 max</option>
+              <option value="270">270 max</option>
+              <option value="360">360 max</option>
+              <option value="486">486 max</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5">
+        <template x-if="printRunsLoading">
+          <div class="text-center py-12 text-fg-faint text-sm">
+            <div class="spinner-ring mb-3"></div>
+            <p>Calculando particiones…</p>
+          </div>
+        </template>
+
+        <template x-if="!printRunsLoading && printRunsData">
+          <div class="space-y-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Runs totales</div>
+                <div class="text-2xl font-semibold text-fg mt-1" x-text="printRunsData?.total_runs ?? '—'"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Cartas</div>
+                <div class="text-2xl font-semibold text-fg mt-1" x-text="printRunsData?.total_cards ?? '—'"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Wasted slots</div>
+                <div class="text-2xl font-semibold mt-1"
+                     :class="(printRunsData?.total_wasted_slots ?? 0) > 0 ? 'text-amber-400' : 'text-fg'"
+                     x-text="printRunsData?.total_wasted_slots ?? '—'"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Subtotal MPC</div>
+                <div class="text-2xl font-semibold text-fg mt-1">
+                  $<span x-text="(printRunsData?.total_subtotal_usd ?? 0).toFixed(2)"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <template x-for="run in (printRunsData?.runs ?? [])" :key="run.run_index">
+                <div class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 rounded bg-accent/10 text-accent flex items-center justify-center text-sm font-semibold">
+                        <span x-text="run.run_index + 1"></span>
+                      </div>
+                      <div>
+                        <div class="text-sm font-medium text-fg">
+                          Run <span x-text="run.run_index + 1"></span>
+                          de <span x-text="printRunsData?.total_runs ?? '?'"></span>
+                          · Tier <span x-text="run.tier_size"></span>
+                        </div>
+                        <div class="text-xs text-fg-faint">
+                          <span x-text="run.total_cards"></span> cartas
+                          · <span x-text="run.wasted_slots"></span> wasted
+                          · $<span x-text="run.subtotal_usd.toFixed(2)"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="hidden md:block w-40">
+                      <div class="h-2 bg-bg-subtle rounded-full overflow-hidden">
+                        <div class="h-full bg-accent transition-all"
+                             :style="'width: ' + Math.round(100 * run.total_cards / run.tier_size) + '%'"></div>
+                      </div>
+                      <div class="text-[10px] text-fg-faint mt-1 text-right">
+                        <span x-text="Math.round(100 * run.total_cards / run.tier_size)"></span>% full
+                      </div>
+                    </div>
+                  </div>
+                  <div x-data="{show: false}" class="mt-2">
+                    <button @click="show = !show"
+                            class="text-[10px] text-fg-faint hover:text-fg-muted underline underline-offset-2">
+                      <span x-show="!show" x-text="`Ver ${run.cards.length} cartas`"></span>
+                      <span x-show="show">Ocultar cartas</span>
+                    </button>
+                    <div x-show="show" x-transition
+                         class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-2 text-xs text-fg-muted">
+                      <template x-for="card in run.cards" :key="card.scryfall_id + ':' + card.name">
+                        <div class="flex items-center gap-1 truncate">
+                          <span class="text-fg-faint">×<span x-text="card.quantity"></span></span>
+                          <span class="truncate" x-text="card.name"></span>
+                          <span x-show="card.has_back" class="text-accent" title="Doble cara">◐</span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!printRunsLoading && !printRunsData">
+          <div class="text-center py-12 text-fg-faint text-sm">
+            <p>Sin datos aún. Ajusta los controles arriba o cierra este modal.</p>
+          </div>
+        </template>
+      </div>
+
+      <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between shrink-0">
+        <div class="text-xs text-fg-faint">
+          <template x-if="printRunsData && printRunsData.total_runs > 1">
+            <span>
+              Se generarán <strong x-text="printRunsData?.total_runs"></strong> archivos XML
+              (uno por run, mismo cardback y post-processing).
+            </span>
+          </template>
+          <template x-if="printRunsData && printRunsData.total_runs === 1">
+            <span>{{ t.deck_runs_title }}</span>
+          </template>
+          <template x-if="!printRunsData && !printRunsLoading">
+            <span class="text-fg-faint/60">Cargando datos del mazo…</span>
+          </template>
+        </div>
+        <button @click="buildSplitXml()"
+                :disabled="printRunsBuilding || !printRunsData || (printRunsData?.total_runs ?? 0) === 0"
+                class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                       disabled:opacity-50 transition flex items-center gap-2">
+          <i x-show="!printRunsBuilding" data-lucide="download" class="w-4 h-4"></i>
+          <span x-show="!printRunsBuilding" x-text="(printRunsData?.total_runs ?? 0) > 1
+            ? `Generar los ${printRunsData.total_runs} XMLs`
+            : 'Generar XML'"></span>
+          <span x-show="printRunsBuilding">Descargando artes…</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

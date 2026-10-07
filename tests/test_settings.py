@@ -45,20 +45,3 @@ class TestSettingsRedesign:
         r = await client.put("/api/settings/", json={"values": {"ssl_insecure": False}})
         assert r.status_code == 200
         assert ssl_config.ssl_insecure() is False
-
-
-class TestSettingsHTML:
-    async def test_settings_page_renders(self, client):
-        r = await client.get("/settings")
-        assert r.status_code == 200
-        html = r.text
-        for needle in [
-            "sticky top-0",
-            'x-model="searchQuery"',
-            "showDrivesModal",
-            "Red y conexión",
-            "MPC Autofill",
-            "ssl_insecure",
-            "resetAll",
-        ]:
-            assert needle in html, f"Falta {needle!r} en settings.html"

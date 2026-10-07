@@ -2,7 +2,6 @@ module.exports = {
   content: [
     './templates/**/*.html',
     './static/js/**/*.js',
-    './static/app.js',
   ],
   safelist: [
     'bg-success-bg', 'bg-warning-bg', 'bg-danger-bg', 'bg-info-bg',

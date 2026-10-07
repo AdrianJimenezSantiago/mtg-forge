@@ -10,7 +10,7 @@ IS_MACOS = sys.platform == "darwin"
 _VENDOR = PROJECT_ROOT / "static" / "vendor"
 _REQUIRED_ASSETS = [
     "tailwind.css", "alpine.min.js", "alpine-collapse.min.js",
-    "alpine-focus.min.js", "lucide.min.js", "chart.umd.js",
+    "alpine-focus.min.js", "lucide.min.js",
     "mana.min.css", "fonts/mana.woff2",
 ]
 _missing = [a for a in _REQUIRED_ASSETS if not (_VENDOR / a).exists()]

@@ -1,0 +1,43 @@
+<div x-data x-auto-animate.toasts
+     class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
+  <template x-for="t in $store.ui.toasts" :key="t.id">
+    <div class="fx-toast pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border"
+         :data-type="t.type"
+         :class="{
+           'bg-bg-elevated border-border-strong':            t.type === 'info',
+           'bg-bg-elevated border-success/40':               t.type === 'success',
+           'bg-bg-elevated border-danger/40':                t.type === 'error',
+           'bg-bg-elevated border-warning/40':               t.type === 'warning',
+         }">
+      <div class="flex items-start gap-3 p-4">
+        <div class="fx-toast-icon shrink-0 w-8 h-8 rounded-md flex items-center justify-center"
+             :class="{
+               'bg-info-bg text-info':       t.type === 'info',
+               'bg-success-bg text-success': t.type === 'success',
+               'bg-danger-bg text-danger':   t.type === 'error',
+               'bg-warning-bg text-warning': t.type === 'warning',
+             }">
+          <i class="w-4 h-4"
+             :data-lucide="{info:'info', success:'check-circle-2', error:'x-circle', warning:'alert-triangle'}[t.type]"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-fg" x-text="t.title"></div>
+          <div class="text-xs text-fg-muted mt-0.5 break-words" x-text="t.message" x-show="t.message"></div>
+        </div>
+        <button @click="$store.ui.dismissToast(t.id)"
+                class="shrink-0 text-fg-faint hover:text-fg transition p-1 -m-1 rounded">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+      <div class="absolute bottom-0 left-0 right-0 h-0.5 toast-progress"
+           :class="{
+             'bg-info':    t.type === 'info',
+             'bg-success': t.type === 'success',
+             'bg-danger':  t.type === 'error',
+             'bg-warning': t.type === 'warning',
+           }"
+           :style="`animation-duration: ${t.ttl}ms`"
+           x-show="t.ttl > 0"></div>
+    </div>
+  </template>
+</div>

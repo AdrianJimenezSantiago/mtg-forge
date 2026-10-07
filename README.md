@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="static/logo.png" alt="MPC Forge" width="120">
+<img src="static/img/logo.png" alt="MPC Forge" width="120">
 
 # MPC Forge
 
@@ -285,7 +285,7 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds on
 To regenerate the icon after editing `packaging/make_icon.py`:
 
 ```bash
-python packaging/make_icon.py   # writes packaging/icon.ico, static/logo.png, static/favicon.png
+python packaging/make_icon.py   # writes packaging/icon.ico, static/img/logo.png, static/img/favicon.png
 ```
 
 ## Credits and disclaimer

@@ -1,0 +1,54 @@
+<div x-show="!searchQuery && activeSection === 'custom-art' && !loading" x-cloak class="space-y-4">
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+    <div class="flex items-center gap-2">
+      <i data-lucide="folder" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.settings_custom_art_title }}</h2>
+    </div>
+    <p class="text-sm text-fg-muted">{{ t.settings_custom_art_desc }}</p>
+    <ol class="text-sm text-fg-muted space-y-2 list-decimal list-inside">
+      <li>
+        <strong class="text-fg">{{ t.settings_custom_from_app }}</strong>: {{ t.settings_custom_drop }}
+        <span class="text-accent">{{ t.settings_custom_from_url }}</span>.
+      </li>
+      <li>
+        <strong class="text-fg">{{ t.settings_custom_drop }}</strong> {{ t.settings_place_file_at }}
+        <span class="font-mono text-accent text-xs">{{ t.settings_custom_drop_path }}</span>
+      </li>
+    </ol>
+
+    <div x-data="{ open: false }" class="pt-2 border-t border-border-subtle">
+      <button @click="open = !open"
+              class="w-full flex items-center justify-between text-sm text-fg-muted hover:text-fg transition">
+        <span class="flex items-center gap-2">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+          {{ t.settings_naming_conventions }}
+        </span>
+        <i data-lucide="chevron-down" class="w-4 h-4 transition-transform"
+           :class="open ? 'rotate-180' : ''"></i>
+      </button>
+      <div x-show="open" x-collapse class="pt-3 space-y-1.5 text-xs">
+        <div class="bg-bg-subtle border border-border-subtle rounded p-3 font-mono space-y-1">
+          <div><span class="text-accent">Sol Ring.png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_base }}</span></div>
+          <div><span class="text-accent">Sol Ring - Anime.png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_variant }} "Anime"</span></div>
+          <div><span class="text-accent">Sol Ring (Retro Frame).png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_variant }} "Retro Frame"</span></div>
+          <div><span class="text-accent">Delver of Secrets [BACK].png</span> <span class="text-fg-faint ml-2">{{ t.settings_naming_back }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pt-4 border-t border-border-subtle">
+      <div class="text-sm font-medium mb-1.5 flex items-center gap-2">
+        <i data-lucide="layout-template" class="w-3.5 h-3.5 text-fg-muted"></i>
+        {{ t.settings_cardback_section }}
+      </div>
+      <p class="text-xs text-fg-muted">
+        <span class="font-mono text-accent" x-text="values.default_cardback_name + '.png'"></span>
+        / <span class="font-mono text-accent" x-text="values.default_cardback_name + '.jpg'"></span>
+        {{ t.settings_place_file_at }}
+      </p>
+      <div class="text-xs font-mono bg-bg-subtle rounded p-2 text-fg-muted break-all mt-2 border border-border-subtle">
+        {{ t.settings_cardback_path }}
+      </div>
+    </div>
+  </div>
+</div>

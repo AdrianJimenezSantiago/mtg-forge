@@ -1,0 +1,250 @@
+<div class="bg-bg-elevated border border-border-subtle rounded-xl shadow-card">
+
+  <div class="flex flex-wrap items-start gap-4 p-4">
+
+    <div class="flex-1 min-w-0 space-y-0.5">
+      <template x-if="estimate">
+        <div>
+          <div class="flex items-baseline gap-2 flex-wrap">
+            <span class="text-xs text-fg-muted">{{ t.deck_cost_label }}</span>
+            <span class="text-2xl font-semibold text-fg tabular-nums" x-tween.2="estimate.total_eur" data-suffix=" €"></span>
+            <span class="text-xs text-fg-faint font-mono" x-text="estimate.total_cards + '/' + estimate.tier_size + ' cartas'"></span>
+          </div>
+          <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>Cartas: <span class="font-mono" x-text="estimate.subtotal_eur.toFixed(2)"></span> €</span>
+            <span class="text-border-subtle">·</span>
+            <span>Envío: <span class="font-mono" x-text="estimate.shipping_eur.toFixed(2)"></span> €
+              (<span x-text="estimate.shipping_base_eur.toFixed(2)"></span> base + <span x-text="estimate.shipping_eu_extra_eur.toFixed(2)"></span> EU)</span>
+            <span class="text-border-subtle">·</span>
+            <span x-text="'≈ $' + estimate.subtotal_usd + ' USD {{ t.deck_cost_usd }}'"></span>
+          </div>
+          <template x-if="estimate.next_tier_saves_eur">
+            <div class="text-[11px] text-accent mt-1">
+              +<span x-text="estimate.cards_to_next_tier"></span> cartas al tier
+              <span x-text="estimate.next_tier_size"></span> →
+              total <span x-text="estimate.next_tier_total_eur.toFixed(2)"></span> €
+              (ahorras <span x-text="estimate.next_tier_saves_eur.toFixed(2)"></span> €)
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="preload.inProgress && preload.total > 0">
+        <div class="flex items-center gap-2 text-xs text-fg-muted mt-1.5"
+             :title="`Precargando artes alternativos — el picker será instantáneo`">
+          <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-accent"></i>
+          <span>{{ t.deck_preloading }}</span>
+          <span class="font-mono text-accent" x-text="`${preload.done}/${preload.total}`"></span>
+          <div class="w-12 h-1 bg-bg-inset rounded-full overflow-hidden">
+            <div class="h-full bg-accent transition-all duration-500"
+                 :style="`width: ${Math.round(100 * preload.done / Math.max(preload.total, 1))}%`"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+
+      <div class="flex items-stretch">
+        <a :href="`/decks/${deckId}/pdf`"
+           class="bg-accent/10 hover:bg-accent/20 border border-accent/50 text-accent-glow text-sm font-medium
+                  px-4 py-2 rounded-l-md transition flex items-center gap-1.5"
+           title="{{ t.deck_pdf_studio }}">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+          <span>{{ t.deck_pdf_studio }}</span>
+          <i data-lucide="arrow-right" class="w-3 h-3 opacity-60"></i>
+        </a>
+        <button @click="buildPdf()" :disabled="buildingPdf"
+                class="bg-bg-subtle hover:bg-border-subtle border border-l-0 border-border-strong text-fg-muted hover:text-fg
+                       text-sm px-2.5 py-2 rounded-r-md disabled:opacity-50 transition flex items-center"
+                title="{{ t.deck_pdf_quick }}">
+          <template x-if="!buildingPdf">
+            <i data-lucide="zap" class="w-4 h-4"></i>
+          </template>
+          <template x-if="buildingPdf">
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          </template>
+        </button>
+      </div>
+
+      <div class="w-px h-8 bg-border-subtle/50 hidden sm:block"></div>
+
+      <div class="flex items-center gap-1.5">
+        <button @click="buildXml()" :disabled="building"
+                class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm
+                       font-medium px-4 py-2 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                title="{{ t.deck_title_xml_generate }}">
+          <template x-if="!building">
+            <i data-lucide="code-xml" class="w-4 h-4 text-fg-muted"></i>
+          </template>
+          <template x-if="building">
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-accent"></i>
+          </template>
+          <span x-show="!building">{{ t.deck_xml }}</span>
+          <span x-show="building">{{ t.deck_xml_processing }}</span>
+        </button>
+
+        <template x-if="lastXmlFilename">
+          <div class="flex items-center gap-1">
+            <button @click="downloadXml()"
+                    class="p-2 rounded-md bg-bg-subtle hover:bg-border-subtle border border-border-strong
+                           text-fg-muted hover:text-fg transition"
+                    title="{{ t.deck_xml_download }}">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            </button>
+            <template x-if="autofillStatus.available">
+              <button @click="launchAutofill()" :disabled="launchingAutofill"
+                      class="p-2 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/40
+                             text-indigo-300 disabled:opacity-50 transition"
+                      title="{{ t.deck_xml_autofill }}">
+                <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              </button>
+            </template>
+            <template x-if="!autofillStatus.available">
+              <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank"
+                 class="text-[10px] text-fg-faint hover:text-fg-muted underline px-1"
+                 title="{{ t.deck_xml_autofill_help }}">
+                {{ t.deck_xml_autofill_short }}
+              </a>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <div class="border-t border-border-subtle/50 mx-4"></div>
+
+  <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+
+    <div class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-fg-muted shrink-0">{{ t.deck_stock_label }}</label>
+        <select x-model="cardstock"
+                class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm
+                       focus:outline-none focus:border-accent">
+          {% for opt in ["(S30) Standard Smooth", "(S33) Superior Smooth", "(M31) Linen", "(M32) Superior Linen", "(P10) Plastic"] %}
+            <option value="{{ opt }}">{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <label class="text-xs text-fg-muted flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" x-model="foil" class="accent-accent w-3.5 h-3.5"> {{ t.deck_foil }}
+      </label>
+    </div>
+
+    <div class="flex items-center gap-1.5 flex-wrap">
+
+      <button @click="openStats()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.deck_stats_title }}">
+        <i data-lucide="bar-chart-3" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.deck_stats }}</span>
+      </button>
+      <button @click="openTokens()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.deck_tokens_title }}">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.deck_tokens }}</span>
+      </button>
+      <button @click="openPrintRuns()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.deck_runs_title }}">
+        <i data-lucide="split-square-vertical" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.deck_runs }}</span>
+      </button>
+
+      <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
+
+      <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+        <button @click="open = !open" :disabled="localizing"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                       px-3 py-1.5 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                title="{{ t.deck_title_change_lang }}">
+          <i data-lucide="languages" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline" x-show="!localizing">{{ t.nav_lang_label }}</span>
+          <span class="hidden sm:inline" x-show="localizing">…</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 opacity-50"></i>
+        </button>
+        <div x-show="open" x-transition
+             class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+          <div class="text-xs font-medium text-fg-muted mb-1">{{ t.deck_lang_title }}</div>
+          <p class="text-[11px] text-fg-faint leading-relaxed">
+            {{ t.deck_lang_note }}
+            (promos, Secret Lair…) quedan como estén. Custom art no se toca.
+          </p>
+          <label class="flex items-center justify-between text-xs gap-2 pt-1">
+            <span class="text-fg-muted">{{ t.deck_lang_label }}</span>
+            <select x-model="localizeLang"
+                    class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs min-w-[9rem]">
+              <template x-for="(label, code) in supportedLangs" :key="code">
+                <option :value="code" x-text="label + ' (' + code + ')'"></option>
+              </template>
+            </select>
+          </label>
+          <button @click="localizeDeck(); open = false" :disabled="localizing"
+                  class="w-full bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition disabled:opacity-50">
+            {{ t.deck_lang_btn }}
+          </button>
+        </div>
+      </div>
+
+      <div x-data="{ open: false }" @click.outside="open = false" class="relative">
+        <button @click="open = !open" :disabled="exportingDecklist"
+                class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                       px-3 py-1.5 rounded-md disabled:opacity-50 transition flex items-center gap-1.5"
+                title="{{ t.deck_title_export_text }}">
+          <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline" x-show="!exportingDecklist">Decklist</span>
+          <span class="hidden sm:inline" x-show="exportingDecklist">…</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 opacity-50"></i>
+        </button>
+        <div x-show="open" x-transition
+             class="absolute right-0 top-full mt-1 z-20 bg-bg-elevated border border-border-strong rounded-lg shadow-lg p-3 w-72 space-y-2">
+          <div class="text-xs font-medium text-fg-muted mb-1">{{ t.deck_decklist_title }}</div>
+          <label class="flex items-center justify-between text-xs gap-2">
+            <span class="text-fg-muted">{{ t.deck_decklist_format }}</span>
+            <select x-model="decklistFormat" class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
+              <option value="with_set">{{ t.deck_decklist_opt_set }}</option>
+              <option value="arena">{{ t.deck_decklist_opt_arena }}</option>
+              <option value="simple">{{ t.deck_decklist_opt_simple }}</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-xs text-fg-muted">
+            <input type="checkbox" x-model="decklistHeaders" class="accent-accent">
+            {{ t.deck_decklist_headers }}
+          </label>
+          <div class="flex gap-2 pt-1">
+            <button @click="copyDecklist(); open = false"
+                    class="flex-1 bg-accent hover:bg-accent-soft text-black text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              Copiar
+            </button>
+            <button @click="downloadDecklist(); open = false"
+                    class="flex-1 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              .txt
+            </button>
+          </div>
+          <div class="text-[10px] text-fg-faint text-center pt-1">{{ t.deck_decklist_note }}</div>
+        </div>
+      </div>
+
+      <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
+
+      <button @click="rescanCustom()" :disabled="rescanning"
+              class="text-xs text-fg-muted hover:text-fg border border-border-subtle hover:border-border-strong
+                     px-3 py-1.5 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"
+              title="{{ t.deck_custom_art_title }}">
+        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" x-show="!rescanning"></i>
+        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="rescanning"></i>
+        <span class="hidden sm:inline" x-show="!rescanning">{{ t.deck_custom_art }}</span>
+        <span class="hidden sm:inline" x-show="rescanning">{{ t.deck_custom_scanning }}</span>
+      </button>
+
+    </div>
+  </div>
+</div>

@@ -44,7 +44,7 @@ function makeWindow({ total, customs = 2 }) {
     }
   }
 
-  w.eval(readFileSync(new URL('../static/js/api.js', import.meta.url), 'utf8'))
+  w.eval(readFileSync(new URL('../static/js/core/api.js', import.meta.url), 'utf8'))
   return { w, state }
 }
 
@@ -94,7 +94,7 @@ console.log('\nExtracción de errores')
     json: async () => ({ detail: [{ loc: ['body', 'name'], msg: 'obligatorio' }] }),
     text: async () => '',
   })
-  w.eval(readFileSync(new URL('../static/js/api.js', import.meta.url), 'utf8'))
+  w.eval(readFileSync(new URL('../static/js/core/api.js', import.meta.url), 'utf8'))
   try {
     await w.apiRequest('GET', '/x')
     check('un 422 lanza', false)

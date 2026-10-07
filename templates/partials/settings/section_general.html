@@ -1,0 +1,14 @@
+<div x-show="!searchQuery && activeSection === 'general' && !loading" x-cloak class="space-y-4">
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-5">
+    <div class="flex items-center gap-2">
+      <i data-lucide="settings" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.settings_general }}</h2>
+    </div>
+    <p class="text-xs text-fg-muted">{{ t.settings_general_desc }}</p>
+    <div class="space-y-4 pt-1">
+      <template x-for="def in defsInGroup('General')" :key="def.key">
+        <div x-html="renderRow(def)"></div>
+      </template>
+    </div>
+  </div>
+</div>

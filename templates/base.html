@@ -5,26 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}MPC Forge{% endblock %}</title>
 
-  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="icon" type="image/png" href="/static/img/favicon.png?v={{ asset_v('img/favicon.png') }}">
 
   <link rel="stylesheet" href="/static/vendor/tailwind.css?v={{ asset_v('vendor/tailwind.css') }}">
 
-  <link rel="preload" href="/static/vendor/mana.min.css" as="style"
-        onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="/static/vendor/mana.min.css"></noscript>
 
-  <script defer src="/static/vendor/lucide.min.js"></script>
+  <script defer src="/static/vendor/lucide.min.js?v={{ asset_v('vendor/lucide.min.js') }}"></script>
 
-  <script defer src="/static/vendor/alpine-collapse.min.js"></script>
-  <script defer src="/static/vendor/alpine-focus.min.js"></script>
+  <script defer src="/static/vendor/alpine-collapse.min.js?v={{ asset_v('vendor/alpine-collapse.min.js') }}"></script>
+  <script defer src="/static/vendor/alpine-focus.min.js?v={{ asset_v('vendor/alpine-focus.min.js') }}"></script>
   <script defer src="/static/vendor/auto-animate.min.js?v={{ asset_v('vendor/auto-animate.min.js') }}"></script>
-  <script defer src="/static/js/api.js?v={{ asset_v('js/api.js') }}"></script>
+  <script defer src="/static/js/core/api.js?v={{ asset_v('js/core/api.js') }}"></script>
+  <script defer src="/static/js/core/shell.js?v={{ asset_v('js/core/shell.js') }}"></script>
 
   {% block view_module %}{% endblock %}
 
-  <script defer src="/static/vendor/alpine.min.js"></script>
-  <link rel="stylesheet" href="/static/app.css?v={{ asset_v('app.css') }}">
-  <link rel="stylesheet" href="/static/motion.css?v={{ asset_v('motion.css') }}">
+  <script defer src="/static/vendor/alpine.min.js?v={{ asset_v('vendor/alpine.min.js') }}"></script>
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v('css/app.css') }}">
+  <link rel="stylesheet" href="/static/css/motion.css?v={{ asset_v('css/motion.css') }}">
   {% block extra_head %}{% endblock %}
 
   <link rel="expect" href="#app-content-end" blocking="render">
@@ -83,252 +81,11 @@
     <canvas class="fx-aurora"></canvas>
     <canvas class="fx-ambient"></canvas>
   </div>
-  <script src="/static/js/ambient.js?v={{ asset_v('js/ambient.js') }}"></script>
+  <script src="/static/js/core/ambient.js?v={{ asset_v('js/core/ambient.js') }}"></script>
 
   <div class="app-shell flex min-h-screen">
 
-    <aside class="app-sidebar sticky top-0 self-start h-screen w-64 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
-      <div class="p-5 border-b border-border-subtle">
-        <a href="/" class="flex items-center gap-3 group">
-          <span class="fx-logo shadow-glow group-hover:scale-105 transition">
-            <img src="/static/logo.png" alt="MPC Forge" class="w-10 h-10 rounded-lg">
-          </span>
-          <div class="flex flex-col leading-tight">
-            <span class="font-display font-semibold tracking-wide text-accent-glow text-[15px]">MPC Forge</span>
-            <span class="text-[10px] text-fg-faint uppercase tracking-widest">Proxy pipeline</span>
-          </div>
-        </a>
-      </div>
-
-      <nav class="app-sidebar__nav flex-1 min-h-0 p-3 space-y-1 text-sm overflow-y-auto" data-scroll-fade
-           x-data="sidebarData()" x-init="load()">
-        {% set current = request.url.path %}
-        {% set nav_items = [
-          ('/',           'house',        t.nav_home),
-          ('/decks',      'layers',       t.nav_decks),
-          ('/collection', 'library',      t.nav_collection),
-          ('/art-library',   'images',    t.nav_library),
-          ('/print-planner', 'package',   t.nav_planner),
-          ('/calibrate',     'crosshair', t.nav_calibrate),
-          ('/history',    'history',      t.nav_history),
-          ('/settings',   'settings',     t.nav_settings),
-        ] %}
-        {% for path, icon, label in nav_items %}
-          {% set active = (path == '/' and current == '/') or (path != '/' and current.startswith(path)) %}
-          <a href="{{ path }}"
-             {% if active %}aria-current="page"{% endif %}
-             class="group relative flex items-center gap-3 px-3 py-2.5 rounded-md transition border-l-2 border-transparent
-                    {% if active %}
-                      bg-bg-subtle text-accent-glow
-                    {% else %}
-                      text-fg-muted hover:bg-bg-subtle hover:text-fg
-                    {% endif %}">
-            {% if active %}<span class="nav-indicator" aria-hidden="true"></span>{% endif %}
-            <i data-lucide="{{ icon }}" class="w-[18px] h-[18px] transition-transform group-hover:scale-110"></i>
-            <span class="text-[13px]">{{ label }}</span>
-          </a>
-        {% endfor %}
-
-        <div class="pt-3 mt-3 border-t border-border-subtle/60 px-1 space-y-1.5">
-          <template x-if="stats">
-            <div class="grid grid-cols-1 gap-1.5">
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-fg-faint flex items-center gap-2">
-                  <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-                  {{ t.nav_stats_decks }}
-                </span>
-                <span class="text-fg font-mono font-medium" x-text="stats.total_decks"></span>
-              </div>
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-fg-faint flex items-center gap-2">
-                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                  {{ t.nav_stats_cards }}
-                </span>
-                <span class="text-fg font-mono font-medium" x-text="stats.unique_cards"></span>
-              </div>
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-fg-faint flex items-center gap-2">
-                  <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-                  {{ t.nav_stats_prints }}
-                </span>
-                <span class="text-fg font-mono font-medium" x-text="stats.total_print_runs"></span>
-              </div>
-              <template x-if="stats.collection_total > 0">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-fg-faint flex items-center gap-2">
-                    <i data-lucide="library" class="w-3.5 h-3.5"></i>
-                    {{ t.nav_collection }}
-                  </span>
-                  <span class="text-accent font-mono font-medium" x-text="stats.collection_total"></span>
-                </div>
-              </template>
-            </div>
-          </template>
-        </div>
-
-        <template x-if="recentDecks.length > 0">
-          <div class="pt-3 mt-3 border-t border-border-subtle/60">
-            <div class="px-1 pb-1.5 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
-              <i data-lucide="clock" class="w-3 h-3"></i>
-              {{ t.nav_recent_title }}
-            </div>
-            <template x-for="d in recentDecks" :key="d.id">
-              <a :href="'/decks/' + d.id"
-                 class="group flex items-center gap-2.5 px-2 py-2 rounded-md transition
-                        text-fg-muted hover:bg-bg-subtle hover:text-fg">
-                <template x-if="d.commander_image">
-                  <img :src="d.commander_image" :alt="d.name"
-                       class="w-6 h-8 rounded-sm object-cover object-top border border-border-subtle/60 shrink-0"
-                       loading="lazy">
-                </template>
-                <template x-if="!d.commander_image">
-                  <div class="w-6 h-8 rounded-sm bg-bg-subtle border border-border-subtle/60 shrink-0
-                              flex items-center justify-center">
-                    <i data-lucide="layers" class="w-3 h-3 text-fg-faint"></i>
-                  </div>
-                </template>
-                <div class="flex-1 min-w-0">
-                  <div class="text-xs truncate group-hover:text-accent-glow transition" x-text="d.name"></div>
-                  <div class="text-[10px] text-fg-faint font-mono" x-text="d.card_count + ' ' + (d.card_count === 1 ? window._T.landing_continue_card : window._T.nav_cards) + ' · ' + d.format"></div>
-                </div>
-              </a>
-            </template>
-          </div>
-        </template>
-
-        <div x-data="globalCardSearch()" class="pt-4 mt-4 border-t border-border-subtle relative"
-             @click.outside="if (!document.getElementById('global-search-results')?.contains($event.target)) open = false"
-             @keydown.escape.window="open = false"
-             @resize.window="open && place()">
-          <div class="px-2 pb-1.5 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
-            <i data-lucide="search" class="w-3 h-3"></i>
-            {{ t.nav_search_label }}
-          </div>
-          <div class="relative px-1">
-            <input type="search" x-model="query" x-ref="input"
-                   @input.debounce.300ms="search()"
-                   @focus="if (results.length > 0) { place(); open = true }"
-                   placeholder="{{ t.nav_search_placeholder }}"
-                   class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-xs
-                          focus:outline-none focus:border-accent transition">
-            <i data-lucide="loader-2" x-show="loading"
-               class="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-fg-faint animate-spin"></i>
-          </div>
-
-          <template x-teleport="body">
-          <div id="global-search-results"
-               x-show="open && (results.length > 0 || (query.length >= 2 && !loading))"
-               x-transition.origin.left
-               :style="`top: ${pos.top}px; left: ${pos.left}px`"
-               class="fixed z-[60] w-[420px] max-w-[calc(100vw-17rem)] max-h-[70vh] overflow-y-auto
-                      bg-bg-elevated border border-border-strong rounded-lg shadow-modal">
-            <template x-if="results.length === 0 && query.length >= 2 && !loading">
-              <div class="p-4 text-center text-xs text-fg-faint">
-                {{ t.nav_search_no_results }} <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
-              </div>
-            </template>
-
-            <template x-if="results.length > 0">
-              <div class="sticky top-0 bg-bg-elevated border-b border-border-subtle px-3 py-2
-                          text-[10px] text-fg-faint flex items-center justify-between">
-                <span>
-                  <span class="text-fg" x-text="totalGroups"></span>
-                  <span x-text="totalGroups === 1 ? '{{ t.nav_card_one }}' : '{{ t.nav_cards }}'"></span> ·
-                  <span class="text-fg" x-text="totalInstances"></span>
-                  <span x-text="totalInstances === 1 ? '{{ t.nav_instance_one }}' : '{{ t.nav_instances }}'"></span>
-                  <span class="text-fg" x-text="totalDecks"></span>
-                  <span x-text="totalDecks === 1 ? '{{ t.nav_deck_one }}' : '{{ t.nav_decks_count }}'"></span>
-                </span>
-                <button @click="clearSearch()" class="hover:text-fg transition">{{ t.nav_search_clear }}</button>
-              </div>
-            </template>
-
-            <template x-for="group in results" :key="group.oracle_id + group.canonical_name">
-              <div class="border-b border-border-subtle/60 last:border-b-0">
-                <div class="px-3 py-2 bg-bg-subtle/40">
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="font-medium text-sm text-fg truncate" x-text="group.canonical_name"></div>
-                    <div class="text-[10px] text-fg-faint shrink-0 font-mono">
-                      <span x-text="group.total_copies"></span>× ·
-                      <span x-text="group.deck_count"></span>
-                      <span x-text="group.deck_count === 1 ? '{{ t.nav_deck_one }}' : '{{ t.nav_decks_count }}'"></span>
-                    </div>
-                  </div>
-                </div>
-                <template x-for="inst in group.instances" :key="inst.deck_card_id">
-                  <a :href="'/decks/' + inst.deck_id"
-                     class="flex items-center gap-2 px-3 py-2 hover:bg-bg-subtle transition group">
-                    <template x-if="inst.thumbnail">
-                      <img :src="inst.thumbnail" :alt="group.canonical_name"
-                           class="w-6 h-8 rounded object-cover object-top border border-border-subtle shrink-0"
-                           loading="lazy">
-                    </template>
-                    <template x-if="!inst.thumbnail">
-                      <div class="w-6 h-8 rounded bg-bg-subtle border border-border-subtle shrink-0"></div>
-                    </template>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-xs text-fg truncate group-hover:text-accent-glow transition"
-                           x-text="inst.deck_name"></div>
-                      <div class="text-[10px] text-fg-faint flex items-center gap-1 truncate">
-                        <span x-text="inst.quantity + '×'" class="font-mono"></span>
-                        <span>·</span>
-                        <span x-text="inst.role"></span>
-                        <template x-if="inst.printing_set">
-                          <span>· <span class="font-mono uppercase" x-text="inst.printing_set"></span> <span x-text="inst.printing_number"></span></span>
-                        </template>
-                        <template x-if="inst.printing_lang && inst.printing_lang !== 'en'">
-                          <span class="text-accent/80">· <span x-text="inst.printing_lang"></span></span>
-                        </template>
-                        <template x-if="inst.has_custom_art">
-                          <span class="text-accent">· custom</span>
-                        </template>
-                        <template x-if="!inst.include">
-                          <span class="text-warning">· excluida</span>
-                        </template>
-                      </div>
-                    </div>
-                    <i data-lucide="chevron-right" class="w-3 h-3 text-fg-faint group-hover:text-accent shrink-0"></i>
-                  </a>
-                </template>
-              </div>
-            </template>
-          </div>
-          </template>
-        </div>
-      </nav>
-
-      <div class="px-4 pb-2 border-t border-border-subtle pt-3">
-        <form method="post" action="/set-lang" class="flex items-center gap-2">
-          <i data-lucide="globe" class="w-4 h-4 text-fg-faint shrink-0"></i>
-          {% for code, name in SUPPORTED_LANGS %}
-            <button type="submit" name="lang" value="{{ code }}"
-                    class="text-xs px-2.5 py-1 rounded transition font-medium
-                           {% if lang == code %}
-                             bg-accent/20 text-accent border border-accent/40
-                           {% else %}
-                             text-fg-faint hover:text-fg border border-transparent hover:border-border-subtle
-                           {% endif %}"
-                    title="{{ LANG_FLAGS[code] }} {{ name }}">
-              {{ LANG_FLAGS[code] }} {{ name }}
-            </button>
-          {% endfor %}
-        </form>
-      </div>
-
-      <div class="p-3 px-4 border-t border-border-subtle">
-        <div class="flex items-center gap-2 text-[11px] text-fg-faint">
-          <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
-          <span>v0.1.0 · local-only</span>
-          <button type="button" data-ambient-toggle aria-pressed="true"
-                  data-label-on="{{ t.ambient_turn_off }}" data-label-off="{{ t.ambient_turn_on }}"
-                  title="{{ t.ambient_turn_off }}" aria-label="{{ t.ambient_turn_off }}"
-                  class="fx-ambient-toggle ml-auto -my-1 p-1 rounded border border-transparent
-                         text-fg-faint hover:text-accent-glow hover:border-border-subtle transition">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          </button>
-        </div>
-      </div>
-    </aside>
+    {% include "partials/shell/sidebar.html" %}
 
     <main class="flex-1 overflow-x-hidden">
       {% block content %}{% endblock %}
@@ -336,212 +93,14 @@
     </main>
   </div>
 
-  <div x-data x-auto-animate.toasts
-       class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
-    <template x-for="t in $store.ui.toasts" :key="t.id">
-      <div class="fx-toast pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border"
-           :data-type="t.type"
-           :class="{
-             'bg-bg-elevated border-border-strong':            t.type === 'info',
-             'bg-bg-elevated border-success/40':               t.type === 'success',
-             'bg-bg-elevated border-danger/40':                t.type === 'error',
-             'bg-bg-elevated border-warning/40':               t.type === 'warning',
-           }">
-        <div class="flex items-start gap-3 p-4">
-          <div class="fx-toast-icon shrink-0 w-8 h-8 rounded-md flex items-center justify-center"
-               :class="{
-                 'bg-info-bg text-info':       t.type === 'info',
-                 'bg-success-bg text-success': t.type === 'success',
-                 'bg-danger-bg text-danger':   t.type === 'error',
-                 'bg-warning-bg text-warning': t.type === 'warning',
-               }">
-            <i class="w-4 h-4"
-               :data-lucide="{info:'info', success:'check-circle-2', error:'x-circle', warning:'alert-triangle'}[t.type]"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-fg" x-text="t.title"></div>
-            <div class="text-xs text-fg-muted mt-0.5 break-words" x-text="t.message" x-show="t.message"></div>
-          </div>
-          <button @click="$store.ui.dismissToast(t.id)"
-                  class="shrink-0 text-fg-faint hover:text-fg transition p-1 -m-1 rounded">
-            <i data-lucide="x" class="w-3.5 h-3.5"></i>
-          </button>
-        </div>
-        <div class="absolute bottom-0 left-0 right-0 h-0.5 toast-progress"
-             :class="{
-               'bg-info':    t.type === 'info',
-               'bg-success': t.type === 'success',
-               'bg-danger':  t.type === 'error',
-               'bg-warning': t.type === 'warning',
-             }"
-             :style="`animation-duration: ${t.ttl}ms`"
-             x-show="t.ttl > 0"></div>
-      </div>
-    </template>
-  </div>
+  {% include "partials/shell/toasts.html" %}
 
-  <div x-data x-cloak x-show="$store.ui.confirmState.open"
-       @keydown.escape.window="$store.ui.confirmState.open && $store.ui._closeConfirm(false)"
-       class="fixed inset-0 z-[110] flex items-center justify-center p-6"
-       x-transition:enter="ease-out duration-200"
-       x-transition:enter-start="opacity-0"
-       x-transition:enter-end="opacity-100"
-       x-transition:leave="ease-in duration-150"
-       x-transition:leave-start="opacity-100"
-       x-transition:leave-end="opacity-0">
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"
-         @click="$store.ui._closeConfirm(false)"></div>
-    <div class="relative bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-md
-                overflow-hidden"
-         x-transition:enter="ease-out duration-300"
-         x-transition:enter-start="opacity-0 scale-90 translate-y-4"
-         x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-         x-transition:leave="ease-in duration-150"
-         x-transition:leave-start="opacity-100 scale-100"
-         x-transition:leave-end="opacity-0 scale-95">
-      <div class="p-6">
-        <div class="flex items-start gap-4">
-          <div class="shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
-               :class="$store.ui.confirmState.danger
-                       ? 'bg-danger-bg text-danger'
-                       : 'bg-accent/10 text-accent'">
-            <i :data-lucide="$store.ui.confirmState.icon" class="w-5 h-5"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <h3 class="text-lg font-medium text-fg" x-text="$store.ui.confirmState.title"></h3>
-            <p class="mt-1.5 text-sm text-fg-muted whitespace-pre-line"
-               x-text="$store.ui.confirmState.message"
-               x-show="$store.ui.confirmState.message"></p>
-          </div>
-        </div>
-      </div>
-      <div class="px-6 py-3 bg-bg-inset border-t border-border-subtle flex items-center justify-end gap-2">
-        <button @click="$store.ui._closeConfirm(false)"
-                class="px-4 py-2 rounded-md text-sm text-fg-muted hover:text-fg hover:bg-bg-subtle
-                       transition font-medium">
-          <span x-text="$store.ui.confirmState.cancelLabel"></span>
-        </button>
-        <button @click="$store.ui._closeConfirm(true)"
-                x-init="$nextTick(() => $el.focus())"
-                class="px-4 py-2 rounded-md text-sm font-medium transition"
-                :class="$store.ui.confirmState.danger
-                        ? 'bg-danger text-bg-base hover:brightness-110'
-                        : 'bg-accent text-bg-base hover:bg-accent-glow'">
-          <span x-text="$store.ui.confirmState.confirmLabel"></span>
-        </button>
-      </div>
-    </div>
-  </div>
+  {% include "partials/shell/confirm_dialog.html" %}
 
   <script src="/i18n/{{ lang | default('es') }}.js?v={{ i18n_v() }}"></script>
 
-  <script src="/static/app.js?v={{ asset_v('app.js') }}"></script>
-  <script src="/static/js/motion.js?v={{ asset_v('js/motion.js') }}"></script>
-
-  <script>
-    function globalCardSearch() {
-      return {
-        query: '',
-        loading: false,
-        results: [],
-        totalGroups: 0,
-        totalInstances: 0,
-        totalDecks: 0,
-        open: false,
-        _lastQuery: '',
-        pos: { top: 0, left: 0 },
-
-        init() {
-          const nav = this.$el.closest('nav');
-          if (nav) nav.addEventListener('scroll', () => { if (this.open) this.place(); }, { passive: true });
-        },
-
-        place() {
-          const input = this.$refs.input;
-          if (!input) return;
-          const r = input.getBoundingClientRect();
-          const aside = input.closest('aside');
-          const left = (aside ? aside.getBoundingClientRect().right : r.right) + 8;
-          const maxTop = window.innerHeight * 0.30 - 8;
-          this.pos = { top: Math.round(Math.max(8, Math.min(r.top - 28, maxTop))), left: Math.round(left) };
-        },
-
-        async search() {
-          const q = this.query.trim();
-          if (q.length < 2) {
-            this.results = [];
-            this.totalGroups = 0;
-            this.totalInstances = 0;
-            this.totalDecks = 0;
-            this.open = false;
-            return;
-          }
-          this._lastQuery = q;
-          this.loading = true;
-          try {
-            const r = await fetch(`/api/decks/_/search-cards?q=${encodeURIComponent(q)}`);
-            if (!r.ok) throw new Error('Error del servidor');
-            const data = await r.json();
-            if (q !== this._lastQuery) return;
-            this.results = data.groups || [];
-            this.totalGroups = data.total_groups || 0;
-            this.totalInstances = data.total_instances || 0;
-            const uniqueDecks = new Set();
-            for (const g of this.results) {
-              for (const inst of g.instances) uniqueDecks.add(inst.deck_id);
-            }
-            this.totalDecks = uniqueDecks.size;
-            this.place();
-            this.open = true;
-            this.$nextTick(() => window.icons && window.icons());
-          } catch (e) {
-            window.toast && window.toast('Error buscando', e.message);
-          } finally {
-            this.loading = false;
-          }
-        },
-
-        clearSearch() {
-          this.query = '';
-          this.results = [];
-          this.totalGroups = 0;
-          this.totalInstances = 0;
-          this.totalDecks = 0;
-          this.open = false;
-        },
-      };
-    }
-  </script>
-
-  <script>
-    function sidebarData() {
-      const CACHE_KEY = 'mpc-sidebar';
-      let cached = null;
-      try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null'); } catch (_) {}
-      return {
-        stats: cached && cached.stats ? cached.stats : null,
-        recentDecks: cached && Array.isArray(cached.recentDecks) ? cached.recentDecks : [],
-        async load() {
-          try {
-            const [statsR, decksR] = await Promise.all([
-              fetch('/api/collection/sidebar-stats'),
-              fetch('/api/collection/recent-decks'),
-            ]);
-            if (statsR.ok) this.stats = await statsR.json();
-            if (decksR.ok) this.recentDecks = await decksR.json();
-            try {
-              sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-                stats: this.stats, recentDecks: this.recentDecks,
-              }));
-            } catch (_) {}
-            this.$nextTick(() => window.icons && window.icons());
-          } catch (e) {
-            console.warn('Sidebar data load failed:', e);
-          }
-        }
-      };
-    }
-  </script>
+  <script src="/static/js/core/app.js?v={{ asset_v('js/core/app.js') }}"></script>
+  <script src="/static/js/core/motion.js?v={{ asset_v('js/core/motion.js') }}"></script>
 
   {% block scripts %}{% endblock %}
 </body>

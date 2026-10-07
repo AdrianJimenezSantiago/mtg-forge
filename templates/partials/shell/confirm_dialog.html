@@ -1,0 +1,52 @@
+<div x-data x-cloak x-show="$store.ui.confirmState.open"
+     @keydown.escape.window="$store.ui.confirmState.open && $store.ui._closeConfirm(false)"
+     class="fixed inset-0 z-[110] flex items-center justify-center p-6"
+     x-transition:enter="ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+  <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+       @click="$store.ui._closeConfirm(false)"></div>
+  <div class="relative bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-md
+              overflow-hidden"
+       x-transition:enter="ease-out duration-300"
+       x-transition:enter-start="opacity-0 scale-90 translate-y-4"
+       x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+       x-transition:leave="ease-in duration-150"
+       x-transition:leave-start="opacity-100 scale-100"
+       x-transition:leave-end="opacity-0 scale-95">
+    <div class="p-6">
+      <div class="flex items-start gap-4">
+        <div class="shrink-0 w-11 h-11 rounded-full flex items-center justify-center"
+             :class="$store.ui.confirmState.danger
+                     ? 'bg-danger-bg text-danger'
+                     : 'bg-accent/10 text-accent'">
+          <i :data-lucide="$store.ui.confirmState.icon" class="w-5 h-5"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="text-lg font-medium text-fg" x-text="$store.ui.confirmState.title"></h3>
+          <p class="mt-1.5 text-sm text-fg-muted whitespace-pre-line"
+             x-text="$store.ui.confirmState.message"
+             x-show="$store.ui.confirmState.message"></p>
+        </div>
+      </div>
+    </div>
+    <div class="px-6 py-3 bg-bg-inset border-t border-border-subtle flex items-center justify-end gap-2">
+      <button @click="$store.ui._closeConfirm(false)"
+              class="px-4 py-2 rounded-md text-sm text-fg-muted hover:text-fg hover:bg-bg-subtle
+                     transition font-medium">
+        <span x-text="$store.ui.confirmState.cancelLabel"></span>
+      </button>
+      <button @click="$store.ui._closeConfirm(true)"
+              x-init="$nextTick(() => $el.focus())"
+              class="px-4 py-2 rounded-md text-sm font-medium transition"
+              :class="$store.ui.confirmState.danger
+                      ? 'bg-danger text-bg-base hover:brightness-110'
+                      : 'bg-accent text-bg-base hover:bg-accent-glow'">
+        <span x-text="$store.ui.confirmState.confirmLabel"></span>
+      </button>
+    </div>
+  </div>
+</div>

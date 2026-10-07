@@ -168,7 +168,7 @@ templates.env.filters["num"] = _format_number
 def render_not_found(request: Request, kind: str = "page") -> HTMLResponse:
     return templates.TemplateResponse(
         request,
-        "404.html",
+        "pages/404.html",
         {
             "missing_kind": kind,
             "missing_path": request.url.path,
@@ -184,7 +184,7 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
     recent = await _decks_with_covers(db, limit=8)
     return templates.TemplateResponse(
         request,
-        "landing.html",
+        "pages/landing.html",
         {
             "hand": _build_hand(recent, ctx["t"]),
             "has_covers": any(d.commander_image_url for d in recent),
@@ -201,7 +201,7 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
 async def deck_library(request: Request, db: DbDep) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
-        "index.html",
+        "pages/deck_library.html",
         {"decks": await _decks_with_covers(db), **_t_context(request)},
     )
 
@@ -215,7 +215,7 @@ async def deck_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
     commander_image_url = cover.image_url
     return templates.TemplateResponse(
         request,
-        "deck.html",
+        "pages/deck.html",
         {"deck": deck, "commander_image_url": commander_image_url, **_t_context(request)},
     )
 
@@ -227,7 +227,7 @@ async def proof_page(deck_id: int, request: Request, db: DbDep) -> HTMLResponse:
         return render_not_found(request, "deck")
     return templates.TemplateResponse(
         request,
-        "proof.html",
+        "pages/proof.html",
         {"deck": deck, **_t_context(request)},
     )
 
@@ -239,36 +239,36 @@ async def pdf_studio_page(deck_id: int, request: Request, db: DbDep) -> HTMLResp
         return render_not_found(request, "deck")
     return templates.TemplateResponse(
         request,
-        "pdf_studio.html",
+        "pages/pdf_studio.html",
         {"deck": deck, **_t_context(request)},
     )
 
 
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "history.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/history.html", _t_context(request))
 
 
 @router.get("/print-planner", response_class=HTMLResponse)
 async def print_planner_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "print_planner.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/print_planner.html", _t_context(request))
 
 
 @router.get("/art-library", response_class=HTMLResponse)
 async def art_library_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "art_library.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/art_library.html", _t_context(request))
 
 
 @router.get("/calibrate", response_class=HTMLResponse)
 async def calibration_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "calibration.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/calibration.html", _t_context(request))
 
 
 @router.get("/collection", response_class=HTMLResponse)
 async def collection_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "collection.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/collection.html", _t_context(request))
 
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "settings.html", _t_context(request))
+    return templates.TemplateResponse(request, "pages/settings.html", _t_context(request))

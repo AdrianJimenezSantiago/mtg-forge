@@ -139,12 +139,12 @@ def main() -> None:
     )
     print(f"OK  {ico_path}  ({ico_path.stat().st_size} bytes, {len(sizes)} resoluciones)")
 
-    png_path = Path("static") / "logo.png"
+    png_path = Path("static") / "img" / "logo.png"
     png_path.parent.mkdir(exist_ok=True)
     make_icon(512).save(png_path, format="PNG", optimize=True)
     print(f"OK  {png_path}  ({png_path.stat().st_size} bytes, 512x512)")
 
-    favicon_path = Path("static") / "favicon.png"
+    favicon_path = Path("static") / "img" / "favicon.png"
     make_icon(32).save(favicon_path, format="PNG", optimize=True)
     print(f"OK  {favicon_path}  ({favicon_path.stat().st_size} bytes, 32x32)")
 

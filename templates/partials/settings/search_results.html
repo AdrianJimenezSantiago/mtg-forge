@@ -1,0 +1,39 @@
+<template x-if="searchQuery && !loading">
+  <div class="space-y-4">
+    <div class="text-xs text-fg-muted">
+      {{ t.settings_results_for }} <span class="text-fg font-mono" x-text="'“' + searchQuery + '”'"></span>
+      · <span x-text="searchResults.length"></span>
+      <span x-text="searchResults.length === 1 ? '{{ t.settings_match_singular }}' : '{{ t.settings_match_plural }}'"></span>
+    </div>
+
+    <template x-if="searchResults.length === 0">
+      <div class="text-center py-8 text-fg-faint text-sm border border-dashed border-border-subtle rounded-xl">
+        {{ t.settings_no_results }}
+      </div>
+    </template>
+
+    <template x-for="def in searchResults" :key="def.key">
+      <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card">
+        <div class="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-fg-faint mb-2">
+          <button @click="selectSection(sectionKeyForGroup(def.group))"
+                  class="hover:text-accent transition flex items-center gap-1">
+            <i :data-lucide="iconForGroup(def.group)" class="w-3 h-3"></i>
+            <span x-text="def.group"></span>
+          </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-center">
+          <div class="min-w-0">
+            <label class="text-sm font-medium" x-text="def.label"></label>
+            <div class="text-xs text-fg-muted mt-0.5" x-text="def.description"></div>
+            <template x-if="!isDefault(def)">
+              <div class="text-[11px] text-accent/80 mt-1">
+                ≠ default (<span x-text="String(def.default)"></span>)
+              </div>
+            </template>
+          </div>
+          <div x-html="renderInput(def)"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+</template>

@@ -1,0 +1,242 @@
+<aside class="app-sidebar sticky top-0 self-start h-screen w-64 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
+  <div class="p-5 border-b border-border-subtle">
+    <a href="/" class="flex items-center gap-3 group">
+      <span class="fx-logo shadow-glow group-hover:scale-105 transition">
+        <img src="/static/img/logo.png?v={{ asset_v('img/logo.png') }}" alt="MPC Forge" class="w-10 h-10 rounded-lg">
+      </span>
+      <div class="flex flex-col leading-tight">
+        <span class="font-display font-semibold tracking-wide text-accent-glow text-[15px]">MPC Forge</span>
+        <span class="text-[10px] text-fg-faint uppercase tracking-widest">Proxy pipeline</span>
+      </div>
+    </a>
+  </div>
+
+  <nav class="app-sidebar__nav flex-1 min-h-0 p-3 space-y-1 text-sm overflow-y-auto" data-scroll-fade
+       x-data="sidebarData()" x-init="load()">
+    {% set current = request.url.path %}
+    {% set nav_items = [
+      ('/',           'house',        t.nav_home),
+      ('/decks',      'layers',       t.nav_decks),
+      ('/collection', 'library',      t.nav_collection),
+      ('/art-library',   'images',    t.nav_library),
+      ('/print-planner', 'package',   t.nav_planner),
+      ('/calibrate',     'crosshair', t.nav_calibrate),
+      ('/history',    'history',      t.nav_history),
+      ('/settings',   'settings',     t.nav_settings),
+    ] %}
+    {% for path, icon, label in nav_items %}
+      {% set active = (path == '/' and current == '/') or (path != '/' and current.startswith(path)) %}
+      <a href="{{ path }}"
+         {% if active %}aria-current="page"{% endif %}
+         class="group relative flex items-center gap-3 px-3 py-2.5 rounded-md transition border-l-2 border-transparent
+                {% if active %}
+                  bg-bg-subtle text-accent-glow
+                {% else %}
+                  text-fg-muted hover:bg-bg-subtle hover:text-fg
+                {% endif %}">
+        {% if active %}<span class="nav-indicator" aria-hidden="true"></span>{% endif %}
+        <i data-lucide="{{ icon }}" class="w-[18px] h-[18px] transition-transform group-hover:scale-110"></i>
+        <span class="text-[13px]">{{ label }}</span>
+      </a>
+    {% endfor %}
+
+    <div class="pt-3 mt-3 border-t border-border-subtle/60 px-1 space-y-1.5">
+      <template x-if="stats">
+        <div class="grid grid-cols-1 gap-1.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-fg-faint flex items-center gap-2">
+              <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+              {{ t.nav_stats_decks }}
+            </span>
+            <span class="text-fg font-mono font-medium" x-text="stats.total_decks"></span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-fg-faint flex items-center gap-2">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              {{ t.nav_stats_cards }}
+            </span>
+            <span class="text-fg font-mono font-medium" x-text="stats.unique_cards"></span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-fg-faint flex items-center gap-2">
+              <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+              {{ t.nav_stats_prints }}
+            </span>
+            <span class="text-fg font-mono font-medium" x-text="stats.total_print_runs"></span>
+          </div>
+          <template x-if="stats.collection_total > 0">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-fg-faint flex items-center gap-2">
+                <i data-lucide="library" class="w-3.5 h-3.5"></i>
+                {{ t.nav_collection }}
+              </span>
+              <span class="text-accent font-mono font-medium" x-text="stats.collection_total"></span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <template x-if="recentDecks.length > 0">
+      <div class="pt-3 mt-3 border-t border-border-subtle/60">
+        <div class="px-1 pb-1.5 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
+          <i data-lucide="clock" class="w-3 h-3"></i>
+          {{ t.nav_recent_title }}
+        </div>
+        <template x-for="d in recentDecks" :key="d.id">
+          <a :href="'/decks/' + d.id"
+             class="group flex items-center gap-2.5 px-2 py-2 rounded-md transition
+                    text-fg-muted hover:bg-bg-subtle hover:text-fg">
+            <template x-if="d.commander_image">
+              <img :src="d.commander_image" :alt="d.name"
+                   class="w-6 h-8 rounded-sm object-cover object-top border border-border-subtle/60 shrink-0"
+                   loading="lazy">
+            </template>
+            <template x-if="!d.commander_image">
+              <div class="w-6 h-8 rounded-sm bg-bg-subtle border border-border-subtle/60 shrink-0
+                          flex items-center justify-center">
+                <i data-lucide="layers" class="w-3 h-3 text-fg-faint"></i>
+              </div>
+            </template>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs truncate group-hover:text-accent-glow transition" x-text="d.name"></div>
+              <div class="text-[10px] text-fg-faint font-mono" x-text="d.card_count + ' ' + (d.card_count === 1 ? window._T.landing_continue_card : window._T.nav_cards) + ' · ' + d.format"></div>
+            </div>
+          </a>
+        </template>
+      </div>
+    </template>
+
+    <div x-data="globalCardSearch()" class="pt-4 mt-4 border-t border-border-subtle relative"
+         @click.outside="if (!document.getElementById('global-search-results')?.contains($event.target)) open = false"
+         @keydown.escape.window="open = false"
+         @resize.window="open && place()">
+      <div class="px-2 pb-1.5 text-[10px] uppercase tracking-widest text-fg-faint flex items-center gap-1.5">
+        <i data-lucide="search" class="w-3 h-3"></i>
+        {{ t.nav_search_label }}
+      </div>
+      <div class="relative px-1">
+        <input type="search" x-model="query" x-ref="input"
+               @input.debounce.300ms="search()"
+               @focus="if (results.length > 0) { place(); open = true }"
+               placeholder="{{ t.nav_search_placeholder }}"
+               class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-xs
+                      focus:outline-none focus:border-accent transition">
+        <i data-lucide="loader-2" x-show="loading"
+           class="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-fg-faint animate-spin"></i>
+      </div>
+
+      <template x-teleport="body">
+      <div id="global-search-results"
+           x-show="open && (results.length > 0 || (query.length >= 2 && !loading))"
+           x-transition.origin.left
+           :style="`top: ${pos.top}px; left: ${pos.left}px`"
+           class="fixed z-[60] w-[420px] max-w-[calc(100vw-17rem)] max-h-[70vh] overflow-y-auto
+                  bg-bg-elevated border border-border-strong rounded-lg shadow-modal">
+        <template x-if="results.length === 0 && query.length >= 2 && !loading">
+          <div class="p-4 text-center text-xs text-fg-faint">
+            {{ t.nav_search_no_results }} <span class="text-fg font-mono" x-text="'“' + query + '”'"></span>
+          </div>
+        </template>
+
+        <template x-if="results.length > 0">
+          <div class="sticky top-0 bg-bg-elevated border-b border-border-subtle px-3 py-2
+                      text-[10px] text-fg-faint flex items-center justify-between">
+            <span>
+              <span class="text-fg" x-text="totalGroups"></span>
+              <span x-text="totalGroups === 1 ? '{{ t.nav_card_one }}' : '{{ t.nav_cards }}'"></span> ·
+              <span class="text-fg" x-text="totalInstances"></span>
+              <span x-text="totalInstances === 1 ? '{{ t.nav_instance_one }}' : '{{ t.nav_instances }}'"></span>
+              <span class="text-fg" x-text="totalDecks"></span>
+              <span x-text="totalDecks === 1 ? '{{ t.nav_deck_one }}' : '{{ t.nav_decks_count }}'"></span>
+            </span>
+            <button @click="clearSearch()" class="hover:text-fg transition">{{ t.nav_search_clear }}</button>
+          </div>
+        </template>
+
+        <template x-for="group in results" :key="group.oracle_id + group.canonical_name">
+          <div class="border-b border-border-subtle/60 last:border-b-0">
+            <div class="px-3 py-2 bg-bg-subtle/40">
+              <div class="flex items-center justify-between gap-2">
+                <div class="font-medium text-sm text-fg truncate" x-text="group.canonical_name"></div>
+                <div class="text-[10px] text-fg-faint shrink-0 font-mono">
+                  <span x-text="group.total_copies"></span>× ·
+                  <span x-text="group.deck_count"></span>
+                  <span x-text="group.deck_count === 1 ? '{{ t.nav_deck_one }}' : '{{ t.nav_decks_count }}'"></span>
+                </div>
+              </div>
+            </div>
+            <template x-for="inst in group.instances" :key="inst.deck_card_id">
+              <a :href="'/decks/' + inst.deck_id"
+                 class="flex items-center gap-2 px-3 py-2 hover:bg-bg-subtle transition group">
+                <template x-if="inst.thumbnail">
+                  <img :src="inst.thumbnail" :alt="group.canonical_name"
+                       class="w-6 h-8 rounded object-cover object-top border border-border-subtle shrink-0"
+                       loading="lazy">
+                </template>
+                <template x-if="!inst.thumbnail">
+                  <div class="w-6 h-8 rounded bg-bg-subtle border border-border-subtle shrink-0"></div>
+                </template>
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs text-fg truncate group-hover:text-accent-glow transition"
+                       x-text="inst.deck_name"></div>
+                  <div class="text-[10px] text-fg-faint flex items-center gap-1 truncate">
+                    <span x-text="inst.quantity + '×'" class="font-mono"></span>
+                    <span>·</span>
+                    <span x-text="inst.role"></span>
+                    <template x-if="inst.printing_set">
+                      <span>· <span class="font-mono uppercase" x-text="inst.printing_set"></span> <span x-text="inst.printing_number"></span></span>
+                    </template>
+                    <template x-if="inst.printing_lang && inst.printing_lang !== 'en'">
+                      <span class="text-accent/80">· <span x-text="inst.printing_lang"></span></span>
+                    </template>
+                    <template x-if="inst.has_custom_art">
+                      <span class="text-accent">· custom</span>
+                    </template>
+                    <template x-if="!inst.include">
+                      <span class="text-warning">· excluida</span>
+                    </template>
+                  </div>
+                </div>
+                <i data-lucide="chevron-right" class="w-3 h-3 text-fg-faint group-hover:text-accent shrink-0"></i>
+              </a>
+            </template>
+          </div>
+        </template>
+      </div>
+      </template>
+    </div>
+  </nav>
+
+  <div class="px-4 pb-2 border-t border-border-subtle pt-3">
+    <form method="post" action="/set-lang" class="flex items-center gap-2">
+      <i data-lucide="globe" class="w-4 h-4 text-fg-faint shrink-0"></i>
+      {% for code, name in SUPPORTED_LANGS %}
+        <button type="submit" name="lang" value="{{ code }}"
+                class="text-xs px-2.5 py-1 rounded transition font-medium
+                       {% if lang == code %}
+                         bg-accent/20 text-accent border border-accent/40
+                       {% else %}
+                         text-fg-faint hover:text-fg border border-transparent hover:border-border-subtle
+                       {% endif %}"
+                title="{{ LANG_FLAGS[code] }} {{ name }}">
+          {{ LANG_FLAGS[code] }} {{ name }}
+        </button>
+      {% endfor %}
+    </form>
+  </div>
+
+  <div class="p-3 px-4 border-t border-border-subtle">
+    <div class="flex items-center gap-2 text-[11px] text-fg-faint">
+      <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+      <span>v0.1.0 · local-only</span>
+      <button type="button" data-ambient-toggle aria-pressed="true"
+              data-label-on="{{ t.ambient_turn_off }}" data-label-off="{{ t.ambient_turn_on }}"
+              title="{{ t.ambient_turn_off }}" aria-label="{{ t.ambient_turn_off }}"
+              class="fx-ambient-toggle ml-auto -my-1 p-1 rounded border border-transparent
+                     text-fg-faint hover:text-accent-glow hover:border-border-subtle transition">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  </div>
+</aside>

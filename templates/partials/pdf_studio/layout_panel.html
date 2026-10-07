@@ -1,0 +1,115 @@
+<aside class="border-r border-border-subtle bg-bg-inset overflow-y-auto">
+  <div class="p-4 space-y-5">
+
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_deck_label }}</div>
+      <div class="text-sm font-medium truncate" x-text='deck ? deck.name : {{ deck.name | tojson }}'></div>
+      <div class="text-[11px] text-fg-muted mt-1" x-show="deck">
+        <span x-text="uniqueCards"></span> · <span x-text="totalSlots"></span> slots
+      </div>
+    </div>
+
+    <div class="bg-bg-subtle rounded p-3 space-y-1.5 text-[11px]">
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_summary_layout }}</span>
+        <span class="font-mono"><span x-text="opts.cols"></span>×<span x-text="opts.rows"></span> {{ t.pdf_summary_per_page }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_page_section }}</span>
+        <span class="font-mono">
+          <span x-text="opts.page_size.toUpperCase()"></span>
+          <span x-text="opts.orientation === 'landscape' ? '→' : '↓'"></span>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_summary_total }}</span>
+        <span class="font-mono"><span x-text="totalPages"></span> hojas</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_summary_guides }}</span>
+        <span class="font-mono">
+          <span x-text="opts.card_guides_enabled ? opts.card_guides_style : 'off'"></span>
+          <span class="text-fg-faint" x-show="opts.page_guides !== 'none'"> + página</span>
+        </span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_summary_bleed }}</span>
+        <span class="font-mono" x-text="opts.bleed_enabled ? (opts.bleed_mm + ' mm') : 'off'"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_backs_section_label }}</span>
+        <span class="font-mono" x-text="opts.include_backs ? opts.backs_layout : 'off'"></span>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <button @click="buildPdf(true)"
+              :disabled="buildingPdf || !deck || totalPages === 0"
+              class="w-full h-10 rounded font-semibold text-sm bg-accent hover:bg-accent-hover
+                     disabled:opacity-40 disabled:cursor-not-allowed transition
+                     text-bg-base flex items-center justify-center gap-2">
+        <span x-show="!buildingPdf" class="inline-flex items-center gap-2">
+          <i data-lucide="file-down" class="w-4 h-4"></i>
+          {{ t.pdf_generate }}
+        </span>
+        <span x-show="buildingPdf" class="inline-flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          {{ t.pdf_generating_dots }}
+        </span>
+      </button>
+
+      <button @click="exportImages()"
+              :disabled="exportingImages || !deck || totalSlots === 0"
+              class="w-full h-9 rounded font-medium text-xs border border-border-subtle
+                     hover:bg-bg-subtle hover:border-accent transition
+                     disabled:opacity-40 disabled:cursor-not-allowed
+                     flex items-center justify-center gap-2 text-fg">
+        <span x-show="!exportingImages" class="inline-flex items-center gap-2">
+          <i data-lucide="package" class="w-3.5 h-3.5"></i>
+          {{ t.pdf_export_zip }}
+        </span>
+        <span x-show="exportingImages" class="inline-flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+          {{ t.common_loading }}
+        </span>
+      </button>
+
+      <label class="flex items-center gap-2 text-[11px] text-fg-muted cursor-pointer mt-1">
+        <input type="checkbox" x-model="autoOpen" class="accent-accent">
+        {{ t.common_open_in_editor }}
+      </label>
+    </div>
+
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_presets_label }}</div>
+      <div class="grid grid-cols-2 gap-1.5">
+        <button @click="applyPreset('mpc_classic')"
+                class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
+          MPC classic
+        </button>
+        <button @click="applyPreset('mpc_bleed')"
+                class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
+          MPC with bleed
+        </button>
+        <button @click="applyPreset('duplex_dfc')"
+                class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
+          Duplex DFC
+        </button>
+        <button @click="applyPreset('duplex_all')"
+                class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
+          Duplex all-backs
+        </button>
+        <button @click="applyPreset('silhouette')"
+                class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition col-span-2">
+          Silhouette (reg. marks)
+        </button>
+      </div>
+      <button @click="resetOpts()"
+              class="w-full mt-3 text-[11px] text-fg-faint hover:text-fg-muted transition inline-flex items-center gap-1 justify-center">
+        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+        {{ t.common_reset }}
+      </button>
+    </div>
+
+  </div>
+</aside>

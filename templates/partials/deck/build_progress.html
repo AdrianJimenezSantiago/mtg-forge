@@ -1,0 +1,32 @@
+<template x-if="buildProgress && buildProgress.total > 0">
+  <div x-transition
+       class="fixed bottom-5 right-5 z-40 bg-bg-elevated border border-accent/40 rounded-xl shadow-modal
+              p-4 w-[380px] max-w-[calc(100vw-2.5rem)] animate-slide-in-up">
+    <div class="flex items-center gap-2 mb-2">
+      <div class="spinner-ring spinner-ring--sm"></div>
+      <span class="text-sm font-medium text-accent-glow">
+        Generando <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span><span class="loading-dots"><span></span><span></span><span></span></span>
+      </span>
+      <span class="ml-auto text-[11px] font-mono text-fg-faint">
+        <span x-text="buildProgress.current"></span>/<span x-text="buildProgress.total"></span>
+      </span>
+    </div>
+    <div class="w-full h-2 bg-bg-subtle rounded-full overflow-hidden">
+      <div class="fx-progress h-full bg-accent transition-all duration-300 rounded-full"
+           :style="'width: ' + Math.min(100, Math.max(2, buildProgress.percent)) + '%'"></div>
+    </div>
+    <div class="mt-2 flex items-center gap-2 text-[11px] text-fg-muted min-h-[16px]">
+      <template x-if="buildProgress.current_name">
+        <span class="truncate" :title="buildProgress.current_name">
+          <i data-lucide="download" class="w-3 h-3 inline text-fg-faint"></i>
+          <span x-text="buildProgress.current_name"></span>
+        </span>
+      </template>
+      <span class="ml-auto shrink-0 font-mono text-fg-faint">
+        <template x-if="buildProgress.eta_seconds !== null && buildProgress.eta_seconds > 1">
+          <span>~<span x-text="Math.round(buildProgress.eta_seconds)"></span>s</span>
+        </template>
+      </span>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,120 @@
+<template x-if="artistApplyOpen">
+  <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+       @click="closeArtistApply()"
+       @keydown.escape.window="closeArtistApply()">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
+                max-h-[90vh] flex flex-col overflow-hidden"
+         @click.stop>
+      <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+            <i data-lucide="users" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-lg font-semibold text-fg">Aplicar arte de este artista</h2>
+            <p class="text-xs text-fg-faint truncate">
+              <span x-text="artistApplyArtist"></span>
+            </p>
+          </div>
+        </div>
+        <button @click="closeArtistApply()" class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <template x-if="artistApplyLoading">
+          <div class="text-center py-12 text-fg-faint text-sm">
+            <div class="spinner-ring mb-3"></div>
+            <p>Consultando Scryfall (puede tardar 10-30s)…</p>
+          </div>
+        </template>
+        <template x-if="!artistApplyLoading && artistApplyData">
+          <div>
+            <div class="grid grid-cols-3 gap-3 mb-4">
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Encontradas</div>
+                <div class="text-2xl font-semibold text-emerald-400 mt-1" x-text="artistApplyData.matched.length"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Sin arte de X</div>
+                <div class="text-2xl font-semibold text-fg-faint mt-1" x-text="artistApplyData.unmatched_count"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Skipped</div>
+                <div class="text-2xl font-semibold mt-1"
+                     :class="artistApplyData.skipped_count > 0 ? 'text-amber-400' : 'text-fg'"
+                     x-text="artistApplyData.skipped_count"></div>
+              </div>
+            </div>
+            <template x-if="artistApplyData.skipped_count > 0">
+              <p class="text-xs text-amber-400 mb-3">
+                ⚠ Se han saltado <span x-text="artistApplyData.skipped_count"></span> cartas por límite
+                del recomendador. Vuelve a abrir este modal más tarde para completarlas.
+              </p>
+            </template>
+
+            <template x-if="artistApplyData.matched.length === 0">
+              <p class="text-center py-8 text-sm text-fg-faint">
+                Ninguna carta del mazo tiene una impresión de <strong x-text="artistApplyArtist"></strong>.
+              </p>
+            </template>
+            <template x-if="artistApplyData.matched.length > 0">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <p class="text-xs text-fg-faint">Selecciona qué cartas quieres cambiar:</p>
+                  <div class="flex gap-2">
+                    <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = true)"
+                            class="text-xs text-accent hover:underline">
+                      Todas
+                    </button>
+                    <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = false)"
+                            class="text-xs text-fg-faint hover:underline">
+                      Ninguna
+                    </button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  <template x-for="m in artistApplyData.matched" :key="m.oracle_id">
+                    <label class="bg-bg-subtle/30 border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition"
+                           :class="artistApplyChecked[m.oracle_id] ? 'border-accent shadow-glow' : ''">
+                      <div class="aspect-[63/88] bg-bg-subtle relative">
+                        <img :src="m.image_small" :alt="m.card_name"
+                             loading="lazy" class="w-full h-full object-cover object-top"
+                             onerror="this.style.opacity=0.3">
+                        <div class="absolute top-1.5 right-1.5">
+                          <input type="checkbox" :value="true"
+                                 x-model="artistApplyChecked[m.oracle_id]"
+                                 class="accent-accent w-4 h-4">
+                        </div>
+                      </div>
+                      <div class="p-2">
+                        <div class="text-xs font-medium text-fg truncate" x-text="m.card_name"></div>
+                        <div class="text-[10px] text-fg-faint truncate">
+                          <span x-text="m.set_code.toUpperCase()"></span>
+                          #<span x-text="m.collector_number"></span>
+                        </div>
+                      </div>
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between shrink-0">
+        <div class="text-xs text-fg-faint">
+          <span x-text="artistApplySelectedCount()"></span> carta(s) seleccionada(s)
+        </div>
+        <button @click="applyArtistToSelected()"
+                :disabled="artistApplyApplying || artistApplySelectedCount() === 0"
+                class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                       disabled:opacity-50 transition flex items-center gap-2">
+          <i x-show="!artistApplyApplying" data-lucide="check" class="w-4 h-4"></i>
+          <span x-show="!artistApplyApplying" x-text="`Aplicar a ${artistApplySelectedCount()} carta(s)`"></span>
+          <span x-show="artistApplyApplying">Aplicando…</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

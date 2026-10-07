@@ -1,0 +1,23 @@
+<div x-show="buildProgress && buildProgress.total > 0 && !buildProgress.done"
+     x-transition
+     class="border-b border-border-subtle bg-bg-inset px-4 py-2">
+  <div class="flex items-center gap-3 text-xs">
+    <div class="flex-1">
+      <div class="flex justify-between mb-1">
+        <span class="text-fg-muted">
+          <span x-text="buildProgress?.kind === 'pdf' ? '{{ t.pdf_generating_dots }}' : '{{ t.pdf_preparing }}'"></span>
+          <span class="text-fg-faint" x-text="buildProgress?.current_name || ''"></span>
+        </span>
+        <span class="font-mono text-fg-faint">
+          <span x-text="buildProgress?.processed || 0"></span>
+          /
+          <span x-text="buildProgress?.total || 0"></span>
+        </span>
+      </div>
+      <div class="h-1 bg-bg-subtle rounded-full overflow-hidden">
+        <div class="h-full bg-accent transition-all"
+             :style="`width: ${buildProgress?.total ? (buildProgress.processed/buildProgress.total*100) : 0}%`"></div>
+      </div>
+    </div>
+  </div>
+</div>

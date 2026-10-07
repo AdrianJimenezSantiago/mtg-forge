@@ -1,0 +1,432 @@
+<aside class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
+    page: true, positioning: false, card_guides: true, page_guides: false,
+    duplex_guides: false, bleed: false, regmarks: false, backs: false, range: false } }">
+  <div class="p-3 space-y-2 text-xs">
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.page = !open.page"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="layout-grid" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_page }}</span>
+        <i :data-lucide="open.page ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
+      </button>
+      <div x-show="open.page" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_size_label }}</span>
+          <select x-model="opts.page_size" class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            <option value="a4">A4 (210 × 297 mm)</option>
+            <option value="letter">Letter (216 × 279 mm)</option>
+            <option value="a3">A3 (297 × 420 mm)</option>
+          </select>
+        </label>
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_orientation_label }}</span>
+          <div class="grid grid-cols-2 gap-1">
+            <button @click="opts.orientation = 'portrait'"
+                    :class="opts.orientation === 'portrait' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_portrait }}</button>
+            <button @click="opts.orientation = 'landscape'"
+                    :class="opts.orientation === 'landscape' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_landscape }}</button>
+          </div>
+        </label>
+
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_columns_label }}</span>
+            <input type="number" min="0" max="20" x-model.number="opts.cols"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_rows_label }}</span>
+            <input type="number" min="0" max="20" x-model.number="opts.rows"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+        </div>
+        <p class="text-[10px] text-fg-faint">
+          El default 3×3 es el layout MPC clásico. Bájalo si quieres más margen.
+        </p>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.positioning = !open.positioning"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="move" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_advanced_pos }}</span>
+        <i :data-lucide="open.positioning ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
+      </button>
+      <div x-show="open.positioning" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
+
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_gap_x }}</span>
+            <input type="number" step="0.1" min="0" max="50" x-model.number="opts.gap_x_mm"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_gap_y }}</span>
+            <input type="number" step="0.1" min="0" max="50" x-model.number="opts.gap_y_mm"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+        </div>
+
+        <div class="border-t border-border-subtle pt-3">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_offset_global }}</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block text-[11px]">
+              <span class="text-fg-muted mb-1 block">{{ t.pdf_offset_x }}</span>
+              <input type="number" step="0.1" min="-50" max="50" x-model.number="opts.offset_x_mm"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            </label>
+            <label class="block text-[11px]">
+              <span class="text-fg-muted mb-1 block">{{ t.pdf_offset_y }}</span>
+              <input type="number" step="0.1" min="-50" max="50" x-model.number="opts.offset_y_mm"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            </label>
+          </div>
+        </div>
+
+        <div class="border-t border-border-subtle pt-3">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-1">{{ t.pdf_back_offset }}</div>
+          <p class="text-[10px] text-fg-faint mb-2">
+            Delta que solo se aplica a las páginas de reversos, para compensar la deriva
+            de la impresora al voltear el papel.
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block text-[11px]">
+              <span class="text-fg-muted mb-1 block">{{ t.pdf_back_x }}</span>
+              <input type="number" step="0.1" min="-50" max="50" x-model.number="opts.back_offset_x_mm"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            </label>
+            <label class="block text-[11px]">
+              <span class="text-fg-muted mb-1 block">{{ t.pdf_back_y }}</span>
+              <input type="number" step="0.1" min="-50" max="50" x-model.number="opts.back_offset_y_mm"
+                     class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.card_guides = !open.card_guides"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="scissors" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_card_guides }}</span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] text-fg-faint" x-show="opts.card_guides_enabled"
+                x-text="opts.card_guides_style"></span>
+          <input type="checkbox" x-model="opts.card_guides_enabled"
+                 @click.stop class="accent-accent">
+        </div>
+      </button>
+      <div x-show="open.card_guides" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
+           :class="!opts.card_guides_enabled ? 'opacity-50 pointer-events-none' : ''">
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_style_label }}</span>
+          <div class="grid grid-cols-2 gap-1">
+            <button @click="opts.card_guides_style = 'corners'"
+                    :class="opts.card_guides_style === 'corners' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_style_corners }}</button>
+            <button @click="opts.card_guides_style = 'full'"
+                    :class="opts.card_guides_style === 'full' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_style_rectangle }}</button>
+          </div>
+        </label>
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_shape_label }}</span>
+          <div class="grid grid-cols-2 gap-1">
+            <button @click="opts.card_guides_shape = 'square'"
+                    :class="opts.card_guides_shape === 'square' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_shape_square }}</button>
+            <button @click="opts.card_guides_shape = 'round'"
+                    :class="opts.card_guides_shape === 'round' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_shape_rounded }}</button>
+          </div>
+        </label>
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_pattern_label }}</span>
+          <div class="grid grid-cols-3 gap-1">
+            <button @click="opts.card_guides_pattern = 'solid'"
+                    :class="opts.card_guides_pattern === 'solid' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_pattern_solid }}</button>
+            <button @click="opts.card_guides_pattern = 'dashed'"
+                    :class="opts.card_guides_pattern === 'dashed' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_pattern_dashed }}</button>
+            <button @click="opts.card_guides_pattern = 'dotted'"
+                    :class="opts.card_guides_pattern === 'dotted' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_pattern_dotted }}</button>
+          </div>
+        </label>
+
+        <label class="block text-[11px]" x-show="opts.card_guides_style === 'corners'">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_placement_label }}</span>
+          <div class="grid grid-cols-3 gap-1">
+            <button @click="opts.card_guides_placement = 'outside'"
+                    :class="opts.card_guides_placement === 'outside' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_placement_outside }}</button>
+            <button @click="opts.card_guides_placement = 'middle'"
+                    :class="opts.card_guides_placement === 'middle' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_placement_middle }}</button>
+            <button @click="opts.card_guides_placement = 'inside'"
+                    :class="opts.card_guides_placement === 'inside' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_placement_inside }}</button>
+          </div>
+        </label>
+
+        <label class="block text-[11px]" x-show="opts.card_guides_style === 'corners'">
+          <div class="flex justify-between mb-1">
+            <span class="text-fg-muted">{{ t.pdf_guides_length }}</span>
+            <span class="font-mono text-fg-faint"><span x-text="opts.card_guides_length_mm.toFixed(1)"></span> mm</span>
+          </div>
+          <input type="range" min="0.5" max="15" step="0.5" x-model.number="opts.card_guides_length_mm"
+                 class="w-full accent-accent">
+        </label>
+
+        <div class="grid grid-cols-[1fr_60px] gap-2">
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_guides_color }}</span>
+            <input type="color" x-model="opts.card_guides_color"
+                   class="w-full h-8 bg-bg-subtle border border-border-subtle rounded cursor-pointer">
+          </label>
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_guides_weight }}</span>
+            <input type="number" step="0.1" min="0.1" max="3" x-model.number="opts.card_guides_width_pt"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.page_guides = !open.page_guides"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="grid-3x3" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_page_guides }}</span>
+        <span class="text-[10px] text-fg-faint" x-text="opts.page_guides"></span>
+      </button>
+      <div x-show="open.page_guides" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
+        <p class="text-[10px] text-fg-faint">
+          Full-page lines (for guillotine or rotary trimmer). Same color and weight as per-card guides.
+        </p>
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_mode_label }}</span>
+          <select x-model="opts.page_guides"
+                  class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+            <option value="none">{{ t.pdf_mode_none }}</option>
+            <option value="full_lines">{{ t.pdf_mode_full_lines }}</option>
+            <option value="corners_only">{{ t.pdf_mode_corners_only }}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.duplex_guides = !open.duplex_guides"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="flip-horizontal" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_duplex_section }}</span>
+        <i :data-lucide="open.duplex_guides ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
+      </button>
+      <div x-show="open.duplex_guides" x-collapse class="p-3 pt-1 space-y-2 border-t border-border-subtle">
+        <p class="text-[10px] text-fg-faint mb-2">
+          Selectively hide guides on fronts or backs — useful if cutting one side only.
+        </p>
+        <label class="flex items-center gap-2 cursor-pointer text-[11px]">
+          <input type="checkbox" x-model="opts.hide_card_guides_front" class="accent-accent">
+          <span>{{ t.pdf_hide_card_guides_fronts }}</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-[11px]">
+          <input type="checkbox" x-model="opts.hide_page_guides_front" class="accent-accent">
+          <span>{{ t.pdf_hide_page_guides_fronts }}</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-[11px]">
+          <input type="checkbox" x-model="opts.hide_card_guides_back" class="accent-accent">
+          <span>{{ t.pdf_hide_card_guides_backs }}</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-[11px]">
+          <input type="checkbox" x-model="opts.hide_page_guides_back" class="accent-accent">
+          <span>{{ t.pdf_hide_page_guides_backs }}</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.bleed = !open.bleed"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="droplet" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_bleed }}</span>
+        <input type="checkbox" x-model="opts.bleed_enabled" @click.stop class="accent-accent">
+      </button>
+      <div x-show="open.bleed" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
+           :class="!opts.bleed_enabled ? 'opacity-50 pointer-events-none' : ''">
+        <label class="block text-[11px]">
+          <div class="flex justify-between mb-1">
+            <span class="text-fg-muted">{{ t.pdf_bleed_label }}</span>
+            <span class="font-mono text-fg-faint"><span x-text="opts.bleed_mm.toFixed(2)"></span> mm</span>
+          </div>
+          <input type="range" min="0" max="5" step="0.05" x-model.number="opts.bleed_mm"
+                 class="w-full accent-accent">
+        </label>
+        <p class="text-[10px] text-fg-faint">
+          MPC nativo: 1.875 mm. Home printers: 1 mm suele bastar.
+        </p>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.regmarks = !open.regmarks"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="target" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_registration_marks }}</span>
+        <input type="checkbox" x-model="opts.reg_marks_enabled" @click.stop class="accent-accent">
+      </button>
+      <div x-show="open.regmarks" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
+           :class="!opts.reg_marks_enabled ? 'opacity-50 pointer-events-none' : ''">
+        <p class="text-[10px] text-fg-faint">Cuadrados negros en 3 esquinas para Silhouette Cameo / Cricut.</p>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">Inset (mm)</span>
+            <input type="number" step="0.5" min="0" max="50" x-model.number="opts.reg_marks_inset_mm"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+          <label class="block text-[11px]">
+            <span class="text-fg-muted mb-1 block">Size (mm)</span>
+            <input type="number" step="0.5" min="1" max="20" x-model.number="opts.reg_marks_size_mm"
+                   class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.backs = !open.backs"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="rotate-3d" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_backs_section_label }}</span>
+        <input type="checkbox" x-model="opts.include_backs" @click.stop class="accent-accent">
+      </button>
+      <div x-show="open.backs" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
+           :class="!opts.include_backs ? 'opacity-50 pointer-events-none' : ''">
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_backs_content_label }}</span>
+          <div class="grid grid-cols-1 gap-1">
+            <button @click="opts.backs_content = 'all_cards'"
+                    :class="opts.backs_content === 'all_cards' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition text-left px-2">
+              <span class="font-medium">{{ t.pdf_backs_all }}</span>
+              <div class="text-[10px] text-fg-faint mt-0.5">DFC → cara B · resto → cardback estándar</div>
+            </button>
+            <button @click="opts.backs_content = 'dfc_only'"
+                    :class="opts.backs_content === 'dfc_only' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition text-left px-2">
+              <span class="font-medium">{{ t.pdf_backs_dfc }}</span>
+              <div class="text-[10px] text-fg-faint mt-0.5">{{ t.pdf_no_back_gap }}</div>
+            </button>
+          </div>
+        </label>
+
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_backs_layout_label }}</span>
+          <div class="grid grid-cols-2 gap-1">
+            <button @click="opts.backs_layout = 'append'"
+                    :class="opts.backs_layout === 'append' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_backs_append }}</button>
+            <button @click="opts.backs_layout = 'duplex'"
+                    :class="opts.backs_layout === 'duplex' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
+                    class="py-1.5 rounded border text-[11px] transition">{{ t.pdf_duplex_btn }}</button>
+          </div>
+          <p class="text-[10px] text-fg-faint mt-1.5">
+            <span x-show="opts.backs_layout === 'duplex'">
+              Front/back interleaved with horizontal mirror — print duplex "flip on long edge".
+            </span>
+            <span x-show="opts.backs_layout === 'append'">
+              All back pages appended at end of PDF.
+            </span>
+          </p>
+        </label>
+
+        <label class="flex items-start gap-2 cursor-pointer text-[11px] p-2 rounded
+                      border border-border-subtle bg-bg-subtle/50"
+               x-show="opts.backs_layout === 'append'">
+          <input type="checkbox" x-model="opts.backs_compact_fill"
+                 class="accent-accent mt-0.5 flex-shrink-0">
+          <span>
+            <span class="font-medium">{{ t.pdf_backs_fill_last }}</span>
+            <span class="block text-[10px] text-fg-faint mt-0.5 leading-snug">
+              Fills free slots on the last front page with the first backs before starting a new sheet. Saves paper when cutting each card individually.
+            </span>
+          </span>
+        </label>
+
+        <div class="border-t border-border-subtle pt-3"
+             x-show="opts.backs_content === 'all_cards'">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">
+            {{ t.pdf_backs_cardback }}
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="w-14 h-20 rounded border border-border-subtle bg-bg-subtle
+                        overflow-hidden flex items-center justify-center flex-shrink-0">
+              <template x-if="cardbackSettings && cardbackSettings.image_url">
+                <img :src="cardbackSettings.image_url" class="w-full h-full object-cover" alt="Cardback">
+              </template>
+              <template x-if="cardbackSettings && !cardbackSettings.image_url && cardbackSettings.default_image_url">
+                <img :src="cardbackSettings.default_image_url" class="w-full h-full object-cover" alt="Default cardback">
+              </template>
+              <template x-if="!cardbackSettings || (!cardbackSettings.image_url && !cardbackSettings.default_image_url)">
+                <i data-lucide="image-off" class="w-6 h-6 text-fg-faint"></i>
+              </template>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] font-medium truncate"
+                   x-text="cardbackSettings?.using_custom
+                     ? (cardbackSettings.filename || 'Custom')
+                     : 'Global cardback'"></div>
+              <div class="text-[10px] text-fg-faint truncate"
+                   x-text="cardbackSettings?.using_custom
+                     ? (cardbackSettings.variant_label || 'deck-specific')
+                     : 'system default'"></div>
+            </div>
+          </div>
+          <button @click="openCardbackPicker()"
+                  class="w-full mt-2 h-8 rounded border border-border-subtle
+                         hover:bg-bg-subtle hover:border-accent transition
+                         text-[11px] font-medium inline-flex items-center justify-center gap-1.5">
+            <i data-lucide="images" class="w-3.5 h-3.5"></i>
+            {{ t.pdf_change_cardback }}
+          </button>
+          <button x-show="cardbackSettings?.using_custom"
+                  @click="resetCardback()"
+                  class="w-full mt-1 h-7 rounded text-fg-faint hover:text-fg-muted
+                         transition text-[10px] inline-flex items-center justify-center gap-1">
+            <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+            {{ t.pdf_cardback_reset }}
+          </button>
+          <p class="text-[10px] text-fg-faint mt-2">
+            Applied to all cards except DFC / MDFC / meld (those use their own back face).
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border-subtle rounded">
+      <button @click="open.range = !open.range"
+              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
+        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="list-ordered" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_range_section }}</span>
+        <i :data-lucide="open.range ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
+      </button>
+      <div x-show="open.range" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
+        <label class="block text-[11px]">
+          <span class="text-fg-muted mb-1 block">{{ t.pdf_range_label }}</span>
+          <input type="text" placeholder="e.g. 1-3,5 (empty = all)"
+                 x-model="opts.page_range"
+                 class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent font-mono">
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer text-[11px]">
+          <input type="checkbox" x-model="opts.show_footer" class="accent-accent">
+          <span>{{ t.pdf_footer_label }}</span>
+        </label>
+      </div>
+    </div>
+
+  </div>
+</aside>

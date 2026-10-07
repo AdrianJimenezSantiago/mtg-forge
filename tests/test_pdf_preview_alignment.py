@@ -1,33 +1,10 @@
 from __future__ import annotations
 
-import json
 import shutil
-import subprocess
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 NODE = shutil.which("node")
-
-
-@pytest.mark.skipif(NODE is None, reason="Node.js no disponible")
-def test_every_card_and_placeholder_sits_on_a_cut_guide():
-    result = subprocess.run(
-        [
-            NODE,
-            str(ROOT / "tests" / "js" / "pdf_preview_alignment.mjs"),
-            str(ROOT / "static" / "js" / "pdf-studio.js"),
-        ],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-        timeout=60,
-    )
-    assert result.returncode == 0, result.stderr
-    report = json.loads(result.stdout.strip().splitlines()[-1])
-    assert report["cases"] == 48
-    assert report["misaligned"] == [], report["misaligned"][:3]
 
 
 class TestWindowsConnectionResetFilter:

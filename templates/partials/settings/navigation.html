@@ -1,0 +1,26 @@
+<aside class="lg:w-52 shrink-0 hidden lg:block">
+  <nav class="sticky top-24 space-y-0.5">
+    <template x-for="s in sections" :key="s.key">
+      <button @click="selectSection(s.key)"
+              :class="activeSection === s.key && !searchQuery
+                        ? 'bg-bg-subtle text-accent-glow border-l-2 border-accent'
+                        : 'text-fg-muted hover:bg-bg-subtle hover:text-fg border-l-2 border-transparent'"
+              class="w-full flex items-center gap-2.5 px-3 py-2 rounded-r-md text-sm transition text-left">
+        <i :data-lucide="s.icon" class="w-4 h-4 shrink-0"></i>
+        <span x-text="s.label"></span>
+      </button>
+    </template>
+  </nav>
+</aside>
+
+<div class="lg:hidden">
+  <label class="block text-[11px] font-medium text-fg-muted uppercase tracking-wider mb-1">{{ t.settings_section_label }}</label>
+  <select x-model="activeSection"
+          @change="selectSection($event.target.value)"
+          class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-2 text-sm
+                 focus:outline-none focus:border-accent">
+    <template x-for="s in sections" :key="s.key">
+      <option :value="s.key" x-text="s.label"></option>
+    </template>
+  </select>
+</div>

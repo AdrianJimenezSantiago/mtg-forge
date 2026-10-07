@@ -1,0 +1,24 @@
+<template x-if="backModal">
+  <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+       @click="backModal = null"
+       @keydown.escape.window="backModal = null">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-card max-w-md w-full p-4 space-y-3 animate-scale-in"
+         @click.stop>
+      <div class="flex items-center justify-between">
+        <div class="min-w-0">
+          <div class="text-xs text-fg-muted uppercase tracking-wider">Reverso de</div>
+          <div class="font-medium truncate" x-text="backModal.cardName"></div>
+        </div>
+        <button @click="backModal = null" class="text-fg-muted hover:text-fg p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <img :src="backModal.url" :alt="backModal.name"
+           class="w-full rounded-xl border border-border-subtle">
+      <div class="text-sm text-fg-muted text-center" x-text="backModal.name"></div>
+      <div class="text-[11px] text-fg-faint text-center">
+        El reverso se incluye automáticamente en el XML y PDF.
+      </div>
+    </div>
+  </div>
+</template>

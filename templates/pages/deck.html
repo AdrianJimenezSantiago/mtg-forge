@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="/static/css/stats.css?v={{ asset_v('css/stats.css') }}">
+  {% include "partials/mana_symbols.html" %}
+{% endblock %}
+
+{% block view_module %}
+  <script defer src="/static/js/pages/deck-editor.js?v={{ asset_v('js/pages/deck-editor.js') }}"></script>
+{% endblock %}
+{% block title %}{{ deck.name }} · MPC Forge{% endblock %}
+{% block content %}
+<div x-data="deckEditor({{ deck.id }})" x-init="load()"
+     class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto animate-fade-in">
+
+  {% include "partials/deck/build_progress.html" %}
+
+  {% include "partials/deck/header.html" %}
+
+  {% include "partials/deck/toolbar.html" %}
+
+  {% include "partials/deck/card_groups.html" %}
+
+  {% include "partials/deck/art_picker_modal.html" %}
+
+  {% include "partials/deck/back_face_modal.html" %}
+
+  {% include "partials/deck/print_runs_modal.html" %}
+
+  {% include "partials/deck/similar_arts_modal.html" %}
+
+  {% include "partials/deck/artist_apply_modal.html" %}
+
+  {% include "partials/deck/tokens_modal.html" %}
+
+  {% include "partials/deck/stats_modal.html" %}
+</div>
+
+{% endblock %}

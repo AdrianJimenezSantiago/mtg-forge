@@ -1,0 +1,17 @@
+<div class="flex items-center h-11 border-b border-border-subtle bg-bg-inset px-4 gap-4 text-sm">
+  <a href="/decks/{{ deck.id }}"
+     class="text-fg-muted hover:text-accent transition font-medium">
+    <span class="inline-flex items-center gap-1">
+      <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      {{ t.common_back }}
+    </span>
+  </a>
+  <span class="text-fg-faint">·</span>
+  <span class="font-semibold">{{ t.pdf_title }}</span>
+  <span class="text-fg-faint">·</span>
+  <span class="text-fg-muted" x-text='deck ? deck.name : {{ deck.name | tojson }}'></span>
+  <div class="flex-1"></div>
+  <span class="text-fg-faint text-xs" x-show="deck">
+    <span x-text="totalSlots"></span> {{ t.history_cards_count }} · <span x-text="totalPages"></span> {{ t.pdf_summary_page | lower }}s
+  </span>
+</div>

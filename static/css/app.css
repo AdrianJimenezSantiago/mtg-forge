@@ -1,0 +1,19 @@
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0b0d10; }
+::-webkit-scrollbar-thumb { background: #232a3a; border-radius: 6px; border: 2px solid #0b0d10; }
+::-webkit-scrollbar-thumb:hover { background: #2f394d; }
+
+::selection { background: rgba(234,179,8,0.35); color: #fff; }
+
+[x-cloak] { display: none !important; }
+
+input:focus, textarea:focus, button:focus { outline: none; }
+input:focus, textarea:focus { box-shadow: 0 0 0 2px rgba(234,179,8,0.2); }
+
+.preview-page [data-slot-kind] { transition: opacity 120ms ease; }
+.preview-page:hover [data-slot-kind][data-slot-kind]:hover { opacity: 0.82; }
+.preview-page rect[data-slot-kind]:hover {
+  stroke: #d4af37;
+  stroke-width: 0.35;
+  fill: rgba(212, 175, 55, 0.06);
+}
