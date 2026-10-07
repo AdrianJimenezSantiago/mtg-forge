@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@alpinejs/collapse": "3.13.5",
-    "@alpinejs/focus": "3.13.5",
+    "@alpinejs/focus": "3.17.4",
     "@formkit/auto-animate": "0.10.0",
     "alpinejs": "3.13.5",
     "axe-core": "4.14.0",
