@@ -10,11 +10,11 @@ HTML = {"accept": "text/html"}
 async def commander_deck(client, sample_cards):
     from mpc_forge.db import session_scope
     from mpc_forge.models import Deck, DeckCard
-    from mpc_forge.services import deck_service
+    from mpc_forge.services.cards import printings
 
     async with session_scope() as db:
         for key in ("Sol Ring", "Sol Ring ALT", "Command Tower"):
-            await deck_service.upsert_printing(db, sample_cards[key])
+            await printings.upsert_printing(db, sample_cards[key])
         deck = Deck(name="Mazo Portada", format="commander", commander_scryfall_id="sr-en")
         db.add(deck)
         await db.flush()
@@ -96,7 +96,7 @@ class TestDeckCover:
     async def test_custom_art_is_reflected_everywhere(self, client, commander_deck):
         from mpc_forge.db import session_scope
         from mpc_forge.models import CustomArt
-        from mpc_forge.services import custom_art
+        from mpc_forge.services.art import custom_art
 
         async with session_scope() as db:
             ca = CustomArt(
@@ -152,10 +152,11 @@ class TestDeckCover:
     async def test_deck_without_commander_card_keeps_the_old_fallback(self, client, sample_cards):
         from mpc_forge.db import session_scope
         from mpc_forge.models import Deck
-        from mpc_forge.services import deck_covers, deck_service
+        from mpc_forge.services.cards import printings
+        from mpc_forge.services.decks import deck_covers
 
         async with session_scope() as db:
-            await deck_service.upsert_printing(db, sample_cards["Sol Ring"])
+            await printings.upsert_printing(db, sample_cards["Sol Ring"])
             deck = Deck(name="Antiguo", format="commander", commander_scryfall_id="sr-en")
             db.add(deck)
             await db.commit()
@@ -167,7 +168,7 @@ class TestDeckCover:
     async def test_deck_without_any_commander(self, client, deck):
         from mpc_forge.db import session_scope
         from mpc_forge.models import Deck
-        from mpc_forge.services import deck_covers
+        from mpc_forge.services.decks import deck_covers
 
         async with session_scope() as db:
             d = await db.get(Deck, deck["id"])
@@ -208,7 +209,7 @@ class TestPickCoverCard:
 
     def test_prefers_the_card_with_the_imported_printing(self):
         from mpc_forge.models import Deck
-        from mpc_forge.services.deck_covers import pick_cover_card
+        from mpc_forge.services.decks.deck_covers import pick_cover_card
 
         a, b = self._card(1, "a1", "oa"), self._card(2, "b1", "ob")
         deck = Deck(name="x", format="commander", commander_scryfall_id="b1")
@@ -216,7 +217,7 @@ class TestPickCoverCard:
 
     def test_follows_the_commander_after_its_art_changed(self):
         from mpc_forge.models import Deck
-        from mpc_forge.services.deck_covers import pick_cover_card
+        from mpc_forge.services.decks.deck_covers import pick_cover_card
 
         a, b = self._card(1, "a1", "oa"), self._card(2, "b2", "ob")
         deck = Deck(name="x", format="commander", commander_scryfall_id="b1")
@@ -225,7 +226,7 @@ class TestPickCoverCard:
 
     def test_falls_back_to_the_first_commander(self):
         from mpc_forge.models import Deck
-        from mpc_forge.services.deck_covers import pick_cover_card
+        from mpc_forge.services.decks.deck_covers import pick_cover_card
 
         a, b = self._card(1, "a1", "oa"), self._card(2, "b1", "ob")
         deck = Deck(name="x", format="commander", commander_scryfall_id=None)
@@ -239,10 +240,11 @@ class TestDeckCoverBatching:
 
         from mpc_forge.db import engine, session_scope
         from mpc_forge.models import Deck, DeckCard
-        from mpc_forge.services import deck_covers, deck_service
+        from mpc_forge.services.cards import printings
+        from mpc_forge.services.decks import deck_covers
 
         async with session_scope() as db:
-            await deck_service.upsert_printing(db, sample_cards["Sol Ring"])
+            await printings.upsert_printing(db, sample_cards["Sol Ring"])
             decks = []
             for i in range(25):
                 d = Deck(name=f"D{i}", format="commander", commander_scryfall_id="sr-en")
@@ -278,7 +280,7 @@ async def _seed_index(n_sol_ring=0, rare=(), filler=0):
 
     from mpc_forge.db import session_scope
     from mpc_forge.models import ArtSource, IndexedArt
-    from mpc_forge.services.gdrive_search import normalize_filename
+    from mpc_forge.services.indexing.gdrive_search import normalize_filename
 
     rnd = random.Random(5)
     words = [f"w{i}" for i in range(600)]
@@ -313,7 +315,7 @@ async def _seed_index(n_sol_ring=0, rare=(), filler=0):
 
 @pytest.fixture
 def fts5_on():
-    from mpc_forge.services import gdrive_search
+    from mpc_forge.services.indexing import gdrive_search
 
     before = gdrive_search._fts5_available_cache
     gdrive_search._fts5_available_cache = None
@@ -323,7 +325,7 @@ def fts5_on():
 
 @pytest.fixture
 def fts5_off():
-    from mpc_forge.services import gdrive_search
+    from mpc_forge.services.indexing import gdrive_search
 
     before = gdrive_search._fts5_available_cache
     gdrive_search._fts5_available_cache = False
@@ -389,7 +391,7 @@ class TestDriveSearchPagination:
         assert r.headers["X-Total-Count"] == "0"
 
     async def test_cap_is_reported(self, client, fts5_on, monkeypatch):
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         monkeypatch.setattr(gdrive_search, "_MAX_CANDIDATES", 50)
         await _seed_index(n_sol_ring=80)
@@ -409,7 +411,7 @@ class TestDriveSearchRelevance:
     async def test_rare_long_names_are_found(self, client, fts5_on, name, count):
         await _seed_index(n_sol_ring=50, rare=self.RARE, filler=3000)
         from mpc_forge.db import session_scope
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         async with session_scope() as db:
             assert await gdrive_search._fts5_available(db), "este test necesita FTS5"
@@ -420,7 +422,7 @@ class TestDriveSearchRelevance:
     async def test_fts_and_like_agree(self, client, fts5_on):
         await _seed_index(n_sol_ring=30, rare=self.RARE, filler=500)
         from mpc_forge.db import session_scope
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         async with session_scope() as db:
             fts = await gdrive_search.search_page(db, "Elesh Norn, Grand Cenobite", limit=100)
@@ -432,8 +434,8 @@ class TestDriveSearchRelevance:
     async def test_other_cards_stay_out(self, client, fts5_on):
         from mpc_forge.db import session_scope
         from mpc_forge.models import ArtSource, IndexedArt
-        from mpc_forge.services import gdrive_search
-        from mpc_forge.services.gdrive_search import normalize_filename
+        from mpc_forge.services.indexing import gdrive_search
+        from mpc_forge.services.indexing.gdrive_search import normalize_filename
 
         async with session_scope() as db:
             src = ArtSource(name="D", url="https://drive.google.com/drive/folders/d")
@@ -468,7 +470,7 @@ class TestDriveSearchRelevance:
     async def test_empty_fts_result_falls_back_to_like(self, client, fts5_on):
         await _seed_index(n_sol_ring=5)
         from mpc_forge.db import session_scope
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         async with session_scope() as db:
             results = await gdrive_search.search(db, "Sol Rnig", limit=10)

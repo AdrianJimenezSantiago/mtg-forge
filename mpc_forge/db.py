@@ -7,15 +7,15 @@ from contextlib import asynccontextmanager
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from mpc_forge import config as cfg
 from mpc_forge import migrations
-from mpc_forge.config import PATHS
 from mpc_forge.models import Base
 
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = str(migrations.LATEST_VERSION)
 
-DATABASE_URL = f"sqlite+aiosqlite:///{PATHS.db_path}"
+DATABASE_URL = f"sqlite+aiosqlite:///{cfg.PATHS.db_path}"
 
 engine = create_async_engine(
     DATABASE_URL,
@@ -90,7 +90,7 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         def _make_backup():
-            from mpc_forge.services import backup as backup_service
+            from mpc_forge.services.system import backup as backup_service
 
             return backup_service.create_backup(tag="pre-migration")
 

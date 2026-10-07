@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from mpc_forge.db import analyze_table, get_session, session_scope
-from mpc_forge.services import bulk_data
+from mpc_forge.db import analyze_table, session_scope
+from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.cards import bulk_data
 
 router = APIRouter(prefix="/api/bulk", tags=["bulk-data"])
 log = logging.getLogger(__name__)
-
-DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 class BulkStatusResponse(BaseModel):

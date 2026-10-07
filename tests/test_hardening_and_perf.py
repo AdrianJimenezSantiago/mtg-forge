@@ -8,8 +8,10 @@ import pytest
 
 from mpc_forge.db import session_scope
 from mpc_forge.models import Deck, DeckCard, PrintingCache
+from mpc_forge import config as cfg
 from mpc_forge.routes.decks import _views
-from mpc_forge.services import deck_validation, thumbnails
+from mpc_forge.services.art import thumbnails
+from mpc_forge.services.decks import deck_validation
 
 
 class TestTimezoneAwareColumns:
@@ -330,8 +332,8 @@ class TestThumbPathNormalization:
         except (OSError, NotImplementedError):
             pytest.skip("El sistema no permite crear enlaces simbólicos")
 
-        paths_via_alias = thumbnails.PATHS.with_overrides(art_dir=str(alias))
-        monkeypatch.setattr(thumbnails, "PATHS", paths_via_alias)
+        paths_via_alias = cfg.PATHS.with_overrides(art_dir=str(alias))
+        monkeypatch.setattr(cfg, "PATHS", paths_via_alias)
 
         via_alias = thumbnails.thumb_path_for(alias / "sub" / "Sol Ring.png")
         via_real = thumbnails.thumb_path_for(real / "sub" / "Sol Ring.png")
@@ -344,8 +346,8 @@ class TestThumbPathNormalization:
         assert via_alias == via_real
 
     def test_external_arts_with_the_same_name_do_not_collide(self, tmp_path, monkeypatch):
-        paths = thumbnails.PATHS.with_overrides(art_dir=str(tmp_path / "arte"))
-        monkeypatch.setattr(thumbnails, "PATHS", paths)
+        paths = cfg.PATHS.with_overrides(art_dir=str(tmp_path / "arte"))
+        monkeypatch.setattr(cfg, "PATHS", paths)
 
         a = thumbnails.thumb_path_for(tmp_path / "drive_a" / "Sol Ring.png")
         b = thumbnails.thumb_path_for(tmp_path / "drive_b" / "Sol Ring.png")

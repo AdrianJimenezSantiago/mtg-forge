@@ -1,0 +1,426 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+import httpx
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
+from mpc_forge.models import BulkSyncState, PrintingCache
+from mpc_forge.ssl_config import ssl_insecure
+
+log = logging.getLogger(__name__)
+
+BULK_KINDS = ("default_cards", "oracle_cards")
+DEFAULT_KIND = "default_cards"
+
+BATCH_SIZE = 2000
+
+PROGRESS_EVERY = 5000
+
+
+@dataclass
+class BulkProgress:
+    kind: str = DEFAULT_KIND
+    phase: str = "idle"
+    rows_seen: int = 0
+    rows_written: int = 0
+    bytes_downloaded: int = 0
+    bytes_total: int = 0
+    error: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    cancelled: bool = False
+    _task: Any = field(default=None, repr=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        elapsed = 0.0
+        if self.started_at:
+            end = self.finished_at or datetime.now(UTC)
+            elapsed = (end - self.started_at).total_seconds()
+        percent = 0.0
+        if self.bytes_total:
+            percent = round(100 * self.bytes_downloaded / self.bytes_total, 1)
+        return {
+            "kind": self.kind,
+            "phase": self.phase,
+            "active": self.phase in ("manifest", "downloading", "importing"),
+            "rows_seen": self.rows_seen,
+            "rows_written": self.rows_written,
+            "bytes_downloaded": self.bytes_downloaded,
+            "bytes_total": self.bytes_total,
+            "percent": percent,
+            "elapsed_seconds": round(elapsed, 1),
+            "error": self.error,
+            "cancelled": self.cancelled,
+        }
+
+
+_progress = BulkProgress()
+
+
+def get_progress() -> dict[str, Any]:
+    return _progress.to_dict()
+
+
+async def cancel() -> bool:
+    if _progress._task is None or _progress._task.done():
+        return False
+    _progress.cancelled = True
+    _progress._task.cancel()
+    return True
+
+
+async def fetch_manifest(kind: str = DEFAULT_KIND) -> dict[str, Any]:
+    if kind not in BULK_KINDS:
+        raise ValueError(f"Volcado desconocido: {kind}. Válidos: {BULK_KINDS}")
+    async with httpx.AsyncClient(
+        base_url=SCRYFALL_API,
+        headers={"User-Agent": SCRYFALL_USER_AGENT, "Accept": "application/json"},
+        timeout=60.0,
+        verify=not ssl_insecure(),
+    ) as client:
+        resp = await client.get("/bulk-data")
+        resp.raise_for_status()
+        for entry in resp.json().get("data", []):
+            if entry.get("type") == kind:
+                return entry
+    raise LookupError(f"Scryfall no publica un volcado de tipo {kind!r}")
+
+
+async def get_state(db: AsyncSession, kind: str = DEFAULT_KIND) -> BulkSyncState | None:
+    return await db.get(BulkSyncState, kind)
+
+
+async def needs_sync(db: AsyncSession, kind: str = DEFAULT_KIND) -> tuple[bool, str]:
+    state = await get_state(db, kind)
+    try:
+        manifest = await fetch_manifest(kind)
+    except Exception as e:
+        return (False, f"No se pudo consultar el catálogo de Scryfall: {e}")
+    remote = manifest.get("updated_at", "")
+    if state is None or not state.updated_at:
+        return (True, "Nunca se ha importado el volcado")
+    if remote > state.updated_at:
+        return (True, f"Hay un volcado más reciente ({remote[:10]})")
+    return (False, f"Ya está al día ({state.updated_at[:10]})")
+
+
+def _ijson_available() -> bool:
+    try:
+        import ijson  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+class _IncrementalArrayParser:
+    def __init__(self) -> None:
+        self._buf = ""
+        self._pos = 0
+        self._depth = 0
+        self._start = -1
+        self._in_string = False
+        self._escaped = False
+
+    def feed(self, chunk: str) -> Iterator[dict[str, Any]]:
+        self._buf += chunk
+        i = self._pos
+        buf = self._buf
+
+        while i < len(buf):
+            ch = buf[i]
+            if self._in_string:
+                if self._escaped:
+                    self._escaped = False
+                elif ch == "\\":
+                    self._escaped = True
+                elif ch == '"':
+                    self._in_string = False
+            elif ch == '"':
+                self._in_string = True
+            elif ch == "{":
+                if self._depth == 0:
+                    self._start = i
+                self._depth += 1
+            elif ch == "}":
+                self._depth -= 1
+                if self._depth == 0 and self._start >= 0:
+                    raw = buf[self._start : i + 1]
+                    self._start = -1
+                    try:
+                        yield json.loads(raw)
+                    except json.JSONDecodeError:
+                        log.warning("Objeto ilegible en el volcado; se omite")
+                    buf = buf[i + 1 :]
+                    self._buf = buf
+                    i = 0
+                    continue
+            i += 1
+
+        if self._depth > 0 and self._start > 0:
+            self._buf = buf[self._start :]
+            i -= self._start
+            self._start = 0
+        elif self._depth == 0 and self._start < 0:
+            self._buf = ""
+            i = 0
+
+        self._pos = i
+
+
+def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
+    scryfall_id = card.get("id")
+    oracle_id = card.get("oracle_id")
+    if not scryfall_id:
+        return None
+
+    layout = card.get("layout") or "normal"
+    if layout in ("art_series", "double_faced_token"):
+        return None
+
+    faces = card.get("card_faces") or []
+    front_img = card.get("image_uris") or {}
+    back_img: dict[str, str] = {}
+    back_name = None
+    mana_cost = card.get("mana_cost") or ""
+    type_line = card.get("type_line") or ""
+    colors = card.get("colors") or []
+
+    if faces:
+        front_img = faces[0].get("image_uris", front_img) or front_img
+        mana_cost = faces[0].get("mana_cost", mana_cost) or mana_cost
+        type_line = faces[0].get("type_line", type_line) or type_line
+        colors = faces[0].get("colors", colors) or colors
+        if len(faces) > 1:
+            back_img = faces[1].get("image_uris", {}) or {}
+            back_name = faces[1].get("name")
+
+    related = [
+        {
+            "id": part.get("id", ""),
+            "name": part.get("name", ""),
+            "component": part.get("component", ""),
+        }
+        for part in (card.get("all_parts") or [])
+        if part.get("component") in ("token", "meld_result", "meld_part")
+    ]
+
+    return {
+        "scryfall_id": scryfall_id,
+        "oracle_id": oracle_id or "",
+        "name": card.get("name", ""),
+        "set_code": (card.get("set") or "").lower(),
+        "set_name": card.get("set_name") or "",
+        "collector_number": card.get("collector_number") or "",
+        "rarity": card.get("rarity") or "",
+        "lang": card.get("lang") or "en",
+        "frame": card.get("frame") or "",
+        "border_color": card.get("border_color") or "",
+        "full_art": bool(card.get("full_art", False)),
+        "textless": bool(card.get("textless", False)),
+        "promo": bool(card.get("promo", False)),
+        "layout": layout,
+        "mana_cost": mana_cost,
+        "cmc": float(card.get("cmc", 0.0) or 0.0),
+        "type_line": type_line,
+        "colors": ",".join(colors),
+        "color_identity": ",".join(card.get("color_identity") or []),
+        "keywords": ",".join(card.get("keywords") or []),
+        "image_normal": front_img.get("normal"),
+        "image_large": front_img.get("large"),
+        "image_png": front_img.get("png"),
+        "back_image_normal": back_img.get("normal") or None,
+        "back_image_large": back_img.get("large") or None,
+        "back_image_png": back_img.get("png") or None,
+        "back_name": back_name,
+        "artist": card.get("artist"),
+        "released_at": card.get("released_at"),
+        "finishes": ",".join(card.get("finishes") or []),
+        "related_parts": json.dumps(related, ensure_ascii=False) if related else "",
+        "fetched_at": datetime.now(UTC),
+    }
+
+
+async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    stmt = sqlite_insert(PrintingCache).values(rows)
+    update_cols = {
+        c.name: getattr(stmt.excluded, c.name)
+        for c in PrintingCache.__table__.columns
+        if c.name != "scryfall_id"
+    }
+    await db.execute(stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols))
+    await db.commit()
+    return len(rows)
+
+
+async def sync(
+    db: AsyncSession,
+    kind: str = DEFAULT_KIND,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    global _progress
+    _progress = BulkProgress(kind=kind, phase="manifest", started_at=datetime.now(UTC))
+
+    try:
+        manifest = await fetch_manifest(kind)
+        remote_updated = manifest.get("updated_at", "")
+        _progress.bytes_total = int(manifest.get("size", 0) or 0)
+
+        state = await get_state(db, kind)
+        if not force and state and state.updated_at == remote_updated:
+            _progress.phase = "done"
+            _progress.finished_at = datetime.now(UTC)
+            return {
+                "skipped": True,
+                "reason": "El volcado local ya está al día",
+                "updated_at": remote_updated,
+            }
+
+        url = manifest["download_uri"]
+        log.info(
+            "Importando volcado %s (%s, %.0f MB)",
+            kind,
+            remote_updated[:10],
+            _progress.bytes_total / 1e6,
+        )
+
+        _progress.phase = "downloading"
+        written = await _stream_import(db, url, kind)
+
+        _progress.phase = "importing"
+        await _record_state(db, kind, remote_updated, written, _progress.bytes_downloaded)
+
+        _progress.phase = "done"
+        _progress.finished_at = datetime.now(UTC)
+        log.info("Volcado %s importado: %d impresiones", kind, written)
+        return {
+            "skipped": False,
+            "kind": kind,
+            "updated_at": remote_updated,
+            "rows_imported": written,
+        }
+
+    except asyncio.CancelledError:
+        _progress.phase = "error"
+        _progress.cancelled = True
+        _progress.error = "Cancelado por el usuario"
+        _progress.finished_at = datetime.now(UTC)
+        raise
+    except Exception as e:
+        _progress.phase = "error"
+        _progress.error = str(e)
+        _progress.finished_at = datetime.now(UTC)
+        log.exception("La importación del volcado %s falló", kind)
+        raise
+
+
+async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
+    use_ijson = _ijson_available()
+    parser = None if use_ijson else _IncrementalArrayParser()
+    batch: list[dict[str, Any]] = []
+    written = 0
+    seen_ids: set[str] = set()
+
+    async with (
+        httpx.AsyncClient(
+            headers={"User-Agent": SCRYFALL_USER_AGENT},
+            timeout=httpx.Timeout(60.0, read=300.0),
+            follow_redirects=True,
+            verify=not ssl_insecure(),
+        ) as client,
+        client.stream("GET", url) as response,
+    ):
+        response.raise_for_status()
+
+        async def handle(card: dict[str, Any]) -> None:
+            nonlocal written
+            _progress.rows_seen += 1
+            row = card_to_row(card)
+            if row is None:
+                return
+            if row["scryfall_id"] in seen_ids:
+                return
+            seen_ids.add(row["scryfall_id"])
+            batch.append(row)
+            if len(batch) >= BATCH_SIZE:
+                written += await _flush(db, batch)
+                batch.clear()
+                seen_ids.clear()
+                _progress.rows_written = written
+                await asyncio.sleep(0)
+
+        if use_ijson:
+            import ijson
+
+            async def byte_chunks():
+                async for chunk in response.aiter_bytes(chunk_size=1 << 20):
+                    _progress.bytes_downloaded += len(chunk)
+                    yield chunk
+
+            async for card in ijson.items_async(byte_chunks(), "item"):
+                await handle(card)
+        else:
+            async for chunk in response.aiter_text(chunk_size=1 << 20):
+                _progress.bytes_downloaded += len(chunk.encode("utf-8"))
+                for card in parser.feed(chunk):
+                    await handle(card)
+
+    written += await _flush(db, batch)
+    _progress.rows_written = written
+    return written
+
+
+async def _record_state(db: AsyncSession, kind: str, updated_at: str, rows: int, size: int) -> None:
+    state = await db.get(BulkSyncState, kind)
+    if state is None:
+        state = BulkSyncState(kind=kind)
+        db.add(state)
+    state.updated_at = updated_at
+    state.synced_at = datetime.now(UTC)
+    state.rows_imported = rows
+    state.bytes_downloaded = size
+    await db.commit()
+
+
+def start(db_factory, kind: str = DEFAULT_KIND, *, force: bool = False):
+    async def _run() -> None:
+        async with db_factory() as session:
+            await sync(session, kind, force=force)
+
+    task = asyncio.create_task(_run(), name=f"bulk-sync-{kind}")
+    _progress._task = task
+    return task
+
+
+async def local_stats(db: AsyncSession) -> dict[str, Any]:
+    total = (await db.scalar(select(func.count()).select_from(PrintingCache))) or 0
+    unique = (await db.scalar(select(func.count(func.distinct(PrintingCache.oracle_id))))) or 0
+    states = (await db.execute(select(BulkSyncState))).scalars().all()
+    return {
+        "printings": total,
+        "unique_cards": unique,
+        "ijson_available": _ijson_available(),
+        "syncs": [
+            {
+                "kind": s.kind,
+                "updated_at": s.updated_at,
+                "synced_at": s.synced_at.isoformat() if s.synced_at else None,
+                "rows_imported": s.rows_imported,
+                "bytes_downloaded": s.bytes_downloaded,
+            }
+            for s in states
+        ],
+    }

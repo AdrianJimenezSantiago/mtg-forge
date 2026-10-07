@@ -35,7 +35,7 @@ def render(template_name: str) -> str:
 
     warnings.filterwarnings("ignore")
     from mpc_forge.routes.ui import templates
-    from mpc_forge.services import i18n
+    from mpc_forge.services.system import i18n
 
     class _FakeUrl:
         path = "/"

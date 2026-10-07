@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from mpc_forge.services import i18n
-from mpc_forge.services.i18n import _TRANSLATIONS, BASE_LANG, SUPPORTED_LANGS
+from mpc_forge.services.system import i18n
+from mpc_forge.services.system.i18n import _TRANSLATIONS, BASE_LANG, SUPPORTED_LANGS
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

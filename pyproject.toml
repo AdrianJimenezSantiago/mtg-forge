@@ -78,7 +78,7 @@ ignore = [
     "S105", "S106", "S108", "S603", "S607",
     "DTZ001", "DTZ005", "PERF", "B", "RUF012", "RUF007", "F841",
 ]
-"mpc_forge/services/i18n.py" = ["E241", "RUF001"]
+"mpc_forge/services/system/i18n.py" = ["E241", "RUF001"]
 
 [tool.mypy]
 python_version = "3.11"

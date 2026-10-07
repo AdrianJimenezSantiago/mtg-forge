@@ -2,25 +2,20 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+import httpx
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
-from mpc_forge.db import get_session
-from mpc_forge.models import CollectionEntry, Deck, DeckCard, PrintRun
+from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
+from mpc_forge.models import CollectionEntry
+from mpc_forge.routes.dependencies import DbDep, ScryfallDep
+from mpc_forge.ssl_config import ssl_insecure
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
-
-DbDep = Annotated[AsyncSession, Depends(get_session)]
-
-
-def _get_scryfall(request: Request) -> ScryfallClient:
-    return request.app.state.scryfall
 
 
 _SETS_CACHE: dict[str, list[dict]] | None = None
@@ -46,11 +41,6 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
     now = time.monotonic()
     if _SETS_CACHE is not None and (now - _SETS_CACHE_AT) < _SETS_CACHE_TTL:
         return _SETS_CACHE
-
-    import httpx
-
-    from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
-    from mpc_forge.ssl_config import ssl_insecure
 
     log.info("Fetching sets list from Scryfall (cache miss / stale)")
     async with httpx.AsyncClient(
@@ -90,66 +80,6 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
     return filtered
 
 
-class SidebarStats(BaseModel):
-    total_decks: int = 0
-    unique_cards: int = 0
-    total_print_runs: int = 0
-    collection_total: int = 0
-
-
-@router.get("/sidebar-stats", response_model=SidebarStats)
-async def sidebar_stats(db: DbDep) -> SidebarStats:
-    decks = (await db.scalar(select(func.count()).select_from(Deck))) or 0
-    unique = (await db.scalar(select(func.count(func.distinct(DeckCard.oracle_id))))) or 0
-    runs = (await db.scalar(select(func.count()).select_from(PrintRun))) or 0
-    coll = (await db.scalar(select(func.count()).select_from(CollectionEntry))) or 0
-    return SidebarStats(
-        total_decks=decks,
-        unique_cards=unique,
-        total_print_runs=runs,
-        collection_total=coll,
-    )
-
-
-class RecentDeck(BaseModel):
-    id: int
-    name: str
-    format: str
-    card_count: int = 0
-    commander_image: str | None = None
-
-
-@router.get("/recent-decks", response_model=list[RecentDeck])
-async def recent_decks(db: DbDep) -> list[RecentDeck]:
-    from mpc_forge.services import deck_covers
-
-    result = await db.execute(
-        select(Deck, func.count(DeckCard.id).label("cc"))
-        .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
-        .group_by(Deck.id)
-        .order_by(Deck.updated_at.desc())
-        .limit(5)
-    )
-    rows = result.all()
-    if not rows:
-        return []
-
-    covers = await deck_covers.covers_for_decks(db, [d for d, _ in rows])
-
-    out = []
-    for deck, cc in rows:
-        out.append(
-            RecentDeck(
-                id=deck.id,
-                name=deck.name,
-                format=deck.format,
-                card_count=cc,
-                commander_image=covers.get(deck.id, deck_covers.EMPTY).image_url,
-            )
-        )
-    return out
-
-
 class SetInfo(BaseModel):
     code: str
     name: str
@@ -163,7 +93,7 @@ class SetInfo(BaseModel):
 @router.get("/sets")
 async def list_sets(
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> list[SetInfo]:
     sets_data = await _fetch_sets_cached(scryfall)
 
@@ -196,13 +126,13 @@ class SetCardInfo(BaseModel):
 async def set_cards(
     set_code: str,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> list[SetCardInfo]:
     import httpx
 
     from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
-    from mpc_forge.services.rate_limiter import AsyncRateLimiter
     from mpc_forge.ssl_config import ssl_insecure
+    from mpc_forge.utils.rate_limiter import AsyncRateLimiter
 
     all_cards: list[dict] = []
     async with httpx.AsyncClient(

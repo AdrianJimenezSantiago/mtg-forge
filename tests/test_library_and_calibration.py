@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mpc_forge.services import art_library, calibration
+from mpc_forge.services.art import art_library
+from mpc_forge.services.printing import calibration
 
 
 class TestCalibrationSigns:

@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
-from mpc_forge.db import get_session
 from mpc_forge.paths import install_root
-from mpc_forge.services import settings as settings_service
+from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.system import settings as settings_service
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
-
-DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 class SettingsResponse(BaseModel):

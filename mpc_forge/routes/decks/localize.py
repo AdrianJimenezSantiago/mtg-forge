@@ -1,32 +1,25 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
 from fastapi import (
-    Depends,
     HTTPException,
     Response,
     status,
 )
 from pydantic import BaseModel
 
-from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import (
     Deck,
 )
-from mpc_forge.services import (
-    deck_activity,
-    deck_service,
-)
-from mpc_forge.services.deck_activity import DeckActivityKind as K
+from mpc_forge.routes.dependencies import DbDep, ScryfallDep
+from mpc_forge.services.decks import deck_activity, localization
+from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
 
 from mpc_forge.routes.decks._common import (
-    DbDep,
-    _get_scryfall,
     make_router,
 )
 
@@ -71,7 +64,7 @@ async def localize_deck_endpoint(
     deck_id: int,
     payload: LocalizeDeckRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> LocalizeDeckResponse:
     deck = await db.get(Deck, deck_id)
     if not deck:
@@ -83,7 +76,7 @@ async def localize_deck_endpoint(
             f"Idioma no soportado: {payload.lang!r}. Válidos: {sorted(SUPPORTED_LANGS)}",
         )
 
-    result = await deck_service.localize_deck(db, scryfall, deck_id, payload.lang)
+    result = await localization.localize_deck(db, scryfall, deck_id, payload.lang)
     if result["localized"] > 0 or result["unavailable"]:
         await deck_activity.log_event(
             db,
@@ -105,7 +98,7 @@ async def localize_deck_endpoint(
 @router.get("/_/autocomplete")
 async def autocomplete_card(
     q: str,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> list[str]:
     if not q or len(q.strip()) < 2:
         return []

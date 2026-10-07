@@ -15,18 +15,13 @@ from mpc_forge.models import (
     Deck,
     DeckCard,
 )
-from mpc_forge.services import (
-    deck_activity,
-    deck_covers,
-)
+from mpc_forge.services.decks import deck_activity, deck_covers
 
 log = logging.getLogger(__name__)
 
 
-from mpc_forge.routes.decks._common import (
-    DbDep,
-    make_router,
-)
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.dependencies import DbDep
 
 router = make_router()
 
@@ -182,7 +177,7 @@ class UndoResponse(BaseModel):
 @router.post("/{deck_id}/activity/{event_id}/undo", response_model=UndoResponse)
 async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
     from mpc_forge.models import DeckActivity as _DA
-    from mpc_forge.services import undo as undo_svc
+    from mpc_forge.services.decks import undo as undo_svc
 
     event = await db.get(_DA, event_id)
     if not event or event.deck_id != deck_id:
@@ -202,7 +197,7 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
 
 @router.get("/_/undoable-kinds")
 async def get_undoable_kinds(response: Response) -> list[str]:
-    from mpc_forge.services import undo as undo_svc
+    from mpc_forge.services.decks import undo as undo_svc
 
     response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)

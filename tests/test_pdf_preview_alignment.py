@@ -35,29 +35,29 @@ class TestWindowsConnectionResetFilter:
         return {"exception": exc, "handle": handle, "message": "Exception in callback"}
 
     def test_detects_the_proactor_shutdown_reset(self):
-        from mpc_forge.app import _is_benign_connection_reset
+        from mpc_forge.utils.event_loop import is_benign_connection_reset
 
-        assert _is_benign_connection_reset(self._context(ConnectionResetError(10054, "reset")))
+        assert is_benign_connection_reset(self._context(ConnectionResetError(10054, "reset")))
 
     def test_other_errors_are_not_hidden(self):
-        from mpc_forge.app import _is_benign_connection_reset
+        from mpc_forge.utils.event_loop import is_benign_connection_reset
 
-        assert not _is_benign_connection_reset(self._context(ValueError("boom")))
-        assert not _is_benign_connection_reset(
+        assert not is_benign_connection_reset(self._context(ValueError("boom")))
+        assert not is_benign_connection_reset(
             self._context(ConnectionResetError(), handle="<Handle something_else()>")
         )
 
     def test_handler_filters_only_the_benign_case(self, monkeypatch):
         import asyncio
 
-        from mpc_forge import app as app_mod
+        from mpc_forge.utils import event_loop as app_mod
 
         monkeypatch.setattr(app_mod.sys, "platform", "win32")
         loop = asyncio.new_event_loop()
         seen = []
         loop.set_exception_handler(lambda _l, ctx: seen.append(ctx["exception"]))
         try:
-            app_mod._silence_windows_connection_resets(loop)
+            app_mod.silence_windows_connection_resets(loop)
             loop.call_exception_handler(self._context(ConnectionResetError(10054, "reset")))
             loop.call_exception_handler(self._context(RuntimeError("real problem")))
         finally:

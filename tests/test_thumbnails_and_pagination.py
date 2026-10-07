@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from mpc_forge.config import PATHS
-from mpc_forge.services import thumbnails
+from mpc_forge.services.art import thumbnails
 
 
 def _prints_url(deck, card, **params) -> str:

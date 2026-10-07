@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from mpc_forge.db import get_session
 from mpc_forge.models import CustomArt
+from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.schemas import AddCustomArtFromUrlRequest, RescanResult
-from mpc_forge.services import custom_art as custom_art_service
+from mpc_forge.services.art import custom_art as custom_art_service
 
 router = APIRouter(prefix="/api/custom-art", tags=["custom-art"])
-
-DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 @router.post("/rescan", response_model=RescanResult)

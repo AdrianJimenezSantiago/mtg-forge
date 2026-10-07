@@ -14,10 +14,8 @@ from mpc_forge.models import (
 log = logging.getLogger(__name__)
 
 
-from mpc_forge.routes.decks._common import (
-    DbDep,
-    make_router,
-)
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.dependencies import DbDep
 
 router = make_router()
 

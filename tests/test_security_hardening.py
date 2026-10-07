@@ -5,8 +5,8 @@ import logging
 import pytest
 
 from mpc_forge.middleware import _hostname, is_same_origin
-from mpc_forge.services import settings as settings_service
-from mpc_forge.services.logging_setup import RedactSecretsFilter, redact
+from mpc_forge.services.system import settings as settings_service
+from mpc_forge.services.system.logging_setup import RedactSecretsFilter, redact
 
 FAKE_KEY = "AIzaSyD-ExampleKeyForTestsOnly-0123456789"
 

@@ -8,21 +8,21 @@ import pytest
 
 class TestNormalization:
     def test_asciifold_basic(self):
-        from mpc_forge.services.gdrive_indexer import normalize_filename
+        from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
         assert normalize_filename("Jayā Ballard.png") == "jaya ballard"
         assert normalize_filename("Naïve.png") == "naive"
         assert normalize_filename("Café.png") == "cafe"
 
     def test_asciifold_ligatures(self):
-        from mpc_forge.services.gdrive_indexer import normalize_filename
+        from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
         assert normalize_filename("Æther Vial.png") == "aether vial"
         assert normalize_filename("Œstrus.png") == "oestrus"
         assert normalize_filename("Straße.png") == "strasse"
 
     def test_normalize_strips_variants(self):
-        from mpc_forge.services.gdrive_indexer import normalize_filename
+        from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
         assert normalize_filename("Forest (Full Art).png") == "forest"
         assert normalize_filename("Forest - by Chowning.png") == "forest"
@@ -31,7 +31,7 @@ class TestNormalization:
 
 class TestExtractTags:
     def test_extract_full_art(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, flags = extract_tags("Sol Ring (Full Art).png")
         assert csv == "full_art"
@@ -39,7 +39,7 @@ class TestExtractTags:
         assert flags["is_borderless"] is False
 
     def test_extract_multiple_tags(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, flags = extract_tags("Forest (FA, Retro) [BL].png")
         assert set(csv.split(",")) == {"borderless", "full_art", "retro"}
@@ -48,13 +48,13 @@ class TestExtractTags:
         assert flags["is_retro"]
 
     def test_extract_folder_brackets(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, _ = extract_tags("Forest.png", "Chilli/Amonkhet [Full Art]/sub")
         assert "full_art" in csv
 
     def test_extract_unknown_tag_ignored(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, _ = extract_tags("Forest (asdf).png")
         assert csv == ""
@@ -175,29 +175,29 @@ class TestSupportedSitesAPI:
 
 class TestCanonicalMetadata:
     def test_canonical_filename(self):
-        from mpc_forge.services.gdrive_indexer import extract_canonical
+        from mpc_forge.services.indexing.gdrive_indexer import extract_canonical
 
         assert extract_canonical("Opt [DMU 100].png") == ("dmu", "100", "filename")
 
     def test_canonical_folder(self):
-        from mpc_forge.services.gdrive_indexer import extract_canonical
+        from mpc_forge.services.indexing.gdrive_indexer import extract_canonical
 
         assert extract_canonical("Forest.png", "[LEA 275] folder/") == ("lea", "275", "folder")
 
     def test_canonical_ignores_tag_vocab(self):
-        from mpc_forge.services.gdrive_indexer import extract_canonical
+        from mpc_forge.services.indexing.gdrive_indexer import extract_canonical
 
         assert extract_canonical("X [Full Art].png") == (None, None, "")
         assert extract_canonical("X [Alt Art].png") == (None, None, "")
         assert extract_canonical("X [BACK].png") == (None, None, "")
 
     def test_canonical_no_tag(self):
-        from mpc_forge.services.gdrive_indexer import extract_canonical
+        from mpc_forge.services.indexing.gdrive_indexer import extract_canonical
 
         assert extract_canonical("Random file.png") == (None, None, "")
 
     def test_canonical_collector_number_with_symbols(self):
-        from mpc_forge.services.gdrive_indexer import extract_canonical
+        from mpc_forge.services.indexing.gdrive_indexer import extract_canonical
 
         assert extract_canonical("X [BIG 10★].png") == ("big", "10★", "filename")
         assert extract_canonical("X [SET 42a].png") == ("set", "42a", "filename")
@@ -214,20 +214,20 @@ class TestFTS5:
 
 class TestSourceTypes:
     def test_registry_contains_all_types(self):
-        from mpc_forge.services.source_types import list_registered
+        from mpc_forge.services.indexing.source_types import list_registered
 
         keys = {k for k, _ in list_registered()}
         assert keys == {"gdrive", "gdrive-file", "local-folder", "http-listing", "s3"}
 
     def test_resolve_returns_class(self):
-        from mpc_forge.services.source_types import resolve
+        from mpc_forge.services.indexing.source_types import resolve
 
         assert resolve("gdrive").__name__ == "GDriveSourceType"
         assert resolve("local-folder").__name__ == "LocalFolderSourceType"
         assert resolve("nonexistent") is None
 
     def test_local_folder_file_id_roundtrip(self):
-        from mpc_forge.services.source_types.local_folder import (
+        from mpc_forge.services.indexing.source_types.local_folder import (
             _decode_relpath,
             _encode_relpath,
         )
@@ -236,7 +236,7 @@ class TestSourceTypes:
             assert _decode_relpath(_encode_relpath(path)) == path
 
     def test_local_folder_validates_url(self, tmp_path):
-        from mpc_forge.services.source_types import resolve
+        from mpc_forge.services.indexing.source_types import resolve
 
         cls = resolve("local-folder")
         assert cls.validate_url(str(tmp_path)).endswith(tmp_path.name)
@@ -277,12 +277,12 @@ class TestSourceTypes:
 
 class TestPHash:
     def test_is_available_reported(self):
-        from mpc_forge.services import phash
+        from mpc_forge.services.art import phash
 
         assert isinstance(phash.is_available(), bool)
 
     def test_hamming_distance(self):
-        from mpc_forge.services import phash
+        from mpc_forge.services.art import phash
 
         assert phash.hamming_distance("ffffffffffffffff", "ffffffffffffffff") == 0
         assert phash.hamming_distance("ffffffffffffffff", "fffffffffffffffe") == 1
@@ -290,7 +290,7 @@ class TestPHash:
         assert phash.hamming_distance("bad", "worse") == -1
 
     def test_compute_from_bytes(self):
-        from mpc_forge.services import phash
+        from mpc_forge.services.art import phash
 
         if not phash.is_available():
             pytest.skip("Pillow/imagehash no instalados")
@@ -305,7 +305,7 @@ class TestPHash:
 
 class TestPrintRuns:
     def _mock(self, name, qty, back=False):
-        from mpc_forge.services.xml_generator import DeckCardResolved
+        from mpc_forge.services.printing.xml_generator import DeckCardResolved
 
         return DeckCardResolved(
             name=name,
@@ -318,13 +318,13 @@ class TestPrintRuns:
         )
 
     def test_empty_returns_no_runs(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         plan = split_into_runs([])
         assert plan.total_runs == 0 and plan.total_cards == 0
 
     def test_small_deck_one_run(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         plan = split_into_runs([self._mock("X", 5)])
         assert plan.total_runs == 1
@@ -332,7 +332,7 @@ class TestPrintRuns:
         assert plan.runs[0].wasted_slots == 13
 
     def test_exact_tier(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         cards = [self._mock(f"C{i}", 1) for i in range(612)]
         plan = split_into_runs(cards)
@@ -341,7 +341,7 @@ class TestPrintRuns:
         assert plan.runs[0].wasted_slots == 0
 
     def test_split_over_max_tier(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         cards = [self._mock(f"C{i}", 1) for i in range(700)]
         plan = split_into_runs(cards)
@@ -350,7 +350,7 @@ class TestPrintRuns:
         assert sum(r.total_cards for r in plan.runs) == 700
 
     def test_fragment_high_quantity_card(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         plan = split_into_runs([self._mock("Basic", 800)])
         assert plan.total_runs >= 2
@@ -358,7 +358,7 @@ class TestPrintRuns:
         assert total == 800
 
     def test_back_path_preserved_on_fragment(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         plan = split_into_runs([self._mock("Delver", 700, back=True)])
         assert plan.total_runs >= 2
@@ -368,7 +368,7 @@ class TestPrintRuns:
                 assert c.back_name == "Delver back"
 
     def test_max_tier_forced(self):
-        from mpc_forge.services.print_runs import split_into_runs
+        from mpc_forge.services.printing.print_runs import split_into_runs
 
         cards = [self._mock(f"C{i}", 1) for i in range(500)]
         plan = split_into_runs(cards, max_tier=108)
@@ -378,7 +378,7 @@ class TestPrintRuns:
     def test_summary_dict_json_serializable(self):
         import json
 
-        from mpc_forge.services.print_runs import split_into_runs, summary_dict
+        from mpc_forge.services.printing.print_runs import split_into_runs, summary_dict
 
         cards = [self._mock(f"C{i}", 1) for i in range(50)]
         plan = split_into_runs(cards)
@@ -449,13 +449,13 @@ class TestDFCBulkLookup:
 
 class TestRecommender:
     def test_fold_normalizes(self):
-        from mpc_forge.services.recommender import _fold
+        from mpc_forge.services.art.recommender import _fold
 
         assert _fold("Yeong-Hao Han") == _fold("Yeong Hao Han") == "yeong hao han"
         assert _fold("Rebecca Guay") == "rebecca guay"
 
     def test_pick_best_prefers_regular_recent(self):
-        from mpc_forge.services.recommender import _pick_best_printing
+        from mpc_forge.services.art.recommender import _pick_best_printing
 
         candidates = [
             {"promo": True, "full_art": False, "released_at": "2024-01-01"},
@@ -506,7 +506,7 @@ class TestExtrasBackend:
     async def test_dfc_revert_skips_full_dfc_names(self, client):
         from mpc_forge.db import session_scope
         from mpc_forge.models import DFCPair
-        from mpc_forge.services.deck_service import _revert_dfc_backs_to_fronts
+        from mpc_forge.services.decks.importer import _revert_dfc_backs_to_fronts
 
         async with session_scope() as s:
             s.add(
@@ -530,7 +530,7 @@ class TestExtrasBackend:
         assert entries[1].get("dfc_reverted_from") == "Lasting Fayth"
 
     def test_parser_state_machine_sideboard(self):
-        from mpc_forge.clients.moxfield import parse_plain_decklist
+        from mpc_forge.services.decks.decklist_parser import parse_plain_decklist
 
         text = "//Commanders\n1 Atraxa\n//Mainboard\n1 Sol Ring\n//Sideboard\n2 Blood Moon"
         entries = parse_plain_decklist(text)
@@ -540,7 +540,7 @@ class TestExtrasBackend:
         assert by_name["Blood Moon"]["role"] == "sideboard"
 
     def test_parser_sb_prefix_mtgo(self):
-        from mpc_forge.clients.moxfield import parse_plain_decklist
+        from mpc_forge.services.decks.decklist_parser import parse_plain_decklist
 
         text = "1 Sol Ring\nSB: 2 Blood Moon\n1 Lightning Bolt"
         entries = parse_plain_decklist(text)
@@ -550,7 +550,7 @@ class TestExtrasBackend:
         assert by_name["Lightning Bolt"]["role"] == "mainboard"
 
     def test_parser_line_starting_with_digit_not_header(self):
-        from mpc_forge.clients.moxfield import parse_plain_decklist
+        from mpc_forge.services.decks.decklist_parser import parse_plain_decklist
 
         entries = parse_plain_decklist("4 Sideboard")
         assert len(entries) == 1
@@ -575,7 +575,7 @@ class TestExtrasBackend:
             (tmp_path / "tag_vocabulary.json").write_text(
                 json.dumps({"aliases": {"gold_border": ["gold border", "gld"]}})
             )
-            from mpc_forge.services.gdrive_indexer import (
+            from mpc_forge.services.indexing.gdrive_indexer import (
                 extract_tags,
                 reload_tag_vocabulary,
             )
@@ -585,19 +585,19 @@ class TestExtrasBackend:
             assert "gold_border" in csv
         finally:
             _cfg.PATHS = old_paths
-            from mpc_forge.services.gdrive_indexer import reload_tag_vocabulary as _r
+            from mpc_forge.services.indexing.gdrive_indexer import reload_tag_vocabulary as _r
 
             _r()
 
     def test_folder_segment_exact_match(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, flags = extract_tags("Opt.png", "Chilli/Full Art/Opt.png")
         assert "full_art" in csv
         assert flags["is_full_art"]
 
     def test_folder_segment_partial_not_matched(self):
-        from mpc_forge.services.gdrive_indexer import extract_tags
+        from mpc_forge.services.indexing.gdrive_indexer import extract_tags
 
         csv, flags = extract_tags("Opt.png", "Full Art Cards/Opt.png")
         assert "full_art" not in csv
@@ -651,11 +651,11 @@ class TestExtrasBackend:
     def test_dp_solver_borderline_case(self):
         from pathlib import Path
 
-        from mpc_forge.services.print_runs import (
+        from mpc_forge.services.printing.print_runs import (
             split_into_runs,
             split_into_runs_optimized,
         )
-        from mpc_forge.services.xml_generator import DeckCardResolved
+        from mpc_forge.services.printing.xml_generator import DeckCardResolved
 
         cards = [
             DeckCardResolved(
@@ -728,14 +728,14 @@ class TestExtrasBackend:
         assert r.status_code in (200, 501)
 
     def test_s3_registered(self):
-        from mpc_forge.services.source_types import resolve
+        from mpc_forge.services.indexing.source_types import resolve
 
         cls = resolve("s3")
         assert cls is not None
         assert cls.__name__ == "S3SourceType"
 
     def test_s3_parses_all_url_forms(self):
-        from mpc_forge.services.source_types.s3 import _parse_s3_url
+        from mpc_forge.services.indexing.source_types.s3 import _parse_s3_url
 
         cases = [
             (
@@ -757,14 +757,14 @@ class TestExtrasBackend:
             assert got == expected, f"{url} → {got}"
 
     def test_s3_validate_url_canonical(self):
-        from mpc_forge.services.source_types import resolve
+        from mpc_forge.services.indexing.source_types import resolve
 
         cls = resolve("s3")
         assert cls.validate_url("https://foo.s3.amazonaws.com/bar/baz") == "s3://foo/bar/baz"
         assert cls.validate_url("s3://foo") == "s3://foo"
 
     def test_s3_validate_url_invalid(self):
-        from mpc_forge.services.source_types import resolve
+        from mpc_forge.services.indexing.source_types import resolve
 
         cls = resolve("s3")
         with pytest.raises(ValueError):
@@ -773,7 +773,7 @@ class TestExtrasBackend:
             cls.validate_url("s3://")
 
     def test_s3_autodetect_in_art_sources(self):
-        from mpc_forge.services.art_sources import _detect_source_type
+        from mpc_forge.services.indexing.art_sources import _detect_source_type
 
         detected_type, canonical = _detect_source_type("s3://mtg-drops/full-art/")
         assert detected_type == "s3"

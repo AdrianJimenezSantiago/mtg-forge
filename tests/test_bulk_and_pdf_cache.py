@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from mpc_forge.services import bulk_data
-from mpc_forge.services.pdf_generator import _ImageReaderCache
+from mpc_forge.services.cards import bulk_data
+from mpc_forge.services.printing.pdf_generator import _ImageReaderCache
 
 SIMPLE_CARD = {
     "id": "aaaa-1111",

@@ -235,10 +235,10 @@ class _CountingScryfall:
 
 @pytest.fixture
 def counting(client, fake_scryfall):
-    from mpc_forge.services import deck_service
+    from mpc_forge.services.cards import printings
 
-    deck_service._name_memo.clear()
-    deck_service._prints_complete.clear()
+    printings._name_memo.clear()
+    printings._prints_complete.clear()
     return _CountingScryfall(fake_scryfall)
 
 
@@ -247,10 +247,10 @@ class TestCacheFirstImport:
 
     async def _import(self, scryfall, text=TEXT):
         from mpc_forge.db import session_scope
-        from mpc_forge.services import deck_service
+        from mpc_forge.services.decks import importer
 
         async with session_scope() as db:
-            deck, unresolved = await deck_service.import_from_plaintext(
+            deck, unresolved = await importer.import_from_plaintext(
                 db,
                 scryfall,
                 "Deck",
@@ -272,12 +272,12 @@ class TestCacheFirstImport:
 
     async def test_imports_by_id_use_the_cache(self, counting):
         from mpc_forge.db import session_scope
-        from mpc_forge.services import deck_service
+        from mpc_forge.services.cards import printings
 
         await self._import(counting)
         entries = [{"name": "Sol Ring", "quantity": 1, "scryfall_id": "sr-en", "role": "mainboard"}]
         async with session_scope() as db:
-            out = await deck_service.resolve_cards(db, counting, entries)
+            out = await printings.resolve_cards(db, counting, entries)
         assert out[0]["resolved"] and out[0]["scryfall_id"] == "sr-en"
         assert len(counting.collection_calls) == 1
 
@@ -324,26 +324,26 @@ class TestCacheFirstImport:
 class TestPrintsPreloadCache:
     async def test_single_printing_card_is_fetched_only_once(self, counting):
         from mpc_forge.db import session_scope
-        from mpc_forge.services import deck_service
+        from mpc_forge.services.cards import printings
 
         await TestCacheFirstImport()._import(counting)
         for _ in range(3):
             async with session_scope() as db:
-                await deck_service.fetch_printings_for_oracle(db, counting, "oracle-command-tower")
+                await printings.fetch_printings_for_oracle(db, counting, "oracle-command-tower")
         assert counting.prints_calls == ["oracle-command-tower"]
 
 
 class TestTieredRateLimiter:
     @pytest.fixture
     def frozen(self, monkeypatch):
-        from mpc_forge.services import rate_limiter
+        from mpc_forge.utils import rate_limiter
 
         clock = {"now": 1000.0}
         monkeypatch.setattr(rate_limiter.time, "monotonic", lambda: clock["now"])
         return clock
 
     def test_heavy_reservations_keep_heavy_spacing_even_with_light_traffic(self, frozen):
-        from mpc_forge.services.rate_limiter import TieredRateLimiter
+        from mpc_forge.utils.rate_limiter import TieredRateLimiter
 
         lim = TieredRateLimiter(general=0.1, heavy=0.5)
         order = [True, False, False, False, False, False, True, False, True]
@@ -354,7 +354,7 @@ class TestTieredRateLimiter:
         assert all(b - a >= 0.1 - 1e-9 for a, b in zip(every, every[1:]))
 
     def test_light_requests_fill_gaps_between_future_heavy_slots(self, frozen):
-        from mpc_forge.services.rate_limiter import TieredRateLimiter
+        from mpc_forge.utils.rate_limiter import TieredRateLimiter
 
         lim = TieredRateLimiter(general=0.1, heavy=0.5)
         now = frozen["now"]
@@ -381,7 +381,7 @@ class TestBatchedPreload:
         await sc.aclose()
 
     async def test_preload_batches_uncached_cards(self, counting, deck, monkeypatch):
-        from mpc_forge.services import deck_service, preloader
+        from mpc_forge.services.cards import preloader, printings
 
         batches: list[list[str]] = []
 
@@ -390,7 +390,7 @@ class TestBatchedPreload:
             return []
 
         counting.prints_by_oracle_ids = prints_by_oracle_ids
-        monkeypatch.setattr(deck_service, "PRINTS_BATCH_SIZE", 2)
+        monkeypatch.setattr(printings, "PRINTS_BATCH_SIZE", 2)
         state = await preloader.start(deck["id"], counting)
         await state.task
         assert sorted(len(b) for b in batches) == [1, 2]
@@ -407,10 +407,17 @@ class TestSplitXmlRegression:
     async def test_split_xml_with_print_runs_does_not_crash(self, client, deck, monkeypatch):
         from pathlib import Path
 
-        from mpc_forge.routes import export
-        from mpc_forge.services.xml_generator import DeckCardResolved, XMLBuildResult
+        from mpc_forge.routes.export import xml as export
+        from mpc_forge.services.printing.xml_generator import DeckCardResolved, XMLBuildResult
 
         async def fake_resolve(db, scryfall, art_cache, deck_obj):
+            from sqlalchemy import select
+
+            from mpc_forge.models import DeckCard
+
+            cards = (
+                await db.scalars(select(DeckCard).where(DeckCard.deck_id == deck_obj.id))
+            ).all()
             return [
                 DeckCardResolved(
                     name=c.name,
@@ -418,7 +425,7 @@ class TestSplitXmlRegression:
                     scryfall_id=c.scryfall_id,
                     front_path=Path("front.png"),
                 )
-                for c in deck_obj.cards
+                for c in cards
             ]
 
         def fake_build(*, cards, output_path, **_):

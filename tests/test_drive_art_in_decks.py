@@ -138,7 +138,7 @@ class TestDriveSearchForSolRing:
 
 class TestNormalizationForSearch:
     def test_filename_normalization_consistency(self):
-        from mpc_forge.services.gdrive_indexer import normalize_filename
+        from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
         card_name = "Sol Ring"
         q_norm = normalize_filename(card_name)
@@ -161,7 +161,7 @@ class TestNormalizationForSearch:
             )
 
     def test_diacritics_normalization(self):
-        from mpc_forge.services.gdrive_indexer import normalize_filename
+        from mpc_forge.services.indexing.gdrive_indexer import normalize_filename
 
         assert normalize_filename("Jayā Ballard.png") == "jaya ballard"
         assert normalize_filename("Jaya Ballard") == "jaya ballard"
@@ -258,7 +258,7 @@ class TestFTS5SearchPath:
 class TestLIKEFallbackPath:
     async def test_like_exact_match(self, client, indexed_local_source):
         from mpc_forge.db import session_scope
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         original_cache = gdrive_search._fts5_available_cache
         gdrive_search._fts5_available_cache = False
@@ -280,24 +280,24 @@ class TestLIKEFallbackPath:
 
 class TestScoring:
     def test_exact_match(self):
-        from mpc_forge.services.gdrive_search import _score_match
+        from mpc_forge.services.indexing.gdrive_search import _score_match
 
         assert _score_match("sol ring", "sol ring") == 100
 
     def test_false_positive_rejection(self):
-        from mpc_forge.services.gdrive_search import _score_match
+        from mpc_forge.services.indexing.gdrive_search import _score_match
 
         s = _score_match("sol ring", "cursed sol ring")
         assert s < 100, "Cursed Sol Ring no debería ser score 100"
 
     def test_superset_name_low_score(self):
-        from mpc_forge.services.gdrive_search import _score_match
+        from mpc_forge.services.indexing.gdrive_search import _score_match
 
         s = _score_match("sol", "sol ring")
         assert s <= 55, f"'sol' vs 'sol ring' scored {s}, debería ser bajo"
 
     def test_longer_query_with_extra_token(self):
-        from mpc_forge.services.gdrive_search import _score_match
+        from mpc_forge.services.indexing.gdrive_search import _score_match
 
         s = _score_match("bruna the fading light", "bruna the fading light retro")
         assert s >= 85
@@ -305,23 +305,23 @@ class TestScoring:
 
 class TestFTSEscaping:
     def test_basic_escape(self):
-        from mpc_forge.services.gdrive_search import _fts_escape
+        from mpc_forge.services.indexing.gdrive_search import _fts_escape
 
         assert _fts_escape("sol ring") == '"sol" "ring"*'
 
     def test_single_word(self):
-        from mpc_forge.services.gdrive_search import _fts_escape
+        from mpc_forge.services.indexing.gdrive_search import _fts_escape
 
         assert _fts_escape("forest") == '"forest"*'
 
     def test_special_chars_in_name(self):
-        from mpc_forge.services.gdrive_search import _fts_escape
+        from mpc_forge.services.indexing.gdrive_search import _fts_escape
 
         result = _fts_escape('sol "ring"')
         assert '"' in result
 
     def test_empty_query(self):
-        from mpc_forge.services.gdrive_search import _fts_escape
+        from mpc_forge.services.indexing.gdrive_search import _fts_escape
 
         assert _fts_escape("") == ""
         assert _fts_escape("   ") == ""
@@ -469,7 +469,7 @@ class TestSearchURLsForNonGdriveSources:
             )
 
     async def test_gdrive_source_still_generates_drive_urls(self):
-        from mpc_forge.services.gdrive_search import _download_url, _thumb_url
+        from mpc_forge.services.indexing.gdrive_search import _download_url, _thumb_url
 
         gdrive_file_id = "1abc123XYZ_test"
         thumb = _thumb_url(gdrive_file_id)

@@ -5,7 +5,7 @@ import os
 import pytest
 
 from mpc_forge import config as cfg
-from mpc_forge.services import storage
+from mpc_forge.services.system import storage
 
 
 @pytest.fixture(autouse=True)

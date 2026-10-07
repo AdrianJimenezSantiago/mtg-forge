@@ -120,6 +120,12 @@ SAMPLE_CARDS: dict[str, dict] = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _restore_paths():
+    yield
+    _cfg.PATHS = PATHS
+
+
 @pytest.fixture
 def sample_cards() -> dict[str, dict]:
     return SAMPLE_CARDS
@@ -198,7 +204,7 @@ async def client(fake_scryfall) -> AsyncIterator:
     from mpc_forge.app import create_app
     from mpc_forge.clients.moxfield import MoxfieldClient
     from mpc_forge.db import Base, engine, init_db
-    from mpc_forge.services.art_cache import ArtCache
+    from mpc_forge.services.art.art_cache import ArtCache
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

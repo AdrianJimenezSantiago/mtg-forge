@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Annotated
 
 from fastapi import (
-    Depends,
     HTTPException,
     status,
 )
@@ -13,13 +11,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import (
     ArtPreference,
     Deck,
     DeckCard,
     PrintingCache,
 )
+from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.schemas import (
     AddCardRequest,
     DeckCardView,
@@ -29,19 +27,14 @@ from mpc_forge.schemas import (
     UpdateCardRequest,
     UpdateDeckRequest,
 )
-from mpc_forge.services import (
-    deck_activity,
-    deck_service,
-    deck_validation,
-)
-from mpc_forge.services.deck_activity import DeckActivityKind as K
+from mpc_forge.services.cards import printings
+from mpc_forge.services.decks import deck_activity, deck_validation
+from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
 
 from mpc_forge.routes.decks._common import (
-    DbDep,
-    _get_scryfall,
     make_router,
 )
 from mpc_forge.routes.decks._views import (
@@ -244,7 +237,7 @@ async def add_card(
     deck_id: int,
     payload: AddCardRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> DeckCardView:
     deck = await db.get(Deck, deck_id)
     if not deck:
@@ -259,7 +252,7 @@ async def add_card(
             status.HTTP_400_BAD_REQUEST, f"Carta «{payload.name}» no encontrada en Scryfall"
         )
 
-    printing = await deck_service.upsert_printing(db, raw)
+    printing = await printings.upsert_printing(db, raw)
 
     existing = None
     if printing.oracle_id:

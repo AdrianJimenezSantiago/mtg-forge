@@ -211,7 +211,7 @@ class TestBuildProgress:
         assert data["deck_id"] == deck["id"]
 
     async def test_progress_state_after_manual_start(self, client, deck):
-        from mpc_forge.services import build_progress
+        from mpc_forge.services.printing import build_progress
 
         build_progress.start(deck["id"], total=10, kind="xml")
         build_progress.tick(deck["id"], "Sol Ring")

@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+from mpc_forge.routes import (
+    art_sources,
+    art_themes,
+    autofill,
+    bulk,
+    calibration,
+    collection,
+    custom_art,
+    debug,
+    decks,
+    dfc_pairs,
+    drives,
+    export,
+    library,
+    phash,
+    planner,
+    settings,
+    sidebar,
+    snapshots,
+    storage,
+    thumbs,
+    ui,
+)
+
+ROUTERS: tuple[APIRouter, ...] = (
+    ui.router,
+    decks.router,
+    export.router,
+    custom_art.router,
+    settings.router,
+    autofill.router,
+    art_sources.router,
+    art_sources.local_source_router,
+    drives.router,
+    phash.router,
+    dfc_pairs.router,
+    sidebar.router,
+    collection.router,
+    planner.router,
+    art_themes.router,
+    snapshots.router,
+    library.router,
+    calibration.router,
+    bulk.router,
+    thumbs.router,
+    storage.router,
+    debug.router,
+)

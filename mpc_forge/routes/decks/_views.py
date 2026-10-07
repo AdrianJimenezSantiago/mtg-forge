@@ -15,7 +15,9 @@ from mpc_forge.schemas import (
     DeckView,
     IllegalCardView,
 )
-from mpc_forge.services import custom_art, deck_covers, deck_validation, history
+from mpc_forge.services.art import custom_art
+from mpc_forge.services.decks import deck_covers, deck_validation
+from mpc_forge.services.printing import history
 
 log = logging.getLogger(__name__)
 
@@ -271,7 +273,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
     oracle_ids = {c.oracle_id for c in cards_list if c.oracle_id}
     prints_count_by_oracle = await _prints_count_by_oracle(db, oracle_ids)
 
-    from mpc_forge.services.custom_art import normalize_card_name
+    from mpc_forge.services.art.custom_art import normalize_card_name
 
     name_norms = {normalize_card_name(c.name) for c in cards_list}
     custom_count_by_name = await _custom_count_by_name(db, name_norms)

@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.db import get_session
 from mpc_forge.models import (
     ArtPreference,
@@ -24,28 +23,23 @@ from mpc_forge.models import (
     LocalArt,
     PrintingCache,
 )
+from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.schemas import (
     ArtOption,
     ArtOptionsPage,
     ChangeArtRequest,
     DeckCardView,
 )
-from mpc_forge.services import (
-    custom_art,
-    deck_activity,
-    deck_service,
-    history,
-    preloader,
-    thumbnails,
-)
-from mpc_forge.services.deck_activity import DeckActivityKind as K
+from mpc_forge.services.art import custom_art, thumbnails
+from mpc_forge.services.cards import preloader, printings
+from mpc_forge.services.decks import deck_activity
+from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
+from mpc_forge.services.printing import history
 
 log = logging.getLogger(__name__)
 
 
 from mpc_forge.routes.decks._common import (
-    DbDep,
-    _get_scryfall,
     make_router,
 )
 from mpc_forge.routes.decks._views import (
@@ -93,7 +87,7 @@ async def list_printings_for_card(
     deck_id: int,
     card_id: int,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
     offset: int = Query(0, ge=0),
     limit: int = Query(60, ge=1, le=300),
     sort: str = Query("released_desc"),
@@ -129,7 +123,7 @@ async def list_printings_for_card(
                 )
             )
 
-    prints = await deck_service.fetch_printings_for_oracle(db, scryfall, dc.oracle_id)
+    prints = await printings.fetch_printings_for_oracle(db, scryfall, dc.oracle_id)
     pref = await db.get(ArtPreference, dc.oracle_id) if dc.oracle_id else None
     last_used = await history.last_scryfall_id_used(db, dc.oracle_id) if dc.oracle_id else None
 
@@ -223,7 +217,7 @@ async def list_printings_for_card(
 @router.post("/{deck_id}/preload-prints")
 async def preload_prints(
     deck_id: int,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> dict:
     state = await preloader.start(deck_id, scryfall)
     return state.to_dict()
@@ -248,7 +242,7 @@ async def change_art(
     deck_id: int,
     payload: ChangeArtRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> DeckCardView:
     dc = await db.get(DeckCard, payload.deck_card_id)
     if not dc or dc.deck_id != deck_id:
@@ -275,7 +269,7 @@ async def change_art(
             raw = await scryfall.by_id(payload.scryfall_id)
             if not raw:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "scryfall_id inválido")
-            await deck_service.upsert_printing(db, raw)
+            await printings.upsert_printing(db, raw)
         if payload.face == "back":
             dc.custom_art_back_id = None
         else:
@@ -392,9 +386,9 @@ async def recommend_by_artist(
     deck_id: int,
     payload: ArtistRecommendRequest,
     db: Annotated[AsyncSession, Depends(get_session)],
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> ArtistRecommendResponse:
-    from mpc_forge.services.recommender import recommend_by_artist as _rec
+    from mpc_forge.services.art.recommender import recommend_by_artist as _rec
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
@@ -460,9 +454,9 @@ async def recommend_by_style_endpoint(
     deck_id: int,
     payload: StyleRecommendRequest,
     db: Annotated[AsyncSession, Depends(get_session)],
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> StyleRecommendResponse:
-    from mpc_forge.services.recommender import recommend_by_style
+    from mpc_forge.services.art.recommender import recommend_by_style
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:

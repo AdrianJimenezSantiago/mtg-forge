@@ -1,36 +1,30 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
 from fastapi import (
-    Depends,
     HTTPException,
     status,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import (
     DeckCard,
     PrintingCache,
 )
+from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.schemas import (
     DeckCardView,
 )
-from mpc_forge.services import (
-    deck_activity,
-    deck_service,
-)
-from mpc_forge.services.deck_activity import DeckActivityKind as K
+from mpc_forge.services.cards import printings
+from mpc_forge.services.decks import deck_activity
+from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
 
 from mpc_forge.routes.decks._common import (
-    DbDep,
-    _get_scryfall,
     make_router,
 )
 from mpc_forge.routes.decks._views import (
@@ -44,7 +38,7 @@ router = make_router()
 async def tokens_analysis(
     deck_id: int,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> dict:
     import json as _json
 
@@ -122,7 +116,7 @@ async def tokens_analysis(
         try:
             raw = await scryfall.by_id(sfid)
             if raw:
-                cached = await deck_service.upsert_printing(db, raw)
+                cached = await printings.upsert_printing(db, raw)
                 token_meta_by_id[sfid] = cached
         except Exception as e:
             log.warning("No se pudo cachear metadata de token %s: %s", sfid, e)
@@ -171,7 +165,7 @@ async def tokens_add_many(
     deck_id: int,
     payload: TokensAddManyRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> list[DeckCardView]:
     if not payload.scryfall_ids:
         return []
@@ -199,7 +193,7 @@ async def tokens_add_many(
             raw = await scryfall.by_id(sfid)
             if not raw:
                 continue
-            cached = await deck_service.upsert_printing(db, raw)
+            cached = await printings.upsert_printing(db, raw)
         new_dc = DeckCard(
             deck_id=deck_id,
             oracle_id=cached.oracle_id or "",
@@ -235,7 +229,7 @@ async def add_related_cards(
     deck_id: int,
     card_id: int,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> list[DeckCardView]:
     import json as _json
 
@@ -278,7 +272,7 @@ async def add_related_cards(
             raw = await scryfall.by_id(sfid)
             if not raw:
                 continue
-            cached = await deck_service.upsert_printing(db, raw)
+            cached = await printings.upsert_printing(db, raw)
 
         new_dc = DeckCard(
             deck_id=deck_id,

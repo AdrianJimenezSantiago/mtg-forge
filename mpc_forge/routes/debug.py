@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from mpc_forge.services import logging_setup
+from mpc_forge.services.system import logging_setup
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
 

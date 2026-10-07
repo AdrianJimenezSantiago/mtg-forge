@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from mpc_forge.db import get_session
-from mpc_forge.models import Deck, DeckCard
+from mpc_forge.models import Deck
 from mpc_forge.paths import static_dir, template_dir
-from mpc_forge.services import deck_covers
-from mpc_forge.services import i18n as i18n_service
-from mpc_forge.services.i18n import LANG_FLAGS, SUPPORTED_LANGS, detect_lang, get_translations
+from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.decks import deck_covers
+from mpc_forge.services.system import i18n as i18n_service
+from mpc_forge.services.system.i18n import (
+    LANG_FLAGS,
+    SUPPORTED_LANGS,
+    detect_lang,
+    get_translations,
+)
 
 log = logging.getLogger(__name__)
 
@@ -45,8 +49,6 @@ templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
 
 router = APIRouter(tags=["ui"])
 
-DbDep = Annotated[AsyncSession, Depends(get_session)]
-
 
 def _t_context(request: Request) -> dict:
     lang = detect_lang(request)
@@ -75,7 +77,7 @@ async def set_language(
     next_url: str = Form(default="/"),
 ) -> Response:
     from mpc_forge.middleware import is_same_origin
-    from mpc_forge.services.i18n import _TRANSLATIONS
+    from mpc_forge.services.system.i18n import _TRANSLATIONS
 
     if lang not in _TRANSLATIONS:
         lang = "es"
@@ -94,20 +96,8 @@ async def set_language(
 
 
 async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[Deck]:
-    stmt = (
-        select(Deck, func.count(DeckCard.id).label("card_count"))
-        .outerjoin(DeckCard, DeckCard.deck_id == Deck.id)
-        .group_by(Deck.id)
-        .order_by(Deck.updated_at.desc())
-    )
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    deck_rows = (await db.execute(stmt)).all()
-    covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
-
     decks = []
-    for deck, count in deck_rows:
-        cover = covers.get(deck.id, deck_covers.EMPTY)
+    for deck, count, cover in await deck_covers.decks_with_covers(db, limit):
         deck.card_count = count
         deck.commander_image_url = cover.image_url
         deck.commander_name = cover.name
@@ -117,7 +107,8 @@ async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list
 
 async def _workshop_status(db: AsyncSession) -> dict:
     from mpc_forge.models import CollectionEntry
-    from mpc_forge.services import bulk_data, gdrive_search
+    from mpc_forge.services.cards import bulk_data
+    from mpc_forge.services.indexing import gdrive_search
 
     status = {
         "printings": 0,

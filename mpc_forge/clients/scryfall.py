@@ -10,8 +10,8 @@ from typing import Any, TypeVar
 import httpx
 
 from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
-from mpc_forge.services.rate_limiter import TieredRateLimiter
 from mpc_forge.ssl_config import ssl_insecure
+from mpc_forge.utils.rate_limiter import TieredRateLimiter
 
 log = logging.getLogger(__name__)
 

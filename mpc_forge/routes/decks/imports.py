@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
 from fastapi import (
-    Depends,
     HTTPException,
     status,
 )
 
-from mpc_forge.clients.moxfield import MoxfieldClient, MoxfieldError
-from mpc_forge.clients.scryfall import ScryfallClient
+from mpc_forge.clients.moxfield import MoxfieldError
+from mpc_forge.routes.dependencies import DbDep, MoxfieldDep, ScryfallDep
 from mpc_forge.schemas import (
     ImportFromMoxfieldRequest,
     ImportFromTextRequest,
@@ -19,19 +17,13 @@ from mpc_forge.schemas import (
     SupportedSite,
     UnresolvedEntry,
 )
-from mpc_forge.services import (
-    deck_activity,
-    deck_service,
-)
-from mpc_forge.services.deck_activity import DeckActivityKind as K
+from mpc_forge.services.decks import deck_activity, importer
+from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
 
 from mpc_forge.routes.decks._common import (
-    DbDep,
-    _get_moxfield,
-    _get_scryfall,
     make_router,
 )
 from mpc_forge.routes.decks._views import (
@@ -45,11 +37,11 @@ router = make_router()
 async def import_moxfield(
     payload: ImportFromMoxfieldRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
-    moxfield: Annotated[MoxfieldClient, Depends(_get_moxfield)],
+    scryfall: ScryfallDep,
+    moxfield: MoxfieldDep,
 ) -> ImportResult:
     try:
-        deck, unresolved = await deck_service.import_from_moxfield(
+        deck, unresolved = await importer.import_from_moxfield(
             db,
             scryfall,
             moxfield,
@@ -86,9 +78,9 @@ async def import_moxfield(
 async def import_text(
     payload: ImportFromTextRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> ImportResult:
-    deck, unresolved = await deck_service.import_from_plaintext(
+    deck, unresolved = await importer.import_from_plaintext(
         db,
         scryfall,
         payload.name,
@@ -130,12 +122,12 @@ async def supported_import_sites() -> list[SupportedSite]:
 async def import_url(
     payload: ImportFromUrlRequest,
     db: DbDep,
-    scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
+    scryfall: ScryfallDep,
 ) -> ImportResult:
     from mpc_forge.clients.import_sites.base import ImportSiteError
 
     try:
-        deck, unresolved = await deck_service.import_from_url(
+        deck, unresolved = await importer.import_from_url(
             db,
             scryfall,
             payload.url,

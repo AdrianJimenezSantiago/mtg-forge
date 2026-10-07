@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from mpc_forge.services import storage as storage_service
+from mpc_forge.services.system import storage as storage_service
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 

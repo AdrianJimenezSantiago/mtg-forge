@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mpc_forge.services import print_needs, print_planner
-from mpc_forge.services.print_planner import DeckContribution, RunPlan
+from mpc_forge.services.printing import print_needs, print_planner
+from mpc_forge.services.printing.print_planner import DeckContribution, RunPlan
 
 
 def contribution(deck_id: int, count: int, name: str = "") -> DeckContribution:

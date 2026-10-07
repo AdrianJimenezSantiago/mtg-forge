@@ -65,7 +65,7 @@ class TestStatsModal:
         ],
     )
     def test_dynamic_key_families_are_complete(self, family, keys):
-        from mpc_forge.services.i18n import _TRANSLATIONS
+        from mpc_forge.services.system.i18n import _TRANSLATIONS
 
         for lang, table in _TRANSLATIONS.items():
             missing = [k for k in keys if family + k not in table]

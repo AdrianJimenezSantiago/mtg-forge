@@ -35,7 +35,7 @@ class TestLanding:
         assert "From decklist to printed sheet." in r.text
 
     async def test_workshop_status_survives_a_broken_service(self, client, monkeypatch):
-        from mpc_forge.services import gdrive_search
+        from mpc_forge.services.indexing import gdrive_search
 
         async def boom(db):
             raise RuntimeError("índice a medio migrar")
@@ -79,7 +79,7 @@ class TestNotFoundPage:
         r = await client.get("/decks/999999", headers=HTML)
         assert r.status_code == 404
         assert 'class="nf"' in r.text
-        from mpc_forge.services.i18n import get_translations
+        from mpc_forge.services.system.i18n import get_translations
 
         assert get_translations("es").nf_deck_body in r.text
 
