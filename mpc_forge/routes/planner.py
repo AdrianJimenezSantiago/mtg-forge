@@ -1,10 +1,3 @@
-"""Endpoints del Sprint 4: planificador, diff de colección, temas y snapshots.
-
-Se agrupan en un módulo propio en lugar de repartirlos por los routers
-existentes porque son funcionalidad nueva y transversal: el planificador cruza
-mazos con colección y con tiers de precio, y no pertenece a ninguno de los
-tres.
-"""
 from __future__ import annotations
 
 import logging
@@ -34,27 +27,21 @@ class PlanRequest(BaseModel):
 
 @router.post("/api/planner/plan")
 async def build_plan(payload: PlanRequest, db: DbDep) -> dict[str, Any]:
-    """Reparte los mazos seleccionados en pedidos de MPC.
-
-    Con ``subtract_collection`` el plan se calcula sobre lo que falta por
-    imprimir, no sobre el mazo entero: es la pregunta que de verdad se hace
-    quien ya tiene parte de las cartas.
-    """
     if not payload.deck_ids:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo")
 
     if not payload.subtract_collection:
         plan = await print_planner.build_plan(
-            db, payload.deck_ids,
+            db,
+            payload.deck_ids,
             max_tier=payload.max_tier,
             keep_decks_together=payload.keep_decks_together,
         )
         return {**plan.to_dict(), "subtracted_collection": False}
 
     needs = await print_needs.compute_for_decks(
-        db, payload.deck_ids,
+        db,
+        payload.deck_ids,
         match_mode=payload.match_mode,
         include_basics=payload.include_basics,
         shared_collection=True,
@@ -89,7 +76,6 @@ async def build_plan(payload: PlanRequest, db: DbDep) -> dict[str, Any]:
 
 @router.get("/api/planner/tiers")
 async def list_tiers() -> dict[str, Any]:
-    """Tiers de MPC configurados. La vista los usa para el selector de techo."""
     return {
         "tiers": [
             {"size": int(t["size"]), "unit_usd": float(t["unit_usd"])}
@@ -100,10 +86,7 @@ async def list_tiers() -> dict[str, Any]:
 
 
 @router.get("/api/planner/compare")
-async def compare(
-    total_cards: int = Query(..., ge=1, le=100000)
-) -> dict[str, Any]:
-    """Coste de repartir N cartas con distintos techos por pedido."""
+async def compare(total_cards: int = Query(..., ge=1, le=100000)) -> dict[str, Any]:
     return {"options": print_planner.compare_alternatives(total_cards)}
 
 
@@ -114,7 +97,6 @@ async def deck_print_needs(
     match_mode: Literal["oracle", "exact"] = "oracle",
     include_basics: bool = True,
 ) -> dict[str, Any]:
-    """Qué falta por imprimir de un mazo, descontando la colección."""
     needs = await print_needs.compute_for_deck(
         db, deck_id, match_mode=match_mode, include_basics=include_basics
     )
@@ -131,15 +113,12 @@ class MultiNeedsRequest(BaseModel):
 
 
 @router.post("/api/planner/print-needs")
-async def multi_deck_needs(
-    payload: MultiNeedsRequest, db: DbDep
-) -> dict[str, Any]:
+async def multi_deck_needs(payload: MultiNeedsRequest, db: DbDep) -> dict[str, Any]:
     if not payload.deck_ids:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo")
     needs = await print_needs.compute_for_decks(
-        db, payload.deck_ids,
+        db,
+        payload.deck_ids,
         match_mode=payload.match_mode,
         include_basics=payload.include_basics,
         shared_collection=payload.shared_collection,
@@ -182,11 +161,11 @@ async def get_art_theme(theme_id: int, db: DbDep) -> dict[str, Any]:
 
 
 @router.post("/api/art-themes", status_code=status.HTTP_201_CREATED)
-async def create_art_theme(
-    payload: CreateThemeRequest, db: DbDep
-) -> dict[str, Any]:
+async def create_art_theme(payload: CreateThemeRequest, db: DbDep) -> dict[str, Any]:
     theme = await art_themes.create_from_deck(
-        db, payload.deck_id, payload.name,
+        db,
+        payload.deck_id,
+        payload.name,
         description=payload.description,
         only_customized=payload.only_customized,
     )
@@ -196,12 +175,8 @@ async def create_art_theme(
 
 
 @router.patch("/api/art-themes/{theme_id}")
-async def rename_art_theme(
-    theme_id: int, payload: RenameThemeRequest, db: DbDep
-) -> dict[str, Any]:
-    theme = await art_themes.rename_theme(
-        db, theme_id, payload.name, payload.description
-    )
+async def rename_art_theme(theme_id: int, payload: RenameThemeRequest, db: DbDep) -> dict[str, Any]:
+    theme = await art_themes.rename_theme(db, theme_id, payload.name, payload.description)
     if theme is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema no encontrado")
     return theme
@@ -214,10 +189,7 @@ async def delete_art_theme(theme_id: int, db: DbDep) -> None:
 
 
 @router.get("/api/art-themes/{theme_id}/preview/{deck_id}")
-async def preview_art_theme(
-    theme_id: int, deck_id: int, db: DbDep
-) -> dict[str, Any]:
-    """Qué cambiaría al aplicar, sin tocar nada."""
+async def preview_art_theme(theme_id: int, deck_id: int, db: DbDep) -> dict[str, Any]:
     preview = await art_themes.preview_apply(db, theme_id, deck_id)
     if preview is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema o mazo no encontrado")
@@ -225,9 +197,7 @@ async def preview_art_theme(
 
 
 @router.post("/api/art-themes/{theme_id}/apply")
-async def apply_art_theme(
-    theme_id: int, payload: ApplyThemeRequest, db: DbDep
-) -> dict[str, Any]:
+async def apply_art_theme(theme_id: int, payload: ApplyThemeRequest, db: DbDep) -> dict[str, Any]:
     snapshot = None
     if payload.create_snapshot:
         snapshot = await snapshots.create(
@@ -235,7 +205,9 @@ async def apply_art_theme(
         )
 
     result = await art_themes.apply_to_deck(
-        db, theme_id, payload.deck_id,
+        db,
+        theme_id,
+        payload.deck_id,
         overwrite_custom=payload.overwrite_custom,
     )
     if result is None:
@@ -264,11 +236,6 @@ async def create_snapshot(
 
 @router.post("/api/snapshots/{snapshot_id}/restore")
 async def restore_snapshot(snapshot_id: int, db: DbDep) -> dict[str, Any]:
-    """Devuelve el mazo al estado del snapshot.
-
-    El estado actual se guarda antes como snapshot automático: restaurar por
-    error no debe ser irreversible.
-    """
     result = await snapshots.restore(db, snapshot_id)
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")
@@ -276,19 +243,14 @@ async def restore_snapshot(snapshot_id: int, db: DbDep) -> dict[str, Any]:
 
 
 @router.get("/api/snapshots/{snapshot_id}/diff")
-async def diff_snapshot(
-    snapshot_id: int, db: DbDep, against: int | None = None
-) -> dict[str, Any]:
-    """Compara con otro snapshot, o con el estado actual si no se indica."""
+async def diff_snapshot(snapshot_id: int, db: DbDep, against: int | None = None) -> dict[str, Any]:
     result = await snapshots.diff(db, snapshot_id, against)
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")
     return result
 
 
-@router.delete(
-    "/api/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/api/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_snapshot(snapshot_id: int, db: DbDep) -> None:
     if not await snapshots.delete_snapshot(db, snapshot_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")

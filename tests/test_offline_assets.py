@@ -1,9 +1,3 @@
-"""Tests que garantizan que la interfaz funciona sin conexión a internet.
-
-La app se distribuye como un ``.exe`` local. Cualquier asset que se cargue
-desde un CDN convierte "no tengo internet" en "la app está rota". Estos tests
-fallan si alguien reintroduce una dependencia de red en el render.
-"""
 from __future__ import annotations
 
 import re
@@ -26,10 +20,20 @@ FORBIDDEN_HOSTS = [
 ]
 
 ALLOWED_DATA_HOSTS = [
-    "api.scryfall.com", "scryfall.com", "moxfield.com", "archidekt.com",
-    "deckstats.net", "tappedout.net", "cubecobra.com", "mtggoldfish.com",
-    "drive.google.com", "github.com", "makeplayingcards.com",
-    "console.cloud.google.com", "example.com", "s3.amazonaws.com",
+    "api.scryfall.com",
+    "scryfall.com",
+    "moxfield.com",
+    "archidekt.com",
+    "deckstats.net",
+    "tappedout.net",
+    "cubecobra.com",
+    "mtggoldfish.com",
+    "drive.google.com",
+    "github.com",
+    "makeplayingcards.com",
+    "console.cloud.google.com",
+    "example.com",
+    "s3.amazonaws.com",
 ]
 
 
@@ -38,10 +42,7 @@ def _html_files() -> list[Path]:
 
 
 def _asset_refs(text: str) -> list[str]:
-    """URLs que el navegador cargaría automáticamente (src/href de assets)."""
-    pattern = re.compile(
-        r'(?:src|href)\s*=\s*["\'](https?://[^"\']+)["\']', re.IGNORECASE
-    )
+    pattern = re.compile(r'(?:src|href)\s*=\s*["\'](https?://[^"\']+)["\']', re.IGNORECASE)
     dynamic = re.compile(r"\.src\s*=\s*['\"](https?://[^'\"]+)['\"]")
     return pattern.findall(text) + dynamic.findall(text)
 
@@ -66,8 +67,6 @@ class TestNoCdnAssets:
 
 
 class TestVendorBundleIsComplete:
-    """Los ficheros que los templates referencian tienen que existir."""
-
     REQUIRED = [
         "tailwind.css",
         "alpine.min.js",
@@ -89,7 +88,6 @@ class TestVendorBundleIsComplete:
         assert path.stat().st_size > 0, f"static/vendor/{name} está vacío"
 
     def test_every_local_vendor_reference_resolves(self):
-        """Ningún template puede apuntar a un /static/... que no exista."""
         pattern = re.compile(r'["\'](/static/[^"\']+)["\']')
         missing = []
         for path in [*_html_files(), STATIC / "app.js"]:
@@ -103,16 +101,6 @@ class TestVendorBundleIsComplete:
         assert not missing, "Referencias rotas a /static:\n" + "\n".join(missing)
 
     def test_mana_css_only_references_bundled_fonts(self):
-        """Todo ``url()`` de mana.min.css debe resolver a un fichero presente.
-
-        El paquete original declara cinco formatos (eot/woff/woff2/ttf/svg) y
-        nosotros solo empaquetamos woff2+woff para ahorrar 2,6 MB. Si el
-        reescrito del @font-face fallara, el navegador pediría ficheros
-        inexistentes en cada carga.
-
-        Se comprueban las URLs, no los nombres: "MPlantin" aparece como
-        `font-family` de respaldo en algunas reglas y eso es inofensivo.
-        """
         css_path = VENDOR / "mana.min.css"
         css = css_path.read_text(encoding="utf-8-sig")
         refs = re.findall(r'url\(["\']?([^"\')?#]+)', css)
@@ -120,17 +108,10 @@ class TestVendorBundleIsComplete:
         for ref in refs:
             resolved = (css_path.parent / ref).resolve()
             assert resolved.exists(), (
-                f"mana.min.css pide {ref} y no está empaquetado. Ejecuta "
-                f"npm run vendor."
+                f"mana.min.css pide {ref} y no está empaquetado. Ejecuta npm run vendor."
             )
 
     def test_tailwind_build_contains_custom_theme(self):
-        """El CSS compilado debe incluir el tema propio, no solo el default.
-
-        Si el purgado se pasa de agresivo o el config no se aplica, saldría un
-        Tailwind genérico y la app perdería toda su identidad visual sin que
-        ningún test lo notara.
-        """
         css = (VENDOR / "tailwind.css").read_text(encoding="utf-8")
         assert ".bg-bg-base{" in css, (
             "Falta la utilidad bg-bg-base — el tema personalizado no se aplicó"

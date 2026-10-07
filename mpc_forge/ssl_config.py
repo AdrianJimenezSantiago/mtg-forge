@@ -1,18 +1,3 @@
-"""Configuración de SSL/TLS.
-
-Los entornos corporativos suelen tener un proxy que intercepta HTTPS con un
-certificado firmado por una CA interna. `certifi` (que usa httpx por defecto)
-no la conoce y aparece este error:
-
-    httpx.ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED]
-    certificate verify failed: self-signed certificate in certificate chain
-
-La solución limpia es usar los certificados del sistema operativo (donde el
-admin corporativo ya ha instalado la CA). `truststore` lo hace en Python 3.10+.
-
-Escape hatch: si la variable de entorno `MPC_FORGE_INSECURE_SSL=1` está puesta,
-desactivamos la verificación. Solo úsalo si truststore no basta.
-"""
 from __future__ import annotations
 
 import logging
@@ -27,24 +12,16 @@ _runtime_insecure: bool = False
 
 
 def set_runtime_insecure(value: bool) -> None:
-    """Marca el flag runtime desde el setting. Requiere reiniciar la app para
-    que los HTTPX clients ya instanciados apliquen el nuevo modo."""
     global _runtime_insecure
     _runtime_insecure = bool(value)
 
 
 def ssl_insecure() -> bool:
-    """True si el usuario ha pedido explícitamente desactivar la verificación SSL,
-    ya sea con la env var o con el setting persistido."""
     env_on = os.environ.get(SSL_INSECURE_ENV, "").strip() in {"1", "true", "yes"}
     return env_on or _runtime_insecure
 
 
 def configure_ssl() -> str:
-    """Configura el manejo de certificados.
-
-    Devuelve un string descriptivo del modo activo (para loggear al arranque).
-    """
     if ssl_insecure():
         log.warning(
             "SSL verification DESACTIVADA (%s=1). Solo úsalo en entornos "
@@ -55,6 +32,7 @@ def configure_ssl() -> str:
 
     try:
         import truststore
+
         truststore.inject_into_ssl()
     except ImportError:
         log.info(

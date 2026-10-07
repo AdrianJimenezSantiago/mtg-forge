@@ -1,15 +1,3 @@
-"""SQLAlchemy ORM models.
-
-Diseño:
-- `PrintingCache`: catálogo de impresiones (por scryfall_id). Se rellena bajo demanda.
-- `LocalArt`: archivo físico de arte descargado (con hash para dedupe absoluto).
-- `ArtPreference`: elección persistente del usuario POR oracle_id.
-- `Deck`: mazo importado.
-- `DeckCard`: cartas dentro del mazo con la impresión elegida.
-- `PrintRun`: cada vez que el usuario "envía a MPC" un mazo (o varios).
-- `PrintRunItem`: qué cartas y cuántas copias entraron en cada run.
-- `PhysicalInventory`: opcional. Estado físico por copia impresa.
-"""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -28,37 +16,10 @@ from sqlalchemy.types import TypeDecorator
 
 
 def _utcnow() -> datetime:
-    """Timestamp aware en UTC. Usamos default Python en lugar de server_default
-    para evitar lazy-loads sincrónicos post-commit con aiosqlite."""
     return datetime.now(UTC)
 
 
 class TZDateTime(TypeDecorator):
-    """``DateTime`` que siempre devuelve valores *aware* en UTC.
-
-    El problema que resuelve
-    ------------------------
-    SQLite no tiene tipo fecha: almacena la cadena que le da SQLAlchemy, y el
-    formato por defecto no incluye el offset. Así que escribir un datetime
-    aware y volver a leerlo devolvía uno **naive**, con la zona perdida por el
-    camino. Cualquier comparación posterior contra ``datetime.now(timezone.utc)``
-    lanzaba ``TypeError: can't compare offset-naive and offset-aware datetimes``.
-
-    Hasta ahora eso se parcheaba en cada sitio de consumo, de tres formas
-    distintas (``deck_service._as_aware``, un ``replace(tzinfo=…)`` inline en
-    ``recommender``, otro en ``dfc_pairs``). Funcionaba, pero dejaba la
-    siguiente comparación que alguien escribiera expuesta al mismo fallo.
-
-    Cómo funciona
-    -------------
-    - **Al escribir**: un valor aware se convierte a UTC y se guarda naive
-      (misma representación en disco que antes — no hay migración de datos).
-      Un valor naive se asume ya en UTC, que es lo que hacía todo el código.
-    - **Al leer**: se le pega ``tzinfo=timezone.utc``. Las filas escritas antes
-      de este cambio se leen igual de bien: ya estaban en UTC, solo les faltaba
-      decirlo.
-    """
-
     impl = DateTime
     cache_ok = True
 
@@ -82,10 +43,6 @@ class Base(DeclarativeBase):
 
 
 class PrintingCache(Base):
-    """Una impresión concreta de una carta en Scryfall.
-
-    Cacheamos los campos que necesitamos para pintar la galería sin volver a llamar a Scryfall.
-    """
     __tablename__ = "printings"
 
     scryfall_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -127,11 +84,6 @@ class PrintingCache(Base):
 
 
 class LocalArt(Base):
-    """Un archivo de arte descargado a disco.
-
-    `sha256` es la clave real de dedupe: si dos scryfall_ids devuelven bytes idénticos
-    se apuntan al mismo LocalArt (poco común, pero cubre casos de reimpresiones idénticas).
-    """
     __tablename__ = "local_arts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -143,33 +95,18 @@ class LocalArt(Base):
     fetched_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
     thumb_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (
-        UniqueConstraint("scryfall_id", "face", name="uq_local_art_scryfall_face"),
-    )
+    __table_args__ = (UniqueConstraint("scryfall_id", "face", name="uq_local_art_scryfall_face"),)
 
 
 class ArtPreference(Base):
-    """Preferencia del usuario para representar una carta (por oracle_id)."""
     __tablename__ = "art_preferences"
 
     oracle_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     scryfall_id: Mapped[str] = mapped_column(String(64))
-    updated_at: Mapped[datetime] = mapped_column(
-        TZDateTime, default=_utcnow, onupdate=_utcnow
-    )
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class CustomArt(Base):
-    """Un archivo de arte custom (o alternativo) que el usuario dropea en la
-    carpeta `custom_art/`. Se indexa por el nombre de carta normalizado, y aparece
-    en la galería junto a las impresiones oficiales de Scryfall.
-
-    Convenciones de nombrado:
-        Sol Ring.png                    → Sol Ring, front
-        Sol Ring - Anime.png            → Sol Ring, front, variant="Anime"
-        Sol Ring (Retro Frame).png      → Sol Ring, front, variant="Retro Frame"
-        Delver of Secrets [BACK].png    → Delver of Secrets, back
-    """
     __tablename__ = "custom_arts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -196,9 +133,7 @@ class Deck(Base):
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )
     imported_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        TZDateTime, default=_utcnow, onupdate=_utcnow
-    )
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow)
 
     cards: Mapped[list[DeckCard]] = relationship(
         back_populates="deck", cascade="all, delete-orphan"
@@ -206,7 +141,6 @@ class Deck(Base):
 
 
 class DeckCard(Base):
-    """Una entrada del decklist con la impresión que se usará al imprimir."""
     __tablename__ = "deck_cards"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -264,7 +198,6 @@ class PrintRunItem(Base):
 
 
 class PhysicalInventory(Base):
-    """Estado físico opcional. Independiente del historial de impresión."""
     __tablename__ = "physical_inventory"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -274,28 +207,10 @@ class PhysicalInventory(Base):
         ForeignKey("decks.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(32), default="ready")
-    updated_at: Mapped[datetime] = mapped_column(
-        TZDateTime, default=_utcnow, onupdate=_utcnow
-    )
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class DeckActivity(Base):
-    """Timeline de eventos ocurridos sobre un mazo.
-
-    Cada operación relevante sobre un mazo (añadir carta, mover entre secciones,
-    cambiar arte, generar PDF/XML, localizar, …) inserta una fila aquí. El
-    frontend usa esto para pintar el "diario" del mazo en la vista de historial.
-
-    Guardamos snapshots (nombre de la carta, del mazo…) para que el evento siga
-    siendo legible aunque después se borre la carta o el mazo. Los detalles
-    específicos de cada tipo van en ``payload_json`` como JSON serializado — es
-    lo suficientemente flexible como para no tener que migrar el schema cada
-    vez que añadimos un nuevo tipo de evento.
-
-    ``kind`` es un string libre en vez de Enum para poder añadir tipos nuevos
-    sin migración de BD. Los tipos que reconoce el frontend (con su icono y
-    etiqueta) están en el JS de ``history.html``.
-    """
     __tablename__ = "deck_activity"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -313,7 +228,6 @@ class DeckActivity(Base):
 
 
 class KeyValue(Base):
-    """Pequeño store clave-valor para settings serializados y flags."""
     __tablename__ = "kv_store"
 
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -321,12 +235,6 @@ class KeyValue(Base):
 
 
 class ArtSource(Base):
-    """Google Drive u otra fuente comunitaria de arte custom.
-
-    Se gestionan a mano desde la UI de Ajustes. Cada source es un link que el
-    usuario puede abrir en el navegador para explorar y descargar imágenes,
-    o marcar como su preferida para consultas rápidas desde el editor.
-    """
     __tablename__ = "art_sources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -343,12 +251,6 @@ class ArtSource(Base):
 
 
 class IndexedArt(Base):
-    """Cada archivo de imagen descubierto al indexar un ArtSource.
-
-    Solo guardamos los metadatos suficientes para buscar y obtener la URL de
-    descarga/thumbnail. Nunca descargamos la imagen hasta que el usuario elige
-    usarla explícitamente en el editor.
-    """
     __tablename__ = "indexed_art"
     __table_args__ = (UniqueConstraint("source_id", "file_id", name="uq_indexed_source_file"),)
 
@@ -386,25 +288,6 @@ class IndexedArt(Base):
 
 
 class DFCPair(Base):
-    """Par de nombres front → back de una carta doble-cara.
-
-    Se rellena una vez a la semana desde el bulk data de Scryfall (queries
-    ``is:dfc`` e ``is:meld``). El sync es idempotente: recrear la tabla no
-    duplica filas gracias al UNIQUE en ``front_name``.
-
-    Uso: cuando el usuario importa un mazo por texto plano, si aparece una
-    carta cuyo nombre está en ``front_name``, sabemos automáticamente qué
-    reverso mostrar sin tener que consultar Scryfall carta a carta. Esto
-    acelera imports grandes (100+ cartas) y funciona offline una vez
-    sembrado.
-
-    ``kind``:
-      - "transform"   : DFC clásicos (Delver of Secrets, etc)
-      - "modal_dfc"   : MDFCs de Zendikar Rising en adelante
-      - "meld_top"    : la carta se combina con otra para formar un meld_result
-                        y su mitad es la de arriba
-      - "meld_bottom" : igual pero mitad de abajo
-    """
     __tablename__ = "dfc_pairs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -415,18 +298,6 @@ class DFCPair(Base):
 
 
 class CollectionEntry(Base):
-    """Una carta que el usuario posee, indexada por set + collector_number.
-
-    Independiente de los mazos: tener una carta en un mazo no implica
-    poseerla físicamente, y poseerla no implica que esté en ningún mazo.
-    El objetivo es trackear colecciones por expansión oficial (checklist
-    al estilo "me faltan 12 cartas de Murders at Karlov Manor").
-
-    ``scryfall_id`` es la clave primaria: identifica unívocamente la
-    impresión exacta. Los índices en ``set_code`` y ``oracle_id`` aceleran
-    las queries "¿cuántas tengo de este set?" y "¿tengo alguna copia de
-    esta carta en cualquier set?".
-    """
     __tablename__ = "collection_entries"
 
     scryfall_id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -441,31 +312,9 @@ class CollectionEntry(Base):
 
 
 class OracleArtistCache(Base):
-    """Cache de (oracle_id, artist) para acelerar el recomendador.
-
-    Motivación (Extras · T11): `recommend_by_artist` hace una llamada a
-    Scryfall (`prints_by_oracle_id`) por cada oracle_id del mazo. Con 100
-    cartas eso son 100 requests y ~50s. Cacheamos las relaciones en local
-    para que la segunda vez que se pida el mismo mazo (o parcialmente el
-    mismo) responda en <100ms.
-
-    Cada fila es una (oracle_id, artist) — una carta puede tener múltiples
-    filas si tiene ediciones de varios artistas. UNIQUE compuesto evita
-    duplicados. TTL sugerido: 7 días (Scryfall añade impresiones con cada
-    set, ~cada 3 meses).
-
-    Uso:
-      - Al llamar al recomendador con un artista X, primero consultamos
-        `SELECT oracle_id FROM oracle_artists WHERE artist_folded = ?`
-        para saber qué oracle_ids del mazo tienen impresiones de X sin
-        tocar Scryfall.
-      - Solo caemos a Scryfall para los oracle_ids que faltan del cache
-        o cuyas filas están stale.
-    """
     __tablename__ = "oracle_artists"
     __table_args__ = (
-        UniqueConstraint("oracle_id", "artist_folded",
-                         name="uq_oracle_artists_pair"),
+        UniqueConstraint("oracle_id", "artist_folded", name="uq_oracle_artists_pair"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -476,18 +325,6 @@ class OracleArtistCache(Base):
 
 
 class DeckSnapshot(Base):
-    """Foto congelada de un mazo en un momento dado.
-
-    ``DeckActivity`` ya registra evento a evento y permite deshacer uno
-    concreto, pero no responde a "vuelve a como estaba antes del torneo".
-    Un snapshot serializa la lista completa (cartas, cantidades, roles, artes
-    elegidos) en ``payload_json`` y permite restaurarla o diffearla contra
-    otra.
-
-    ``auto=True`` marca los snapshots que crea la app sola (antes de una
-    operación masiva como localizar el mazo entero o aplicar un tema de arte).
-    Se podan automáticamente; los que crea el usuario a mano, no.
-    """
     __tablename__ = "deck_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -502,17 +339,6 @@ class DeckSnapshot(Base):
 
 
 class ArtTheme(Base):
-    """Conjunto de elecciones de arte guardado con un nombre.
-
-    Quien imprime proxies suele tener un estilo (todo anime, todo retro frame,
-    todo del mismo artista). ``ArtPreference`` ya guarda la elección por
-    ``oracle_id``, pero es un espacio global único: no puedes tener "mi set
-    anime" y "mi set retro" a la vez, ni aplicar uno a un mazo nuevo.
-
-    Un tema agrupa N entradas (oracle_id → arte) y se puede aplicar en bloque
-    a cualquier mazo: las cartas que coincidan por oracle_id adoptan el arte
-    del tema, el resto se queda como está.
-    """
     __tablename__ = "art_themes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -527,11 +353,8 @@ class ArtTheme(Base):
 
 
 class ArtThemeEntry(Base):
-    """Una elección de arte concreta dentro de un tema."""
     __tablename__ = "art_theme_entries"
-    __table_args__ = (
-        UniqueConstraint("theme_id", "oracle_id", name="ux_art_theme_entry"),
-    )
+    __table_args__ = (UniqueConstraint("theme_id", "oracle_id", name="ux_art_theme_entry"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     theme_id: Mapped[int] = mapped_column(
@@ -547,12 +370,6 @@ class ArtThemeEntry(Base):
 
 
 class BulkSyncState(Base):
-    """Estado de la última sincronización del bulk data de Scryfall.
-
-    Scryfall publica volcados completos de su base de datos con un campo
-    ``updated_at``. Guardamos el que importamos para no volver a descargar
-    120 MB si no ha cambiado nada.
-    """
     __tablename__ = "bulk_sync_state"
 
     kind: Mapped[str] = mapped_column(String(32), primary_key=True)

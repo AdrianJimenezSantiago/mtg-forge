@@ -1,26 +1,3 @@
-"""Log de actividad por mazo (timeline).
-
-Escribe filas en ``DeckActivity`` cada vez que ocurre algo relevante sobre un
-mazo. La API pública es una única función ``log()`` a la que llaman los routes
-justo antes de hacer commit (así la actividad es transaccional con la
-operación en sí).
-
-Diseño:
-
-* ``kind`` es un string libre; los tipos que reconoce el frontend viven en el
-  módulo ``DeckActivityKind`` de aquí abajo (mera documentación centralizada).
-* ``payload`` es un dict cualquiera; lo serializamos como JSON. El frontend
-  formatea cada kind con su propia función de render.
-* ``summary`` se auto-genera en Python si no se pasa — es solo un fallback de
-  legibilidad; el frontend tiene renderers mejores para casi todo.
-* El caller es responsable del ``commit()`` — nosotros solo hacemos ``flush``.
-  Esto asegura que la actividad se registra en la misma transacción que la
-  operación (si el commit falla, no queda un "fantasma" en el timeline).
-
-Errores de logging NUNCA rompen el flujo. Si algo falla al escribir el
-timeline, lo tragamos con un log de warning — la operación de negocio es más
-importante que su registro.
-"""
 from __future__ import annotations
 
 import json
@@ -36,11 +13,6 @@ log = logging.getLogger(__name__)
 
 
 class DeckActivityKind:
-    """Constantes de tipos de eventos. Centralizadas para poder buscarlas.
-
-    El frontend (history.html → KIND_META) tiene un renderer para cada uno.
-    Añadir aquí + añadir renderer allí = feature completa.
-    """
     DECK_CREATED = "deck_created"
     DECK_RENAMED = "deck_renamed"
     DECK_LOCALIZED = "deck_localized"
@@ -90,16 +62,6 @@ async def log_event(
     summary: str | None = None,
     deck_name: str | None = None,
 ) -> DeckActivity | None:
-    """Registra un evento en el timeline del mazo.
-
-    NO hace commit — asume que el caller commiteará poco después. Solo hace
-    ``flush()`` para que el id se genere.
-
-    Si ``deck_name`` no se pasa y ``deck_id`` está, lo lee de BD. Si el mazo
-    no existe (evento huérfano), guarda el nombre snapshot vacío.
-
-    Errores se tragan con warning — nunca romper el flujo por un fallo de log.
-    """
     try:
         if not deck_name and deck_id is not None:
             deck = await db.get(Deck, deck_id)
@@ -129,11 +91,6 @@ async def list_for_deck(
     kinds: list[str] | None = None,
     limit: int = 500,
 ) -> list[DeckActivity]:
-    """Devuelve las últimas ``limit`` entradas para un mazo, más recientes primero.
-
-    Filtro opcional por tipos. Los ``limit`` es un tope duro para evitar payloads
-    gigantes en mazos muy trabajados.
-    """
     stmt = (
         select(DeckActivity)
         .where(DeckActivity.deck_id == deck_id)

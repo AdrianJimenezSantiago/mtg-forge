@@ -1,25 +1,3 @@
-"""Cola centralizada de indexado de art sources.
-
-Resuelve el problema de lanzar N background tasks independientes (una por
-drive) que compiten por el lock de SQLite y la cuota de Google Drive API.
-
-Arquitectura:
-  - Una ``asyncio.Queue`` con un único worker que procesa drives uno a uno.
-  - Estado in-memory (como ``build_progress.py``) consultable vía polling.
-  - Cancelación cooperativa: el worker comprueba un flag entre drives.
-
-Flujo:
-  1. Frontend llama ``POST /api/drives/index-batch`` con una lista de IDs.
-  2. El endpoint llama ``index_queue.enqueue(ids)``.
-  3. ``enqueue()`` arranca el worker si no está corriendo.
-  4. El worker procesa secuencialmente, actualizando ``IndexJob`` en cada paso.
-  5. Frontend hace polling a ``GET /api/drives/index-progress`` cada 2-3s.
-  6. Opcionalmente ``POST /api/drives/index-cancel`` marca el flag de stop.
-
-La app corre en single-process, así que un dict local basta — no hace falta
-Redis. Si en el futuro se despliega con múltiples workers, este módulo
-necesitaría cambiar a un store compartido.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -45,7 +23,6 @@ class JobStatus(StrEnum):
 
 @dataclass
 class IndexJob:
-    """Estado de indexado de un solo source dentro de un batch."""
     source_id: int
     source_name: str
     status: JobStatus = JobStatus.QUEUED
@@ -79,11 +56,6 @@ class IndexJob:
 
 
 class IndexQueue:
-    """Cola de indexado con un único worker asyncio.
-
-    Thread-safe dentro del event loop (todo es async, no hay threads).
-    """
-
     def __init__(self) -> None:
         self._queue: asyncio.Queue[int] = asyncio.Queue()
         self._jobs: dict[int, IndexJob] = {}
@@ -100,25 +72,14 @@ class IndexQueue:
         *,
         skip_already_indexed: bool = False,
     ) -> dict[str, Any]:
-        """Encola una lista de source_ids para indexar.
-
-        Args:
-            source_ids: IDs de ArtSource a indexar.
-            names: dict {id: name} para mostrar en la UI. Si no se pasa,
-                   se usan nombres genéricos.
-            skip_already_indexed: si True, los sources con indexed_at no-null
-                se marcan como SKIPPED en vez de reindexarse.
-
-        Returns:
-            dict con {batch_id, queued, skipped}.
-        """
         names = names or {}
         self._cancel_flag = False
         self._batch_id = uuid.uuid4().hex[:12]
         self._batch_started_at = time.time()
 
         self._jobs = {
-            k: v for k, v in self._jobs.items()
+            k: v
+            for k, v in self._jobs.items()
             if v.status in (JobStatus.QUEUED, JobStatus.INDEXING)
         }
         self._order = [k for k in self._order if k in self._jobs]
@@ -128,7 +89,8 @@ class IndexQueue:
 
         for sid in source_ids:
             if sid in self._jobs and self._jobs[sid].status in (
-                JobStatus.QUEUED, JobStatus.INDEXING,
+                JobStatus.QUEUED,
+                JobStatus.INDEXING,
             ):
                 continue
 
@@ -140,12 +102,15 @@ class IndexQueue:
 
         if self._worker_task is None or self._worker_task.done():
             self._worker_task = asyncio.create_task(
-                self._worker(), name="index-queue-worker",
+                self._worker(),
+                name="index-queue-worker",
             )
 
         log.info(
             "IndexQueue: batch %s encolado — %d drives (%d skipped)",
-            self._batch_id, queued, skipped,
+            self._batch_id,
+            queued,
+            skipped,
         )
         return {
             "batch_id": self._batch_id,
@@ -154,19 +119,16 @@ class IndexQueue:
         }
 
     def cancel(self) -> dict[str, Any]:
-        """Marca la cancelación. El worker la comprueba entre drives."""
         self._cancel_flag = True
         cancelled_count = 0
         for job in self._jobs.values():
             if job.status == JobStatus.QUEUED:
                 job.status = JobStatus.CANCELLED
                 cancelled_count += 1
-        log.info("IndexQueue: cancelación solicitada (%d pendientes cancelados)",
-                 cancelled_count)
+        log.info("IndexQueue: cancelación solicitada (%d pendientes cancelados)", cancelled_count)
         return {"cancelled": cancelled_count}
 
     def progress(self) -> dict[str, Any]:
-        """Snapshot del estado completo para el frontend."""
         active: dict[str, Any] | None = None
         queued: list[dict[str, Any]] = []
         completed: list[dict[str, Any]] = []
@@ -188,8 +150,7 @@ class IndexQueue:
         all_done = active is None and len(queued) == 0 and total_jobs > 0
 
         done_times = [
-            j.elapsed for j in self._jobs.values()
-            if j.status == JobStatus.DONE and j.elapsed > 0
+            j.elapsed for j in self._jobs.values() if j.status == JobStatus.DONE and j.elapsed > 0
         ]
         avg_time = (sum(done_times) / len(done_times)) if done_times else None
         eta_seconds: float | None = None
@@ -224,16 +185,12 @@ class IndexQueue:
         }
 
     def is_running(self) -> bool:
-        """True si hay un worker activo procesando la cola."""
-        return (
-            self._worker_task is not None
-            and not self._worker_task.done()
-        )
+        return self._worker_task is not None and not self._worker_task.done()
 
     def clear_completed(self) -> None:
-        """Limpia el historial de jobs completados."""
         self._jobs = {
-            k: v for k, v in self._jobs.items()
+            k: v
+            for k, v in self._jobs.items()
             if v.status in (JobStatus.QUEUED, JobStatus.INDEXING)
         }
         self._order = [k for k in self._order if k in self._jobs]
@@ -242,11 +199,6 @@ class IndexQueue:
             self._batch_started_at = None
 
     async def _worker(self) -> None:
-        """Procesa la cola secuencialmente (un drive a la vez).
-
-        Usa su propia sesión de BD por drive para aislar transacciones.
-        Nunca lanza excepciones — captura todo y marca el job con ERROR.
-        """
         from mpc_forge.db import session_scope
         from mpc_forge.services import gdrive_indexer
 
@@ -276,7 +228,8 @@ class IndexQueue:
             try:
                 async with session_scope() as db:
                     result = await gdrive_indexer.index_source(
-                        db, sid,
+                        db,
+                        sid,
                         on_progress=self._make_progress_callback(sid),
                     )
 
@@ -290,6 +243,7 @@ class IndexQueue:
                     try:
                         async with session_scope() as db:
                             from mpc_forge.models import ArtSource
+
                             src = await db.get(ArtSource, sid)
                             if src:
                                 job.files_total = src.indexed_files or 0
@@ -306,6 +260,7 @@ class IndexQueue:
                         from datetime import datetime
 
                         from mpc_forge.models import ArtSource
+
                         src = await db.get(ArtSource, sid)
                         if src:
                             src.indexed_at = datetime.now(UTC)
@@ -318,19 +273,18 @@ class IndexQueue:
                 log.info(
                     "IndexQueue: source %d (%s) terminado en %.1fs — status=%s, "
                     "+%d/~%d archivos, error=%s",
-                    sid, job.source_name, job.elapsed,
-                    job.status.value, job.files_added, job.files_updated,
+                    sid,
+                    job.source_name,
+                    job.elapsed,
+                    job.status.value,
+                    job.files_added,
+                    job.files_updated,
                     job.error or "ninguno",
                 )
 
         log.info("IndexQueue worker terminado")
 
     def _make_progress_callback(self, source_id: int):
-        """Devuelve un callable que ``index_source`` invoca periódicamente
-        para reportar progreso parcial.
-
-        Signatura del callback: ``(files_added, files_updated, folders_visited) -> None``
-        """
         def callback(
             files_added: int = 0,
             files_updated: int = 0,
@@ -345,6 +299,7 @@ class IndexQueue:
             job.folders_visited = folders_visited
             if files_total:
                 job.files_total = files_total
+
         return callback
 
 
@@ -352,5 +307,4 @@ _queue = IndexQueue()
 
 
 def get_queue() -> IndexQueue:
-    """Devuelve la instancia singleton de la cola de indexado."""
     return _queue

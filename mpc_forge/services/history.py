@@ -1,4 +1,3 @@
-"""Historial de tiradas de impresión y estadísticas por carta."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,17 +32,13 @@ async def create_print_run_from_deck(
 ) -> PrintRun:
     cards = (
         await db.scalars(
-            select(DeckCard).where(
-                DeckCard.deck_id == deck.id, DeckCard.include.is_(True)
-            )
+            select(DeckCard).where(DeckCard.deck_id == deck.id, DeckCard.include.is_(True))
         )
     ).all()
     total = sum(c.quantity for c in cards)
     run = PrintRun(
-        name=run_name or (
-            f"{deck.name} — "
-            f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}"
-        ),
+        name=run_name
+        or (f"{deck.name} — {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M')}"),
         cardstock=cardstock,
         foil=foil,
         total_cards=total,
@@ -73,10 +68,6 @@ async def create_print_run_from_deck(
 async def stats_for_oracle_ids(
     db: AsyncSession, oracle_ids: list[str]
 ) -> dict[str, CardHistoryStat]:
-    """Para cada oracle_id, cuántas copias se han impreso y en qué mazos.
-
-    Perfecto para "Commander-aware": informativo, no restrictivo.
-    """
     if not oracle_ids:
         return {}
     rows = (
@@ -117,10 +108,7 @@ async def stats_for_oracle_ids(
     }
 
 
-async def last_scryfall_id_used(
-    db: AsyncSession, oracle_id: str
-) -> str | None:
-    """Devuelve la impresión que se usó en la última tirada para esta carta."""
+async def last_scryfall_id_used(db: AsyncSession, oracle_id: str) -> str | None:
     stmt = (
         select(PrintRunItem.scryfall_id)
         .join(PrintRun, PrintRun.id == PrintRunItem.run_id)

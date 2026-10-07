@@ -1,4 +1,3 @@
-"""Configuración global: paths de datos, defaults, tiers de precio MPC."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,7 +53,6 @@ GOOGLE_API_KEY = ""
 
 @dataclass(frozen=True)
 class Paths:
-    """Rutas del filesystem que usa la app."""
     data_dir: Path
     db_path: Path
     art_dir: Path
@@ -66,18 +64,6 @@ class Paths:
 
     @classmethod
     def default(cls) -> Paths:
-        """Rutas por defecto: modo portable (junto al .exe) con fallback.
-
-        Prioridad:
-          1. ``<carpeta del .exe|proyecto>/user-settings/`` — modo portable.
-             Se usa si podemos escribir en la carpeta de instalación.
-          2. ``platformdirs.user_data_dir("MPC-Forge")`` — fallback típico
-             cuando el .exe está en ``Program Files\\`` (read-only para
-             usuarios normales) o en un pendrive protegido contra escritura.
-
-        La comprobación se hace intentando crear el directorio y escribir un
-        archivo minúsculo. Si falla, cae al AppData del usuario.
-        """
         from mpc_forge.paths import install_root
 
         portable = install_root() / "user-settings"
@@ -119,16 +105,6 @@ class Paths:
         cardbacks_dir: str | Path | None = None,
         thumbs_dir: str | Path | None = None,
     ) -> Paths:
-        """Devuelve una nueva Paths con los overrides aplicados.
-
-        Los overrides son las rutas que el usuario ha personalizado desde la UI
-        de Ajustes. Solo los directorios de contenido son personalizables — la
-        BD y ``data_dir`` NUNCA se cambian aquí (mover una BD abierta es
-        peligroso, y hay handles de logging apuntando ahí).
-
-        Un override vacío/None mantiene el path por defecto. Si un override es
-        un path válido, se crea el directorio si no existe.
-        """
         def _pick(override, default):
             if override is None or str(override).strip() == "":
                 return default

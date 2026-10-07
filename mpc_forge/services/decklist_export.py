@@ -1,24 +1,3 @@
-"""Serializa un mazo a texto plano en varios formatos compatibles.
-
-Formatos soportados:
-- ``simple``: ``1 Sol Ring`` por línea. Compatible con MTGPrint, MPCFill y
-  cualquier importador básico. Sin códigos de set: útil cuando solo importa
-  el nombre.
-- ``with_set``: ``1 Sol Ring (C21) 263``. Incluye set y collector number, con
-  lo que la impresión concreta se conserva al reimportar (Moxfield, MTGO,
-  MPCFill).
-- ``arena``: ``1 Sol Ring (C21) 263`` con el set en MAYÚSCULAS, formato oficial
-  de MTG Arena. Ojo: Arena no reconoce todas las expansiones (promos, etc.);
-  en la práctica pierde algunas cartas — es limitación del cliente, no nuestra.
-
-Todos los formatos agrupan por rol con cabeceras separadoras cuando ``include_headers``
-es True (default). Al pegar en Moxfield o MPCFill, esto hace que el commander
-vaya a "commanders" y el resto a "mainboard" automáticamente.
-
-Solo se serializan cartas con ``include=True``. Los tokens y meld_result se
-omiten porque no forman parte de la lista importable (se generan automáticamente
-al re-importar en cualquier herramienta seria).
-"""
 from __future__ import annotations
 
 from typing import Literal
@@ -46,7 +25,6 @@ async def build_decklist_text(
     fmt: Format = "with_set",
     include_headers: bool = True,
 ) -> str:
-    """Devuelve el texto plano del mazo listo para copiar al portapapeles."""
     rows = (
         await db.execute(
             select(DeckCard, PrintingCache)
@@ -79,7 +57,6 @@ async def build_decklist_text(
 
 
 def _format_line(dc: DeckCard, printing: PrintingCache | None, fmt: Format) -> str:
-    """Serializa una entrada según el formato pedido."""
     name = dc.name
     qty = dc.quantity
 
@@ -99,7 +76,7 @@ def _format_line(dc: DeckCard, printing: PrintingCache | None, fmt: Format) -> s
 
 
 def filename_for(deck_name: str, fmt: Format) -> str:
-    """Nombre sugerido para el fichero .txt cuando el usuario elige descargar."""
     from slugify import slugify
+
     slug = slugify(deck_name) or "deck"
     return f"{slug}-{fmt}.txt"

@@ -1,16 +1,3 @@
-"""Endpoint de miniaturas: sirve WebP de 160 px generados bajo demanda.
-
-Se separa de los ``StaticFiles`` montados en ``app.py`` porque las miniaturas
-no existen hasta que alguien las pide por primera vez: hace falta lógica, no un
-servidor de ficheros estático.
-
-Contrato:
-    GET /api/thumb/<ruta relativa dentro de art_dir>
-
-Si la miniatura existe se sirve del disco. Si no, se genera en ese momento y se
-sirve. Si no se puede generar (sin Pillow, imagen corrupta), se redirige a la
-imagen original para que la rejilla nunca muestre un hueco.
-"""
 from __future__ import annotations
 
 import logging
@@ -30,14 +17,6 @@ _CACHE_CONTROL = "public, max-age=2592000, immutable"
 
 
 def _resolve_within(base: Path, relative: str) -> Path:
-    """Resuelve ``relative`` dentro de ``base`` rechazando el escape.
-
-    Sin esta comprobación, una petición a ``/api/thumb/../../../etc/passwd``
-    dejaría leer cualquier fichero del sistema. Se resuelven ambas rutas a
-    absoluto y se verifica la relación de ancestro: comprobar solo la presencia
-    de ``..`` en la cadena no basta, porque los enlaces simbólicos y la
-    codificación de la URL pueden esquivarlo.
-    """
     base_resolved = base.resolve()
     candidate = (base_resolved / relative).resolve()
     if not candidate.is_relative_to(base_resolved):
@@ -47,7 +26,6 @@ def _resolve_within(base: Path, relative: str) -> Path:
 
 @router.get("/api/thumb/{art_path:path}")
 async def get_thumbnail(art_path: str) -> Response:
-    """Devuelve la miniatura de un arte, generándola si es la primera vez."""
     if not art_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ruta vacía")
 
@@ -59,9 +37,11 @@ async def get_thumbnail(art_path: str) -> Response:
 
     thumb = await thumbnails.ensure_thumb(source)
     if thumb is None:
-        original_url = f"/art/{art_path}" if str(source).startswith(
-            str(PATHS.art_dir)
-        ) else f"/custom_art/{art_path}"
+        original_url = (
+            f"/art/{art_path}"
+            if str(source).startswith(str(PATHS.art_dir))
+            else f"/custom_art/{art_path}"
+        )
         return RedirectResponse(original_url, status_code=status.HTTP_302_FOUND)
 
     return FileResponse(
@@ -73,7 +53,6 @@ async def get_thumbnail(art_path: str) -> Response:
 
 @router.get("/api/thumbs/stats")
 async def thumbnail_stats() -> dict[str, int | bool | str]:
-    """Cuántas miniaturas hay y cuánto ocupan. Se muestra en Ajustes."""
     data = thumbnails.stats()
     mb = round(int(data["bytes"]) / (1024 * 1024), 1)
     return {**data, "megabytes": str(mb)}
@@ -81,12 +60,6 @@ async def thumbnail_stats() -> dict[str, int | bool | str]:
 
 @router.post("/api/thumbs/clear")
 async def clear_thumbnails() -> dict[str, int]:
-    """Vacía la caché de miniaturas.
-
-    Es una operación segura y sin confirmación destructiva real: las
-    miniaturas son datos derivados y se regeneran solas la próxima vez que se
-    abra una rejilla.
-    """
     removed = thumbnails.clear()
     storage_service.invalidate()
     log.info("Caché de miniaturas vaciada: %d ficheros", removed)

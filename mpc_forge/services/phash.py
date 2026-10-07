@@ -1,40 +1,3 @@
-"""Perceptual hashing (pHash) para dedupe cross-drive.
-
-Motivación
-----------
-Muchos drives comunitarios contienen las mismas imágenes (redistribuidas /
-mirroreadas / copiadas). El usuario ve "Elesh Norn (Full Art).png" en 8
-drives distintos, todos idénticos, saturando el picker. Un pHash sobre el
-thumbnail permite detectarlas como equivalentes y agruparlas.
-
-Diseño
-------
-- **Hash**: pHash de 64 bits (algoritmo DCT) → 16 chars hex en la BD.
-- **Distancia**: hamming distance. ≤ 8 bits de diferencia se considera
-  "misma imagen" (tolera JPEG re-encoding, escalado ≤2x, watermark leve).
-- **Escala del cálculo**: descargar el thumbnail (~50KB) y decodificarlo.
-  Para 100k artes = 5 GB de bandwidth, ~10 min con paralelismo.
-- **Opt-in**: setting `phash.enabled` (default OFF). El usuario lo activa
-  desde Ajustes cuando quiere pagar el coste.
-
-Dependencias
-------------
-- ``Pillow`` para decodificar imágenes (ya recomendable como dep).
-- ``imagehash`` (~2 KB, sin deps propias — usa Pillow y numpy).
-
-Si alguna falta, el servicio degrada silenciosamente: `compute_phash()`
-devuelve None y `enabled()` devuelve False. Nada rompe.
-
-Uso
----
-    if await phash.enabled(db):
-        h = await phash.compute_for_url(art_cache_client, thumb_url)
-        if h:
-            art.image_hash = h
-
-    # Búsqueda de similares:
-    similar = await phash.find_similar(db, art.image_hash, threshold=8)
-"""
 from __future__ import annotations
 
 import asyncio
@@ -59,7 +22,6 @@ _deps_checked = False
 
 
 def _check_deps() -> bool:
-    """Detecta Pillow + imagehash una sola vez (cached en globals)."""
     global _pil, _imagehash, _deps_checked
     if _deps_checked:
         return _pil is not None and _imagehash is not None
@@ -67,6 +29,7 @@ def _check_deps() -> bool:
     try:
         import imagehash as _ih_module  # type: ignore
         from PIL import Image as _pil_module  # type: ignore
+
         _pil = _pil_module
         _imagehash = _ih_module
         return True
@@ -74,25 +37,21 @@ def _check_deps() -> bool:
         log.info(
             "phash: dependencias opcionales (Pillow, imagehash) no disponibles: %s. "
             "La feature de dedupe cross-drive queda desactivada. Instala con "
-            "`pip install Pillow imagehash` para activarla.", e
+            "`pip install Pillow imagehash` para activarla.",
+            e,
         )
         return False
 
 
 def is_available() -> bool:
-    """True si Pillow + imagehash están instalados. Sin ellos, el servicio
-    completo es un no-op."""
     return _check_deps()
 
 
 async def enabled(db: AsyncSession) -> bool:
-    """True si el setting `phash.enabled` está en `true` Y las dependencias
-    están instaladas. Los callers usan esto para saber si deben calcular
-    pHash al indexar.
-    """
     if not is_available():
         return False
     from mpc_forge.services import settings as settings_service
+
     settings = await settings_service.get_all(db)
     val = settings.get("phash.enabled", False)
     if isinstance(val, bool):
@@ -101,10 +60,6 @@ async def enabled(db: AsyncSession) -> bool:
 
 
 def compute_from_bytes(data: bytes) -> str | None:
-    """Calcula pHash desde bytes de imagen. Devuelve 16 chars hex o None si
-    falla el decode. NO hace I/O — solo decode + hash, apto para offloadear
-    a un thread pool si se quiere paralelizar CPU-bound.
-    """
     if not is_available():
         return None
     try:
@@ -119,28 +74,12 @@ def compute_from_bytes(data: bytes) -> str | None:
 
 
 async def compute_from_bytes_async(data: bytes) -> str | None:
-    """``compute_from_bytes`` fuera del event loop.
-
-    El decode con Pillow y la DCT del pHash son CPU pura: unos 50-150 ms por
-    imagen. Llamándolo directamente desde una corrutina, un retrofit de 500
-    artes congela el servidor entero durante ese rato — la UI deja de
-    responder y hasta el polling de progreso se atasca. ``to_thread`` lo saca
-    del hilo del event loop; Pillow libera el GIL en el decode, así que además
-    escala de verdad.
-    """
     if not is_available():
         return None
     return await asyncio.to_thread(compute_from_bytes, data)
 
 
 async def compute_from_url(client: Any, url: str, timeout: float = 15.0) -> str | None:
-    """Descarga el thumbnail (con el httpx.AsyncClient del caller) y calcula
-    su pHash. Devuelve el hash o None si falla la descarga.
-
-    El caller pasa su propio `client` para reusar conexiones y respetar los
-    settings SSL de la app. Normalmente es `app.state.art_cache._client` o un
-    httpx.AsyncClient dedicado.
-    """
     if not is_available():
         return None
     try:
@@ -154,11 +93,6 @@ async def compute_from_url(client: Any, url: str, timeout: float = 15.0) -> str 
 
 
 def hamming_distance(hash_a: str, hash_b: str) -> int:
-    """Distancia de Hamming entre dos hashes hex de 16 chars.
-
-    Comparación bit-a-bit sobre los 64 bits del pHash. Retorna -1 si alguno
-    de los hashes es inválido (no 16 chars hex).
-    """
     if not hash_a or not hash_b or len(hash_a) != 16 or len(hash_b) != 16:
         return -1
     try:
@@ -176,23 +110,16 @@ async def find_similar(
     exclude_file_id: str | None = None,
     limit: int = 50,
 ) -> list[IndexedArt]:
-    """Encuentra artes con hamming distance ≤ threshold al ``reference_hash``.
-
-    Estrategia: SQLite no tiene función hamming nativa. Traemos todos los
-    hashes no-nulos y filtramos en memoria. Para índices grandes (>100k
-    artes con hash), esto es O(N) pero N está capado por el usuario
-    (Pillow es lento, típicamente <10k artes tienen hash calculado).
-
-    ``exclude_file_id``: para excluir el propio arte de la búsqueda cuando
-    llamas ``find_similar_to(art)``.
-    """
     if not reference_hash:
         return []
 
-    rows = (await db.execute(
-        select(IndexedArt.id, IndexedArt.image_hash, IndexedArt.file_id)
-        .where(IndexedArt.image_hash.is_not(None))
-    )).all()
+    rows = (
+        await db.execute(
+            select(IndexedArt.id, IndexedArt.image_hash, IndexedArt.file_id).where(
+                IndexedArt.image_hash.is_not(None)
+            )
+        )
+    ).all()
 
     scored: list[tuple[int, int]] = []
     for art_id, image_hash, file_id in rows:
@@ -207,9 +134,7 @@ async def find_similar(
     scored.sort(key=lambda x: x[0])
     winner_ids = [art_id for _, art_id in scored[:limit]]
 
-    found = (await db.scalars(
-        select(IndexedArt).where(IndexedArt.id.in_(winner_ids))
-    )).all()
+    found = (await db.scalars(select(IndexedArt).where(IndexedArt.id.in_(winner_ids)))).all()
     by_id = {a.id: a for a in found}
     return [by_id[i] for i in winner_ids if i in by_id]
 
@@ -221,29 +146,21 @@ async def compute_missing_for_source(
     limit: int = 500,
     thumb_url_fn=None,
 ) -> dict[str, int]:
-    """Job de retrofit: calcula pHash para los primeros ``limit`` artes de un
-    source que aún no lo tengan. Diseñado para llamarse en background /
-    a demanda desde un botón "Calcular hashes" en Ajustes.
-
-    ``thumb_url_fn``: callable ``(art) -> str`` que construye la URL del
-    thumbnail para un arte. Si es None, se usa el helper interno que
-    dispatcha al source_type.
-
-    Devuelve stats ``{"computed": N, "failed": M, "skipped": K}``.
-    """
     if not is_available():
         return {"computed": 0, "failed": 0, "skipped": 0, "error": "deps missing"}
 
     thumb_url_fn = thumb_url_fn or _default_thumb_url
 
-    rows = (await db.scalars(
-        select(IndexedArt)
-        .where(
-            IndexedArt.source_id == source_id,
-            IndexedArt.image_hash.is_(None),
+    rows = (
+        await db.scalars(
+            select(IndexedArt)
+            .where(
+                IndexedArt.source_id == source_id,
+                IndexedArt.image_hash.is_(None),
+            )
+            .limit(limit)
         )
-        .limit(limit)
-    )).all()
+    ).all()
 
     stats = {"computed": 0, "failed": 0, "skipped": 0}
 
@@ -281,24 +198,13 @@ async def compute_missing_for_source(
 
 
 def _default_thumb_url(art: IndexedArt, source: Any | None = None) -> str:
-    """URL de thumbnail por defecto para un arte indexado.
-
-    Extras · F2/T8: dispatch por source_type usando el registry
-    `services.source_types`. Si ``source`` viene pre-cargado (recomendado
-    para batch), evitamos la query extra a la BD por arte. Si no, caemos
-    al patrón gdrive (comportamiento previo, seguro por defecto).
-
-    Prioridad:
-      1. ``art.thumb_url`` si está poblada (Extras · T7).
-      2. Dispatch por ``source.source_type`` vía registry.
-      3. Fallback: patrón Google Drive.
-    """
     if getattr(art, "thumb_url", None):
         return art.thumb_url
 
     if source is not None:
         try:
             from mpc_forge.services.source_types import resolve as _resolve_type
+
             type_cls = _resolve_type(source.source_type)
             if type_cls:
                 return type_cls.thumbnail_url(source, art.file_id)

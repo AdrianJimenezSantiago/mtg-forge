@@ -1,32 +1,22 @@
-"""Genera el icono de MPC Forge en formato .ico (multi-resolución) y PNG.
-
-Diseño:
-- Fondo cuadrado redondeado con gradiente arcane oscuro (azul-morado).
-- Borde dorado sutil (paleta accent que usamos en la app).
-- Letra "F" dorada centrada, tipografía serif Bold.
-- 5 puntos WUBRG discretos en la base (guiño MTG sin sobrecargar).
-- Se genera en 16/32/48/64/128/256 px para el .ico multi-resolución.
-"""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-BG_TOP        = (26, 30, 42)
-BG_BOTTOM     = (10, 13, 19)
-GOLD          = (212, 175, 55)
-GOLD_BRIGHT   = (233, 200, 106)
-GOLD_DIM      = (160, 130, 40)
+BG_TOP = (26, 30, 42)
+BG_BOTTOM = (10, 13, 19)
+GOLD = (212, 175, 55)
+GOLD_BRIGHT = (233, 200, 106)
+GOLD_DIM = (160, 130, 40)
 
 MTG_COLORS = [
     (245, 240, 216),
-    (91,  155, 213),
-    (58,  58,  74),
-    (217, 83,  79),
-    (92,  184, 92),
+    (91, 155, 213),
+    (58, 58, 74),
+    (217, 83, 79),
+    (92, 184, 92),
 ]
 
 
 def make_icon(size: int) -> Image.Image:
-    """Genera el icono para un tamaño dado (cuadrado). Devuelve RGBA."""
     scale = 2 if size >= 32 else 1
     s = size * scale
 
@@ -51,7 +41,9 @@ def make_icon(size: int) -> Image.Image:
         grad_draw.line([(0, y), (s, y)], fill=(r, g, b, 255))
     mask = Image.new("L", (s, s), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
-        [(0, 0), (s - 1, s - 1)], radius=corner_radius, fill=255,
+        [(0, 0), (s - 1, s - 1)],
+        radius=corner_radius,
+        fill=255,
     )
     img.paste(grad, (0, 0), mask)
 
@@ -62,8 +54,7 @@ def make_icon(size: int) -> Image.Image:
         max_r = int(s * 0.7)
         for r in range(max_r, 0, -8):
             alpha = int(28 * (1 - r / max_r))
-            gd.ellipse([cx - r, cy - r, cx + r, cy + r],
-                       fill=(*GOLD, alpha))
+            gd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*GOLD, alpha))
         glow = glow.filter(ImageFilter.GaussianBlur(radius=int(s * 0.05)))
         img.alpha_composite(glow)
         clipped = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -73,7 +64,10 @@ def make_icon(size: int) -> Image.Image:
 
     border_width = max(1, int(s * 0.012))
     draw.rounded_rectangle(
-        [(border_width // 2, border_width // 2), (s - 1 - border_width // 2, s - 1 - border_width // 2)],
+        [
+            (border_width // 2, border_width // 2),
+            (s - 1 - border_width // 2, s - 1 - border_width // 2),
+        ],
         radius=corner_radius - border_width // 2,
         outline=GOLD_DIM,
         width=border_width,
@@ -100,8 +94,9 @@ def make_icon(size: int) -> Image.Image:
 
     if size >= 32:
         shadow = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-        ImageDraw.Draw(shadow).text((x + int(s*0.01), y + int(s*0.01)), text,
-                                     fill=(0, 0, 0, 120), font=font)
+        ImageDraw.Draw(shadow).text(
+            (x + int(s * 0.01), y + int(s * 0.01)), text, fill=(0, 0, 0, 120), font=font
+        )
         shadow = shadow.filter(ImageFilter.GaussianBlur(radius=int(s * 0.008)))
         img.alpha_composite(shadow)
 

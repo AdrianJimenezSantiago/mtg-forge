@@ -1,8 +1,3 @@
-"""Tests de la paginación del selector de arte y del servicio de miniaturas.
-
-Cubren el ítem 7 (miniaturas WebP locales) y el 8 (paginación real en
-``/prints``) de la hoja de ruta.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,18 +45,13 @@ class TestPrintsEnvelope:
         first = (await client.get(_prints_url(deck, any_card, limit=1))).json()
         if first["total"] < 2:
             pytest.skip("La carta de prueba solo tiene una impresión")
-        second = (
-            await client.get(_prints_url(deck, any_card, limit=1, offset=1))
-        ).json()
+        second = (await client.get(_prints_url(deck, any_card, limit=1, offset=1))).json()
         assert first["items"][0] != second["items"][0], (
             "offset=1 debe devolver un elemento distinto al de offset=0"
         )
 
     async def test_customs_only_on_first_page(self, client, deck, any_card):
-        """Repetir los customs en cada página los duplicaría en la rejilla."""
-        page_two = (
-            await client.get(_prints_url(deck, any_card, limit=1, offset=1))
-        ).json()
+        page_two = (await client.get(_prints_url(deck, any_card, limit=1, offset=1))).json()
         assert page_two["custom"] == []
 
     async def test_total_is_stable_across_pages(self, client, deck, any_card):
@@ -84,7 +74,6 @@ class TestPrintsValidation:
         assert r.status_code == 422
 
     async def test_excessive_limit_is_rejected(self, client, deck, any_card):
-        """Sin tope, `limit=999999` reintroduce el problema que resolvimos."""
         r = await client.get(_prints_url(deck, any_card, limit=5000))
         assert r.status_code == 422
 
@@ -104,35 +93,23 @@ class TestPrintsValidation:
 class TestPrintsFacets:
     async def test_facets_include_every_filter(self, client, deck, any_card):
         facets = (await client.get(_prints_url(deck, any_card))).json()["facets"]
-        for key in ("total", "custom", "full_art", "textless",
-                    "promo", "borderless", "retro"):
+        for key in ("total", "custom", "full_art", "textless", "promo", "borderless", "retro"):
             assert key in facets
 
     async def test_facets_do_not_shrink_when_filtering(self, client, deck, any_card):
-        """El contador debe describir el conjunto entero, no el ya filtrado.
-
-        Si al marcar "full art" el contador de "textless" bajara, el usuario no
-        podría saber cuántos hay realmente y la interfaz sería engañosa.
-        """
         base = (await client.get(_prints_url(deck, any_card))).json()["facets"]
-        filtered = (
-            await client.get(_prints_url(deck, any_card, only="full_art"))
-        ).json()["facets"]
+        filtered = (await client.get(_prints_url(deck, any_card, only="full_art"))).json()["facets"]
         assert filtered["total"] == base["total"]
         assert filtered["textless"] == base["textless"]
 
     async def test_filtering_reduces_total(self, client, deck, any_card):
         base = (await client.get(_prints_url(deck, any_card))).json()
-        filtered = (
-            await client.get(_prints_url(deck, any_card, only="full_art"))
-        ).json()
+        filtered = (await client.get(_prints_url(deck, any_card, only="full_art"))).json()
         assert filtered["total"] <= base["total"]
 
     async def test_text_query_narrows_results(self, client, deck, any_card):
         base = (await client.get(_prints_url(deck, any_card))).json()
-        narrowed = (
-            await client.get(_prints_url(deck, any_card, q="zzzznoexiste"))
-        ).json()
+        narrowed = (await client.get(_prints_url(deck, any_card, q="zzzznoexiste"))).json()
         assert narrowed["total"] == 0
         assert narrowed["total"] <= base["total"]
 
@@ -166,9 +143,7 @@ class TestThumbnailService:
         weird.write_bytes(b"whatever")
         assert await thumbnails.ensure_thumb(weird) is None
 
-    @pytest.mark.skipif(
-        not thumbnails.pillow_available(), reason="Pillow no está instalado"
-    )
+    @pytest.mark.skipif(not thumbnails.pillow_available(), reason="Pillow no está instalado")
     async def test_generates_a_smaller_webp(self):
         from PIL import Image
 
@@ -187,9 +162,7 @@ class TestThumbnailService:
             "La miniatura debe pesar menos que el original — es su razón de ser"
         )
 
-    @pytest.mark.skipif(
-        not thumbnails.pillow_available(), reason="Pillow no está instalado"
-    )
+    @pytest.mark.skipif(not thumbnails.pillow_available(), reason="Pillow no está instalado")
     async def test_second_call_reuses_the_file(self):
         from PIL import Image
 
@@ -202,11 +175,8 @@ class TestThumbnailService:
         assert second == first
         assert second.stat().st_mtime_ns == stamp, "No debe regenerarse sin motivo"
 
-    @pytest.mark.skipif(
-        not thumbnails.pillow_available(), reason="Pillow no está instalado"
-    )
+    @pytest.mark.skipif(not thumbnails.pillow_available(), reason="Pillow no está instalado")
     async def test_corrupt_image_degrades_instead_of_raising(self):
-        """Una imagen rota no puede tumbar la carga de la rejilla entera."""
         bad = PATHS.art_dir / "corrupt.png"
         bad.write_bytes(b"esto no es un PNG")
         assert await thumbnails.ensure_thumb(bad) is None
@@ -217,13 +187,15 @@ class TestThumbnailEndpoint:
         r = await client.get("/api/thumb/no/existe.png")
         assert r.status_code == 404
 
-    @pytest.mark.parametrize("attack", [
-        "../../../etc/passwd",
-        "..%2f..%2f..%2fetc%2fpasswd",
-        "a/../../../../etc/passwd",
-    ])
+    @pytest.mark.parametrize(
+        "attack",
+        [
+            "../../../etc/passwd",
+            "..%2f..%2f..%2fetc%2fpasswd",
+            "a/../../../../etc/passwd",
+        ],
+    )
     async def test_path_traversal_is_blocked(self, client, attack):
-        """Sin esta comprobación se podría leer cualquier fichero del disco."""
         r = await client.get(f"/api/thumb/{attack}")
         assert r.status_code in (400, 404), (
             f"Path traversal no bloqueado para {attack!r}: {r.status_code}"
@@ -241,9 +213,7 @@ class TestThumbnailEndpoint:
         assert r.status_code == 200
         assert "removed" in r.json()
 
-    @pytest.mark.skipif(
-        not thumbnails.pillow_available(), reason="Pillow no está instalado"
-    )
+    @pytest.mark.skipif(not thumbnails.pillow_available(), reason="Pillow no está instalado")
     async def test_generates_on_demand_and_caches(self, client):
         from PIL import Image
 

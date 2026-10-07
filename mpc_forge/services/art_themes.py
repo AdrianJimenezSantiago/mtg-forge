@@ -1,28 +1,3 @@
-"""Temas de arte: guardar una selección de artes y aplicarla a otro mazo.
-
-El problema
------------
-``ArtPreference`` guarda la elección de arte por ``oracle_id``, pero es un
-espacio global único: solo puede haber una preferencia por carta. Quien tiene
-un estilo definido —todo anime, todo retro frame, todo del mismo artista— no
-puede mantener dos colecciones de preferencias a la vez, ni aplicar su estilo a
-un mazo nuevo sin volver a elegir carta por carta.
-
-Un ``ArtTheme`` agrupa N elecciones bajo un nombre y se puede aplicar en bloque:
-las cartas del mazo destino que coincidan por ``oracle_id`` adoptan el arte del
-tema, y el resto se queda como está.
-
-Decisiones de diseño
---------------------
-* **Se captura por oracle_id, no por carta.** Un tema debe poder aplicarse a
-  cualquier mazo, y el id de la fila ``DeckCard`` es local a su mazo.
-* **Aplicar es no destructivo por defecto.** Solo se tocan las cartas que el
-  tema cubre. Aplicar un tema de 12 cartas a un Commander de 100 cambia 12.
-* **Se guarda un snapshot del nombre.** Si el arte custom se borra del disco,
-  el usuario sigue viendo de qué carta se trataba al inspeccionar el tema.
-* **Aplicar crea un snapshot previo del mazo.** Es una operación masiva y
-  reversible: si el resultado no gusta, se restaura. Ver ``snapshots.py``.
-"""
 from __future__ import annotations
 
 import logging
@@ -39,7 +14,6 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ApplyResult:
-    """Qué cambió al aplicar un tema."""
     theme_id: int
     theme_name: str
     deck_id: int
@@ -61,11 +35,7 @@ class ApplyResult:
 
 
 async def list_themes(db: AsyncSession) -> list[dict[str, Any]]:
-    """Todos los temas con su contador. El contador está desnormalizado en la
-    tabla para no hacer un COUNT correlacionado por fila en cada carga."""
-    rows = (await db.execute(
-        select(ArtTheme).order_by(ArtTheme.created_at.desc())
-    )).scalars().all()
+    rows = (await db.execute(select(ArtTheme).order_by(ArtTheme.created_at.desc()))).scalars().all()
     return [
         {
             "id": t.id,
@@ -82,11 +52,17 @@ async def get_theme(db: AsyncSession, theme_id: int) -> dict[str, Any] | None:
     theme = await db.get(ArtTheme, theme_id)
     if theme is None:
         return None
-    entries = (await db.execute(
-        select(ArtThemeEntry)
-        .where(ArtThemeEntry.theme_id == theme_id)
-        .order_by(ArtThemeEntry.card_name)
-    )).scalars().all()
+    entries = (
+        (
+            await db.execute(
+                select(ArtThemeEntry)
+                .where(ArtThemeEntry.theme_id == theme_id)
+                .order_by(ArtThemeEntry.card_name)
+            )
+        )
+        .scalars()
+        .all()
+    )
     return {
         "id": theme.id,
         "name": theme.name,
@@ -114,21 +90,11 @@ async def create_from_deck(
     description: str = "",
     only_customized: bool = True,
 ) -> dict[str, Any] | None:
-    """Captura la selección de artes de un mazo como tema nuevo.
-
-    ``only_customized`` (por defecto) guarda solo las cartas cuyo arte se ha
-    tocado a mano: las que usan arte custom, o las que apuntan a una impresión
-    distinta de la que traía el mazo al importarse. Guardar las 100 cartas de
-    un Commander cuando el usuario solo cambió 8 haría el tema inútil, porque
-    al aplicarlo pisaría todo el mazo destino.
-    """
     deck = await db.get(Deck, deck_id)
     if deck is None:
         return None
 
-    cards = (await db.execute(
-        select(DeckCard).where(DeckCard.deck_id == deck_id)
-    )).scalars().all()
+    cards = (await db.execute(select(DeckCard).where(DeckCard.deck_id == deck_id))).scalars().all()
 
     theme = ArtTheme(name=name.strip() or "Tema sin nombre", description=description)
     db.add(theme)
@@ -137,30 +103,28 @@ async def create_from_deck(
     seen: set[str] = set()
     count = 0
     for card in cards:
-        has_custom = (
-            card.custom_art_front_id is not None
-            or card.custom_art_back_id is not None
-        )
+        has_custom = card.custom_art_front_id is not None or card.custom_art_back_id is not None
         if only_customized and not has_custom:
             continue
         if not card.oracle_id or card.oracle_id in seen:
             continue
         seen.add(card.oracle_id)
 
-        db.add(ArtThemeEntry(
-            theme_id=theme.id,
-            oracle_id=card.oracle_id,
-            card_name=card.name,
-            scryfall_id=card.scryfall_id,
-            custom_art_front_id=card.custom_art_front_id,
-            custom_art_back_id=card.custom_art_back_id,
-        ))
+        db.add(
+            ArtThemeEntry(
+                theme_id=theme.id,
+                oracle_id=card.oracle_id,
+                card_name=card.name,
+                scryfall_id=card.scryfall_id,
+                custom_art_front_id=card.custom_art_front_id,
+                custom_art_back_id=card.custom_art_back_id,
+            )
+        )
         count += 1
 
     theme.entry_count = count
     await db.commit()
-    log.info("Tema '%s' creado con %d entradas desde el mazo %d",
-             theme.name, count, deck_id)
+    log.info("Tema '%s' creado con %d entradas desde el mazo %d", theme.name, count, deck_id)
     return await get_theme(db, theme.id)
 
 
@@ -171,29 +135,21 @@ async def apply_to_deck(
     *,
     overwrite_custom: bool = True,
 ) -> ApplyResult | None:
-    """Aplica un tema a un mazo.
-
-    ``overwrite_custom=False`` respeta las cartas que ya tienen arte custom
-    elegido a mano, y solo toca las que están con su arte por defecto. Útil
-    para aplicar un tema encima de un mazo ya trabajado sin perder el trabajo.
-    """
     theme = await db.get(ArtTheme, theme_id)
     deck = await db.get(Deck, deck_id)
     if theme is None or deck is None:
         return None
 
-    entries = (await db.execute(
-        select(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)
-    )).scalars().all()
+    entries = (
+        (await db.execute(select(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)))
+        .scalars()
+        .all()
+    )
     by_oracle = {e.oracle_id: e for e in entries}
 
-    cards = (await db.execute(
-        select(DeckCard).where(DeckCard.deck_id == deck_id)
-    )).scalars().all()
+    cards = (await db.execute(select(DeckCard).where(DeckCard.deck_id == deck_id))).scalars().all()
 
-    result = ApplyResult(
-        theme_id=theme.id, theme_name=theme.name, deck_id=deck_id
-    )
+    result = ApplyResult(theme_id=theme.id, theme_name=theme.name, deck_id=deck_id)
 
     for card in cards:
         entry = by_oracle.get(card.oracle_id)
@@ -201,10 +157,7 @@ async def apply_to_deck(
             result.not_in_theme += 1
             continue
 
-        has_custom = (
-            card.custom_art_front_id is not None
-            or card.custom_art_back_id is not None
-        )
+        has_custom = card.custom_art_front_id is not None or card.custom_art_back_id is not None
         if has_custom and not overwrite_custom:
             result.already_matching += 1
             continue
@@ -225,32 +178,26 @@ async def apply_to_deck(
         result.changed += 1
 
     await db.commit()
-    log.info("Tema '%s' aplicado al mazo %d: %d cartas cambiadas",
-             theme.name, deck_id, result.changed)
+    log.info(
+        "Tema '%s' aplicado al mazo %d: %d cartas cambiadas", theme.name, deck_id, result.changed
+    )
     return result
 
 
-async def preview_apply(
-    db: AsyncSession, theme_id: int, deck_id: int
-) -> dict[str, Any] | None:
-    """Qué pasaría al aplicar, sin tocar nada.
-
-    Una operación que cambia decenas de cartas de golpe no debería ejecutarse
-    a ciegas. La interfaz enseña esto y pide confirmación.
-    """
+async def preview_apply(db: AsyncSession, theme_id: int, deck_id: int) -> dict[str, Any] | None:
     theme = await db.get(ArtTheme, theme_id)
     deck = await db.get(Deck, deck_id)
     if theme is None or deck is None:
         return None
 
-    entries = (await db.execute(
-        select(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)
-    )).scalars().all()
+    entries = (
+        (await db.execute(select(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)))
+        .scalars()
+        .all()
+    )
     by_oracle = {e.oracle_id: e for e in entries}
 
-    cards = (await db.execute(
-        select(DeckCard).where(DeckCard.deck_id == deck_id)
-    )).scalars().all()
+    cards = (await db.execute(select(DeckCard).where(DeckCard.deck_id == deck_id))).scalars().all()
 
     would_change = []
     for card in cards:
@@ -264,13 +211,15 @@ async def preview_apply(
         )
         if unchanged:
             continue
-        would_change.append({
-            "card_id": card.id,
-            "name": card.name,
-            "from_scryfall_id": card.scryfall_id,
-            "to_scryfall_id": entry.scryfall_id,
-            "to_custom_front": entry.custom_art_front_id,
-        })
+        would_change.append(
+            {
+                "card_id": card.id,
+                "name": card.name,
+                "from_scryfall_id": card.scryfall_id,
+                "to_scryfall_id": entry.scryfall_id,
+                "to_custom_front": entry.custom_art_front_id,
+            }
+        )
 
     return {
         "theme_id": theme.id,
@@ -287,9 +236,7 @@ async def delete_theme(db: AsyncSession, theme_id: int) -> bool:
     theme = await db.get(ArtTheme, theme_id)
     if theme is None:
         return False
-    await db.execute(
-        delete(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id)
-    )
+    await db.execute(delete(ArtThemeEntry).where(ArtThemeEntry.theme_id == theme_id))
     await db.delete(theme)
     await db.commit()
     return True

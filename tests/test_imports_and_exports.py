@@ -1,16 +1,16 @@
-"""Tests de imports (Moxfield + texto), unresolved, decklist export y localización."""
 from __future__ import annotations
 
 
 class TestImportUnresolved:
-    """Feature: reporte de cartas no importadas."""
-
     async def test_import_text_reports_unresolved(self, client):
-        r = await client.post("/api/decks/import/text", json={
-            "name": "With Bad Card",
-            "text": "1 Sol Ring\n1 Command Tower\n1 Not A Real Card",
-            "format": "commander",
-        })
+        r = await client.post(
+            "/api/decks/import/text",
+            json={
+                "name": "With Bad Card",
+                "text": "1 Sol Ring\n1 Command Tower\n1 Not A Real Card",
+                "format": "commander",
+            },
+        )
         assert r.status_code == 200
         result = r.json()
         assert len(result["unresolved"]) == 1
@@ -20,18 +20,19 @@ class TestImportUnresolved:
         assert result["total_entries"] == 3
 
     async def test_import_all_resolved_returns_empty_unresolved(self, client):
-        r = await client.post("/api/decks/import/text", json={
-            "name": "All Good",
-            "text": "1 Sol Ring\n1 Command Tower",
-            "format": "commander",
-        })
+        r = await client.post(
+            "/api/decks/import/text",
+            json={
+                "name": "All Good",
+                "text": "1 Sol Ring\n1 Command Tower",
+                "format": "commander",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["unresolved"] == []
 
 
 class TestDecklistExport:
-    """Feature: exportar decklist como string."""
-
     async def test_export_simple_format(self, client, deck):
         r = await client.get(f"/api/decks/{deck['id']}/decklist?format=simple")
         assert r.status_code == 200
@@ -63,8 +64,6 @@ class TestDecklistExport:
 
 
 class TestLocalization:
-    """Feature: idioma del arte de las cartas."""
-
     async def test_supported_langs_lists_common_languages(self, client):
         r = await client.get("/api/decks/_/supported-langs")
         assert r.status_code == 200
@@ -81,7 +80,9 @@ class TestLocalization:
         assert len(result["unavailable"]) == 2
 
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
-        sol = next(c for c in deck_after["cards"] if "Sol Ring" in c["name"] or "Anillo" in c["name"])
+        sol = next(
+            c for c in deck_after["cards"] if "Sol Ring" in c["name"] or "Anillo" in c["name"]
+        )
         assert sol["scryfall_id"] == "sr-es"
 
     async def test_localize_idempotent(self, client, deck):

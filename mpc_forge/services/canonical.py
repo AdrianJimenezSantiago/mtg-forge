@@ -1,33 +1,3 @@
-"""Validación y enriquecimiento de metadatos canónicos con Scryfall.
-
-Motivación (Extras · F2/T5)
----------------------------
-`gdrive_indexer.extract_canonical` captura `[SET NUM]` del filename sin
-validar que ese (set, num) exista realmente. Un usuario que escribe
-"[XYZ 999]" acaba con un canonical inválido en la BD.
-
-Este servicio:
-  1. Recorre los IndexedArt con canonical no verificado.
-  2. Los agrupa por (set, num) — muchos artes comparten la misma printing
-     canónica, así una sola query Scryfall resuelve N filas.
-  3. Consulta Scryfall vía `by_set_and_number`.
-  4. Si la impresión existe, popula `oracle_id`/`artist` en filas
-     relacionadas (via nuevas columnas o via lookup fresh cada uso).
-     Si NO existe, borra el canonical (limpieza defensiva).
-
-Trade-offs
-----------
-- Se ejecuta bajo demanda por el usuario (`POST /api/drives/canonical/validate`),
-  no automáticamente al indexar. Batch de N canonicals → ceil(N/75) requests
-  a Scryfall (que soporta hasta 75 identifiers por `/cards/collection`).
-- Los resultados enriquecidos se cachean en `PrintingCache` — la próxima
-  vez que el usuario abra el picker, el arte del drive puede mostrar
-  "art by Rebecca Guay" sin llamar a Scryfall.
-
-TODO fuera de este servicio: exponer `oracle_id`/`artist` como columnas
-directas en `IndexedArt` para filtros SQL eficientes. Por ahora vive en
-`PrintingCache` (via scryfall_id) — el frontend hace un JOIN implícito.
-"""
 from __future__ import annotations
 
 import logging
@@ -50,22 +20,6 @@ async def validate_and_enrich(
     limit: int = 500,
     source_id: int | None = None,
 ) -> dict[str, int]:
-    """Valida los `expansion_code + collector_number` no verificados.
-
-    ``limit`` cap de artes a validar en una llamada (evita agotar Scryfall
-    con drives gigantes). Batches de 75 en 75.
-
-    ``source_id`` opcional para restringir la validación a un solo drive.
-
-    Devuelve stats::
-      {"checked": N, "valid": M, "invalid": K, "cache_hits": H}
-
-    - "valid": la (set, num) existe en Scryfall. Se hidrata `PrintingCache`.
-    - "invalid": no existe. Limpiamos `expansion_code`/`collector_number`
-      del arte para no ensuciar el picker.
-    - "cache_hits": ya teníamos la printing en `PrintingCache` — no hubo
-      llamada de red.
-    """
     stmt = (
         select(IndexedArt)
         .where(IndexedArt.expansion_code.is_not(None))
@@ -84,14 +38,17 @@ async def validate_and_enrich(
         by_key.setdefault(key, []).append(a)
 
     from sqlalchemy import tuple_
+
     resolved: dict[tuple[str, str], PrintingCache] = {}
     keys = list(by_key.keys())
     if keys:
-        cache_rows = (await db.scalars(
-            select(PrintingCache).where(
-                tuple_(PrintingCache.set_code, PrintingCache.collector_number).in_(keys)
+        cache_rows = (
+            await db.scalars(
+                select(PrintingCache).where(
+                    tuple_(PrintingCache.set_code, PrintingCache.collector_number).in_(keys)
+                )
             )
-        )).all()
+        ).all()
         for pc in cache_rows:
             k = (pc.set_code, pc.collector_number)
             if k in by_key and k not in resolved:
@@ -102,17 +59,15 @@ async def validate_and_enrich(
     valid = 0
     invalid = 0
     for i in range(0, len(to_query), _SCRYFALL_BATCH_SIZE):
-        batch = to_query[i:i + _SCRYFALL_BATCH_SIZE]
-        idents = [
-            {"set": s, "collector_number": n}
-            for s, n in batch
-        ]
+        batch = to_query[i : i + _SCRYFALL_BATCH_SIZE]
+        idents = [{"set": s, "collector_number": n} for s, n in batch]
         try:
             cards = await scryfall.collection(idents)
         except Exception as e:
             log.warning("Scryfall.collection batch falló, saltando: %s", e)
             continue
         from mpc_forge.services.deck_service import upsert_printings
+
         cached = await upsert_printings(db, cards)
         found_keys: set[tuple[str, str]] = set()
         for c in cards:
@@ -145,12 +100,6 @@ async def validate_and_enrich(
 async def get_canonical_details(
     db: AsyncSession, expansion_code: str, collector_number: str
 ) -> dict[str, Any] | None:
-    """Lookup local de detalles enriquecidos (artist, oracle_id, ...) para
-    una (set, num). Devuelve None si no está en cache.
-
-    Uso: el frontend puede llamarlo para mostrar "art by X" bajo un
-    thumbnail de drive con canonical.
-    """
     pc = await db.scalar(
         select(PrintingCache)
         .where(PrintingCache.set_code == expansion_code.lower())

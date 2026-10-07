@@ -1,4 +1,3 @@
-"""Endpoints de exportación: XML MPC-Autofill, estimador, historial, backup."""
 from __future__ import annotations
 
 import asyncio
@@ -48,9 +47,6 @@ def _get_scryfall(request: Request) -> ScryfallClient:
 
 
 async def _resolve_deck_cardback(db: AsyncSession, deck: Deck) -> Path | None:
-    """Devuelve la ruta al cardback que debe usarse para este mazo.
-    Prioridad: deck.custom_cardback_art_id → default_cardback_path() global.
-    Si el CustomArt referenciado no existe en disco, cae al global."""
     from mpc_forge.models import CustomArt
 
     if deck.custom_cardback_art_id is not None:
@@ -88,19 +84,11 @@ class EstimateResponse(BaseModel):
 
 @router.get("/decks/{deck_id}/estimate", response_model=EstimateResponse)
 async def estimate_deck(deck_id: int, db: DbDep) -> EstimateResponse:
-    """El coste SIEMPRE se calcula sobre las 100 principales del mazo
-    (comandante + mainboard), aunque el usuario haya importado también
-    sideboard/tokens/maybeboard/companion. Es el gasto real de MPC:
-    lo que va a impresión es el mazo, no lo auxiliar.
-    """
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
     _CORE_ROLES = {"commander", "mainboard"}
-    total = sum(
-        c.quantity for c in deck.cards
-        if c.include and c.role in _CORE_ROLES
-    )
+    total = sum(c.quantity for c in deck.cards if c.include and c.role in _CORE_ROLES)
     est = cost_estimator.estimate(total)
     return EstimateResponse(**est.__dict__)
 
@@ -136,7 +124,10 @@ async def build_xml_endpoint(
 
     try:
         resolved = await resolve_deck_for_xml(
-            db, scryfall, art_cache, deck,
+            db,
+            scryfall,
+            art_cache,
+            deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
     except Exception as e:
@@ -180,7 +171,9 @@ async def build_xml_endpoint(
         run_id = run.id
 
     await deck_activity.log_event(
-        db, deck_id, K.XML_GENERATED,
+        db,
+        deck_id,
+        K.XML_GENERATED,
         payload={
             "cardstock": cardstock,
             "foil": foil,
@@ -239,18 +232,6 @@ async def preview_print_runs(
     max_tier: int | None = None,
     optimize: bool = False,
 ) -> PrintRunSplitResponse:
-    """Previsualiza cómo se partiría el mazo en print runs MPC.
-
-    ``max_tier`` opcional para forzar un techo (ej. 108 para dividir aunque
-    quepan en 612). Por defecto usa el tier máximo definido en `MPC_TIERS`.
-
-    ``optimize`` (Extras · F3/T10): si True, usa el DP solver
-    (`split_into_runs_optimized`) para minimizar wasted_slots.
-
-    NO descarga arte ni genera XMLs — solo cuenta slots vía
-    ``plan_deck_slots`` que consulta la BD. Útil para que la UI muestre
-    "tu mazo son 700 cartas → 2 runs (612 + 88)" al instante.
-    """
     from mpc_forge.services.print_runs import (
         split_into_runs,
         split_into_runs_optimized,
@@ -265,8 +246,11 @@ async def preview_print_runs(
     slots = await plan_deck_slots(db, deck)
     if not slots:
         return PrintRunSplitResponse(
-            total_runs=0, total_cards=0, total_wasted_slots=0,
-            total_subtotal_usd=0.0, runs=[],
+            total_runs=0,
+            total_cards=0,
+            total_wasted_slots=0,
+            total_subtotal_usd=0.0,
+            runs=[],
         )
     if optimize:
         plan = split_into_runs_optimized(slots)
@@ -276,14 +260,11 @@ async def preview_print_runs(
 
 
 class BuildSplitXMLRequest(BaseModel):
-    """Payload para generar N XMLs de una vez (uno por run)."""
     cardstock: str | None = None
     foil: bool = False
     max_tier: int | None = None
     create_runs: bool = True
-    """Si True, cada XML genera además su print_run en historial."""
     web_mode: bool = False
-    """Si True, el XML generado es compatible con mpcfill.com (``<id>`` vacío)."""
 
 
 class BuildSplitXMLResponse(BaseModel):
@@ -305,11 +286,6 @@ async def build_split_xml_endpoint(
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
     art_cache: Annotated[ArtCache, Depends(_get_art_cache)],
 ) -> BuildSplitXMLResponse:
-    """Genera un XML por cada print run tras dividir el mazo.
-
-    Cada fichero comparte el mismo cardback (custom o default) y cardstock.
-    Se numeran ``-run1of3.xml``, ``-run2of3.xml``, etc.
-    """
     from mpc_forge.services.print_runs import split_into_runs
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
@@ -336,15 +312,21 @@ async def build_split_xml_endpoint(
         out_path = PATHS.exports_dir / f"{slugify(deck.name)}-{stamp}{suffix}.xml"
         r = await asyncio.to_thread(
             build_xml,
-            cards=run_plan.cards, output_path=out_path,
-            cardstock=cardstock, foil=foil, cardback_path=cardback,
+            cards=run_plan.cards,
+            output_path=out_path,
+            cardstock=cardstock,
+            foil=foil,
+            cardback_path=cardback,
             web_mode=payload.web_mode,
         )
         xml_paths.append(str(r.xml_path))
 
         if payload.create_runs:
             run_row = await history.create_print_run_from_deck(
-                db, deck=deck, cardstock=cardstock, foil=foil,
+                db,
+                deck=deck,
+                cardstock=cardstock,
+                foil=foil,
                 tier_size=run_plan.tier_size,
                 estimated_cost_eur=run_plan.subtotal_usd * cfg.USD_TO_EUR,
                 xml_path=str(r.xml_path),
@@ -376,11 +358,6 @@ async def get_decklist(
     format: str = "with_set",
     include_headers: bool = True,
 ) -> DecklistResponse:
-    """Devuelve el mazo serializado como texto plano.
-
-    Solo cuenta cartas con include=True. Los tokens y meld_result se omiten
-    porque no forman parte de la lista importable.
-    """
     if format not in {"simple", "with_set", "arena"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Formato desconocido: {format!r}")
 
@@ -389,7 +366,10 @@ async def get_decklist(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
     text = await decklist_export.build_decklist_text(
-        db, deck_id, fmt=format, include_headers=include_headers,  # type: ignore[arg-type]
+        db,
+        deck_id,
+        fmt=format,
+        include_headers=include_headers,  # type: ignore[arg-type]
     )
     if not text.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mazo no tiene cartas activas")
@@ -410,7 +390,6 @@ async def download_decklist(
     format: str = "with_set",
     include_headers: bool = True,
 ) -> FileResponse:
-    """Descarga el mazo como fichero .txt (para guardar/enviar)."""
     if format not in {"simple", "with_set", "arena"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Formato desconocido: {format!r}")
 
@@ -419,7 +398,10 @@ async def download_decklist(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
     text = await decklist_export.build_decklist_text(
-        db, deck_id, fmt=format, include_headers=include_headers,  # type: ignore[arg-type]
+        db,
+        deck_id,
+        fmt=format,
+        include_headers=include_headers,  # type: ignore[arg-type]
     )
     if not text.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mazo no tiene cartas activas")
@@ -447,8 +429,6 @@ async def download_export(filename: str) -> FileResponse:
 
 @router.api_route("/cardback", methods=["GET", "HEAD"])
 async def get_default_cardback() -> FileResponse:
-    """Sirve el cardback estándar para que el preview del PDF Studio pueda
-    pintarlo en las páginas de reversos cuando el modo es 'all_cards'."""
     path = default_cardback_path()
     if path is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sin cardback configurado")
@@ -458,8 +438,6 @@ async def get_default_cardback() -> FileResponse:
 
 
 class DeckCardbackSettings(BaseModel):
-    """Estado actual del cardback del mazo. Cuando `custom_art_id` es None,
-    se usa el `default_cardback_path()` global."""
     deck_id: int
     using_custom: bool
     custom_art_id: int | None = None
@@ -474,7 +452,8 @@ class SetDeckCardbackRequest(BaseModel):
 
 
 async def _load_deck_cardback_settings(
-    db: AsyncSession, deck_id: int,
+    db: AsyncSession,
+    deck_id: int,
 ) -> DeckCardbackSettings:
     from mpc_forge.models import CustomArt
     from mpc_forge.services import custom_art as custom_art_service
@@ -487,7 +466,8 @@ async def _load_deck_cardback_settings(
 
     if deck.custom_cardback_art_id is None:
         return DeckCardbackSettings(
-            deck_id=deck_id, using_custom=False,
+            deck_id=deck_id,
+            using_custom=False,
             default_image_url=default_url,
         )
 
@@ -496,7 +476,8 @@ async def _load_deck_cardback_settings(
         deck.custom_cardback_art_id = None
         await db.commit()
         return DeckCardbackSettings(
-            deck_id=deck_id, using_custom=False,
+            deck_id=deck_id,
+            using_custom=False,
             default_image_url=default_url,
         )
 
@@ -518,7 +499,9 @@ async def get_deck_cardback(deck_id: int, db: DbDep) -> DeckCardbackSettings:
 
 @router.put("/decks/{deck_id}/cardback-settings", response_model=DeckCardbackSettings)
 async def set_deck_cardback(
-    deck_id: int, payload: SetDeckCardbackRequest, db: DbDep,
+    deck_id: int,
+    payload: SetDeckCardbackRequest,
+    db: DbDep,
 ) -> DeckCardbackSettings:
     from mpc_forge.models import CustomArt
 
@@ -549,15 +532,6 @@ async def clear_deck_cardback(deck_id: int, db: DbDep) -> DeckCardbackSettings:
 
 
 class BuildPDFRequest(BaseModel):
-    """Payload del PDF Studio v2. Todos los campos son opcionales — si no
-    vienen, caen a los defaults del dataclass ``PDFOptions``.
-
-    Legacy: los campos ``cut_marks``, ``gap_mm``, ``guides_enabled``,
-    ``guides_style``, ``guides_stroke``, ``guides_placement``,
-    ``guides_length_mm``, ``guides_color``, ``guides_width_pt`` se aceptan
-    para no romper integraciones anteriores; se traducen internamente al
-    modelo nuevo (``card_guides_*``).
-    """
     page_size: str = "a4"
     orientation: str = "portrait"
     cols: int = 3
@@ -624,9 +598,6 @@ class PDFBuildResponse(BaseModel):
 
 
 class ImagesExportRequest(BaseModel):
-    """Sin campos por ahora — el ZIP incluye siempre las imágenes únicas del
-    mazo + decklist.txt + README.txt. Reservado para el futuro por si
-    queremos permitir escoger formato de decklist, incluir tokens, etc."""
     decklist_format: str = "with_set"
 
 
@@ -657,22 +628,20 @@ class BuildProgressResponse(BaseModel):
 
 @router.get("/decks/{deck_id}/build-progress", response_model=BuildProgressResponse)
 async def get_build_progress(deck_id: int) -> BuildProgressResponse:
-    """Estado del build XML/PDF en curso (o del último terminado, si el
-    frontend aún no lo ha limpiado).
-
-    El frontend hace polling a este endpoint cada ~300ms mientras el POST
-    /build-xml o /build-pdf está pendiente, para pintar una barra real de
-    "42/100 · Sol Ring…". Cuando ``done=true`` deja de hacer polling.
-
-    Si no hay build activo devuelve ``active=false`` (nunca 404 — es un
-    estado válido y evita ruido en la consola del navegador).
-    """
     p = build_progress.get(deck_id)
     if p is None:
         return BuildProgressResponse(
-            active=False, deck_id=deck_id, total=0, current=0, current_name="",
-            kind="xml", done=True, error=None, elapsed_seconds=0.0,
-            eta_seconds=None, percent=0.0,
+            active=False,
+            deck_id=deck_id,
+            total=0,
+            current=0,
+            current_name="",
+            kind="xml",
+            done=True,
+            error=None,
+            elapsed_seconds=0.0,
+            eta_seconds=None,
+            percent=0.0,
         )
     d = p.to_dict()
     return BuildProgressResponse(active=True, **d)
@@ -686,12 +655,6 @@ async def build_pdf_endpoint(
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
     art_cache: Annotated[ArtCache, Depends(_get_art_cache)],
 ) -> PDFBuildResponse:
-    """Genera un PDF listo para imprimir (3×3 cartas por A4, tamaño real MTG).
-
-    Reutiliza el mismo pipeline de resolución que el XML: descarga las imágenes
-    que aún no estén cacheadas, respeta las elecciones de arte (custom u oficial),
-    y produce un PDF con la máxima calidad posible (imágenes sin recomprimir).
-    """
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
@@ -707,7 +670,10 @@ async def build_pdf_endpoint(
 
     try:
         resolved = await resolve_deck_for_xml(
-            db, scryfall, art_cache, deck,
+            db,
+            scryfall,
+            art_cache,
+            deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
     except Exception as e:
@@ -735,12 +701,30 @@ async def build_pdf_endpoint(
     else:
         gap_x, gap_y = payload.gap_x_mm, payload.gap_y_mm
 
-    card_style = payload.guides_style if payload.guides_style is not None else payload.card_guides_style
-    card_pattern = payload.guides_stroke if payload.guides_stroke is not None else payload.card_guides_pattern
-    card_placement = payload.guides_placement if payload.guides_placement is not None else payload.card_guides_placement
-    card_length = payload.guides_length_mm if payload.guides_length_mm is not None else payload.card_guides_length_mm
-    card_color = payload.guides_color if payload.guides_color is not None else payload.card_guides_color
-    card_width = payload.guides_width_pt if payload.guides_width_pt is not None else payload.card_guides_width_pt
+    card_style = (
+        payload.guides_style if payload.guides_style is not None else payload.card_guides_style
+    )
+    card_pattern = (
+        payload.guides_stroke if payload.guides_stroke is not None else payload.card_guides_pattern
+    )
+    card_placement = (
+        payload.guides_placement
+        if payload.guides_placement is not None
+        else payload.card_guides_placement
+    )
+    card_length = (
+        payload.guides_length_mm
+        if payload.guides_length_mm is not None
+        else payload.card_guides_length_mm
+    )
+    card_color = (
+        payload.guides_color if payload.guides_color is not None else payload.card_guides_color
+    )
+    card_width = (
+        payload.guides_width_pt
+        if payload.guides_width_pt is not None
+        else payload.card_guides_width_pt
+    )
 
     options = PDFOptions(
         page_size=_one_of(payload.page_size, ("a4", "letter", "a3"), "a4"),  # type: ignore[arg-type]
@@ -787,7 +771,9 @@ async def build_pdf_endpoint(
     build_progress.finish(deck_id)
     filename = Path(str(result.pdf_path)).name
     await deck_activity.log_event(
-        db, deck_id, K.PDF_GENERATED,
+        db,
+        deck_id,
+        K.PDF_GENERATED,
         payload={
             "page_size": options.page_size,
             "orientation": options.orientation,
@@ -834,8 +820,6 @@ async def export_images_endpoint(
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
     art_cache: Annotated[ArtCache, Depends(_get_art_cache)],
 ) -> ImagesExportResponse:
-    """Genera un ZIP con las imágenes de cada carta única + decklist.txt +
-    README.txt. Reutiliza el mismo pipeline de resolución que XML/PDF."""
     from mpc_forge.services.image_export import build_images_zip
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
@@ -853,7 +837,10 @@ async def export_images_endpoint(
 
     try:
         resolved = await resolve_deck_for_xml(
-            db, scryfall, art_cache, deck,
+            db,
+            scryfall,
+            art_cache,
+            deck,
             on_progress=lambda name: build_progress.tick(deck_id, name),
         )
     except Exception as e:
@@ -863,9 +850,16 @@ async def export_images_endpoint(
         build_progress.finish(deck_id, error="Mazo sin cartas resueltas")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
 
-    fmt = payload.decklist_format if payload.decklist_format in {"simple", "with_set", "arena"} else "with_set"
+    fmt = (
+        payload.decklist_format
+        if payload.decklist_format in {"simple", "with_set", "arena"}
+        else "with_set"
+    )
     decklist_text = await decklist_export.build_decklist_text(
-        db, deck_id, fmt=fmt, include_headers=True,  # type: ignore[arg-type]
+        db,
+        deck_id,
+        fmt=fmt,
+        include_headers=True,  # type: ignore[arg-type]
     )
 
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
@@ -878,7 +872,9 @@ async def export_images_endpoint(
 
     filename = out_path.name
     await deck_activity.log_event(
-        db, deck_id, K.IMAGES_EXPORTED,
+        db,
+        deck_id,
+        K.IMAGES_EXPORTED,
         payload={
             "total_files": result.total_files,
             "total_unique_cards": result.total_unique_cards,
@@ -920,7 +916,9 @@ class PrintRunView(BaseModel):
 async def list_runs(db: DbDep) -> list[PrintRunView]:
     runs = (
         await db.scalars(
-            select(PrintRun).options(selectinload(PrintRun.items)).order_by(PrintRun.created_at.desc())
+            select(PrintRun)
+            .options(selectinload(PrintRun.items))
+            .order_by(PrintRun.created_at.desc())
         )
     ).all()
     return [

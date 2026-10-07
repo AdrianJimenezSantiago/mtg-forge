@@ -1,38 +1,3 @@
-"""Generador de XML para el desktop client de MPC-Autofill.
-
-Aprovechamos el soporte de rutas locales en el campo <id> (releases recientes),
-así el cliente no tiene que ir a las Google Drives indexadas.
-
-Formato mínimo del XML esperado por mpc-autofill:
-
-<order>
-  <details>
-    <quantity>N</quantity>
-    <bracket>...</bracket>       (opcional; el desktop lo calcula)
-    <stock>(S30) Standard Smooth</stock>
-    <foil>false</foil>
-  </details>
-  <fronts>
-    <card>
-      <id>C:\\ruta\\absoluta\\arte.png</id>
-      <slots>0,1,2</slots>
-      <name>Sol Ring</name>
-      <query>sol ring</query>
-    </card>
-    ...
-  </fronts>
-  <backs>
-    <card>
-      <id>C:\\ruta\\reverso.png</id>
-      <slots>4</slots>
-      <name>Delver of Secrets</name>
-      <query>delver of secrets</query>
-    </card>
-    ...
-  </backs>
-  <cardback>C:\\ruta\\default-back.png</cardback>
-</order>
-"""
 from __future__ import annotations
 
 import json
@@ -61,7 +26,6 @@ _DFC_LAYOUTS = {"transform", "modal_dfc", "double_faced_token", "reversible_card
 
 @dataclass
 class DeckCardResolved:
-    """Info por carta lista para renderizar en XML."""
     name: str
     quantity: int
     scryfall_id: str
@@ -80,6 +44,7 @@ class XMLBuildResult:
 
 def _slug(text: str) -> str:
     import re
+
     text = text.replace("//", " ")
     text = text.replace("-", " ")
     text = "".join(c for c in text.lower() if c.isalnum() or c == " ")
@@ -87,7 +52,6 @@ def _slug(text: str) -> str:
 
 
 def _meld_result_id(printing: PrintingCache) -> str | None:
-    """Extrae el ``scryfall_id`` del meld_result del ``related_parts`` JSON."""
     if not printing.related_parts:
         return None
     try:
@@ -107,21 +71,6 @@ async def resolve_deck_for_xml(
     deck: Deck,
     on_progress: Callable[[str], None] | None = None,
 ) -> list[DeckCardResolved]:
-    """Resuelve todas las cartas del mazo descargando artes faltantes.
-
-    Estrategia (batch en 3 fases, era 1 fila cada vez):
-
-      A. Precarga en 3 queries: ``DeckCard`` del mazo, ``CustomArt`` referenciados,
-         y ``PrintingCache`` de las scryfall_ids implicadas.
-      B. Rellena huecos (printings ausentes o meld_results no cacheados) con
-         ``scryfall.by_id`` — solo se llama cuando hace falta.
-      C. Delega en :meth:`ArtCache.ensure_many` la descarga paralela de todos
-         los artes oficiales requeridos, con un único commit al final.
-
-    ``on_progress(card_name)`` se llama tras terminar cada carta. Se usa desde
-    los endpoints de build para actualizar el tracker de progreso — pasar
-    ``None`` (default) desactiva el tracking.
-    """
     cards = (
         await db.scalars(
             select(DeckCard)
@@ -246,15 +195,17 @@ async def resolve_deck_for_xml(
                     mr = printings_by_id.get(mrid)
                     back_name = (mr.name if mr else "meld back") + " (meld)"
 
-            resolved.append(DeckCardResolved(
-                name=dc.name,
-                quantity=dc.quantity,
-                scryfall_id=dc.scryfall_id,
-                front_path=front_path,
-                back_path=back_path,
-                back_name=back_name,
-                query=_slug(dc.name),
-            ))
+            resolved.append(
+                DeckCardResolved(
+                    name=dc.name,
+                    quantity=dc.quantity,
+                    scryfall_id=dc.scryfall_id,
+                    front_path=front_path,
+                    back_path=back_path,
+                    back_name=back_name,
+                    query=_slug(dc.name),
+                )
+            )
 
         if on_progress is not None:
             try:
@@ -269,18 +220,8 @@ async def plan_deck_slots(
     db: AsyncSession,
     deck: Deck,
 ) -> list[DeckCardResolved]:
-    """Versión ligera de ``resolve_deck_for_xml`` que NO descarga arte.
-
-    Uso: previews que solo necesitan saber cuántas cartas y qué reversos
-    (para split de print runs). Los ``front_path``/``back_path`` van a
-    placeholders vacíos — es correcto porque el caller no genera XML,
-    solo cuenta slots.
-
-    `back_path` se pone como placeholder no-None cuando la carta es DFC/MDFC
-    (según el PrintingCache), así el split de print runs puede distinguirlas
-    para colocar reversos correctos si se combinan con `build_split_xml`.
-    """
     from mpc_forge.models import PrintingCache
+
     cards = (
         await db.scalars(
             select(DeckCard)
@@ -293,13 +234,17 @@ async def plan_deck_slots(
     for dc in cards:
         pc = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
         has_back = bool(pc and pc.back_name)
-        out.append(DeckCardResolved(
-            name=dc.name, quantity=dc.quantity, scryfall_id=dc.scryfall_id or "",
-            front_path=_placeholder,
-            back_path=_placeholder if has_back else None,
-            back_name=pc.back_name if pc else None,
-            query="",
-        ))
+        out.append(
+            DeckCardResolved(
+                name=dc.name,
+                quantity=dc.quantity,
+                scryfall_id=dc.scryfall_id or "",
+                front_path=_placeholder,
+                back_path=_placeholder if has_back else None,
+                back_name=pc.back_name if pc else None,
+                query="",
+            )
+        )
     return out
 
 
@@ -311,28 +256,6 @@ def build_xml(
     cardback_path: Path | None,
     web_mode: bool = False,
 ) -> XMLBuildResult:
-    """Construye el XML final.
-
-    Asigna slots correlativos y agrupa cartas iguales para minimizar entradas.
-
-    Args:
-        web_mode: Si True, el campo ``<id>`` se deja vacío en lugar de usar
-            la ruta local del arte. Usar cuando el destino es mpcfill.com
-            (web), que busca imágenes por ``<query>`` y no puede leer rutas
-            locales de Windows. Si False (default), se incluyen las rutas
-            locales para que el desktop client de MPC Autofill las lea
-            directamente desde disco.
-
-    Estructura `<backs>` (compatible con MPC Autofill desktop tool y mpcfill.com):
-      - Cada carta con back propio (DFC/MDFC/meld/custom back) → su propio `<card>`
-        con el/los slots que ocupa esa carta.
-      - Todos los demás slots (cartas normales) → un único `<card>` que apunta al
-        cardback global con la lista CSV de slots. Esto es explícito y evita
-        ambigüedades con distintas versiones del tool.
-      - `<cardback>` se mantiene como fallback global por si el tool ignora `<backs>`.
-
-    Los DFCs consumen el mismo slot en `fronts` y `backs`.
-    """
     root = ET.Element("order")
     details = ET.SubElement(root, "details")
     total = sum(c.quantity for c in cards)
@@ -387,7 +310,6 @@ def build_xml(
 
 
 def default_cardback_path() -> Path | None:
-    """Busca un cardback por defecto en el directorio de cardbacks."""
     for ext in (".png", ".jpg", ".jpeg"):
         candidate = PATHS.cardbacks_dir / f"{DEFAULT_CARDBACK_NAME}{ext}"
         if candidate.exists():

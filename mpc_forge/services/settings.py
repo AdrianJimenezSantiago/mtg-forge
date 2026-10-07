@@ -1,18 +1,3 @@
-"""Ajustes runtime persistentes en la tabla KeyValue.
-
-Todo lo que aquí se defina se guarda en la BD y sobrescribe los defaults de
-`mpc_forge.config` al arrancar. El usuario los edita desde la UI de Ajustes.
-
-Cada setting tiene:
-- clave estable
-- tipo (str/float/bool/int/json)
-- valor por defecto (viene de config.py)
-- descripción y grupo (para la UI)
-
-`get_all()` devuelve el snapshot completo. `set_many()` guarda cambios.
-`apply_to_config()` propaga los valores a los módulos que los usan (mediante
-mutación de las variables globales en `mpc_forge.config`).
-"""
 from __future__ import annotations
 
 import json
@@ -46,18 +31,6 @@ class SettingDef:
     max_value: float | None = None
     choices: list[str] | None = None
     secret: bool = False
-    """Credencial: nunca sale de la app en claro.
-
-    ``GET /api/settings/`` devuelve ``""`` en su lugar y añade la clave a
-    ``secrets_set`` para que la UI pueda pintar "configurada" sin conocer el
-    valor. La UI la manda solo cuando el usuario escribe una nueva; una cadena
-    vacía en un PUT significa "no tocar", no "borrar" (para borrarla se usa el
-    centinela :data:`SECRET_CLEAR`).
-
-    Importa porque el servidor escucha en localhost y un atacante que consiga
-    hablar con él (DNS rebinding, otra app del equipo) podría leerse las
-    credenciales de un simple GET.
-    """
 
 
 SECRET_CLEAR = "__CLEAR__"  # noqa: S105
@@ -118,7 +91,6 @@ DEFINITIONS: list[SettingDef] = [
         default=False,
         description="Al abrir la galería, activa el filtro «Sin borde» automáticamente.",
     ),
-
     SettingDef(
         key="usd_to_eur",
         label="Tipo de cambio USD → EUR",
@@ -126,7 +98,8 @@ DEFINITIONS: list[SettingDef] = [
         group="Precios y envío",
         default=cfg.USD_TO_EUR,
         description="Se aplica al convertir los precios de MPC (USD) a euros.",
-        min_value=0.1, max_value=10.0,
+        min_value=0.1,
+        max_value=10.0,
     ),
     SettingDef(
         key="shipping_base_eur",
@@ -135,7 +108,8 @@ DEFINITIONS: list[SettingDef] = [
         group="Precios y envío",
         default=cfg.SHIPPING_BASE_EUR,
         description="Coste fijo de envío internacional MPC.",
-        min_value=0.0, max_value=100.0,
+        min_value=0.0,
+        max_value=100.0,
     ),
     SettingDef(
         key="shipping_eu_extra_eur",
@@ -144,9 +118,9 @@ DEFINITIONS: list[SettingDef] = [
         group="Precios y envío",
         default=cfg.SHIPPING_EU_EXTRA_EUR,
         description="Extra para envíos dentro de la Unión Europea.",
-        min_value=0.0, max_value=100.0,
+        min_value=0.0,
+        max_value=100.0,
     ),
-
     SettingDef(
         key="moxfield_user_agent",
         label="User-Agent para Moxfield",
@@ -181,7 +155,6 @@ DEFINITIONS: list[SettingDef] = [
             "Equivale a la variable de entorno MPC_FORGE_INSECURE_SSL=1."
         ),
     ),
-
     SettingDef(
         key="mpc_autofill_exe_path",
         label="Ejecutable de MPC Autofill",
@@ -194,7 +167,6 @@ DEFINITIONS: list[SettingDef] = [
             "Descárgalo de github.com/chilli-axe/mpc-autofill/releases."
         ),
     ),
-
     SettingDef(
         key="paths.art_dir",
         label="Cache de artes (Scryfall)",
@@ -311,18 +283,12 @@ def _serialize(sd: SettingDef, value: Any) -> str:
 
 
 async def get_all(db: AsyncSession) -> dict[str, Any]:
-    """Snapshot actual de todos los settings, con defaults aplicados si faltan.
-
-    El resultado se cachea en ``_cached_snapshot`` — la app es single-process
-    y todos los writes pasan por :func:`set_many`, que invalida el cache. La
-    segunda llamada (y siguientes) no toca la BD.
-    """
     global _cached_snapshot
     if _cached_snapshot is not None:
         return _cached_snapshot
 
     rows = (await db.scalars(select(KeyValue).where(KeyValue.key.like("settings.%")))).all()
-    stored: dict[str, str] = {r.key[len("settings."):]: r.value for r in rows}
+    stored: dict[str, str] = {r.key[len("settings.") :]: r.value for r in rows}
     out: dict[str, Any] = {}
     for sd in DEFINITIONS:
         raw = stored.get(sd.key)
@@ -340,11 +306,6 @@ async def get_all(db: AsyncSession) -> dict[str, Any]:
 
 
 async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
-    """Guarda los valores indicados y devuelve el snapshot actualizado.
-
-    Batch prefetch de KeyValues existentes: 1 SELECT WHERE key IN (?) en vez de
-    N queries individuales. Invalida el cache de ``get_all`` antes de releerlo.
-    """
     global _cached_snapshot
 
     valid_updates: dict[str, tuple[Any, str]] = {}
@@ -375,11 +336,7 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
         return await get_all(db)
 
     kv_keys = [f"settings.{k}" for k in valid_updates]
-    existing_rows = (
-        await db.scalars(
-            select(KeyValue).where(KeyValue.key.in_(kv_keys))
-        )
-    ).all()
+    existing_rows = (await db.scalars(select(KeyValue).where(KeyValue.key.in_(kv_keys)))).all()
     existing_by_key: dict[str, KeyValue] = {kv.key: kv for kv in existing_rows}
 
     for key, (_raw, serialized) in valid_updates.items():
@@ -398,14 +355,6 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
 
 
 def apply_to_config(values: dict[str, Any]) -> None:
-    """Propaga los settings a las variables globales de mpc_forge.config.
-
-    Con esto, cualquier módulo que lea `cfg.USD_TO_EUR` verá el valor actual sin
-    tener que reiniciar la app. Para los ``paths.*`` recomponemos ``cfg.PATHS``
-    aplicando los overrides sobre el default — los servicios que leen
-    ``cfg.PATHS.art_dir`` etc dinámicamente ven la nueva ruta en la siguiente
-    llamada.
-    """
     for key, value in values.items():
         if key == "usd_to_eur":
             cfg.USD_TO_EUR = float(value)
@@ -426,10 +375,16 @@ def apply_to_config(values: dict[str, Any]) -> None:
             cfg.GOOGLE_API_KEY = str(value).strip()
         elif key == "ssl_insecure":
             from mpc_forge import ssl_config as _ssl
+
             _ssl.set_runtime_insecure(bool(value))
 
-    path_keys = {"paths.art_dir", "paths.custom_art_dir", "paths.exports_dir",
-                 "paths.backups_dir", "paths.cardbacks_dir"}
+    path_keys = {
+        "paths.art_dir",
+        "paths.custom_art_dir",
+        "paths.exports_dir",
+        "paths.backups_dir",
+        "paths.cardbacks_dir",
+    }
     if path_keys & values.keys():
         base = cfg.Paths.default()
         cfg.PATHS = base.with_overrides(
@@ -442,21 +397,22 @@ def apply_to_config(values: dict[str, Any]) -> None:
 
 
 def definitions_dump() -> list[dict[str, Any]]:
-    """Serialización para la UI: cada setting con su meta + default."""
     out = []
     for sd in DEFINITIONS:
-        out.append({
-            "key": sd.key,
-            "label": sd.label,
-            "type": sd.type,
-            "group": sd.group,
-            "default": sd.default,
-            "description": sd.description,
-            "min_value": sd.min_value,
-            "max_value": sd.max_value,
-            "choices": sd.choices,
-            "secret": sd.secret,
-        })
+        out.append(
+            {
+                "key": sd.key,
+                "label": sd.label,
+                "type": sd.type,
+                "group": sd.group,
+                "default": sd.default,
+                "description": sd.description,
+                "min_value": sd.min_value,
+                "max_value": sd.max_value,
+                "choices": sd.choices,
+                "secret": sd.secret,
+            }
+        )
     return out
 
 
@@ -464,13 +420,6 @@ SECRET_KEYS: frozenset[str] = frozenset(sd.key for sd in DEFINITIONS if sd.secre
 
 
 def redact_values(values: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """Versión de ``values`` apta para salir por la API.
-
-    Devuelve ``(valores_redactados, claves_con_valor)``. Los secretos se
-    sustituyen por ``""`` y su clave aparece en la segunda lista, que es lo que
-    la UI necesita para distinguir "sin configurar" de "ya configurada" sin
-    llegar a conocer el valor.
-    """
     redacted = dict(values)
     configured: list[str] = []
     for key in SECRET_KEYS:

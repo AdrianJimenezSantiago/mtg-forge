@@ -1,22 +1,3 @@
-"""Cálculo de almacenamiento local y limpieza de lo recuperable.
-
-Qué se protege aquí
--------------------
-1. **Que el total sea el total.** El desglose se pinta como "esto es lo que
-   ocupa la app"; si una carpeta se queda fuera de :data:`CATEGORIES` o un
-   fichero suelto de ``data_dir`` no cae en ninguna categoría, la cifra miente
-   y nadie lo nota hasta que el usuario compara con el explorador de archivos.
-
-2. **Que la limpieza no pueda tocar lo irrecuperable.** La base de datos, el
-   arte custom y los reversos no se descargan de ningún sitio. Que el servicio
-   rechace esos objetivos no es una comprobación de cortesía: es la única
-   barrera entre un ``targets: ["database"]`` mal escrito y la pérdida de
-   todos los mazos del usuario.
-
-3. **Que las cifras se refresquen cuando el disco cambia.** El snapshot se
-   cachea un minuto; sin invalidarlo al purgar, la pantalla enseñaría el
-   tamaño de antes justo después de que el usuario haya borrado medio giga.
-"""
 from __future__ import annotations
 
 import os
@@ -29,7 +10,6 @@ from mpc_forge.services import storage
 
 @pytest.fixture(autouse=True)
 def clean_cache():
-    """Cada test arranca sin snapshot cacheado y deja el de al lado limpio."""
     storage.invalidate()
     yield
     storage.invalidate()
@@ -37,16 +17,6 @@ def clean_cache():
 
 @pytest.fixture
 def disk_content(tmp_path, monkeypatch):
-    """Instalación de mentira con contenido de tamaño conocido en cada carpeta.
-
-    Se monta en su propio ``tmp_path`` en lugar de reutilizar las rutas
-    compartidas de ``conftest``: ahí el resto de la suite deja PDFs, artes y
-    miniaturas, y un test que afirma "las miniaturas ocupan 150 bytes" pasaría
-    o fallaría según el orden en que pytest decidiera ejecutarlo.
-
-    Los tamaños son distintos entre sí a propósito: si el escaneo confundiera
-    dos carpetas, unos bytes idénticos lo taparían.
-    """
     p = cfg.PATHS.__class__(
         data_dir=tmp_path,
         db_path=tmp_path / "mpc_forge.sqlite3",
@@ -96,26 +66,14 @@ class TestSnapshot:
         assert snap["totals"]["bytes"] == sum(c["bytes"] for c in snap["categories"])
 
     def test_no_category_is_left_out_of_the_breakdown(self, disk_content):
-        """El desglose cubre todas las categorías declaradas, incluso vacías.
-
-        Si una fila desapareciera, la interfaz dejaría de enseñar esa carpeta
-        y su tamaño se esfumaría del total sin avisar.
-        """
         keys = {c["key"] for c in storage.compute()["categories"]}
         assert keys == {c.key for c in storage.CATEGORIES}
 
     def test_database_counts_its_wal_sidecar(self, disk_content):
-        """El WAL puede tener decenas de MB sin volcar al .sqlite3.
-
-        Medir solo el fichero principal daría una cifra menor que la real
-        justo cuando la base de datos más ha crecido.
-        """
         wal = cfg.PATHS.db_path.with_name(cfg.PATHS.db_path.name + "-wal")
         wal.write_bytes(b"x" * 4096)
         try:
-            db_row = next(
-                c for c in storage.compute()["categories"] if c["key"] == "database"
-            )
+            db_row = next(c for c in storage.compute()["categories"] if c["key"] == "database")
             assert db_row["bytes"] >= 4096
         finally:
             wal.unlink(missing_ok=True)
@@ -135,11 +93,6 @@ class TestSnapshot:
         assert snap["totals"]["reclaimable_bytes"] == 150 + 900 + 240 + 60
 
     def test_backup_estimate_covers_what_the_zip_includes(self, disk_content):
-        """``create_backup()`` comprime BD + arte + custom + reversos.
-
-        La estimación tiene que seguir a esa lista, no a un subconjunto: es lo
-        que evita que el usuario lance un backup de varios GB sin saberlo.
-        """
         snap = storage.compute()
         sizes = {c["key"]: c["bytes"] for c in snap["categories"]}
         assert snap["backup_estimate"]["full_bytes"] == (
@@ -162,25 +115,16 @@ class TestSnapshot:
             assert vol["app_bytes"] >= 0
 
     def test_survives_a_folder_that_is_not_there(self):
-        """Una carpeta en una unidad desconectada no puede tumbar el cálculo."""
         snap = storage.compute()
         assert snap["totals"]["bytes"] >= 0
 
 
 class TestNoDoubleCounting:
     def test_a_nested_folder_is_not_counted_twice(self, disk_content, monkeypatch):
-        """Nada impide apuntar ``exports_dir`` dentro de ``art_dir``.
-
-        Es una configuración legítima (ambas en el disco grande) y sin la
-        exclusión explícita esos bytes aparecerían en las dos filas y otra vez
-        en el total.
-        """
         nested = cfg.PATHS.art_dir / "exports-anidados"
         nested.mkdir(parents=True, exist_ok=True)
         (nested / "deck.pdf").write_bytes(b"x" * 1234)
-        monkeypatch.setattr(
-            cfg, "PATHS", cfg.PATHS.with_overrides(exports_dir=nested)
-        )
+        monkeypatch.setattr(cfg, "PATHS", cfg.PATHS.with_overrides(exports_dir=nested))
         try:
             snap = storage.compute()
             sizes = {c["key"]: c["bytes"] for c in snap["categories"]}
@@ -204,11 +148,6 @@ class TestPurge:
         assert not list(cfg.PATHS.thumbs_dir.rglob("*.webp"))
 
     def test_exports_can_keep_the_recent_ones(self, disk_content):
-        """El XML recién generado se abre desde la propia interfaz.
-
-        Borrarlo bajo los pies del usuario mientras lo está usando es
-        justamente lo que evita el filtro por antigüedad.
-        """
         result = storage.purge(["exports"], exports_older_than_days=30)
         assert result["freed_bytes"] == 0
         assert (cfg.PATHS.exports_dir / "deck.pdf").exists()
@@ -218,8 +157,6 @@ class TestPurge:
         assert not (cfg.PATHS.exports_dir / "deck.pdf").exists()
 
     def test_keeps_manual_backups_when_pruning(self, disk_content):
-        """Los backups manuales los creó el usuario a mano; solo él sabe cuál
-        le importa. La poda es únicamente para los automáticos."""
         storage.purge(["backups"], keep_backups=1)
         remaining = sorted(p.name for p in cfg.PATHS.backups_dir.glob("*.zip"))
         assert "mpc-forge-backup-20250103-010101.zip" in remaining
@@ -243,9 +180,7 @@ class TestEndpoints:
         assert r.status_code == 200
         data = r.json()
         assert data["cached"] is False
-        assert {c["key"] for c in data["categories"]} == {
-            c.key for c in storage.CATEGORIES
-        }
+        assert {c["key"] for c in data["categories"]} == {c.key for c in storage.CATEGORIES}
         assert "reclaimable_bytes" in data["totals"]
 
     async def test_second_call_is_served_from_cache(self, client):

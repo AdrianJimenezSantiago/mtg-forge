@@ -1,9 +1,3 @@
-"""Tests del Sprint 4: planificador, diff de colección, temas y snapshots.
-
-La lógica de coste y de reparto se prueba sin base de datos siempre que se
-puede: son funciones puras sobre conteos y tiers, y probarlas directamente hace
-que un fallo apunte al cálculo en vez de a la fixture.
-"""
 from __future__ import annotations
 
 import pytest
@@ -43,8 +37,6 @@ class TestTierSelection:
 
 
 class TestRunEconomics:
-    """Un pedido se paga por tier, no por carta. Es el corazón del cálculo."""
-
     def test_you_pay_for_the_whole_tier(self):
         run = RunPlan(index=0, tier_size=108, unit_usd=0.30, card_count=100)
         assert run.subtotal_usd == pytest.approx(108 * 0.30, abs=0.01)
@@ -59,7 +51,6 @@ class TestRunEconomics:
         assert run.fill_percent == 100.0
 
     def test_effective_unit_is_higher_than_the_nominal_one(self):
-        """La cifra que compara de verdad: coste por carta ÚTIL."""
         run = RunPlan(index=0, tier_size=108, unit_usd=0.30, card_count=60)
         assert run.effective_unit_usd > run.unit_usd
         assert run.effective_unit_usd == pytest.approx(108 * 0.30 / 60, abs=0.001)
@@ -91,8 +82,6 @@ class TestPlanRuns:
         assert sum(r.card_count for r in runs) == 500
 
     def test_decks_stay_together_by_default(self):
-        """Recibir medio mazo no sirve para jugar: los pedidos llegan por
-        separado y con semanas de diferencia."""
         decks = [contribution(1, 300), contribution(2, 300), contribution(3, 300)]
         runs = print_planner.plan_runs(decks)
         for run in runs:
@@ -101,7 +90,6 @@ class TestPlanRuns:
         assert sorted(appearances) == [1, 2, 3]
 
     def test_a_deck_bigger_than_the_ceiling_is_split(self):
-        """No hay alternativa: no cabe entero en ningún pedido."""
         oversized = print_planner.max_tier_size() + 200
         runs = print_planner.plan_runs([contribution(1, oversized)])
         assert len(runs) >= 2
@@ -122,7 +110,6 @@ class TestPlanRuns:
         assert all(r.card_count <= 108 for r in runs)
 
     def test_ceiling_cannot_exceed_the_biggest_tier(self):
-        """Un techo absurdo no debe inventar un tier que MPC no vende."""
         runs = print_planner.plan_runs([contribution(1, 5000)], max_tier=99999)
         assert all(r.tier_size <= print_planner.max_tier_size() for r in runs)
 
@@ -169,7 +156,6 @@ class TestFillerSuggestions:
         assert filler["per_run"] == []
 
     def test_wasted_slots_are_reported_as_free_cards(self):
-        """Los huecos ya están pagados: llenarlos no cuesta nada más."""
         runs = [RunPlan(index=0, tier_size=108, unit_usd=0.3, card_count=90)]
         entry = print_planner.suggest_filler(runs)["per_run"][0]
         assert entry["wasted_slots"] == 18
@@ -181,8 +167,10 @@ class TestFillerSuggestions:
             pytest.skip("Se necesitan al menos dos tiers")
         tier = print_planner.smallest_tier_for(sizes[0] + 1)
         run = RunPlan(
-            index=0, tier_size=int(tier["size"]),
-            unit_usd=float(tier["unit_usd"]), card_count=sizes[0] + 1,
+            index=0,
+            tier_size=int(tier["size"]),
+            unit_usd=float(tier["unit_usd"]),
+            card_count=sizes[0] + 1,
         )
         entry = print_planner.suggest_filler([run])["per_run"][0]
         downgrade = entry["downgrade_option"]
@@ -192,22 +180,38 @@ class TestFillerSuggestions:
 
 
 class TestBasicLandDetection:
-    @pytest.mark.parametrize("name", [
-        "Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes",
-        "Snow-Covered Forest", "plains", "  Mountain  ",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Plains",
+            "Island",
+            "Swamp",
+            "Mountain",
+            "Forest",
+            "Wastes",
+            "Snow-Covered Forest",
+            "plains",
+            "  Mountain  ",
+        ],
+    )
     def test_detects_basics(self, name):
         assert print_needs.is_basic_land(name)
 
-    @pytest.mark.parametrize("name", [
-        "Sol Ring", "Command Tower", "Ancient Tomb", "Plateau",
-        "Prismatic Vista", "Forest Bear",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Sol Ring",
+            "Command Tower",
+            "Ancient Tomb",
+            "Plateau",
+            "Prismatic Vista",
+            "Forest Bear",
+        ],
+    )
     def test_does_not_flag_other_cards(self, name):
         assert not print_needs.is_basic_land(name)
 
     def test_localized_names_are_recognized(self):
-        """Un mazo localizado no debe romper el conteo de tierras."""
         assert print_needs.is_basic_land("Bosque")
         assert print_needs.is_basic_land("Montaña")
 
@@ -218,8 +222,12 @@ class TestBasicLandDetection:
 class TestCardNeedArithmetic:
     def _need(self, quantity: int, owned: int) -> print_needs.CardNeed:
         return print_needs.CardNeed(
-            card_id=1, name="Sol Ring", oracle_id="o", scryfall_id="s",
-            quantity=quantity, owned=owned,
+            card_id=1,
+            name="Sol Ring",
+            oracle_id="o",
+            scryfall_id="s",
+            quantity=quantity,
+            owned=owned,
         )
 
     def test_owning_none_means_printing_all(self):
@@ -239,30 +247,31 @@ class TestCardNeedArithmetic:
 
 class TestDeckNeedsAggregates:
     def _needs(self, cards) -> print_needs.DeckNeeds:
-        return print_needs.DeckNeeds(
-            deck_id=1, deck_name="Test", match_mode="oracle", cards=cards
-        )
+        return print_needs.DeckNeeds(deck_id=1, deck_name="Test", match_mode="oracle", cards=cards)
 
     def test_empty_deck_has_zero_coverage_without_dividing_by_zero(self):
         assert self._needs([]).coverage_percent == 0.0
 
     def test_coverage_is_a_percentage_of_owned_copies(self):
-        needs = self._needs([
-            print_needs.CardNeed(1, "A", "a", "s", quantity=2, owned=1),
-            print_needs.CardNeed(2, "B", "b", "s", quantity=2, owned=2),
-        ])
+        needs = self._needs(
+            [
+                print_needs.CardNeed(1, "A", "a", "s", quantity=2, owned=1),
+                print_needs.CardNeed(2, "B", "b", "s", quantity=2, owned=2),
+            ]
+        )
         assert needs.total_quantity == 4
         assert needs.total_owned == 3
         assert needs.coverage_percent == 75.0
 
     def test_basics_are_counted_separately(self):
-        """Nadie marca en su colección las llanuras sueltas de una caja."""
-        needs = self._needs([
-            print_needs.CardNeed(1, "Sol Ring", "a", "s", quantity=1, owned=0),
-            print_needs.CardNeed(
-                2, "Forest", "b", "s", quantity=10, owned=0, is_basic_land=True
-            ),
-        ])
+        needs = self._needs(
+            [
+                print_needs.CardNeed(1, "Sol Ring", "a", "s", quantity=1, owned=0),
+                print_needs.CardNeed(
+                    2, "Forest", "b", "s", quantity=10, owned=0, is_basic_land=True
+                ),
+            ]
+        )
         assert needs.total_needed == 11
         assert needs.basics_needed == 10
         assert needs.needed_excluding_basics == 1
@@ -272,7 +281,9 @@ class TestNeedsSummary:
     def test_sums_across_decks(self):
         decks = [
             print_needs.DeckNeeds(
-                deck_id=i, deck_name=f"D{i}", match_mode="oracle",
+                deck_id=i,
+                deck_name=f"D{i}",
+                match_mode="oracle",
                 cards=[print_needs.CardNeed(1, "A", "a", "s", 10, 4)],
             )
             for i in range(3)

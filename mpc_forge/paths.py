@@ -1,10 +1,3 @@
-"""Resolución de rutas a recursos (templates, static, skills).
-
-Funciona en dos modos:
-- Desarrollo: recursos junto al código, en la raíz del proyecto.
-- Empaquetado (PyInstaller): recursos junto al .exe (modo --onedir) o dentro
-  del bundle temporal (modo --onefile). Detectamos con `sys.frozen`.
-"""
 from __future__ import annotations
 
 import sys
@@ -12,17 +5,10 @@ from pathlib import Path
 
 
 def is_frozen() -> bool:
-    """True si la app corre desde un .exe empaquetado con PyInstaller."""
     return getattr(sys, "frozen", False)
 
 
 def resource_root() -> Path:
-    """Raíz donde viven los recursos (templates, static).
-
-    Dev  → carpeta del proyecto (mpc_forge/../).
-    Frozen --onedir → carpeta del .exe (recursos van junto).
-    Frozen --onefile → sys._MEIPASS (carpeta temporal de extracción).
-    """
     if is_frozen():
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass is not None:
@@ -32,17 +18,6 @@ def resource_root() -> Path:
 
 
 def install_root() -> Path:
-    """Carpeta donde vive físicamente la aplicación (raíz portable).
-
-    Diferencia clave con ``resource_root()``:
-    - En frozen --onefile: ``resource_root()`` es la carpeta temporal de
-      extracción (que se borra al cerrar), ``install_root()`` es la carpeta
-      donde está el .exe (persistente).
-    - En dev y frozen --onedir coinciden.
-
-    Se usa como raíz de ``user-settings/`` para tener modo portable: los datos
-    del usuario viven junto al ejecutable, no en ``%APPDATA%``.
-    """
     if is_frozen():
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
@@ -57,9 +32,6 @@ def static_dir() -> Path:
 
 
 def diagnose() -> str:
-    """Dump multilínea con las rutas resueltas — se pinta en el log al arrancar
-    en modo frozen para diagnosticar problemas de packaging.
-    """
     lines = [
         f"paths.is_frozen     = {is_frozen()}",
         f"paths.install_root  = {install_root()}",

@@ -1,14 +1,3 @@
-"""Estado de progreso para generación de XML/PDF.
-
-Un dict en memoria indexado por ``deck_id`` que refleja qué carta se está
-descargando ahora mismo. El frontend hace polling a ``GET /api/decks/{id}
-/build-progress`` mientras el POST ``/build-xml`` está pendiente, y usa esos
-datos para pintar una barra de progreso real con el nombre de la carta actual.
-
-La app corre en single-process, así que un dict local basta — no hace falta
-persistir en BD ni compartir entre workers. Si en algún momento se despliega
-detrás de gunicorn con >1 worker, este módulo necesita cambiar a Redis o BD.
-"""
 from __future__ import annotations
 
 import logging
@@ -21,7 +10,6 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class BuildProgress:
-    """Snapshot del progreso de un build en curso o recién terminado."""
     deck_id: int
     total: int = 0
     current: int = 0
@@ -56,17 +44,12 @@ _progress: dict[int, BuildProgress] = {}
 
 
 def start(deck_id: int, total: int, kind: str = "xml") -> BuildProgress:
-    """Arranca un tracker limpio para el build. Descarta cualquier estado
-    anterior del mismo mazo (asumimos: no builds concurrentes por deck)."""
     p = BuildProgress(deck_id=deck_id, total=total, kind=kind)
     _progress[deck_id] = p
     return p
 
 
 def tick(deck_id: int, card_name: str) -> None:
-    """Incrementa el contador y actualiza el nombre de la carta actual.
-    Silent-fail si no hay build iniciado — no queremos romper el build por
-    un fallo en el tracking."""
     p = _progress.get(deck_id)
     if p is None or p.done:
         return
@@ -75,8 +58,6 @@ def tick(deck_id: int, card_name: str) -> None:
 
 
 def finish(deck_id: int, error: str | None = None) -> None:
-    """Marca el build como terminado. La entrada se conserva unos segundos
-    para que el frontend pueda leer el estado final antes de descartarla."""
     p = _progress.get(deck_id)
     if p is None:
         return
@@ -86,11 +67,8 @@ def finish(deck_id: int, error: str | None = None) -> None:
 
 
 def get(deck_id: int) -> BuildProgress | None:
-    """Estado actual, o None si no hay build para ese mazo."""
     return _progress.get(deck_id)
 
 
 def clear(deck_id: int) -> None:
-    """Descarta el estado explícitamente. El frontend lo llama tras confirmar
-    que ya leyó el estado final ``done=True``."""
     _progress.pop(deck_id, None)

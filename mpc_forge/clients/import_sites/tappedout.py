@@ -1,12 +1,3 @@
-"""TappedOut — export ``?fmt=txt`` sobre la propia URL del mazo.
-
-TappedOut añade a cada URL de mazo la opción ``?fmt=txt`` que devuelve el
-mazo entero en texto plano.
-
-El nombre del mazo está en el slug de la URL:
-  ``/mtg-decks/my-commander-deck/`` → ``My Commander Deck``
-Sin fetch adicional.
-"""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -35,11 +26,6 @@ class TappedOutSite(ImportSite):
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Extrae el nombre del mazo del slug de la URL.
-
-        ``/mtg-decks/my-commander-deck/`` → ``My Commander Deck``.
-        Sin fetch adicional.
-        """
         path = urlparse(url).path or ""
         parts = [p for p in path.split("/") if p and p != "mtg-decks"]
         if not parts:

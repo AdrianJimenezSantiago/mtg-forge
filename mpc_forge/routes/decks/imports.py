@@ -1,8 +1,3 @@
-"""Importación de mazos desde Moxfield, URLs de terceros y texto plano.
-
-Extraído de `routes/decks.py` durante la división en sub-routers. La lógica no
-ha cambiado.
-"""
 from __future__ import annotations
 
 import logging
@@ -55,7 +50,10 @@ async def import_moxfield(
 ) -> ImportResult:
     try:
         deck, unresolved = await deck_service.import_from_moxfield(
-            db, scryfall, moxfield, payload.url_or_id,
+            db,
+            scryfall,
+            moxfield,
+            payload.url_or_id,
             include_extras=payload.include_extras,
         )
     except MoxfieldError as e:
@@ -63,7 +61,9 @@ async def import_moxfield(
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
     await deck_activity.log_event(
-        db, deck.id, K.DECK_CREATED,
+        db,
+        deck.id,
+        K.DECK_CREATED,
         payload={
             "source": "moxfield",
             "source_ref": payload.url_or_id,
@@ -89,13 +89,19 @@ async def import_text(
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> ImportResult:
     deck, unresolved = await deck_service.import_from_plaintext(
-        db, scryfall, payload.name, payload.text, payload.format,
+        db,
+        scryfall,
+        payload.name,
+        payload.text,
+        payload.format,
         include_extras=payload.include_extras,
     )
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
     await deck_activity.log_event(
-        db, deck.id, K.DECK_CREATED,
+        db,
+        deck.id,
+        K.DECK_CREATED,
         payload={
             "source": "text",
             "card_count": resolved_count,
@@ -115,12 +121,8 @@ async def import_text(
 
 @router.get("/import/supported-sites", response_model=list[SupportedSite])
 async def supported_import_sites() -> list[SupportedSite]:
-    """Devuelve la lista de sitios que la app sabe importar por URL.
-
-    Usado por el frontend para pintar los ejemplos y validar en cliente que
-    el usuario ha pegado una URL de un sitio soportado.
-    """
     from mpc_forge.clients.import_sites import list_supported_sites
+
     return [SupportedSite(**s) for s in list_supported_sites()]
 
 
@@ -130,18 +132,15 @@ async def import_url(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> ImportResult:
-    """Import unificado por URL. El sitio se detecta automáticamente.
-
-    Errores:
-      - 400 si el hostname no matchea ningún sitio soportado.
-      - 502 si el sitio responde mal (mazo privado, timeout, HTML inesperado…).
-    """
     from mpc_forge.clients.import_sites.base import ImportSiteError
 
     try:
         deck, unresolved = await deck_service.import_from_url(
-            db, scryfall, payload.url,
-            name=payload.name, fmt=payload.format,
+            db,
+            scryfall,
+            payload.url,
+            name=payload.name,
+            fmt=payload.format,
             include_extras=payload.include_extras,
         )
     except ValueError as e:
@@ -152,7 +151,9 @@ async def import_url(
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
     await deck_activity.log_event(
-        db, deck.id, K.DECK_CREATED,
+        db,
+        deck.id,
+        K.DECK_CREATED,
         payload={
             "source": "url",
             "source_ref": payload.url,

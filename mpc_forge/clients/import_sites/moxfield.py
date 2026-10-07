@@ -1,10 +1,3 @@
-"""Moxfield: API v2/v3 → texto plano.
-
-Devolvemos el texto plano en el formato universal para que la pipeline común
-lo procese. La lógica avanzada (detección de commander/companion,
-scryfall_ids exactos por impresión) sigue viva en ``MoxfieldClient``, que se
-usa para el import "rico" existente. Este `ImportSite` es el path unificado.
-"""
 from __future__ import annotations
 
 import logging
@@ -43,7 +36,6 @@ class MoxfieldSite(ImportSite):
 
     @classmethod
     async def _fetch_payload(cls, url: str) -> tuple[str, dict]:
-        """Descarga y devuelve (deck_id, payload). Guarda en _payload_cache."""
         deck_id = _extract_deck_id(url)
         if not deck_id:
             raise InvalidURLError(url)
@@ -63,9 +55,7 @@ class MoxfieldSite(ImportSite):
                 log.debug("Moxfield %s falló: %s", base, e)
 
         if payload is None:
-            raise ImportSiteError(
-                f"No se pudo obtener el mazo {deck_id!r} de Moxfield: {last_err}"
-            )
+            raise ImportSiteError(f"No se pudo obtener el mazo {deck_id!r} de Moxfield: {last_err}")
 
         cls._payload_cache[deck_id] = payload
         return deck_id, payload
@@ -77,15 +67,6 @@ class MoxfieldSite(ImportSite):
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Devuelve el nombre del mazo tal como está en Moxfield.
-
-        Reutiliza el payload ya descargado en ``retrieve_card_list`` si
-        estaba cacheado — sin segundo fetch. Si ``retrieve_card_list`` aún
-        no se llamó (uso directo), hace el fetch.
-
-        El campo ``name`` del JSON de Moxfield es el título que el usuario
-        le puso al mazo, ej. "Ultimate Cloud Deck".
-        """
         deck_id, payload = await cls._fetch_payload(url)
         cls._payload_cache.pop(deck_id, None)
         deck_name = (payload.get("name") or "").strip()
@@ -93,26 +74,11 @@ class MoxfieldSite(ImportSite):
 
 
 def _payload_to_text(payload: dict) -> str:
-    """Convierte el JSON de Moxfield a texto plano estándar.
-
-    Preserva la separación por secciones con markers ``//Commanders``,
-    ``//Mainboard``, ``//Sideboard``, ``//Maybeboard`` para que
-    ``parse_plain_decklist`` pueda inferir el rol al asignar cartas.
-
-    Bug-fix DFC (Extras): Moxfield devuelve ``card.set`` y ``card.cn`` en el
-    JSON. Si están presentes los incluimos en el formato estándar
-    ``N Nombre (SET) CN`` para que ``resolve_cards`` use el lookup por
-    set+collector_number — mucho más fiable que búsqueda por nombre,
-    especialmente para DFCs con ``//`` en el nombre (ej. cartas FF UB,
-    Alchemy transformers, etc.).
-
-    Si Moxfield no proporciona set/cn (caso raro), caemos al nombre solo.
-    """
     boards = payload.get("boards") or {}
     out: list[str] = []
 
     def _dump_board(board_key: str, label: str) -> None:
-        cards = ((boards.get(board_key) or {}).get("cards") or {})
+        cards = (boards.get(board_key) or {}).get("cards") or {}
         if not cards:
             return
         out.append(f"//{label}")

@@ -1,32 +1,3 @@
-"""Desreferencias inseguras de estado nulo en las plantillas.
-
-El fallo que motiva este fichero
---------------------------------
-La vista de calibración tenía:
-
-    <section x-show="step === 3 && result">
-      <div x-text="fmt(result.back_offset_x_mm)">
-
-`x-show` **oculta** el elemento, pero Alpine sigue evaluando las expresiones de
-dentro. Como `result` arranca en `null`, la página lanzaba dos TypeError nada
-más cargar. El elemento estaba oculto, así que visualmente no se notaba: solo
-la consola llena de errores y, peor, la interfaz en un estado del que Alpine no
-se recupera limpiamente.
-
-`x-show` no protege; `template x-if` sí, porque no crea el DOM hasta que la
-condición se cumple. La otra salida válida es el encadenamiento opcional
-(`result?.x`).
-
-Qué comprueba este test
------------------------
-Por cada vista: busca en el módulo las propiedades del estado inicializadas a
-`null`, y luego revisa las expresiones de la plantilla que las desreferencian
-con punto. Si una de esas expresiones no está dentro de un `template x-if` que
-mencione la propiedad, y no usa `?.`, falla.
-
-Es deliberadamente conservador: solo mira propiedades inicializadas a `null`
-explícitamente, que son las que garantizan el problema.
-"""
 from __future__ import annotations
 
 import re
@@ -50,32 +21,34 @@ VIEWS = {
     "landing.html": "landing.js",
 }
 
-EAGER_ATTRS = ("x-text", "x-html", "x-model", ":class", ":style", ":href",
-               ":src", ":value", ":disabled", "x-show")
+EAGER_ATTRS = (
+    "x-text",
+    "x-html",
+    "x-model",
+    ":class",
+    ":style",
+    ":href",
+    ":src",
+    ":value",
+    ":disabled",
+    "x-show",
+)
 
 NULL_PROP = re.compile(r"^\s{4}([A-Za-z_$][\w$]*)\s*:\s*null\s*,", re.MULTILINE)
 
 
 def nullable_properties(module: str) -> set[str]:
-    """Propiedades del estado que arrancan valiendo null."""
     source = (JS_DIR / module).read_text(encoding="utf-8")
     return set(NULL_PROP.findall(source))
 
 
 def guarded_regions(html: str, prop: str) -> list[tuple[int, int]]:
-    """Tramos del HTML protegidos por un `template x-if` sobre ``prop``.
-
-    Se aproxima el alcance del template contando etiquetas: es suficiente para
-    este uso y evita meter un parser de HTML entero en la suite.
-    """
     regions = []
-    pattern = re.compile(
-        r'<template\s+x-if="[^"]*\b' + re.escape(prop) + r'\b[^"]*"', re.DOTALL
-    )
+    pattern = re.compile(r'<template\s+x-if="[^"]*\b' + re.escape(prop) + r'\b[^"]*"', re.DOTALL)
     for match in pattern.finditer(html):
         depth = 0
         position = match.start()
-        for tag in re.finditer(r"</?template\b", html[match.start():]):
+        for tag in re.finditer(r"</?template\b", html[match.start() :]):
             if tag.group().startswith("</"):
                 depth -= 1
                 if depth == 0:
@@ -88,24 +61,15 @@ def guarded_regions(html: str, prop: str) -> list[tuple[int, int]]:
 
 
 def strip_jinja_comments(html: str) -> str:
-    """Quita los comentarios `{# ... #}`.
-
-    No es cosmético: los comentarios de estas plantillas documentan justamente
-    este fallo y contienen ejemplos como `x-text="fmt(result.x)"`. Sin quitarlos
-    el detector se denuncia a sí mismo.
-    """
     return re.sub(r"\{#.*?#\}", "", html, flags=re.DOTALL)
 
 
 def unsafe_dereferences(html: str, prop: str) -> list[str]:
-    """Expresiones que hacen ``prop.algo`` sin `?.` y sin estar protegidas."""
     html = strip_jinja_comments(html)
     guarded = guarded_regions(html, prop)
     offenders = []
 
-    attr_pattern = re.compile(
-        r'(' + "|".join(re.escape(a) for a in EAGER_ATTRS) + r')="([^"]*)"'
-    )
+    attr_pattern = re.compile(r"(" + "|".join(re.escape(a) for a in EAGER_ATTRS) + r')="([^"]*)"')
     deref = re.compile(r"\b" + re.escape(prop) + r"\.")
 
     for match in attr_pattern.finditer(html):
@@ -114,9 +78,7 @@ def unsafe_dereferences(html: str, prop: str) -> list[str]:
             continue
         if re.search(r"\b" + re.escape(prop) + r"\?\.", expression):
             continue
-        inline_guard = re.compile(
-            r"\b" + re.escape(prop) + r"\b\s*(&&|\?[^.])"
-        )
+        inline_guard = re.compile(r"\b" + re.escape(prop) + r"\b\s*(&&|\?[^.])")
         if inline_guard.search(expression):
             continue
         if any(start <= match.start() <= end for start, end in guarded):
@@ -145,14 +107,12 @@ def test_no_unguarded_null_dereference(template, module):
         f"{template} desreferencia estado que arranca en null sin protegerlo:\n"
         + "\n".join(problems)
         + "\n\nx-show NO protege: Alpine evalúa las expresiones aunque el "
-          "elemento esté oculto. Usa <template x-if=\"prop\"> (que no crea el "
-          "DOM) o encadenamiento opcional (prop?.campo)."
+        'elemento esté oculto. Usa <template x-if="prop"> (que no crea el '
+        "DOM) o encadenamiento opcional (prop?.campo)."
     )
 
 
 class TestTheGuardItself:
-    """El detector tiene que detectar. Se comprueba con casos sintéticos."""
-
     def test_flags_a_bare_dereference(self):
         html = '<div x-text="fmt(result.x)"></div>'
         assert unsafe_dereferences(html, "result")
@@ -162,23 +122,12 @@ class TestTheGuardItself:
         assert not unsafe_dereferences(html, "result")
 
     def test_accepts_a_template_if_guard(self):
-        html = (
-            '<template x-if="result">'
-            '<div x-text="fmt(result.x)"></div>'
-            '</template>'
-        )
+        html = '<template x-if="result"><div x-text="fmt(result.x)"></div></template>'
         assert not unsafe_dereferences(html, "result")
 
     def test_x_show_is_not_accepted_as_a_guard(self):
-        """El núcleo del asunto: x-show oculta pero no impide la evaluación."""
-        html = (
-            '<section x-show="result">'
-            '<div x-text="fmt(result.x)"></div>'
-            '</section>'
-        )
-        assert unsafe_dereferences(html, "result"), (
-            "x-show no debe contar como protección"
-        )
+        html = '<section x-show="result"><div x-text="fmt(result.x)"></div></section>'
+        assert unsafe_dereferences(html, "result"), "x-show no debe contar como protección"
 
     def test_ignores_properties_that_are_not_dereferenced(self):
         html = '<div x-show="result"></div>'
@@ -193,7 +142,6 @@ class TestTheGuardItself:
         assert not unsafe_dereferences(html, "deck")
 
     def test_ignores_examples_inside_jinja_comments(self):
-        """Los comentarios de estas plantillas documentan este mismo fallo."""
         html = '{# mal: x-text="fmt(result.x)" #}<div x-text="ok"></div>'
         assert not unsafe_dereferences(html, "result")
 

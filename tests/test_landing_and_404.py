@@ -1,16 +1,3 @@
-"""Landing en ``/``, biblioteca en ``/decks`` y página 404 propia.
-
-Lo que se protege aquí:
-
-* La landing es la puerta de entrada: tiene que responder aunque no haya
-  mazos, índice de arte ni volcado de Scryfall.
-* La biblioteca se movió de ``/`` a ``/decks``; los enlaces de vuelta del
-  editor dependen de ello.
-* El 404 con estilo solo debe servirse a navegaciones del navegador. La API,
-  los estáticos y cualquier cliente que no pida HTML siguen recibiendo el
-  JSON de FastAPI: el frontend lee ``detail`` y un HTML ahí rompería los
-  ``fetch()``.
-"""
 from __future__ import annotations
 
 HTML = {"accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
@@ -93,6 +80,7 @@ class TestNotFoundPage:
         assert r.status_code == 404
         assert 'class="nf"' in r.text
         from mpc_forge.services.i18n import get_translations
+
         assert get_translations("es").nf_deck_body in r.text
 
     async def test_missing_deck_pdf_and_proof_also_404(self, client):
@@ -141,13 +129,11 @@ class TestSidebarLayout:
             assert cls in aside.split('class="', 1)[1].split('"', 1)[0].split()
 
     async def test_search_results_escape_the_scrolling_nav(self, client):
-        """El <nav> hace scroll y recorta a sus descendientes: el desplegable
-        del buscador tiene que vivir fuera (teleport a <body>, fixed)."""
         r = await client.get("/", headers=HTML)
         teleport = r.text.index('<template x-teleport="body">')
         dropdown = r.text.index('id="global-search-results"')
         assert teleport < dropdown < r.text.index("</nav>")
-        assert "fixed z-[60]" in r.text[dropdown:dropdown + 600]
+        assert "fixed z-[60]" in r.text[dropdown : dropdown + 600]
 
 
 class TestStatusPlurals:

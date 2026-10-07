@@ -1,16 +1,3 @@
-"""Integración con el desktop tool de MPC Autofill (github.com/chilli-axe/mpc-autofill).
-
-Flujo del usuario:
-1. Descarga el binario desde https://github.com/chilli-axe/mpc-autofill/releases
-2. Lo coloca en el PATH, en la carpeta del proyecto, o configura la ruta en Settings.
-3. Genera el XML en MPC Forge.
-4. Pulsa "Enviar a MPC Autofill" → nuestra app lanza el binario con el XML.
-
-El binario recibe un XML como argumento (o vía --directory apuntando a la carpeta con el XML)
-y automatiza toda la subida a MakePlayingCards.com.
-
-Ver: https://github.com/chilli-axe/mpc-autofill/wiki/Desktop-Tool
-"""
 from __future__ import annotations
 
 import logging
@@ -41,7 +28,6 @@ _BINARY_NAMES = [
 
 
 def _candidate_dirs() -> list[Path]:
-    """Directorios donde probar a encontrar el binario, en orden de prioridad."""
     cands: list[Path] = []
 
     user_path = getattr(cfg, "MPC_AUTOFILL_EXE_PATH", "") or ""
@@ -53,19 +39,23 @@ def _candidate_dirs() -> list[Path]:
             cands.append(p)
 
     cwd = Path.cwd()
-    cands.extend([
-        cwd,
-        cwd / "mpc-autofill",
-        cwd / "autofill",
-        cwd / "tools" / "mpc-autofill",
-    ])
+    cands.extend(
+        [
+            cwd,
+            cwd / "mpc-autofill",
+            cwd / "autofill",
+            cwd / "tools" / "mpc-autofill",
+        ]
+    )
 
     data_dir = Path(cfg.PATHS.data_dir) if hasattr(cfg, "PATHS") else None
     if data_dir:
-        cands.extend([
-            data_dir / "mpc-autofill",
-            data_dir / "autofill",
-        ])
+        cands.extend(
+            [
+                data_dir / "mpc-autofill",
+                data_dir / "autofill",
+            ]
+        )
 
     if sys.platform == "win32":
         localappdata = os.environ.get("LOCALAPPDATA", "")
@@ -73,10 +63,12 @@ def _candidate_dirs() -> list[Path]:
         if localappdata:
             cands.append(Path(localappdata) / "Programs" / "mpc-autofill")
         if userprofile:
-            cands.extend([
-                Path(userprofile) / "Desktop" / "mpc-autofill",
-                Path(userprofile) / "Downloads" / "mpc-autofill",
-            ])
+            cands.extend(
+                [
+                    Path(userprofile) / "Desktop" / "mpc-autofill",
+                    Path(userprofile) / "Downloads" / "mpc-autofill",
+                ]
+            )
 
     seen: set[Path] = set()
     out = []
@@ -97,13 +89,6 @@ class AutofillStatus:
 
 
 def detect() -> AutofillStatus:
-    """Localiza el binario. Orden:
-    1. Ruta explícita del usuario (setting)
-    2. PATH del sistema (shutil.which)
-    3. Directorios candidatos (project cwd, %LOCALAPPDATA%, etc.)
-
-    NO ejecuta nada — solo comprueba que el archivo existe y es ejecutable.
-    """
     user_path = getattr(cfg, "MPC_AUTOFILL_EXE_PATH", "") or ""
     if user_path:
         p = Path(user_path).expanduser()
@@ -127,14 +112,6 @@ def detect() -> AutofillStatus:
 
 
 def launch(xml_path: Path) -> int:
-    """Lanza el desktop tool con el XML dado. Devuelve el PID del proceso.
-
-    Corre en background — no bloqueamos la respuesta HTTP. El usuario ve la
-    ventana del autofill abrirse y desde ahí sigue el flujo normal (browser
-    automation con Selenium).
-
-    Lanza RuntimeError si no encuentra el binario o si el XML no existe.
-    """
     xml_path = xml_path.resolve()
     if not xml_path.is_file():
         raise RuntimeError(f"El XML no existe: {xml_path}")

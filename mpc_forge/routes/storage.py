@@ -1,10 +1,3 @@
-"""Endpoints de almacenamiento: cuánto ocupa la app y qué se puede liberar.
-
-El cálculo vive en ``services/storage.py``; aquí solo está el contrato HTTP.
-La respuesta se tipa con Pydantic (y no se devuelve el dict a pelo) porque la
-vista de Ajustes la consume campo a campo y el esquema de OpenAPI es lo que
-avisa si un renombrado rompe al cliente.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -20,11 +13,6 @@ router = APIRouter(prefix="/api/storage", tags=["storage"])
 
 class CategoryUsage(BaseModel):
     key: str
-    """Identificador estable de la categoría (``art``, ``backups``, …).
-
-    La etiqueta visible NO viaja aquí: la pone el frontend desde el registro
-    de traducciones, con la clave ``storage_cat_<key>``.
-    """
     kind: str
     path: str
     exists: bool
@@ -78,13 +66,7 @@ class StorageResponse(BaseModel):
 
 class PurgeRequest(BaseModel):
     targets: list[str] = Field(default_factory=list)
-    """Qué liberar: ``thumbs``, ``exports``, ``logs``, ``backups``.
-
-    Cualquier otro valor se rechaza con 400. La lista blanca está en el
-    servicio, no aquí, para que no haya dos versiones de la misma regla.
-    """
     exports_older_than_days: int = 0
-    """``0`` borra todos los exports; ``30`` solo los de más de un mes."""
     keep_backups: int = storage_service.DEFAULT_KEEP_BACKUPS
 
 
@@ -93,11 +75,6 @@ class PurgeResponse(BaseModel):
     removed: int
     freed_bytes: int
     storage: StorageResponse
-    """Desglose recalculado tras la limpieza.
-
-    Va en la misma respuesta para que la interfaz no tenga que encadenar un
-    segundo GET y enseñe el resultado sin un parpadeo de cifras viejas.
-    """
 
 
 @router.get("/", response_model=StorageResponse)
@@ -107,21 +84,13 @@ async def get_storage(
         description="Fuerza un escaneo nuevo en vez de usar el snapshot cacheado.",
     ),
 ) -> Any:
-    """Desglose de lo que ocupa en disco todo el contenido local de la app."""
     return await storage_service.snapshot(refresh=refresh)
 
 
 @router.post("/purge", response_model=PurgeResponse)
 async def purge_storage(payload: PurgeRequest) -> Any:
-    """Libera espacio de las categorías recuperables.
-
-    Nunca toca la base de datos, el arte custom ni los reversos: son los
-    únicos datos que no se pueden volver a generar ni descargar.
-    """
     if not payload.targets:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "No se ha indicado qué liberar"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No se ha indicado qué liberar")
     try:
         result = await asyncio.to_thread(
             storage_service.purge,

@@ -1,33 +1,3 @@
-"""Cliente async para la API de Scryfall.
-
-Límites oficiales (https://scryfall.com/docs/api/rate-limits):
-
-* ``/cards/search``, ``/cards/named``, ``/cards/random``, ``/cards/collection``
-  → **2 peticiones/s** (500 ms).
-* Resto de endpoints → **10 peticiones/s** (100 ms).
-* Un HTTP 429 bloquea el acceso durante **30 s**. Reintentar antes de que pase
-  ese tiempo cuenta como abuso y puede acabar en un baneo de la IP.
-* Los ficheros de ``*.scryfall.io`` (imágenes, bulk data) no tienen límite.
-
-Cómo se respetan
-----------------
-1. **Dos límites simultáneos.** Cada petición reserva su instante de salida
-   a 110 ms de cualquier otra y, si es de un endpoint pesado, a 550 ms de la
-   pesada anterior (ver :class:`TieredRateLimiter`). El ~10 % de margen
-   absorbe el jitter de red: dos peticiones que salen separadas 100 ms pueden
-   llegar a 90 ms.
-2. **Enfriamiento global tras un 429.** Si Scryfall responde 429, *todas* las
-   peticiones del cliente se pausan hasta que pase el bloqueo (30 s o el
-   ``Retry-After`` si es mayor). Antes solo se reintentaba la petición que
-   había fallado, con un tope de 8 s, mientras el resto seguía disparando:
-   exactamente lo que Scryfall pide no hacer.
-3. **Deduplicación en vuelo.** Dos llamadas idénticas simultáneas (p. ej. dos
-   mazos abiertos a la vez que comparten Sol Ring) comparten una sola
-   petición HTTP.
-
-El cliente es único por proceso (``app.state.scryfall``), así que los límites
-se aplican a toda la aplicación aunque haya varios imports o precargas a la vez.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -50,12 +20,14 @@ T = TypeVar("T")
 GENERAL_INTERVAL = 0.11
 HEAVY_INTERVAL = 0.55
 
-HEAVY_PATHS = frozenset({
-    "/cards/search",
-    "/cards/named",
-    "/cards/random",
-    "/cards/collection",
-})
+HEAVY_PATHS = frozenset(
+    {
+        "/cards/search",
+        "/cards/named",
+        "/cards/random",
+        "/cards/collection",
+    }
+)
 
 RATE_LIMIT_COOLDOWN = 30.0
 
@@ -69,7 +41,6 @@ _COLLECTION_CHUNK = 75
 
 
 def _is_heavy(url: str) -> bool:
-    """True si la URL (relativa o absoluta) apunta a un endpoint de 2/s."""
     path = httpx.URL(url).path if "://" in url else url.split("?", 1)[0]
     return path.rstrip("/") in HEAVY_PATHS
 
@@ -103,7 +74,6 @@ class ScryfallClient:
 
     @property
     def cooling_down(self) -> bool:
-        """True mientras dura el bloqueo posterior a un 429."""
         return time.monotonic() < self._cooldown_until
 
     def _start_cooldown(self, seconds: float) -> None:
@@ -119,7 +89,6 @@ class ScryfallClient:
             await asyncio.sleep(remaining)
 
     async def _acquire(self, url: str) -> None:
-        """Espera turno respetando el enfriamiento y ambos límites."""
         heavy = _is_heavy(url)
         while True:
             await self._wait_cooldown()
@@ -135,12 +104,6 @@ class ScryfallClient:
         params: dict[str, Any] | None = None,
         json: Any = None,
     ) -> httpx.Response:
-        """Ejecuta una petición respetando el rate limit, con reintentos.
-
-        * **429**: activa el enfriamiento global y reintenta una sola vez
-          cuando termina. Si vuelve a fallar, se devuelve el 429 al llamador.
-        * **5xx transitorios y errores de red**: backoff exponencial con jitter.
-        """
         last_exc: Exception | None = None
         rate_limited = 0
         for attempt in range(_RETRY_MAX_ATTEMPTS):
@@ -155,7 +118,12 @@ class ScryfallClient:
                 delay = self._backoff_delay(attempt)
                 log.warning(
                     "Scryfall %s %s falló por red (intento %d/%d), reintento en %.1fs: %s",
-                    method, url, attempt + 1, _RETRY_MAX_ATTEMPTS, delay, e,
+                    method,
+                    url,
+                    attempt + 1,
+                    _RETRY_MAX_ATTEMPTS,
+                    delay,
+                    e,
                 )
                 await asyncio.sleep(delay)
                 continue
@@ -167,7 +135,10 @@ class ScryfallClient:
                 await resp.aread()
                 log.warning(
                     "Scryfall devolvió 429 en %s %s. Pausando TODAS las peticiones %.1fs "
-                    "(bloqueo de Scryfall).", method, url, wait,
+                    "(bloqueo de Scryfall).",
+                    method,
+                    url,
+                    wait,
                 )
                 if rate_limited < _RETRY_MAX_429:
                     rate_limited += 1
@@ -178,7 +149,12 @@ class ScryfallClient:
                 delay = self._backoff_delay(attempt)
                 log.warning(
                     "Scryfall %s %s → %d (intento %d/%d), reintento en %.1fs",
-                    method, url, resp.status_code, attempt + 1, _RETRY_MAX_ATTEMPTS, delay,
+                    method,
+                    url,
+                    resp.status_code,
+                    attempt + 1,
+                    _RETRY_MAX_ATTEMPTS,
+                    delay,
                 )
                 await resp.aread()
                 await asyncio.sleep(delay)
@@ -192,7 +168,7 @@ class ScryfallClient:
 
     @staticmethod
     def _backoff_delay(attempt: int) -> float:
-        base = min(_RETRY_BASE_DELAY * (2 ** attempt), _RETRY_MAX_DELAY)
+        base = min(_RETRY_BASE_DELAY * (2**attempt), _RETRY_MAX_DELAY)
         return base + random.uniform(0, 0.25)
 
     @staticmethod
@@ -203,13 +179,6 @@ class ScryfallClient:
             return 0.0
 
     async def _singleflight(self, key: Any, factory: Callable[[], Awaitable[T]]) -> T:
-        """Comparte una única ejecución de ``factory`` entre llamadas concurrentes
-        con la misma ``key``.
-
-        La ejecución corre en su propia tarea y cada llamador la espera con
-        ``shield``: si uno se cancela (p. ej. se cancela la precarga de un
-        mazo), los demás siguen recibiendo el resultado.
-        """
         fut = self._inflight.get(key)
         if fut is None:
             fut = asyncio.ensure_future(factory())
@@ -238,7 +207,6 @@ class ScryfallClient:
         return await self._singleflight(key, lambda: self._get_uncached(path, params))
 
     async def _paginate(self, first: dict[str, Any]) -> list[dict[str, Any]]:
-        """Recorre las páginas de una lista de Scryfall a partir de la primera."""
         results: list[dict[str, Any]] = []
         page = first
         while page:
@@ -252,7 +220,6 @@ class ScryfallClient:
         return results
 
     async def search_all(self, query: str, **params: Any) -> list[dict[str, Any]]:
-        """Todas las cartas de una búsqueda, recorriendo la paginación."""
         full = {"q": query, **params}
         key = ("search_all", tuple(sorted(full.items())))
 
@@ -263,7 +230,6 @@ class ScryfallClient:
         return await self._singleflight(key, run)
 
     async def named(self, name: str, set_code: str | None = None) -> dict[str, Any]:
-        """Busca una carta exacta por nombre. Opcional filtro por set."""
         params: dict[str, Any] = {"exact": name}
         if set_code:
             params["set"] = set_code
@@ -275,28 +241,20 @@ class ScryfallClient:
     async def by_set_and_number(
         self, set_code: str, number: str, lang: str | None = None
     ) -> dict[str, Any]:
-        """Devuelve una impresión concreta. Si se pasa ``lang``, intenta la
-        versión localizada. Devuelve ``{}`` si Scryfall no tiene esa combinación
-        (p.ej. la carta no se imprimió en ese idioma)."""
         path = f"/cards/{set_code.lower()}/{number}"
         if lang and lang != "en":
             path = f"{path}/{lang}"
         return await self._get(path)
 
     async def prints_by_oracle_id(self, oracle_id: str) -> list[dict[str, Any]]:
-        """Devuelve todas las impresiones ('unique=prints') de un oracle_id."""
         return await self.search_all(
             f"oracleid:{oracle_id} include:extras",
-            unique="prints", order="released", dir="asc",
+            unique="prints",
+            order="released",
+            dir="asc",
         )
 
     async def prints_by_oracle_ids(self, oracle_ids: list[str]) -> list[dict[str, Any]]:
-        """Todas las impresiones de varios oracle_ids en una sola búsqueda.
-
-        ``(oracleid:A or oracleid:B …)`` devuelve lo mismo que N llamadas a
-        :meth:`prints_by_oracle_id`, pero paginado de 175 en 175: precargar un
-        Commander pasa de ~100 búsquedas (≈55 s a 2/s) a unas pocas páginas.
-        """
         ids = list(dict.fromkeys(o for o in oracle_ids if o))
         if not ids:
             return []
@@ -305,15 +263,12 @@ class ScryfallClient:
         clause = " or ".join(f"oracleid:{o}" for o in ids)
         return await self.search_all(
             f"({clause}) include:extras",
-            unique="prints", order="released", dir="asc",
+            unique="prints",
+            order="released",
+            dir="asc",
         )
 
     async def collection(self, identifiers: list[dict[str, str]]) -> list[dict[str, Any]]:
-        """Bulk lookup — hasta 75 cartas por request.
-
-        Los identificadores repetidos se envían una sola vez: cada petición a
-        este endpoint cuesta medio segundo de cupo.
-        """
         unique: list[dict[str, str]] = []
         seen: set[tuple[tuple[str, str], ...]] = set()
         for ident in identifiers:
@@ -326,54 +281,43 @@ class ScryfallClient:
         for i in range(0, len(unique), _COLLECTION_CHUNK):
             chunk = unique[i : i + _COLLECTION_CHUNK]
             resp = await self._request_with_retry(
-                "POST", "/cards/collection", json={"identifiers": chunk},
+                "POST",
+                "/cards/collection",
+                json={"identifiers": chunk},
             )
             resp.raise_for_status()
             results.extend(resp.json().get("data", []))
         return results
 
     async def autocomplete(self, query: str) -> list[str]:
-        """Devuelve hasta 20 nombres de cartas que empiezan por `query`.
-
-        Durante el enfriamiento posterior a un 429 devuelve ``[]`` al instante
-        en vez de dejar colgado el desplegable del buscador 30 segundos.
-        """
         query = query.strip()
         if len(query) < 2 or self.cooling_down:
             return []
         payload = await self._get(
-            "/cards/autocomplete", params={"q": query, "include_extras": "false"},
+            "/cards/autocomplete",
+            params={"q": query, "include_extras": "false"},
         )
         return list(payload.get("data", []) if payload else [])
 
 
 def is_double_faced(card: dict[str, Any]) -> bool:
-    """True si la carta tiene dos caras físicas (DFC/MDFC/transform)."""
     layout = card.get("layout", "normal")
     return layout in {"transform", "modal_dfc", "double_faced_token", "reversible_card"}
 
 
 def related_parts_from_card(card: dict[str, Any]) -> list[dict[str, str]]:
-    """Devuelve todas las partes relacionadas con `component`, `id`, `name`.
-
-    Cubre:
-    - Tokens que la carta produce (component="token")
-    - Meld result (component="meld_result") — la carta grande resultante
-    - Meld parts (component="meld_part") — los dos componentes
-    - Combo pieces (component="combo_piece") — parejas tipo Kindred Discovery
-
-    Filtra la propia carta (una carta meld se lista a sí misma como meld_part).
-    """
     self_id = card.get("id")
     out = []
     for part in card.get("all_parts", []) or []:
         pid = part.get("id")
         if not pid or pid == self_id:
             continue
-        out.append({
-            "id": pid,
-            "name": part.get("name", ""),
-            "component": part.get("component", ""),
-            "type_line": part.get("type_line", ""),
-        })
+        out.append(
+            {
+                "id": pid,
+                "name": part.get("name", ""),
+                "component": part.get("component", ""),
+                "type_line": part.get("type_line", ""),
+            }
+        )
     return out

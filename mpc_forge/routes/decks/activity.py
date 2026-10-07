@@ -1,8 +1,3 @@
-"""Línea de tiempo por mazo y deshacer de eventos concretos.
-
-Extraído de `routes/decks.py` durante la división en sub-routers. La lógica no
-ha cambiado.
-"""
 from __future__ import annotations
 
 import logging
@@ -37,12 +32,6 @@ router = make_router()
 
 
 class ActivityEntry(BaseModel):
-    """Evento del timeline serializado.
-
-    ``payload`` viene YA como dict (parseado desde el JSON almacenado) para que
-    el frontend no tenga que hacer JSON.parse en cada fila. Si el JSON está
-    corrupto por lo que sea, devolvemos ``{}`` en lugar de romper el endpoint.
-    """
     id: int
     deck_id: int | None
     deck_name_snapshot: str
@@ -56,12 +45,6 @@ class ActivityEntry(BaseModel):
 
 
 class DeckWithActivityView(BaseModel):
-    """Card de mazo para el grid de la vista de historial.
-
-    Trae lo mínimo para pintar la card: arte del commander (o de la primera
-    carta si el mazo no tiene commander), nombre, contadores de actividad y
-    resumen del último evento.
-    """
     id: int
     name: str
     format: str
@@ -79,14 +62,6 @@ class DeckWithActivityView(BaseModel):
 
 @router.get("/_/with-activity", response_model=list[DeckWithActivityView])
 async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
-    """Lista los mazos + metadata para pintar el grid de la vista de historial.
-
-    OPTIMIZACIÓN: todo en 4 queries fijas independientemente de nº de mazos:
-      1. Mazos + card_count (JOIN + GROUP BY)
-      2. Contadores de actividad por deck_id (GROUP BY)
-      3. Último evento por deck_id (MAX + JOIN, evita N+1)
-      4. Printings de commander en batch (WHERE IN, evita N+1)
-    """
     from mpc_forge.models import DeckActivity as _DA
 
     deck_rows = (
@@ -102,11 +77,13 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         return []
 
     activity_counts: dict[int, int] = dict(
-        (await db.execute(
-            select(_DA.deck_id, func.count(_DA.id))
-            .where(_DA.deck_id.isnot(None))
-            .group_by(_DA.deck_id)
-        )).all()
+        (
+            await db.execute(
+                select(_DA.deck_id, func.count(_DA.id))
+                .where(_DA.deck_id.isnot(None))
+                .group_by(_DA.deck_id)
+            )
+        ).all()
     )
 
     last_id_subq = (
@@ -117,13 +94,13 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     )
     last_rows = (
         await db.execute(
-            select(_DA.deck_id, _DA.created_at, _DA.kind, _DA.summary)
-            .join(last_id_subq, _DA.id == last_id_subq.c.last_id)
+            select(_DA.deck_id, _DA.created_at, _DA.kind, _DA.summary).join(
+                last_id_subq, _DA.id == last_id_subq.c.last_id
+            )
         )
     ).all()
     last_activity: dict[int, tuple[datetime, str, str]] = {
-        deck_id: (created_at, kind, summary)
-        for deck_id, created_at, kind, summary in last_rows
+        deck_id: (created_at, kind, summary) for deck_id, created_at, kind, summary in last_rows
     }
 
     covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
@@ -135,21 +112,23 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         commander_image = cover.image_url
 
         last = last_activity.get(deck.id)
-        out.append(DeckWithActivityView(
-            id=deck.id,
-            name=deck.name,
-            format=deck.format,
-            imported_at=deck.imported_at,
-            updated_at=deck.updated_at,
-            card_count=int(card_count or 0),
-            activity_count=int(activity_counts.get(deck.id, 0)),
-            last_activity_at=last[0] if last else None,
-            last_activity_kind=last[1] if last else None,
-            last_activity_summary=last[2] if last else None,
-            commander_scryfall_id=deck.commander_scryfall_id,
-            commander_name=commander_name,
-            commander_image_url=commander_image,
-        ))
+        out.append(
+            DeckWithActivityView(
+                id=deck.id,
+                name=deck.name,
+                format=deck.format,
+                imported_at=deck.imported_at,
+                updated_at=deck.updated_at,
+                card_count=int(card_count or 0),
+                activity_count=int(activity_counts.get(deck.id, 0)),
+                last_activity_at=last[0] if last else None,
+                last_activity_kind=last[1] if last else None,
+                last_activity_summary=last[2] if last else None,
+                commander_scryfall_id=deck.commander_scryfall_id,
+                commander_name=commander_name,
+                commander_image_url=commander_image,
+            )
+        )
     return out
 
 
@@ -160,10 +139,6 @@ async def list_activity(
     kinds: str | None = None,
     limit: int = 500,
 ) -> list[ActivityEntry]:
-    """Devuelve las últimas ``limit`` entradas del timeline de un mazo.
-
-    Filtro opcional por ``kinds`` (csv). Si el mazo no existe, 404.
-    """
     deck = await db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
@@ -174,6 +149,7 @@ async def list_activity(
 
     def _parse_payload(raw: str) -> dict:
         import json as _json
+
         try:
             v = _json.loads(raw or "{}")
             return v if isinstance(v, dict) else {"_raw": v}
@@ -205,16 +181,6 @@ class UndoResponse(BaseModel):
 
 @router.post("/{deck_id}/activity/{event_id}/undo", response_model=UndoResponse)
 async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
-    """Deshace un evento del timeline aplicando su operación inversa.
-
-    Solo funciona para eventos reversibles (ver ``services.undo.UNDOABLE_KINDS``)
-    y solo si el estado actual del mazo permite la reversión con seguridad
-    (no puedes deshacer un movimiento si el usuario ha movido la carta otra vez
-    en medio — devuelve 409 con la razón).
-
-    Devuelve 400 si el evento no admite undo por su tipo, 404 si no existe,
-    409 si existe pero el estado ha divergido.
-    """
     from mpc_forge.models import DeckActivity as _DA
     from mpc_forge.services import undo as undo_svc
 
@@ -236,12 +202,7 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
 
 @router.get("/_/undoable-kinds")
 async def get_undoable_kinds(response: Response) -> list[str]:
-    """Lista de kinds que admiten undo. El frontend la usa para decidir qué
-    eventos muestran el botón "Deshacer" en el timeline.
-
-    Cache HTTP: es una constante literal, solo cambia con deploy nuevo.
-    1 hora balancea "no re-fetchar" y "que pille cambios sin borrar caché".
-    """
     from mpc_forge.services import undo as undo_svc
+
     response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)

@@ -1,13 +1,3 @@
-"""Scryfall — decks compartidos vía su API oficial.
-
-Scryfall permite crear listas (decks) y exportarlas en texto plano vía
-``https://api.scryfall.com/decks/{deck_id}/export/text``. La URL de
-compartición pública sigue el formato ``https://scryfall.com/@user/decks/{id}``
-o ``https://scryfall.com/decks/{id}``.
-
-El nombre del deck se obtiene de la misma API en el endpoint de metadatos:
-``https://api.scryfall.com/decks/{deck_id}`` → ``{"name": "…"}``.
-"""
 from __future__ import annotations
 
 import re
@@ -54,11 +44,6 @@ class ScryfallSite(ImportSite):
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Devuelve el nombre del deck desde la API de metadatos de Scryfall.
-
-        Endpoint: ``api.scryfall.com/decks/{deck_id}`` → ``{"name": "…"}``.
-        Llamada independiente del export de texto.
-        """
         deck_id = cls._extract_deck_id(url)
         if not deck_id:
             return None

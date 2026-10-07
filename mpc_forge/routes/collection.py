@@ -1,8 +1,3 @@
-"""Endpoints REST para la colección personal (tracking por set).
-
-Incluye cache en memoria para la lista de sets de Scryfall (TTL 1h)
-para evitar llamadas redundantes al abrir la página de colección.
-"""
 from __future__ import annotations
 
 import logging
@@ -32,14 +27,20 @@ _SETS_CACHE: dict[str, list[dict]] | None = None
 _SETS_CACHE_AT: float = 0.0
 _SETS_CACHE_TTL: float = 3600.0
 
-WANTED_SET_TYPES = frozenset({
-    "core", "expansion", "masters", "draft_innovation",
-    "commander", "funny", "starter",
-})
+WANTED_SET_TYPES = frozenset(
+    {
+        "core",
+        "expansion",
+        "masters",
+        "draft_innovation",
+        "commander",
+        "funny",
+        "starter",
+    }
+)
 
 
 async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
-    """Return the filtered sets list, fetching from Scryfall only if stale."""
     global _SETS_CACHE, _SETS_CACHE_AT
 
     now = time.monotonic()
@@ -70,14 +71,16 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
             continue
         if s.get("card_count", 0) <= 0:
             continue
-        filtered.append({
-            "code": s.get("code", ""),
-            "name": s.get("name", ""),
-            "set_type": s.get("set_type", ""),
-            "released_at": s.get("released_at"),
-            "card_count": s.get("card_count", 0),
-            "icon_svg_uri": s.get("icon_svg_uri"),
-        })
+        filtered.append(
+            {
+                "code": s.get("code", ""),
+                "name": s.get("name", ""),
+                "set_type": s.get("set_type", ""),
+                "released_at": s.get("released_at"),
+                "card_count": s.get("card_count", 0),
+                "icon_svg_uri": s.get("icon_svg_uri"),
+            }
+        )
 
     filtered.sort(key=lambda x: x.get("released_at") or "", reverse=True)
 
@@ -96,11 +99,8 @@ class SidebarStats(BaseModel):
 
 @router.get("/sidebar-stats", response_model=SidebarStats)
 async def sidebar_stats(db: DbDep) -> SidebarStats:
-    """Estadísticas rápidas para el sidebar."""
     decks = (await db.scalar(select(func.count()).select_from(Deck))) or 0
-    unique = (await db.scalar(
-        select(func.count(func.distinct(DeckCard.oracle_id)))
-    )) or 0
+    unique = (await db.scalar(select(func.count(func.distinct(DeckCard.oracle_id))))) or 0
     runs = (await db.scalar(select(func.count()).select_from(PrintRun))) or 0
     coll = (await db.scalar(select(func.count()).select_from(CollectionEntry))) or 0
     return SidebarStats(
@@ -121,7 +121,6 @@ class RecentDeck(BaseModel):
 
 @router.get("/recent-decks", response_model=list[RecentDeck])
 async def recent_decks(db: DbDep) -> list[RecentDeck]:
-    """Últimos 5 mazos editados para acceso rápido en el sidebar."""
     from mpc_forge.services import deck_covers
 
     result = await db.execute(
@@ -139,13 +138,15 @@ async def recent_decks(db: DbDep) -> list[RecentDeck]:
 
     out = []
     for deck, cc in rows:
-        out.append(RecentDeck(
-            id=deck.id,
-            name=deck.name,
-            format=deck.format,
-            card_count=cc,
-            commander_image=covers.get(deck.id, deck_covers.EMPTY).image_url,
-        ))
+        out.append(
+            RecentDeck(
+                id=deck.id,
+                name=deck.name,
+                format=deck.format,
+                card_count=cc,
+                commander_image=covers.get(deck.id, deck_covers.EMPTY).image_url,
+            )
+        )
     return out
 
 
@@ -164,16 +165,10 @@ async def list_sets(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> list[SetInfo]:
-    """Devuelve los sets de Scryfall con el conteo de cartas propias.
-
-    La lista de sets se cachea en memoria 1h — solo la query de owned_count
-    es fresca en cada request (una SELECT rápida contra SQLite).
-    """
     sets_data = await _fetch_sets_cached(scryfall)
 
     owned_q = await db.execute(
-        select(CollectionEntry.set_code, func.count())
-        .group_by(CollectionEntry.set_code)
+        select(CollectionEntry.set_code, func.count()).group_by(CollectionEntry.set_code)
     )
     owned_map = dict(owned_q.all())
 
@@ -203,7 +198,6 @@ async def set_cards(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> list[SetCardInfo]:
-    """Devuelve las cartas de un set con el flag de si el usuario las tiene."""
     import httpx
 
     from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
@@ -243,10 +237,11 @@ async def set_cards(
             page = resp.json()
 
     owned_ids = set(
-        (await db.scalars(
-            select(CollectionEntry.scryfall_id)
-            .where(CollectionEntry.set_code == set_code)
-        )).all()
+        (
+            await db.scalars(
+                select(CollectionEntry.scryfall_id).where(CollectionEntry.set_code == set_code)
+            )
+        ).all()
     )
 
     out = []
@@ -255,16 +250,18 @@ async def set_cards(
         imgs = c.get("image_uris") or {}
         if not imgs and c.get("card_faces"):
             imgs = c["card_faces"][0].get("image_uris", {})
-        out.append(SetCardInfo(
-            scryfall_id=sid,
-            oracle_id=c.get("oracle_id", ""),
-            name=c.get("name", ""),
-            collector_number=c.get("collector_number", ""),
-            rarity=c.get("rarity", "common"),
-            image_small=imgs.get("small"),
-            image_normal=imgs.get("normal"),
-            owned=sid in owned_ids,
-        ))
+        out.append(
+            SetCardInfo(
+                scryfall_id=sid,
+                oracle_id=c.get("oracle_id", ""),
+                name=c.get("name", ""),
+                collector_number=c.get("collector_number", ""),
+                rarity=c.get("rarity", "common"),
+                image_small=imgs.get("small"),
+                image_normal=imgs.get("normal"),
+                owned=sid in owned_ids,
+            )
+        )
 
     return out
 
@@ -287,7 +284,6 @@ class ToggleOwnedResponse(BaseModel):
 
 @router.post("/toggle-owned", response_model=ToggleOwnedResponse)
 async def toggle_owned(payload: ToggleOwnedRequest, db: DbDep) -> ToggleOwnedResponse:
-    """Marca/desmarca una carta como propia."""
     existing = await db.get(CollectionEntry, payload.scryfall_id)
     if existing:
         await db.delete(existing)
@@ -308,11 +304,13 @@ async def toggle_owned(payload: ToggleOwnedRequest, db: DbDep) -> ToggleOwnedRes
         await db.flush()
         owned = True
 
-    count = (await db.scalar(
-        select(func.count())
-        .select_from(CollectionEntry)
-        .where(CollectionEntry.set_code == payload.set_code)
-    )) or 0
+    count = (
+        await db.scalar(
+            select(func.count())
+            .select_from(CollectionEntry)
+            .where(CollectionEntry.set_code == payload.set_code)
+        )
+    ) or 0
 
     await db.commit()
     return ToggleOwnedResponse(owned=owned, set_owned_count=count)
@@ -333,7 +331,6 @@ class BatchToggleResponse(BaseModel):
 
 @router.post("/batch-toggle", response_model=BatchToggleResponse)
 async def batch_toggle(payload: BatchToggleRequest, db: DbDep) -> BatchToggleResponse:
-    """Marca/desmarca múltiples cartas de golpe."""
     added = 0
     removed = 0
 
@@ -344,32 +341,40 @@ async def batch_toggle(payload: BatchToggleRequest, db: DbDep) -> BatchToggleRes
         )
         removed = result.rowcount  # type: ignore
     else:
-        existing = set((await db.scalars(
-            select(CollectionEntry.scryfall_id).where(
-                CollectionEntry.scryfall_id.in_([c.scryfall_id for c in payload.cards])
-            )
-        )).all())
+        existing = set(
+            (
+                await db.scalars(
+                    select(CollectionEntry.scryfall_id).where(
+                        CollectionEntry.scryfall_id.in_([c.scryfall_id for c in payload.cards])
+                    )
+                )
+            ).all()
+        )
         for c in payload.cards:
             if c.scryfall_id not in existing:
-                db.add(CollectionEntry(
-                    scryfall_id=c.scryfall_id,
-                    oracle_id=c.oracle_id,
-                    name=c.name,
-                    set_code=c.set_code,
-                    set_name=c.set_name or payload.set_name,
-                    collector_number=c.collector_number,
-                    rarity=c.rarity,
-                    image_small=c.image_small,
-                ))
+                db.add(
+                    CollectionEntry(
+                        scryfall_id=c.scryfall_id,
+                        oracle_id=c.oracle_id,
+                        name=c.name,
+                        set_code=c.set_code,
+                        set_name=c.set_name or payload.set_name,
+                        collector_number=c.collector_number,
+                        rarity=c.rarity,
+                        image_small=c.image_small,
+                    )
+                )
                 added += 1
 
     await db.flush()
 
-    count = (await db.scalar(
-        select(func.count())
-        .select_from(CollectionEntry)
-        .where(CollectionEntry.set_code == payload.set_code)
-    )) or 0
+    count = (
+        await db.scalar(
+            select(func.count())
+            .select_from(CollectionEntry)
+            .where(CollectionEntry.set_code == payload.set_code)
+        )
+    ) or 0
 
     await db.commit()
     return BatchToggleResponse(added=added, removed=removed, set_owned_count=count)
@@ -383,7 +388,5 @@ class CollectionStats(BaseModel):
 @router.get("/stats", response_model=CollectionStats)
 async def collection_stats(db: DbDep) -> CollectionStats:
     total = (await db.scalar(select(func.count()).select_from(CollectionEntry))) or 0
-    sets = (await db.scalar(
-        select(func.count(func.distinct(CollectionEntry.set_code)))
-    )) or 0
+    sets = (await db.scalar(select(func.count(func.distinct(CollectionEntry.set_code))))) or 0
     return CollectionStats(total_owned=total, unique_sets=sets)

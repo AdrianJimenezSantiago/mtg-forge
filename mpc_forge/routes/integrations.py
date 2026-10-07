@@ -1,8 +1,3 @@
-"""Endpoints de integraciones:
-  - MPC Autofill desktop tool (status/launch)
-  - Gestión manual de art sources (Google Drives comunitarios)
-  - Indexado + búsqueda fuzzy en drives
-"""
 from __future__ import annotations
 
 import logging
@@ -58,8 +53,10 @@ async def autofill_status() -> AutofillStatusResponse:
             "y colócalo en la carpeta del proyecto (o configura su ruta en Ajustes)."
         )
     return AutofillStatusResponse(
-        available=st.available, exe_path=st.exe_path,
-        source=st.source, hint=hint,
+        available=st.available,
+        exe_path=st.exe_path,
+        source=st.source,
+        hint=hint,
     )
 
 
@@ -98,7 +95,10 @@ class ArtSourceView(BaseModel):
     @classmethod
     def from_model(cls, s) -> ArtSourceView:
         return cls(
-            id=s.id, name=s.name, url=s.url, source_type=s.source_type,
+            id=s.id,
+            name=s.name,
+            url=s.url,
+            source_type=s.source_type,
             description=s.description,
             tags=[t.strip() for t in (s.tags or "").split(",") if t.strip()],
             pinned=s.pinned,
@@ -126,7 +126,6 @@ class UpdateArtSourceRequest(BaseModel):
 
 @router.get("/art-sources/", response_model=list[ArtSourceView])
 async def list_art_sources(db: DbDep) -> list[ArtSourceView]:
-    """Devuelve la lista completa de sources del usuario."""
     sources = await art_sources.list_sources(db)
     return [ArtSourceView.from_model(s) for s in sources]
 
@@ -135,8 +134,11 @@ async def list_art_sources(db: DbDep) -> list[ArtSourceView]:
 async def create_art_source(payload: CreateArtSourceRequest, db: DbDep) -> ArtSourceView:
     try:
         src = await art_sources.add_source(
-            db, name=payload.name, url=payload.url,
-            description=payload.description, tags=payload.tags,
+            db,
+            name=payload.name,
+            url=payload.url,
+            description=payload.description,
+            tags=payload.tags,
             pinned=payload.pinned,
         )
     except ValueError as e:
@@ -146,12 +148,17 @@ async def create_art_source(payload: CreateArtSourceRequest, db: DbDep) -> ArtSo
 
 @router.patch("/art-sources/{source_id}", response_model=ArtSourceView)
 async def update_art_source(
-    source_id: int, payload: UpdateArtSourceRequest, db: DbDep,
+    source_id: int,
+    payload: UpdateArtSourceRequest,
+    db: DbDep,
 ) -> ArtSourceView:
     src = await art_sources.update_source(
-        db, source_id,
-        name=payload.name, url=payload.url,
-        description=payload.description, tags=payload.tags,
+        db,
+        source_id,
+        name=payload.name,
+        url=payload.url,
+        description=payload.description,
+        tags=payload.tags,
         pinned=payload.pinned,
     )
     if not src:
@@ -174,9 +181,6 @@ class RestoreCatalogResponse(BaseModel):
 
 @router.post("/art-sources/restore-catalog", response_model=RestoreCatalogResponse)
 async def restore_catalog(db: DbDep) -> RestoreCatalogResponse:
-    """Añade al catálogo cualquier drive del catálogo curado (los 67 de MPCFill)
-    que el usuario haya borrado. No toca los que ya existen. Idempotente.
-    """
     result = await art_sources.restore_catalog(db)
     return RestoreCatalogResponse(**result)
 
@@ -200,11 +204,6 @@ class IndexResponse(BaseModel):
 
 
 async def _run_index_task(source_id: int) -> None:
-    """Se ejecuta en background para no bloquear la request HTTP.
-
-    Si el indexado falla por lo que sea, garantiza que el source queda marcado
-    con `index_error` para que el frontend deje de creer que sigue indexando.
-    """
     try:
         async with session_scope() as db:
             await gdrive_indexer.index_source(db, source_id)
@@ -214,6 +213,7 @@ async def _run_index_task(source_id: int) -> None:
             from datetime import datetime
 
             from mpc_forge.models import ArtSource
+
             async with session_scope() as db:
                 src = await db.get(ArtSource, source_id)
                 if src:
@@ -230,10 +230,6 @@ async def index_source(
     background: BackgroundTasks,
     wait: bool = False,
 ) -> IndexResponse:
-    """Indexa un drive. Por defecto lanza en background y devuelve 202-like.
-
-    Con `?wait=true` bloquea hasta que termine (útil para drives pequeños).
-    """
     if wait:
         result = await gdrive_indexer.index_source(db, source_id)
         return IndexResponse(
@@ -246,21 +242,22 @@ async def index_source(
         )
     background.add_task(_run_index_task, source_id)
     return IndexResponse(
-        source_id=source_id, files_added=0, files_updated=0,
-        folders_visited=0, used_api_key=bool(cfg.GOOGLE_API_KEY),
+        source_id=source_id,
+        files_added=0,
+        files_updated=0,
+        folders_visited=0,
+        used_api_key=bool(cfg.GOOGLE_API_KEY),
         error=None,
     )
 
 
 @router.delete("/art-sources/{source_id}/index", status_code=status.HTTP_200_OK)
 async def clear_index(source_id: int, db: DbDep) -> dict:
-    """Borra el índice de un drive (mantiene el ArtSource, solo vacía IndexedArt)."""
     n = await gdrive_indexer.clear_index(db, source_id)
     return {"deleted": n}
 
 
 class IndexBatchRequest(BaseModel):
-    """Lista de source_ids a indexar en batch."""
     source_ids: list[int] = Field(..., min_length=1)
     mode: str = Field(
         default="pending",
@@ -280,20 +277,6 @@ class IndexBatchResponse(BaseModel):
 
 @router.post("/drives/index-batch", response_model=IndexBatchResponse)
 async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchResponse:
-    """Encola múltiples drives para indexado secuencial.
-
-    Ventajas sobre el endpoint individual (``POST /art-sources/{id}/index``):
-      - Una sola request HTTP en vez de N.
-      - Procesamiento secuencial (un drive a la vez) — cero contención
-        en SQLite ni en la cuota de Google Drive API.
-      - Progreso consultable vía ``GET /drives/index-progress``.
-      - Cancelación cooperativa vía ``POST /drives/index-cancel``.
-
-    Modos:
-      - ``all``: indexa todos los IDs recibidos (útil para reindexar).
-      - ``pending`` (default): salta los que ya tienen ``indexed_at``.
-      - ``pinned``: de los IDs recibidos, solo indexa los marcados como pinned.
-    """
     from mpc_forge.models import ArtSource
 
     queue = _get_index_queue()
@@ -340,48 +323,11 @@ async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchRespon
 
 @router.get("/drives/index-progress")
 async def index_progress() -> dict[str, Any]:
-    """Devuelve el estado completo del batch de indexado en curso.
-
-    Respuesta:
-    ```json
-    {
-      "batch_id": "a1b2c3d4e5f6",
-      "active": {                   // drive que se está indexando ahora
-        "source_id": 3,
-        "source_name": "MPCFill #03",
-        "status": "indexing",
-        "files_added": 1200,
-        "files_updated": 50,
-        "files_total": 1250,
-        "folders_visited": 15,
-        "elapsed_seconds": 12.3
-      },
-      "queued": [...],              // drives esperando turno
-      "completed": [...],           // drives terminados (done/error/skipped)
-      "total": 67,
-      "done_count": 5,
-      "all_done": false,
-      "cancelled": false,
-      "eta_seconds": 340.5,         // estimado basado en media de completados
-      "batch_elapsed_seconds": 65.2,
-      "percent": 7.5
-    }
-    ```
-
-    Cuando ``all_done=true`` o ``cancelled=true``, el frontend puede dejar de
-    hacer polling y mostrar el resumen final.
-    """
     return _get_index_queue().progress()
 
 
 @router.post("/drives/index-cancel")
 async def index_cancel() -> dict[str, Any]:
-    """Cancela el batch de indexado en curso.
-
-    La cancelación es cooperativa: el drive que se está indexando ahora
-    termina su commit parcial actual, pero no se empieza ningún drive
-    nuevo. Los drives pendientes se marcan como ``cancelled``.
-    """
     queue = _get_index_queue()
     if not queue.is_running():
         return {"cancelled": 0, "message": "No hay indexado en curso."}
@@ -390,11 +336,6 @@ async def index_cancel() -> dict[str, Any]:
 
 @router.post("/drives/index-clear")
 async def index_clear() -> dict[str, str]:
-    """Limpia el historial de jobs completados del batch anterior.
-
-    El frontend lo llama tras mostrar el resumen final, para que el
-    próximo ``GET /drives/index-progress`` devuelva un estado limpio.
-    """
     _get_index_queue().clear_completed()
     return {"status": "ok"}
 
@@ -423,7 +364,6 @@ class SearchHit(BaseModel):
 
 
 def _parse_csv_list(raw: str | None) -> list[str] | None:
-    """Convierte 'a,b, c' → ['a', 'b', 'c']. Devuelve None si vacío o None."""
     if not raw:
         return None
     parts = [p.strip() for p in raw.split(",") if p.strip()]
@@ -445,24 +385,15 @@ async def drives_search(
     tags_exclude: str | None = None,
     expansion_code: str | None = None,
 ) -> list[SearchHit]:
-    """Busca `q` (nombre de carta) en el índice de todos los drives.
-
-    Filtros opcionales:
-      - ``tags_include=full_art,borderless``: solo artes que TENGAN todos.
-      - ``tags_exclude=promo``: descarta artes con cualquiera de los indicados.
-      - ``expansion_code=dmu``: solo artes con tag `[DMU NUM]`.
-
-    Paginación: ``limit`` (máx. 500) y ``offset``. La respuesta sigue siendo
-    una lista; el total de coincidencias va en la cabecera ``X-Total-Count``
-    y ``X-Total-Capped: 1`` indica que el total es un mínimo (hay más
-    candidatos de los que se evalúan por búsqueda).
-    """
     if not q.strip():
         response.headers["X-Total-Count"] = "0"
         return []
     source_ids = [source_id] if source_id else None
     page = await gdrive_search.search_page(
-        db, q, limit=limit, offset=offset,
+        db,
+        q,
+        limit=limit,
+        offset=offset,
         source_ids=source_ids,
         tags_include=_parse_csv_list(tags_include),
         tags_exclude=_parse_csv_list(tags_exclude),
@@ -474,10 +405,13 @@ async def drives_search(
     results = page.results
     return [
         SearchHit(
-            file_id=r.file_id, filename=r.filename,
-            source_id=r.source_id, source_name=r.source_name,
+            file_id=r.file_id,
+            filename=r.filename,
+            source_id=r.source_id,
+            source_name=r.source_name,
             folder_path=r.folder_path,
-            thumb_url=r.thumb_url, download_url=r.download_url,
+            thumb_url=r.thumb_url,
+            download_url=r.download_url,
             score=r.score,
             tags=r.tags,
             is_full_art=r.is_full_art,
@@ -502,19 +436,17 @@ async def drives_cardbacks(
     limit: int = 100,
     source_id: int | None = None,
 ) -> list[SearchHit]:
-    """Devuelve todos los cardbacks indexados (tag ``back``) sin requerir query.
-
-    Útil para poblar el picker de cardbacks al abrirlo, sin que el usuario
-    necesite escribir nada en el buscador.
-    """
     source_ids = [source_id] if source_id else None
     results = await gdrive_search.list_cardbacks(db, limit=limit, source_ids=source_ids)
     return [
         SearchHit(
-            file_id=r.file_id, filename=r.filename,
-            source_id=r.source_id, source_name=r.source_name,
+            file_id=r.file_id,
+            filename=r.filename,
+            source_id=r.source_id,
+            source_name=r.source_name,
             folder_path=r.folder_path,
-            thumb_url=r.thumb_url, download_url=r.download_url,
+            thumb_url=r.thumb_url,
+            download_url=r.download_url,
             score=r.score,
             tags=r.tags,
             is_full_art=r.is_full_art,
@@ -554,17 +486,6 @@ async def serve_local_source_file(
     file_id: str,
     db: DbDep,
 ):
-    """Sirve un archivo de un source tipo ``local-folder``.
-
-    Seguridad: la resolución del `file_id` en la ruta absoluta va vía
-    ``LocalFolderSourceType.resolve_path()`` que valida que la ruta esté
-    DENTRO de la carpeta del source (defensa contra path traversal). Cualquier
-    intento con ``..`` codificado o similar devuelve 400.
-
-    Este endpoint es la contrapartida del ``download_url()`` /
-    ``thumbnail_url()`` que devuelve `LocalFolderSourceType`. Todos los
-    thumbnails de artes de un local-folder se sirven desde aquí.
-    """
     from fastapi.responses import FileResponse
 
     from mpc_forge.models import ArtSource
@@ -603,15 +524,10 @@ class DFCPairsSyncResponse(BaseModel):
 
 @router.get("/dfc-pairs/stats", response_model=DFCPairsStatsResponse)
 async def dfc_pairs_stats(db: DbDep) -> DFCPairsStatsResponse:
-    """Estado actual del cache: cuántos pares tenemos y cuándo se sincronizó."""
     return DFCPairsStatsResponse(**await dfc_pairs.stats(db))
 
 
 class DFCPairsLookupResponse(BaseModel):
-    """Mapa {nombre_original: {back_name, kind}} de las cartas encontradas
-    en el cache. Las cartas no encontradas se omiten del dict (no significa
-    que no sean DFC — puede ser cache desactualizado).
-    """
     found: dict[str, dict[str, str]]
     total_queried: int
     total_matched: int
@@ -622,14 +538,6 @@ async def dfc_pairs_lookup(
     db: DbDep,
     names: str = "",
 ) -> DFCPairsLookupResponse:
-    """Busca varios nombres de golpe en el cache local (sin llamadas a Scryfall).
-
-    ``names`` es una lista separada por ``|`` (evitamos ``,`` porque hay
-    cartas con coma como "Bruna, the Fading Light").
-
-    Uso: previews de import ("¿cuántas DFCs tiene este decklist antes de
-    importar?"), analíticas del mazo, badges "// back" en la UI del picker.
-    """
     parts = [n.strip() for n in names.split("|") if n.strip()]
     found = await dfc_pairs.bulk_lookup(db, parts)
     return DFCPairsLookupResponse(
@@ -640,7 +548,6 @@ async def dfc_pairs_lookup(
 
 
 async def _run_dfc_sync_task(scryfall: ScryfallClient) -> None:
-    """Ejecuta el sync en background con su propia sesión de BD."""
     try:
         async with session_scope() as db:
             await dfc_pairs.sync_if_stale(db, scryfall)
@@ -656,17 +563,11 @@ async def dfc_pairs_sync(
     force: bool = False,
     wait: bool = True,
 ) -> DFCPairsSyncResponse:
-    """Fuerza (o pide) una sincronización con Scryfall.
-
-    - ``force=false`` (default): solo sincroniza si TTL expirado.
-    - ``force=true``: fuerza el refresh aunque acabemos de sincronizar.
-    - ``wait=true`` (default): bloquea hasta que termine y devuelve el resultado.
-    - ``wait=false``: lanza en background y responde inmediatamente.
-    """
     scryfall = _get_scryfall(request)
 
     if force:
         from mpc_forge.models import KeyValue
+
         kv = await db.get(KeyValue, "dfc_pairs.last_synced_at")
         if kv:
             await db.delete(kv)
@@ -676,7 +577,9 @@ async def dfc_pairs_sync(
         background.add_task(_run_dfc_sync_task, scryfall)
         current = await dfc_pairs.stats(db)
         return DFCPairsSyncResponse(
-            synced=False, pairs=current["total_pairs"], reason="scheduled",
+            synced=False,
+            pairs=current["total_pairs"],
+            reason="scheduled",
         )
 
     result = await dfc_pairs.sync_if_stale(db, scryfall)
@@ -692,9 +595,7 @@ local_source_router = _local_source_router
 
 class PHashStatsResponse(BaseModel):
     available: bool
-    """True si Pillow + imagehash están instalados."""
     enabled: bool
-    """True si el setting `phash.enabled` está activado (y disponible)."""
     total_arts: int
     with_hash: int
     coverage_pct: float
@@ -720,16 +621,16 @@ class SimilarArtsResponse(BaseModel):
 
 @router.get("/drives/phash/stats", response_model=PHashStatsResponse)
 async def phash_stats(db: DbDep) -> PHashStatsResponse:
-    """Estado global del pHash: disponibilidad, cobertura del índice."""
     from sqlalchemy import func
 
     from mpc_forge.models import IndexedArt
     from mpc_forge.services import phash
 
     total = int(await db.scalar(select(func.count(IndexedArt.id))) or 0)
-    with_hash = int(await db.scalar(
-        select(func.count(IndexedArt.id)).where(IndexedArt.image_hash.is_not(None))
-    ) or 0)
+    with_hash = int(
+        await db.scalar(select(func.count(IndexedArt.id)).where(IndexedArt.image_hash.is_not(None)))
+        or 0
+    )
     return PHashStatsResponse(
         available=phash.is_available(),
         enabled=await phash.enabled(db),
@@ -740,20 +641,24 @@ async def phash_stats(db: DbDep) -> PHashStatsResponse:
 
 
 async def _phash_compute_task(source_id: int, limit: int) -> None:
-    """Background task que ejecuta el cálculo pHash con sesión propia."""
     from mpc_forge.services import phash
+
     try:
         async with session_scope() as db:
             import httpx
 
             from mpc_forge.ssl_config import ssl_insecure
+
             async with httpx.AsyncClient(
                 timeout=15.0,
                 verify=not ssl_insecure(),
                 headers={"User-Agent": cfg.MOXFIELD_USER_AGENT},
             ) as client:
                 stats = await phash.compute_missing_for_source(
-                    db, client, source_id=source_id, limit=limit,
+                    db,
+                    client,
+                    source_id=source_id,
+                    limit=limit,
                 )
                 log.info("pHash retrofit source=%d: %s", source_id, stats)
     except Exception:
@@ -767,14 +672,8 @@ async def phash_compute(
     background: BackgroundTasks,
     wait: bool = False,
 ) -> PHashComputeResponse:
-    """Lanza el cálculo de pHash para artes de un source que aún no lo tengan.
-
-    - ``wait=false`` (default): lanza background, responde inmediatamente
-      con `computed=0`.
-    - ``wait=true``: ejecuta inline hasta ``limit`` artes y devuelve stats.
-      Útil para pruebas / retrofits pequeños.
-    """
     from mpc_forge.services import phash
+
     if not phash.is_available():
         raise HTTPException(
             status.HTTP_501_NOT_IMPLEMENTED,
@@ -783,34 +682,33 @@ async def phash_compute(
 
     if not wait:
         background.add_task(_phash_compute_task, payload.source_id, payload.limit)
-        return PHashComputeResponse(computed=0, failed=0, skipped=0,
-                                    error="scheduled in background")
+        return PHashComputeResponse(
+            computed=0, failed=0, skipped=0, error="scheduled in background"
+        )
 
     import httpx
 
     from mpc_forge.ssl_config import ssl_insecure
+
     async with httpx.AsyncClient(
         timeout=15.0,
         verify=not ssl_insecure(),
         headers={"User-Agent": cfg.MOXFIELD_USER_AGENT},
     ) as client:
         stats = await phash.compute_missing_for_source(
-            db, client, source_id=payload.source_id, limit=payload.limit,
+            db,
+            client,
+            source_id=payload.source_id,
+            limit=payload.limit,
         )
     return PHashComputeResponse(**stats)
 
 
 class PHashComputeAllRequest(BaseModel):
-    """Retrofit pHash sobre TODOS los sources con artes sin hash.
-    Limit es POR SOURCE, no global."""
     limit_per_source: int = Field(default=200, ge=1, le=5000)
 
 
 async def _phash_compute_all_task(limit_per_source: int) -> None:
-    """Background task que recorre todos los sources y calcula pHash para
-    sus artes sin hash. Un `AsyncClient` compartido entre todos los
-    sources para reutilizar conexiones.
-    """
     import httpx as _httpx
 
     from mpc_forge.models import ArtSource
@@ -831,10 +729,12 @@ async def _phash_compute_all_task(limit_per_source: int) -> None:
                 try:
                     async with session_scope() as db:
                         stats = await phash.compute_missing_for_source(
-                            db, client, source_id=src.id, limit=limit_per_source,
+                            db,
+                            client,
+                            source_id=src.id,
+                            limit=limit_per_source,
                         )
-                        log.info("pHash retrofit source=%d (%s): %s",
-                                 src.id, src.name, stats)
+                        log.info("pHash retrofit source=%d (%s): %s", src.id, src.name, stats)
                 except Exception:
                     log.exception("pHash retrofit falló para source %d", src.id)
                     continue
@@ -847,34 +747,22 @@ async def phash_compute_all(
     payload: PHashComputeAllRequest,
     background: BackgroundTasks,
 ) -> dict[str, Any]:
-    """Extras · F2/T8: dispara un job de retrofit pHash sobre TODOS los sources.
-
-    Útil como botón "Calcular pHash para todos los drives" en Ajustes. Es
-    la mejor manera de aplicar pHash a los sources gdrive existentes sin
-    reindexar (que sería mucho más lento por el fetch de la API de Drive).
-    """
     from mpc_forge.services import phash
+
     if not phash.is_available():
         raise HTTPException(
             status.HTTP_501_NOT_IMPLEMENTED,
             "pHash no disponible — instala `pip install Pillow imagehash`",
         )
     background.add_task(_phash_compute_all_task, payload.limit_per_source)
-    return {"status": "scheduled",
-            "message": "Job iniciado en background. Consulta /drives/phash/stats para ver progreso."}
+    return {
+        "status": "scheduled",
+        "message": "Job iniciado en background. Consulta /drives/phash/stats para ver progreso.",
+    }
 
 
 @router.post("/drives/rebuild-fts5", response_model=dict[str, Any])
 async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
-    """Extras · F2/T6: fuerza rebuild de la tabla virtual FTS5.
-
-    Uso: si el usuario nota que la búsqueda está desincronizada (nuevas
-    filas insertadas fuera del flujo del indexer, o si los triggers
-    fallaron en algún batch por bug), este botón las regenera desde cero.
-
-    Es idempotente y ejecuta en un solo statement SQL (`INSERT INTO fts VALUES
-    ('rebuild')`). Para 100k artes tarda ~5-10s.
-    """
     from sqlalchemy import text as sa_text
 
     from mpc_forge.models import KeyValue
@@ -886,9 +774,7 @@ async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
             "FTS5 no disponible en esta build de SQLite",
         )
     try:
-        await db.execute(sa_text(
-            "INSERT INTO indexed_art_fts(indexed_art_fts) VALUES ('rebuild')"
-        ))
+        await db.execute(sa_text("INSERT INTO indexed_art_fts(indexed_art_fts) VALUES ('rebuild')"))
         await db.commit()
     except Exception as e:
         log.exception("Rebuild FTS5 falló")
@@ -906,15 +792,13 @@ async def canonical_validate(
     source_id: int | None = None,
     limit: int = 500,
 ) -> dict[str, int]:
-    """Extras · F2/T5: valida y enriquece los `[SET NUM]` de los artes indexados.
-
-    Consulta Scryfall en batch (75 identifiers por request) para verificar
-    que las (set, num) capturadas del filename existen. Poblará
-    `PrintingCache` para lookups posteriores del picker.
-    """
     from mpc_forge.services import canonical as _canonical
+
     stats = await _canonical.validate_and_enrich(
-        db, scryfall, limit=limit, source_id=source_id,
+        db,
+        scryfall,
+        limit=limit,
+        source_id=source_id,
     )
     return stats
 
@@ -925,69 +809,59 @@ async def canonical_details(
     expansion_code: str,
     collector_number: str,
 ) -> dict[str, Any] | None:
-    """Lookup local de detalles enriquecidos (artist, oracle_id, ...) para
-    un (set, num). Devuelve null si no está en cache.
-    """
     from mpc_forge.services import canonical as _canonical
+
     return await _canonical.get_canonical_details(
-        db, expansion_code, collector_number,
+        db,
+        expansion_code,
+        collector_number,
     )
 
 
 class ValidateSourceRequest(BaseModel):
-    """Payload de validación previo al POST /art-sources/."""
     url: str
     source_type: str | None = None
-    """Opcional: forzar un tipo. Si es None, se auto-detecta."""
 
 
 class ValidateSourceResponse(BaseModel):
     valid: bool
     detected_type: str
     canonical_url: str
-    """URL normalizada por el source_type. Se recomienda usarla al guardar."""
     label: str
     error: str | None = None
 
 
 @router.post("/tag-vocabulary/reload", response_model=dict[str, Any])
 async def reload_tag_vocabulary() -> dict[str, Any]:
-    """Extras · F1/T4: fuerza la recarga del vocabulario de tags custom.
-
-    El usuario edita ``<data_dir>/tag_vocabulary.json`` y llama a este
-    endpoint para que los cambios se apliquen sin reiniciar la app.
-    NOTA: las filas ya indexadas mantienen sus tags viejos hasta el
-    próximo reindex o el próximo bump de ``NORMALIZATION_VERSION``.
-    """
     from mpc_forge.services.gdrive_indexer import reload_tag_vocabulary as _reload
+
     _reload()
-    return {"status": "ok", "message": "Vocabulario recargado. Reindexa los drives para aplicar a los artes ya indexados."}
+    return {
+        "status": "ok",
+        "message": "Vocabulario recargado. Reindexa los drives para aplicar a los artes ya indexados.",
+    }
 
 
 @router.get("/tag-vocabulary/current", response_model=dict[str, list[str]])
 async def get_current_tag_vocabulary() -> dict[str, list[str]]:
-    """Devuelve el vocabulario actualmente en uso (default + overrides)."""
     from mpc_forge.services.gdrive_indexer import _get_vocab
+
     vocab, _ = _get_vocab()
     return {canonical: sorted(aliases) for canonical, aliases in vocab.items()}
 
 
 @router.post("/art-sources/validate", response_model=ValidateSourceResponse)
 async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceResponse:
-    """Extras · F2/T7: comprueba si `url` es una source válida sin persistirla.
-
-    Útil para la UI de "añadir source" — muestra al usuario feedback
-    inmediato ("✓ Google Drive folder detectado", "✗ ruta local inexistente")
-    antes de hacer el POST real.
-    """
     from mpc_forge.services import art_sources as _asources
     from mpc_forge.services.source_types import list_registered, resolve
 
     raw = (payload.url or "").strip()
     if not raw:
         return ValidateSourceResponse(
-            valid=False, detected_type="",
-            canonical_url="", label="",
+            valid=False,
+            detected_type="",
+            canonical_url="",
+            label="",
             error="URL vacía",
         )
 
@@ -996,28 +870,37 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
         if type_cls is None:
             valid_types = ", ".join(k for k, _ in list_registered())
             return ValidateSourceResponse(
-                valid=False, detected_type=payload.source_type,
-                canonical_url=raw, label="",
+                valid=False,
+                detected_type=payload.source_type,
+                canonical_url=raw,
+                label="",
                 error=f"Tipo desconocido: {payload.source_type!r}. Válidos: {valid_types}",
             )
         try:
             canonical = type_cls.validate_url(raw)
         except ValueError as e:
             return ValidateSourceResponse(
-                valid=False, detected_type=payload.source_type,
-                canonical_url=raw, label=type_cls.label, error=str(e),
+                valid=False,
+                detected_type=payload.source_type,
+                canonical_url=raw,
+                label=type_cls.label,
+                error=str(e),
             )
         return ValidateSourceResponse(
-            valid=True, detected_type=payload.source_type,
-            canonical_url=canonical, label=type_cls.label,
+            valid=True,
+            detected_type=payload.source_type,
+            canonical_url=canonical,
+            label=type_cls.label,
         )
 
     try:
         detected_type, canonical = _asources._detect_source_type(raw)
     except Exception as e:
         return ValidateSourceResponse(
-            valid=False, detected_type="",
-            canonical_url=raw, label="",
+            valid=False,
+            detected_type="",
+            canonical_url=raw,
+            label="",
             error=f"Error al detectar tipo: {e}",
         )
 
@@ -1025,13 +908,17 @@ async def validate_source(payload: ValidateSourceRequest) -> ValidateSourceRespo
     label = type_cls.label if type_cls else "Otro"
     if detected_type == "other":
         return ValidateSourceResponse(
-            valid=False, detected_type=detected_type,
-            canonical_url=canonical, label=label,
+            valid=False,
+            detected_type=detected_type,
+            canonical_url=canonical,
+            label=label,
             error="No se pudo detectar un tipo conocido. Elige uno manualmente.",
         )
     return ValidateSourceResponse(
-        valid=True, detected_type=detected_type,
-        canonical_url=canonical, label=label,
+        valid=True,
+        detected_type=detected_type,
+        canonical_url=canonical,
+        label=label,
     )
 
 
@@ -1042,17 +929,10 @@ async def phash_similar(
     threshold: int = 8,
     limit: int = 50,
 ) -> SimilarArtsResponse:
-    """Encuentra artes similares (mismo pHash o muy cerca) al de ``file_id``.
-
-    Uso: en el picker, un botón "Ver similares" muestra todos los duplicados
-    cross-drive del arte actual.
-    """
     from mpc_forge.models import IndexedArt
     from mpc_forge.services import phash
 
-    reference = await db.scalar(
-        select(IndexedArt).where(IndexedArt.file_id == file_id)
-    )
+    reference = await db.scalar(select(IndexedArt).where(IndexedArt.file_id == file_id))
     if not reference or not reference.image_hash:
         return SimilarArtsResponse(
             reference_file_id=file_id,
@@ -1060,7 +940,8 @@ async def phash_similar(
             similar=[],
         )
     similars = await phash.find_similar(
-        db, reference.image_hash,
+        db,
+        reference.image_hash,
         threshold=max(0, min(32, threshold)),
         exclude_file_id=file_id,
         limit=limit,

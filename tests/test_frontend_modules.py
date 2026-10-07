@@ -1,13 +1,3 @@
-"""Tests de la modularización del frontend (ítems 12 y 13).
-
-No ejecutan JavaScript — eso lo hace `npm run test:js` con jsdom, que corre en
-CI. Lo que se comprueba aquí es el contrato estructural entre los templates y
-los módulos, que es donde se rompen las cosas al editar HTML:
-
-* ningún template puede volver a acumular JavaScript embebido
-* toda función referenciada desde `x-data` debe publicarse en `window`
-* todo `<script src>` debe apuntar a un fichero que exista
-"""
 from __future__ import annotations
 
 import re
@@ -51,17 +41,14 @@ class TestNoInlineJavaScript:
         lines = [ln for ln in js.splitlines() if ln.strip()]
         assert len(lines) <= MAX_INLINE_JS_LINES, (
             f"{template} ha vuelto a acumular {len(lines)} líneas de JS "
-            f"embebido. Muévelas a static/js/ y ejecuta "
-            f"`python scripts/extract_inline_js.py`."
+            f"embebido. Muévelas a static/js/."
         )
 
     @pytest.mark.parametrize("template", sorted(MODULARIZED), ids=lambda t: t)
     def test_template_loads_its_module(self, template):
         html = (TEMPLATES / template).read_text(encoding="utf-8")
         module = MODULARIZED[template]
-        assert f'src="/static/js/{module}' in html, (
-            f"{template} no carga /static/js/{module}"
-        )
+        assert f'src="/static/js/{module}' in html, f"{template} no carga /static/js/{module}"
         assert f"asset_v('js/{module}')" in html, (
             f"{template} carga {module} sin cache-busting: tras actualizar la "
             f"app, el navegador seguiría ejecutando la versión antigua hasta "
@@ -69,7 +56,7 @@ class TestNoInlineJavaScript:
         )
         assert "defer" in html, (
             f"{template} debe cargar su script con `defer`. No se usa "
-            f"type=\"module\" a propósito: ver la nota en static/js/api.js."
+            f'type="module" a propósito: ver la nota en static/js/api.js.'
         )
         assert "{% block view_module %}" in html, (
             f"{template} debe declarar su script en el bloque view_module, que "
@@ -89,7 +76,6 @@ class TestModulesExist:
         assert (JS_DIR / "api.js").exists()
 
     def test_every_script_src_resolves(self):
-        """Un `src` roto no da error visible: la vista simplemente no arranca."""
         pattern = re.compile(r'<script[^>]*\bsrc="(/static/[^"]+)"', re.DOTALL)
         missing = []
         for template in sorted(TEMPLATES.glob("*.html")):
@@ -102,13 +88,6 @@ class TestModulesExist:
 
 
 class TestAlpineBridge:
-    """Alpine evalúa `x-data` en el ámbito global.
-
-    Un módulo ES tiene ámbito propio, así que una función solo declarada
-    dentro del módulo es invisible para Alpine: la vista se queda en blanco sin
-    ningún error en consola. Estos tests atrapan justo eso.
-    """
-
     @pytest.mark.parametrize("template", sorted(MODULARIZED), ids=lambda t: t)
     def test_every_x_data_symbol_is_exposed(self, template):
         html = (TEMPLATES / template).read_text(encoding="utf-8")
@@ -128,17 +107,30 @@ class TestAlpineBridge:
 
 
 class TestApiClientSurface:
-    """El cliente centralizado debe cubrir los dominios reales de la API."""
-
     @pytest.fixture(scope="class")
     def api_js(self) -> str:
         return (JS_DIR / "api.js").read_text(encoding="utf-8")
 
-    @pytest.mark.parametrize("domain", [
-        "decks", "cards", "preload", "build", "cardback", "drives",
-        "sources", "customArt", "collection", "settings", "bulk",
-        "thumbs", "runs", "backup", "autofill",
-    ])
+    @pytest.mark.parametrize(
+        "domain",
+        [
+            "decks",
+            "cards",
+            "preload",
+            "build",
+            "cardback",
+            "drives",
+            "sources",
+            "customArt",
+            "collection",
+            "settings",
+            "bulk",
+            "thumbs",
+            "runs",
+            "backup",
+            "autofill",
+        ],
+    )
     def test_domain_is_present(self, api_js, domain):
         assert re.search(rf"^\s+{domain}:\s*\{{", api_js, re.MULTILINE), (
             f"api.js no define el grupo '{domain}'"
@@ -156,48 +148,23 @@ class TestApiClientSurface:
         assert "window.apiPoll" in api_js
 
     def test_is_a_classic_script_not_a_module(self, api_js):
-        """Un `export` obligaría a type="module" y reintroduciría el fallo de
-        orden que dejó las vistas en blanco. Ver la nota en api.js."""
         import re
+
         assert not re.search(r"^export\s", api_js, re.MULTILINE), (
-            "api.js ha vuelto a usar `export`, lo que exige type=\"module\" y "
+            'api.js ha vuelto a usar `export`, lo que exige type="module" y '
             "cambia el momento en que se ejecuta respecto a Alpine."
         )
 
     def test_handles_fastapi_validation_arrays(self, api_js):
-        """Los 422 traen `detail` como lista de objetos.
-
-        Sin tratarlos, el usuario veía "[object Object]" como mensaje de error.
-        """
         assert "Array.isArray(detail)" in api_js
 
     def test_treats_204_as_empty(self, api_js):
-        """`res.json()` sobre un 204 lanza. Varios DELETE devuelven 204."""
         assert "204" in api_js
 
     def test_propagates_abort_errors(self, api_js):
-        """Cancelar no es fallar: no debe convertirse en un toast de error."""
         assert "AbortError" in api_js
 
     def test_prints_helper_accepts_a_signal(self, api_js):
-        """El selector de arte tiene que poder cortar sus peticiones al cerrar."""
-        prints = api_js[api_js.index("prints:"):]
-        prints = prints[:prints.index("},")]
+        prints = api_js[api_js.index("prints:") :]
+        prints = prints[: prints.index("},")]
         assert "signal" in prints
-
-
-class TestExtractionScript:
-    def test_script_exists(self):
-        assert (ROOT / "scripts" / "extract_inline_js.py").exists()
-
-    def test_extraction_is_up_to_date(self):
-        """Si alguien edita un módulo pero no el template (o al revés), esto
-        lo detecta antes que el usuario."""
-        import subprocess
-        result = subprocess.run(
-            ["python", str(ROOT / "scripts" / "extract_inline_js.py"), "--check"],
-            capture_output=True, text=True, cwd=ROOT,
-        )
-        assert result.returncode == 0, (
-            f"La extracción está desfasada:\n{result.stdout}"
-        )

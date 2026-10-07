@@ -1,27 +1,3 @@
-"""Orden de ejecución de los scripts en las páginas renderizadas.
-
-Por qué existe este fichero
----------------------------
-Al extraer el JavaScript de los templates a módulos ES, la aplicación se rompió
-en el navegador con "Alpine Expression Error: importPanel is not defined" y las
-vistas en blanco, pese a que la suite estaba entera en verde.
-
-La causa: la build CDN de Alpine termina con
-``queueMicrotask(() => Alpine.start())``. Arranca en el microtask inmediatamente
-posterior a su propio script diferido. Los `<script defer>` y los
-`<script type="module">` comparten un único orden de ejecución — el orden de
-aparición en el documento — así que un módulo declarado en el cuerpo de la
-página se ejecuta DESPUÉS de que Alpine haya empezado a recorrer el DOM, y en
-ese momento las funciones que `x-data` invoca todavía no están en `window`.
-
-Antes no pasaba porque el JavaScript vivía en un `<script>` embebido sin
-`defer`, que se ejecutaba durante el parseo, antes que el `defer` de Alpine.
-
-Los tests anteriores no lo detectaron porque comprobaban los módulos AISLADOS
-(que cada función existiera y devolviera un objeto) y la estructura de los
-templates, pero nunca el ORDEN en que el navegador los ejecuta. Estos tests
-cubren justamente eso.
-"""
 from __future__ import annotations
 
 import re
@@ -55,14 +31,8 @@ SCRIPT_TAG = re.compile(
 
 
 def render(template_name: str) -> str:
-    """Renderiza la plantilla con el entorno Jinja real de la aplicación.
-
-    Se usa el entorno de verdad, y no una sustitución de texto a mano, para que
-    la herencia de plantillas y los bloques se resuelvan igual que en
-    producción. Es justo la resolución de bloques la que determina dónde acaba
-    cada etiqueta, y por tanto el orden de ejecución.
-    """
     import warnings
+
     warnings.filterwarnings("ignore")
     from mpc_forge.routes.ui import templates
     from mpc_forge.services import i18n
@@ -71,7 +41,6 @@ def render(template_name: str) -> str:
         path = "/"
 
     class _FakeRequest:
-        """base.html usa `request.url.path` para marcar el enlace activo."""
         url = _FakeUrl()
 
     template = templates.env.get_template(template_name)
@@ -88,13 +57,6 @@ def render(template_name: str) -> str:
 
 
 def scripts_in_execution_order(html: str) -> list[str]:
-    """Los scripts con `src`, en el orden en que el navegador los ejecuta.
-
-    Regla del estándar: los `defer` clásicos y los módulos (sin `async`)
-    comparten una única cola y se ejecutan en orden de documento. Los clásicos
-    sin `defer` se ejecutan durante el parseo, es decir antes que toda esa cola.
-    Los `async` no tienen orden garantizado y se excluyen.
-    """
     parsing_time: list[str] = []
     deferred: list[str] = []
 
@@ -124,8 +86,6 @@ def rendered() -> dict[str, str]:
 
 
 class TestViewModuleRunsBeforeAlpine:
-    """El fallo concreto que se escapó a producción."""
-
     @pytest.mark.parametrize("page,module", sorted(PAGES.items()), ids=lambda v: v)
     def test_module_executes_before_alpine(self, rendered, page, module):
         order = scripts_in_execution_order(rendered[page])
@@ -148,7 +108,6 @@ class TestViewModuleRunsBeforeAlpine:
 
     @pytest.mark.parametrize("page,module", sorted(PAGES.items()), ids=lambda v: v)
     def test_api_client_executes_before_the_view_module(self, rendered, page, module):
-        """Los componentes usan `window.api` dentro de su `init()`."""
         order = scripts_in_execution_order(rendered[page])
         api_at = position(order, API_CLIENT)
         module_at = position(order, module)
@@ -160,7 +119,6 @@ class TestViewModuleRunsBeforeAlpine:
 
     @pytest.mark.parametrize("page", sorted(PAGES), ids=lambda v: v)
     def test_alpine_plugins_execute_before_alpine_core(self, rendered, page):
-        """x-collapse y x-trap quedan inertes, sin error, si llegan tarde."""
         order = scripts_in_execution_order(rendered[page])
         alpine_at = position(order, ALPINE)
         for plugin in ("alpine-collapse.min.js", "alpine-focus.min.js"):
@@ -179,7 +137,6 @@ class TestRenderedPagesAreCoherent:
 
     @pytest.mark.parametrize("page", sorted(PAGES), ids=lambda v: v)
     def test_no_unresolved_jinja_remains(self, rendered, page):
-        """Una llave suelta indica un bloque mal cerrado."""
         html = rendered[page]
         assert "{%" not in html, f"{page} deja etiquetas Jinja sin resolver"
         assert "{{" not in html, f"{page} deja interpolaciones sin resolver"
@@ -188,22 +145,10 @@ class TestRenderedPagesAreCoherent:
     def test_every_script_src_is_local(self, rendered, page):
         for match in SCRIPT_TAG.finditer(rendered[page]):
             src = match.group("src")
-            assert not src.startswith("http"), (
-                f"{page} carga un script remoto: {src}"
-            )
+            assert not src.startswith("http"), f"{page} carga un script remoto: {src}"
 
     @pytest.mark.parametrize("page,module", sorted(PAGES.items()), ids=lambda v: v)
-    def test_x_data_symbols_are_defined_somewhere_on_the_page(
-        self, rendered, page, module
-    ):
-        """Cruce entre lo que el HTML invoca y lo que la página define.
-
-        Se mira el HTML FINAL, no la plantilla suelta, porque una vista hereda
-        de base.html: el sidebar aporta sus propios componentes
-        (`sidebarData`, `globalCardSearch`) desde un script embebido que no se
-        extrajo. Comparar solo contra el módulo de la vista daría falsos
-        positivos.
-        """
+    def test_x_data_symbols_are_defined_somewhere_on_the_page(self, rendered, page, module):
         html = rendered[page]
 
         js = (ROOT / "static" / "js" / module).read_text(encoding="utf-8")
@@ -211,23 +156,20 @@ class TestRenderedPagesAreCoherent:
         api_js = (ROOT / "static" / "js" / "api.js").read_text(encoding="utf-8")
         exposed |= set(re.findall(r"^window\.([\w$]+)\s*=", api_js, re.MULTILINE))
 
-        for inline in re.finditer(
-            r"<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)</script>", html
-        ):
+        for inline in re.finditer(r"<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)</script>", html):
             body = inline.group(1)
-            exposed |= set(re.findall(
-                r"^[ \t]*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(",
-                body, re.MULTILINE,
-            ))
-            exposed |= set(re.findall(
-                r"^[ \t]*window\.([\w$]+)\s*=", body, re.MULTILINE
-            ))
+            exposed |= set(
+                re.findall(
+                    r"^[ \t]*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(",
+                    body,
+                    re.MULTILINE,
+                )
+            )
+            exposed |= set(re.findall(r"^[ \t]*window\.([\w$]+)\s*=", body, re.MULTILINE))
 
         referenced = set()
         for match in re.finditer(r'x-data="([^"]*)"', html):
-            referenced.update(
-                re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", match.group(1))
-            )
+            referenced.update(re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", match.group(1)))
 
         missing = referenced - exposed
         assert not missing, (
@@ -238,9 +180,6 @@ class TestRenderedPagesAreCoherent:
 
 
 class TestBaseTemplateContract:
-    """El bloque `view_module` es lo que garantiza el orden. Si desaparece o se
-    mueve por debajo de Alpine, todo lo anterior vuelve a romperse."""
-
     @pytest.fixture(scope="class")
     def base(self) -> str:
         return (TEMPLATES / "base.html").read_text(encoding="utf-8")

@@ -1,4 +1,3 @@
-"""Pydantic schemas para request/response."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -9,28 +8,16 @@ from pydantic import BaseModel, Field
 class ImportFromMoxfieldRequest(BaseModel):
     url_or_id: str = Field(..., min_length=1)
     include_extras: bool = False
-    """Si False (default): solo commander + mainboard. Si True: también
-    companion, sideboard, tokens y maybeboard. En cualquier caso, el estimador
-    de coste solo cuenta commander + mainboard."""
 
 
 class ImportFromUrlRequest(BaseModel):
-    """Import unificado desde cualquier sitio soportado (Moxfield, Archidekt,
-    TappedOut, MTGGoldfish, Scryfall, CubeCobra).
-
-    El sitio se detecta automáticamente por el hostname de la URL. Si el sitio
-    no está soportado, la respuesta incluye la lista de hostnames aceptados.
-    """
     url: str = Field(..., min_length=8)
     name: str | None = Field(default=None, max_length=256)
-    """Si es None, se genera automáticamente a partir del nombre del sitio y
-    del ID del mazo (ej. "Moxfield · abc123")."""
     format: str = "commander"
     include_extras: bool = False
 
 
 class SupportedSite(BaseModel):
-    """Metadata de un sitio soportado, expuesta al frontend."""
     key: str
     name: str
     example_url: str
@@ -45,14 +32,12 @@ class ImportFromTextRequest(BaseModel):
 
 
 class UpdateDeckRequest(BaseModel):
-    """Editar metadatos del mazo (nombre, formato, notas)."""
     name: str | None = Field(default=None, min_length=1, max_length=256)
     format: str | None = None
     notes: str | None = None
 
 
 class AddCardRequest(BaseModel):
-    """Añadir una carta a un mazo por nombre (opcional set+num para versión concreta)."""
     name: str = Field(..., min_length=1, max_length=256)
     quantity: int = Field(default=1, ge=1, le=99)
     role: str = "mainboard"
@@ -61,18 +46,11 @@ class AddCardRequest(BaseModel):
 
 
 class UpdateCardRequest(BaseModel):
-    """Editar cantidad o rol de una carta ya en el mazo."""
     quantity: int | None = Field(default=None, ge=1, le=99)
     role: str | None = None
 
 
 class ChangeArtRequest(BaseModel):
-    """Cambia la elección de arte para una carta del mazo.
-
-    Uno de scryfall_id o custom_art_id debe estar poblado.
-    Si scryfall_id: se usa oficial de Scryfall y se limpia el custom_art_*.
-    Si custom_art_id: se usa el arte custom para la cara indicada.
-    """
     deck_card_id: int
     scryfall_id: str | None = None
     custom_art_id: int | None = None
@@ -86,10 +64,6 @@ class BuildXMLRequest(BaseModel):
     create_run: bool = True
     run_name: str | None = None
     web_mode: bool = False
-    """Si True, el XML generado es compatible con mpcfill.com: el campo
-    ``<id>`` se deja vacío y MPCFill busca las imágenes por ``<query>``.
-    Si False (default), se incluyen rutas locales para el desktop client
-    de MPC Autofill."""
 
 
 class AddCustomArtFromUrlRequest(BaseModel):
@@ -100,7 +74,6 @@ class AddCustomArtFromUrlRequest(BaseModel):
 
 
 class ArtOption(BaseModel):
-    """Una opción de arte en la galería. Puede ser oficial (Scryfall) o custom local."""
     kind: str = "scryfall"
 
     scryfall_id: str | None = None
@@ -167,14 +140,12 @@ class DeckCardView(BaseModel):
 
 
 class IllegalCardView(BaseModel):
-    """Carta baneada, restringida o no legal en el formato del mazo."""
     name: str
     status: str
     role: str
 
 
 class DeckValidation(BaseModel):
-    """Validación por formato. Para commander: mainboard+commander = 100."""
     format: str
     expected: int
     counted: int
@@ -186,18 +157,10 @@ class DeckValidation(BaseModel):
 
 
 class DeckPriceView(BaseModel):
-    """Lo que costaría el mazo en cartas reales.
-
-    Es la comparación que da sentido a proxear: al lado del coste estimado de
-    impresión, pone en contexto la diferencia. Los precios salen de Scryfall y
-    son orientativos.
-    """
     eur: float = 0.0
     usd: float = 0.0
     priced_cards: int = 0
-    """Cartas con precio conocido."""
     unpriced_cards: int = 0
-    """Cartas sin precio en Scryfall — el total es una cota inferior."""
 
 
 class DeckView(BaseModel):
@@ -216,11 +179,6 @@ class DeckView(BaseModel):
 
 
 class UnresolvedEntry(BaseModel):
-    """Una carta que no se pudo resolver contra Scryfall durante el import.
-
-    Se muestra al usuario tras importar para que sepa qué falta y pueda
-    editarlo (o copiar toda la lista de fallos y reintentar).
-    """
     name: str
     quantity: int = 1
     raw_line: str | None = None
@@ -231,12 +189,6 @@ class UnresolvedEntry(BaseModel):
 
 
 class ImportResult(BaseModel):
-    """Resultado de importar un mazo desde Moxfield o texto plano.
-
-    Además del ``DeckView`` habitual devolvemos las entradas que no se pudieron
-    resolver, para que el frontend enseñe un banner/modal con la lista de
-    fallos y opción de copiar al portapapeles.
-    """
     deck: DeckView
     unresolved: list[UnresolvedEntry] = []
     resolved_count: int = 0
@@ -244,16 +196,6 @@ class ImportResult(BaseModel):
 
 
 class ArtOptionsPage(BaseModel):
-    """Una página de opciones de arte.
-
-    El endpoint devolvía antes la lista completa sin paginar: para una carta
-    muy reimpresa eran 900 elementos y ~400 KB en una sola respuesta, que el
-    frontend luego troceaba en cliente. Ahora se pagina de verdad.
-
-    Los artes custom del usuario van SIEMPRE completos en la primera página
-    (campo aparte) porque son pocos, son los más relevantes, y trocearlos
-    obligaría a paginar dos colecciones heterogéneas a la vez.
-    """
     items: list[ArtOption] = Field(default_factory=list)
     custom: list[ArtOption] = Field(default_factory=list)
     total: int = 0

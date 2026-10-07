@@ -1,10 +1,3 @@
-"""Tests del motor de migraciones.
-
-El objetivo de estos tests es blindar la propiedad más importante del sistema:
-**una actualización de la app nunca borra el trabajo del usuario**. El sistema
-anterior hacía ``drop_all`` cuando cambiaba ``SCHEMA_VERSION``; estos tests
-fallarían inmediatamente si alguien reintrodujera ese comportamiento.
-"""
 from __future__ import annotations
 
 import sqlite3
@@ -17,15 +10,11 @@ from mpc_forge import migrations
 
 
 async def _fresh_engine(tmp_path: Path, name: str = "t.sqlite3"):
-    """Un engine async sobre una BD SQLite temporal y aislada."""
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / name}")
     return engine
 
 
 class TestLadderIntegrity:
-    """Invariantes estructurales del ladder. Fallan al escribir la migración,
-    no en producción seis meses después."""
-
     def test_versions_are_strictly_increasing(self):
         versions = [m.version for m in migrations.MIGRATIONS]
         assert versions == sorted(versions), "El ladder debe estar ordenado"
@@ -40,10 +29,12 @@ class TestLadderIntegrity:
 
     def test_no_gaps_in_ladder(self):
         versions = [m.version for m in migrations.MIGRATIONS]
-        expected = list(range(
-            migrations.BASELINE_VERSION + 1,
-            migrations.BASELINE_VERSION + 1 + len(versions),
-        ))
+        expected = list(
+            range(
+                migrations.BASELINE_VERSION + 1,
+                migrations.BASELINE_VERSION + 1 + len(versions),
+            )
+        )
         assert versions == expected, "El ladder tiene huecos"
 
     def test_every_migration_has_a_description(self):
@@ -51,11 +42,6 @@ class TestLadderIntegrity:
             assert m.description.strip(), f"La migración {m.version} no se describe"
 
     def test_no_destructive_statements(self):
-        """Ninguna migración puede contener DROP TABLE ni DELETE sin WHERE.
-
-        Este es el guardián: si alguien vuelve a meter un borrado masivo, el
-        test lo caza antes del release.
-        """
         for m in migrations.MIGRATIONS:
             for stmt in m.statements:
                 normalized = " ".join(stmt.lower().split())
@@ -75,30 +61,27 @@ class TestFreshDatabase:
     async def test_fresh_db_is_stamped_at_latest(self, tmp_path):
         engine = await _fresh_engine(tmp_path)
         async with engine.begin() as conn:
-            await conn.execute(text(
-                "CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT)"
-            ))
+            await conn.execute(
+                text("CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT)")
+            )
             report = await migrations.run(conn)
         assert report["fresh"] is True
         assert report["to_version"] == migrations.LATEST_VERSION
         await engine.dispose()
 
     async def test_fresh_db_does_not_create_a_backup(self, tmp_path):
-        """Una instalación nueva no debe generar un zip de backup vacío."""
         calls = []
         engine = await _fresh_engine(tmp_path)
         async with engine.begin() as conn:
-            await conn.execute(text(
-                "CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT)"
-            ))
+            await conn.execute(
+                text("CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT)")
+            )
             await migrations.run(conn, on_backup=lambda: calls.append(1) or "x.zip")
         assert calls == [], "No se debe hacer backup de una BD recién creada"
         await engine.dispose()
 
 
 class TestLegacyAdoption:
-    """El caso crítico: una BD del sistema antiguo debe conservar sus datos."""
-
     async def test_legacy_db_keeps_its_decks(self, tmp_path):
         db = tmp_path / "legacy.sqlite3"
         conn = sqlite3.connect(db)
@@ -125,9 +108,9 @@ class TestLegacyAdoption:
 
         conn = sqlite3.connect(db)
         names = [r[0] for r in conn.execute("SELECT name FROM decks ORDER BY id")]
-        version = conn.execute(
-            "SELECT value FROM kv_store WHERE key='schema_version'"
-        ).fetchone()[0]
+        version = conn.execute("SELECT value FROM kv_store WHERE key='schema_version'").fetchone()[
+            0
+        ]
         conn.close()
 
         assert names == ["Atraxa Superfriends", "Krenko Goblins"]
@@ -176,9 +159,7 @@ class TestIncrementalUpgrade:
 
         assert report["to_version"] == migrations.LATEST_VERSION
         conn = sqlite3.connect(db)
-        tables = {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )}
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         cols = {r[1] for r in conn.execute("PRAGMA table_info(local_arts)")}
         assert conn.execute("SELECT COUNT(*) FROM decks").fetchone()[0] == 1
         conn.close()
@@ -209,7 +190,6 @@ class TestIncrementalUpgrade:
         assert second["applied"] == [], "La segunda pasada no debe aplicar nada"
 
     async def test_newer_db_than_app_is_left_alone(self, tmp_path):
-        """Si el usuario abre una BD nueva con una app vieja, no la tocamos."""
         db = tmp_path / "future.sqlite3"
         conn = sqlite3.connect(db)
         conn.executescript(f"""
@@ -234,10 +214,7 @@ class TestIncrementalUpgrade:
 
 
 class TestFailureIsolation:
-    async def test_failed_migration_rolls_back_and_keeps_version(
-        self, tmp_path, monkeypatch
-    ):
-        """Una migración rota no debe dejar la BD a medias ni impedir arrancar."""
+    async def test_failed_migration_rolls_back_and_keeps_version(self, tmp_path, monkeypatch):
         db = tmp_path / "broken.sqlite3"
         conn = sqlite3.connect(db)
         conn.executescript(f"""
@@ -265,12 +242,10 @@ class TestFailureIsolation:
 
         assert report.get("failed_at") == bad.version
         conn = sqlite3.connect(db)
-        version = int(conn.execute(
-            "SELECT value FROM kv_store WHERE key='schema_version'"
-        ).fetchone()[0])
-        tables = {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )}
+        version = int(
+            conn.execute("SELECT value FROM kv_store WHERE key='schema_version'").fetchone()[0]
+        )
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         conn.close()
 
         assert version == migrations.BASELINE_VERSION, (
@@ -283,23 +258,21 @@ class TestFailureIsolation:
     def test_backup_failure_does_not_block_startup(self, caplog):
         def explode():
             raise OSError("disco lleno")
+
         assert migrations._safe_backup(explode) is None
 
 
 class TestNoDropAllRemains:
     def test_db_module_has_no_drop_all(self):
-        """Guardián contra la regresión más cara del proyecto."""
-        source = (Path(__file__).parent.parent / "mpc_forge" / "db.py").read_text(
-            encoding="utf-8"
-        )
+        source = (Path(__file__).parent.parent / "mpc_forge" / "db.py").read_text(encoding="utf-8")
         assert "drop_all" not in source, (
             "db.py ha vuelto a contener drop_all. Ese código borraba los mazos "
             "del usuario en cada cambio de esquema."
         )
 
     def test_migrations_module_has_no_drop_all(self):
-        source = (
-            Path(__file__).parent.parent / "mpc_forge" / "migrations.py"
-        ).read_text(encoding="utf-8")
+        source = (Path(__file__).parent.parent / "mpc_forge" / "migrations.py").read_text(
+            encoding="utf-8"
+        )
         assert "run_sync(Base.metadata.drop_all" not in source
         assert ".drop_all(" not in source

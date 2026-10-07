@@ -1,22 +1,21 @@
-"""Tests de mover/vaciar secciones y del timeline de actividad."""
 from __future__ import annotations
 
 
 class TestMoveBetweenSections:
-    """Feature: mover cartas entre secciones y vaciar sección entera."""
-
     async def test_move_card_to_sideboard(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        r = await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                               json={"role": "sideboard"})
+        r = await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
         assert r.status_code == 200
         assert r.json()["role"] == "sideboard"
 
     async def test_clear_role_removes_all_cards(self, client, deck):
         for name in ["Sol Ring", "Command Tower"]:
             c = next(c for c in deck["cards"] if c["name"] == name)
-            await client.patch(f"/api/decks/{deck['id']}/cards/{c['id']}",
-                               json={"role": "sideboard"})
+            await client.patch(
+                f"/api/decks/{deck['id']}/cards/{c['id']}", json={"role": "sideboard"}
+            )
 
         r = await client.delete(f"/api/decks/{deck['id']}/role/sideboard")
         assert r.status_code == 200
@@ -33,8 +32,6 @@ class TestMoveBetweenSections:
 
 
 class TestActivityTimeline:
-    """Feature: timeline de actividad por mazo."""
-
     async def test_activity_endpoint_returns_events(self, client, deck):
         r = await client.get(f"/api/decks/{deck['id']}/activity")
         assert r.status_code == 200
@@ -44,8 +41,9 @@ class TestActivityTimeline:
 
     async def test_activity_ordered_desc_by_date(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "sideboard"})
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
         await client.patch(f"/api/decks/{deck['id']}", json={"name": "Renamed"})
 
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
@@ -56,20 +54,18 @@ class TestActivityTimeline:
 
     async def test_activity_filter_by_kinds(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "sideboard"})
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
         await client.patch(f"/api/decks/{deck['id']}", json={"name": "Renamed"})
 
-        r = await client.get(
-            f"/api/decks/{deck['id']}/activity?kinds=card_moved,card_added"
-        )
+        r = await client.get(f"/api/decks/{deck['id']}/activity?kinds=card_moved,card_added")
         events = r.json()
         assert all(e["kind"] in {"card_moved", "card_added"} for e in events)
 
     async def test_activity_snapshots_previous_state(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Command Tower")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"quantity": 3})
+        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}", json={"quantity": 3})
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         qty_event = next(e for e in events if e["kind"] == "card_qty_changed")
         assert qty_event["payload"]["old_qty"] == 1

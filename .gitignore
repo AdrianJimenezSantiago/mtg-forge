@@ -1,15 +1,6 @@
-# =============================================================================
-# MPC Forge
-# =============================================================================
 
-# ----------------------------------------------------------------------------
-# User data — never commit
-# ----------------------------------------------------------------------------
-# Portable data folder created next to the executable / project root:
-# database, downloaded art, thumbnails, exports, backups and logs.
 /user-settings/
 
-# Any stray database, backup or log produced while developing.
 *.sqlite3
 *.sqlite3-shm
 *.sqlite3-wal
@@ -18,9 +9,6 @@
 *.log
 logs/
 
-# ----------------------------------------------------------------------------
-# Python
-# ----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -34,29 +22,20 @@ wheels/
 pip-wheel-metadata/
 MANIFEST
 
-# Virtual environments
 .venv/
 venv/
 env/
 ENV/
 .python-version
 
-# Local environment files
 .env
 .env.*
 
-# ----------------------------------------------------------------------------
-# Packaging (PyInstaller)
-# ----------------------------------------------------------------------------
-# The .spec file is committed; its outputs are not.
 /packaging/build/
 /packaging/dist/
 /packaging/icon-previews/
 *.spec.bak
 
-# ----------------------------------------------------------------------------
-# Testing, linting and type checking
-# ----------------------------------------------------------------------------
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -67,18 +46,9 @@ htmlcov/
 .tox/
 .nox/
 
-# ----------------------------------------------------------------------------
-# Node (frontend asset build only)
-# ----------------------------------------------------------------------------
-# node_modules is not committed. static/vendor/ IS committed on purpose: it is
-# the build output and lets the app run from a clone without Node installed.
-# package-lock.json is committed so `npm ci` is reproducible in CI.
 node_modules/
 npm-debug.log*
 
-# ----------------------------------------------------------------------------
-# Editors and operating systems
-# ----------------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
@@ -88,9 +58,6 @@ npm-debug.log*
 Thumbs.db
 Desktop.ini
 
-# ----------------------------------------------------------------------------
-# Scratch files
-# ----------------------------------------------------------------------------
 *.patch
 *.diff
 *.orig

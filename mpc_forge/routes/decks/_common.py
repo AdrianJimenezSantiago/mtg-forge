@@ -1,9 +1,3 @@
-"""Piezas compartidas por los sub-routers de mazos.
-
-Aquí viven las dependencias de FastAPI y los tipos que usan varios módulos del
-paquete. Tenerlas en un sitio evita el ciclo de importación que aparecería si
-un sub-router importara de otro.
-"""
 from __future__ import annotations
 
 import logging
@@ -23,7 +17,6 @@ ROUTER_TAGS = ["decks"]
 
 
 def make_router() -> APIRouter:
-    """Un router con el prefijo y las etiquetas comunes ya aplicados."""
     return APIRouter(prefix=ROUTER_PREFIX, tags=ROUTER_TAGS)
 
 

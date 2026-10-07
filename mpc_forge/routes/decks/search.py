@@ -1,8 +1,3 @@
-"""Búsqueda de cartas a través de todos los mazos del usuario.
-
-Extraído de `routes/decks.py` durante la división en sub-routers. La lógica no
-ha cambiado.
-"""
 from __future__ import annotations
 
 import logging
@@ -28,7 +23,6 @@ router = make_router()
 
 
 class CardInDeck(BaseModel):
-    """Una instancia concreta de una carta dentro de un mazo del usuario."""
     deck_card_id: int
     deck_id: int
     deck_name: str
@@ -45,8 +39,6 @@ class CardInDeck(BaseModel):
 
 
 class CardSearchGroup(BaseModel):
-    """Agrupación por oracle_id — todas las copias de "la misma carta"
-    en todos los mazos, incluyendo distintas impresiones."""
     oracle_id: str
     canonical_name: str
     total_copies: int
@@ -67,17 +59,6 @@ async def search_cards_across_decks(
     db: DbDep,
     limit: int = 200,
 ) -> CardSearchResponse:
-    """Busca cartas por nombre (substring, case-insensitive) en TODOS los mazos.
-
-    Devuelve resultados agrupados por ``oracle_id`` para que "Sol Ring" salga
-    una sola vez con todas las instancias que hay en distintos mazos
-    (posiblemente con impresiones distintas). Incluye la impresión concreta
-    elegida en cada instancia para que el frontend pueda mostrar la thumbnail.
-
-    - Sin resultados si ``q`` tiene menos de 2 caracteres útiles.
-    - Los tokens y meld_result se INCLUYEN — a veces quieres saber en qué
-      mazos tienes generado un token concreto.
-    """
     q_clean = (q or "").strip()
     if len(q_clean) < 2:
         return CardSearchResponse(query=q_clean, total_groups=0, total_instances=0, groups=[])

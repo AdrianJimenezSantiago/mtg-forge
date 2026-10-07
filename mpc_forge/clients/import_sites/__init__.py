@@ -1,13 +1,3 @@
-"""Registro y dispatcher de import sites.
-
-Cada sitio se implementa como una subclase de ``ImportSite`` (ver ``base.py``).
-Al importarse, se auto-registra en ``_REGISTRY`` mediante la metaclass
-``ImportSiteMeta``. El dispatcher ``resolve_site(url)`` detecta cuál usar a
-partir del hostname.
-
-Para añadir un sitio nuevo: crea un módulo aquí, hereda de ``ImportSite`` y
-declara ``host_names``. Importa el módulo abajo para forzar el registro.
-"""
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -25,10 +15,6 @@ _REGISTRY = get_registry()
 
 
 def resolve_site(url: str) -> type[ImportSite] | None:
-    """Devuelve la clase ImportSite adecuada para ``url``, o None si no matchea.
-
-    Case-insensitive en el host. Ignora un ``www.`` opcional.
-    """
     try:
         host = (urlparse(url).netloc or "").lower()
     except (ValueError, AttributeError):
@@ -49,7 +35,6 @@ def resolve_site(url: str) -> type[ImportSite] | None:
 
 
 def list_supported_sites() -> list[dict[str, str]]:
-    """Metadata visible en la UI: qué sitios soporta la app y su URL de ejemplo."""
     return [
         {
             "key": cls.key,

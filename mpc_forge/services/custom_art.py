@@ -1,17 +1,3 @@
-"""Custom art local: indexa la carpeta `custom_art/` y matchea por nombre de carta.
-
-Convenciones de nombrado (dropea archivos con el nombre de la carta):
-  * `Sol Ring.png`                       → card="sol ring", front, sin variant
-  * `Sol Ring - Anime.png`               → card="sol ring", front, variant="Anime"
-  * `Sol Ring (Retro Frame).png`         → card="sol ring", front, variant="Retro Frame"
-  * `Delver of Secrets [BACK].png`       → card="delver of secrets", back
-  * `Delver of Secrets [BACK] - v2.png`  → card="delver of secrets", back, variant="v2"
-
-Subcarpetas: se recorren recursivamente. El nombre de subcarpeta no importa
-para el match — puedes organizar tus artes por juego, artista, etc.
-
-También soporta añadir por URL: se descarga a la carpeta bajo `_downloaded/`.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -51,11 +37,6 @@ _UNSAFE_FILENAME_CHARS = {
 
 
 def _sanitize_filename(name: str) -> str:
-    """Devuelve `name` sin caracteres que rompan URLs o filesystems.
-
-    Ejemplo: "Atraxa - MPCFill #02 (2)" → "Atraxa - MPCFill 02 (2)".
-    Colapsa espacios múltiples que pudieran resultar del reemplazo.
-    """
     out = name
     for bad, good in _UNSAFE_FILENAME_CHARS.items():
         out = out.replace(bad, good)
@@ -67,21 +48,10 @@ DOWNLOADED_SUBDIR = "_downloaded"
 
 
 def custom_art_url(relative_path: str) -> str:
-    """Construye una URL segura a /custom_art/... a partir del relative_path.
-
-    Usa urllib.parse.quote() para escapar caracteres que rompen URLs (`#`, `?`,
-    espacios, etc.). Sin esto, un filename como "Atraxa - MPCFill #02.jpg"
-    quedaría cortado en '#' porque el navegador interpreta lo posterior como
-    fragment identifier y no lo envía al servidor.
-
-    `safe="/"` preserva las barras de separación de directorios pero escapa
-    todo lo demás.
-    """
     return f"/custom_art/{quote(relative_path, safe='/')}"
 
 
 def normalize_card_name(name: str) -> str:
-    """lowercase, trim, colapsa espacios, apóstrofes tipográficos → simples."""
     n = name.strip().lower()
     n = n.replace("’", "'").replace("`", "'")
     n = re.sub(r"\s+", " ", n)
@@ -89,7 +59,6 @@ def normalize_card_name(name: str) -> str:
 
 
 def parse_filename(rel_path: Path) -> tuple[str, str, str | None]:
-    """Extrae (card_name_normalized, face, variant_label) del stem del archivo."""
     stem = rel_path.stem
 
     face = "front"
@@ -113,11 +82,6 @@ def parse_filename(rel_path: Path) -> tuple[str, str, str | None]:
 
 
 def _scan_disk(root: Path) -> dict[str, tuple[Path, int]]:
-    """Recorre ``root`` recursivamente y devuelve ``{rel_path: (abs, size)}``.
-
-    Ejecutable en un hilo con :func:`asyncio.to_thread` para no bloquear el
-    event loop cuando la carpeta contiene miles de archivos.
-    """
     disk: dict[str, tuple[Path, int]] = {}
     for f in root.rglob("*"):
         if not f.is_file():
@@ -134,23 +98,13 @@ def _scan_disk(root: Path) -> dict[str, tuple[Path, int]]:
 
 
 async def rescan(db: AsyncSession) -> dict[str, int]:
-    """Reindexa toda la carpeta. Añade nuevos, elimina huérfanos.
-
-    El walk del sistema de archivos se lanza en un hilo para no bloquear el
-    event loop, y los borrados se hacen en una sola sentencia bulk en vez de
-    una por huérfano.
-
-    Devuelve stats: ``{"total", "added", "removed", "kept"}``.
-    """
     root = PATHS.custom_art_dir
     disk_files = await asyncio.to_thread(_scan_disk, root)
 
     existing = (await db.scalars(select(CustomArt))).all()
     existing_by_path: dict[str, CustomArt] = {ca.relative_path: ca for ca in existing}
 
-    orphan_ids = [
-        ca.id for path, ca in existing_by_path.items() if path not in disk_files
-    ]
+    orphan_ids = [ca.id for path, ca in existing_by_path.items() if path not in disk_files]
     removed = len(orphan_ids)
     if orphan_ids:
         await db.execute(delete(CustomArt).where(CustomArt.id.in_(orphan_ids)))
@@ -162,24 +116,23 @@ async def rescan(db: AsyncSession) -> dict[str, int]:
             kept += 1
             continue
         card_name, face, variant = parse_filename(Path(rel_path))
-        db.add(CustomArt(
-            filename=Path(rel_path).name,
-            relative_path=rel_path,
-            card_name_normalized=card_name,
-            variant_label=variant,
-            face=face,
-            bytes_size=size,
-        ))
+        db.add(
+            CustomArt(
+                filename=Path(rel_path).name,
+                relative_path=rel_path,
+                card_name_normalized=card_name,
+                variant_label=variant,
+                face=face,
+                bytes_size=size,
+            )
+        )
         added += 1
 
     await db.commit()
     return {"total": len(disk_files), "added": added, "removed": removed, "kept": kept}
 
 
-async def find_for_card(
-    db: AsyncSession, card_name: str, face: str = "front"
-) -> list[CustomArt]:
-    """Devuelve los custom arts que coinciden con el nombre de carta y cara."""
+async def find_for_card(db: AsyncSession, card_name: str, face: str = "front") -> list[CustomArt]:
     normalized = normalize_card_name(card_name)
     rows = (
         await db.scalars(
@@ -206,16 +159,8 @@ async def add_from_url(
     variant: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> CustomArt:
-    """Descarga una imagen de una URL y la añade como custom art.
-
-    Guarda en `custom_art/_downloaded/<slug>/<filename>` para no mezclar con los
-    archivos que el usuario dropea a mano. El nombre de carta se usa tal cual
-    (el filename resultante contendrá el nombre para futuras reindexaciones).
-
-    Reconoce URLs de Google Drive de varios formatos y las convierte a la URL de
-    descarga directa: `https://drive.google.com/uc?id=<FILE_ID>&export=download`.
-    """
     from mpc_forge.services.art_sources import to_download_url
+
     url = to_download_url(url.strip())
 
     close_client = client is None
@@ -271,7 +216,6 @@ async def add_from_url(
 
 
 def _guess_extension(url: str, content_type: str) -> str:
-    """Deducir extensión desde content-type primero, URL después."""
     if content_type:
         primary = content_type.split(";", 1)[0].strip().lower()
         guessed = mimetypes.guess_extension(primary)

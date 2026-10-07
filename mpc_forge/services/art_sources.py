@@ -1,17 +1,3 @@
-"""Gestión de sources de arte custom (Google Drives comunitarios y otros).
-
-Filosofía: no dependemos de ningún backend externo. El usuario gestiona su
-propia lista de drives desde la UI, con nombre + URL + descripción + tags.
-
-Cada source es un enlace que el usuario abre en el navegador. Descarga las
-imágenes que quiera y las añade a MPC Forge de una de estas dos formas:
-  1. Copiándolas a %APPDATA%/MPC-Forge/custom_art/ con el nombre de la carta
-  2. Con el botón "+ Añadir por URL" del editor de mazos (pegando la URL directa
-     de Google Drive: https://drive.google.com/uc?id=<FILE_ID>&export=download)
-
-Al arrancar por primera vez, sembramos algunos drives conocidos para que el
-usuario pueda empezar sin trabajo previo.
-"""
 from __future__ import annotations
 
 import logging
@@ -94,38 +80,38 @@ _CURATED_CATALOG: list[tuple[str, str]] = [
     ("MPCFill #65", "1qxpqY5EKCFVWsOFJsYS3nCti5jBnguG7"),
     ("MPCFill #66", "1L7lEr9VPE_rSvNEhO7fjexvTYbaztfnO"),
     ("MPCFill #67", "1zeLPLoBcZdC_sIhTUG9I3Uj00vmaR2jv"),
-    ("MPCFill #68",  "1LDkccHntt1XxgvVdkO2MZsaM_m03NnkB"),
-    ("MPCFill #69",  "1xHlEE-PbfjYyD6HcAolvas0dngXSIyge"),
-    ("MPCFill #70",  "1-SV8FcX2PHqWjDlLXfAk5aJcBQRmIaXy"),
-    ("MPCFill #71",  "1zoS-PWB71e8Anzm0tJAI66M04nyTWTdT"),
-    ("MPCFill #72",  "1E9NF4_CQ3Pf493ku3oP-yTo-WptzVjeK"),
-    ("MPCFill #73",  "14LNxafu4YxmSmpZnh8hFNuiGz3sYEBIw"),
-    ("MPCFill #74",  "1BpF7u5dpARlKlFtbHD1H2bvlhAotah7p"),
-    ("MPCFill #75",  "10bpkpd9pRSgJ-R3XzZMjEMdM8ZDRIzBy"),
-    ("MPCFill #76",  "1GmLO0FN2-CYeW9eu3xFtroYoI3Jv-Ssz"),
-    ("MPCFill #77",  "1ZbO8EBoZ9h6P-pwyYzva18rw0BtV_USk"),
-    ("MPCFill #78",  "1UJUaPCET7nsYQZPR1r-PHaweGhiNHKa3"),
-    ("MPCFill #79",  "1CG63CtW-zZHjKwL0hWi2C21atdN0Pa3j"),
-    ("MPCFill #80",  "12NjljwI1SN71lw2x-vjaZYEBaFgA2IRs"),
-    ("MPCFill #81",  "1ViwIDvxQyYd_rF0NA3_YLeqU4lWYunYN"),
-    ("MPCFill #82",  "1rOVhYeJG4A4b9mPTYo9oqn9J3pmqTlh4"),
-    ("MPCFill #83",  "17TCIsi08buTabozxpHKg0n0HcFEeNwhs"),
-    ("MPCFill #84",  "1JthZhESvnLxZ1eo4srkdTBVbvaTF2Cmp"),
-    ("MPCFill #85",  "1k8llQbswOAC2oPBVdMfRp-04Tl5h1XiX"),
-    ("MPCFill #86",  "10AsMLhf13pQVNHPmk5zoy8XSrgxfA30f"),
-    ("MPCFill #87",  "1Zul8NFXNmEAUxxKKB9eiJa8lJ5vi_ZTp"),
-    ("MPCFill #88",  "1Vjoj17cwL0StAb6DTXobNCb-QsYlIR13"),
-    ("MPCFill #89",  "13WCkihpVpiLxacvcMddpR1dnT9GSWUT8"),
-    ("MPCFill #90",  "1P7TReQydwJhJtjw7MOnt2HMD2N7H5aq0"),
-    ("MPCFill #91",  "1zk-ZP-tvNQQHkhjpfdE0_V6pkxe43TFc"),
-    ("MPCFill #92",  "16OvOJFLlb2n056zbJskSEhFytUGwDOWK"),
-    ("MPCFill #93",  "1T7Unqc-Od9RX8TBt0iiz16aR3GW0fCFo"),
-    ("MPCFill #94",  "1Bpn-0A7NhY4oGZaaR7ljhnBjgQBvLzCG"),
-    ("MPCFill #95",  "1rAAl5meTTR-ocjIfaipYqx02XNRtsLLU"),
-    ("MPCFill #96",  "1U5BTxWQ_E4m4j0eQYwoRMV9vzIkRLUmJ"),
-    ("MPCFill #97",  "17qnIifoow6ffSpyP1PxvkLdsz4bO3PAb"),
-    ("MPCFill #98",  "1iAwAkNvKxJGxIeh8eQ6giuLlUu9w-cWq"),
-    ("MPCFill #99",  "1I3IWYxats1wgas7-F2PUt-km6qPQkEMa"),
+    ("MPCFill #68", "1LDkccHntt1XxgvVdkO2MZsaM_m03NnkB"),
+    ("MPCFill #69", "1xHlEE-PbfjYyD6HcAolvas0dngXSIyge"),
+    ("MPCFill #70", "1-SV8FcX2PHqWjDlLXfAk5aJcBQRmIaXy"),
+    ("MPCFill #71", "1zoS-PWB71e8Anzm0tJAI66M04nyTWTdT"),
+    ("MPCFill #72", "1E9NF4_CQ3Pf493ku3oP-yTo-WptzVjeK"),
+    ("MPCFill #73", "14LNxafu4YxmSmpZnh8hFNuiGz3sYEBIw"),
+    ("MPCFill #74", "1BpF7u5dpARlKlFtbHD1H2bvlhAotah7p"),
+    ("MPCFill #75", "10bpkpd9pRSgJ-R3XzZMjEMdM8ZDRIzBy"),
+    ("MPCFill #76", "1GmLO0FN2-CYeW9eu3xFtroYoI3Jv-Ssz"),
+    ("MPCFill #77", "1ZbO8EBoZ9h6P-pwyYzva18rw0BtV_USk"),
+    ("MPCFill #78", "1UJUaPCET7nsYQZPR1r-PHaweGhiNHKa3"),
+    ("MPCFill #79", "1CG63CtW-zZHjKwL0hWi2C21atdN0Pa3j"),
+    ("MPCFill #80", "12NjljwI1SN71lw2x-vjaZYEBaFgA2IRs"),
+    ("MPCFill #81", "1ViwIDvxQyYd_rF0NA3_YLeqU4lWYunYN"),
+    ("MPCFill #82", "1rOVhYeJG4A4b9mPTYo9oqn9J3pmqTlh4"),
+    ("MPCFill #83", "17TCIsi08buTabozxpHKg0n0HcFEeNwhs"),
+    ("MPCFill #84", "1JthZhESvnLxZ1eo4srkdTBVbvaTF2Cmp"),
+    ("MPCFill #85", "1k8llQbswOAC2oPBVdMfRp-04Tl5h1XiX"),
+    ("MPCFill #86", "10AsMLhf13pQVNHPmk5zoy8XSrgxfA30f"),
+    ("MPCFill #87", "1Zul8NFXNmEAUxxKKB9eiJa8lJ5vi_ZTp"),
+    ("MPCFill #88", "1Vjoj17cwL0StAb6DTXobNCb-QsYlIR13"),
+    ("MPCFill #89", "13WCkihpVpiLxacvcMddpR1dnT9GSWUT8"),
+    ("MPCFill #90", "1P7TReQydwJhJtjw7MOnt2HMD2N7H5aq0"),
+    ("MPCFill #91", "1zk-ZP-tvNQQHkhjpfdE0_V6pkxe43TFc"),
+    ("MPCFill #92", "16OvOJFLlb2n056zbJskSEhFytUGwDOWK"),
+    ("MPCFill #93", "1T7Unqc-Od9RX8TBt0iiz16aR3GW0fCFo"),
+    ("MPCFill #94", "1Bpn-0A7NhY4oGZaaR7ljhnBjgQBvLzCG"),
+    ("MPCFill #95", "1rAAl5meTTR-ocjIfaipYqx02XNRtsLLU"),
+    ("MPCFill #96", "1U5BTxWQ_E4m4j0eQYwoRMV9vzIkRLUmJ"),
+    ("MPCFill #97", "17qnIifoow6ffSpyP1PxvkLdsz4bO3PAb"),
+    ("MPCFill #98", "1iAwAkNvKxJGxIeh8eQ6giuLlUu9w-cWq"),
+    ("MPCFill #99", "1I3IWYxats1wgas7-F2PUt-km6qPQkEMa"),
     ("MPCFill #100", "1YzPvLbCqmgIDF9OerYv_NnaPg1Hab901"),
     ("MPCFill #101", "1NZo6CygHMoI8Rx7ajVx4l-xIK9D3Q47X"),
     ("MPCFill #102", "1dCbjXp_e-z4vyFmIpA-fQveDNyM1nr1k"),
@@ -201,7 +187,6 @@ def _catalog_url(drive_id: str) -> str:
 
 
 def _catalog_as_dicts() -> list[dict[str, str | bool]]:
-    """Serializa el catálogo curado con URL construida y tags por defecto."""
     return [
         {
             "name": name,
@@ -227,18 +212,12 @@ class ParsedGoogleDriveUrl:
 
 
 def parse_gdrive_url(url: str) -> ParsedGoogleDriveUrl:
-    """Reconoce URLs de Google Drive de varios formatos y devuelve una forma
-    canónica que la app puede usar (para folders → link a la UI; para files →
-    URL de descarga directa 'uc?id=...&export=download').
-    """
     if not url:
         return ParsedGoogleDriveUrl("unknown", None, url)
     m = _GDRIVE_FOLDER_RE.search(url)
     if m:
         fid = m.group(1)
-        return ParsedGoogleDriveUrl(
-            "folder", fid, f"https://drive.google.com/drive/folders/{fid}"
-        )
+        return ParsedGoogleDriveUrl("folder", fid, f"https://drive.google.com/drive/folders/{fid}")
     m = _GDRIVE_FILE_RE.search(url)
     if m:
         fid = m.group(1)
@@ -250,31 +229,15 @@ def parse_gdrive_url(url: str) -> ParsedGoogleDriveUrl:
 
 async def list_sources(db: AsyncSession) -> list[ArtSource]:
     return list(
-        (await db.scalars(
-            select(ArtSource).order_by(ArtSource.pinned.desc(), ArtSource.name)
-        )).all()
+        (
+            await db.scalars(select(ArtSource).order_by(ArtSource.pinned.desc(), ArtSource.name))
+        ).all()
     )
 
 
 def _detect_source_type(url: str) -> tuple[str, str]:
-    """Detecta el ``source_type`` a partir de la URL y devuelve
-    ``(source_type, canonical_url)``.
-
-    Reglas de detección (evaluadas en orden):
-      1. Google Drive folder → "gdrive" + URL canónica
-      2. Google Drive file → "gdrive-file" + URL de descarga directa
-      3. Prefijo ``file://`` o ruta absoluta local → "local-folder"
-      4. Termina en ``.json`` sobre HTTP(S) → "http-listing"
-      5. Cualquier otra cosa → "other"
-
-    NUEVO en Fase 2 (Tarea 7): antes solo distinguíamos gdrive vs
-    gdrive-file vs other. Ahora reconocemos local-folder y http-listing.
-
-    La detección es best-effort — el usuario puede sobreescribir el tipo
-    desde la UI si le hace falta (por ejemplo, para un HTTP manifest cuya
-    URL no termine en .json).
-    """
     from mpc_forge.services.source_types import resolve
+
     raw = (url or "").strip()
 
     parsed = parse_gdrive_url(raw)
@@ -328,9 +291,6 @@ async def add_source(
     pinned: bool = False,
     source_type: str | None = None,
 ) -> ArtSource:
-    """Crea un ArtSource nuevo. Si ``source_type`` no se especifica, se
-    autodetecta a partir de la URL (ver ``_detect_source_type``).
-    """
     if not name.strip():
         raise ValueError("El nombre no puede estar vacío")
     if not url.strip():
@@ -338,6 +298,7 @@ async def add_source(
 
     if source_type:
         from mpc_forge.services.source_types import resolve
+
         type_cls = resolve(source_type)
         if type_cls is None:
             raise ValueError(f"Tipo de source desconocido: {source_type!r}")
@@ -378,6 +339,7 @@ async def update_source(
     if url is not None:
         if source_type:
             from mpc_forge.services.source_types import resolve
+
             type_cls = resolve(source_type)
             if type_cls is None:
                 raise ValueError(f"Tipo de source desconocido: {source_type!r}")
@@ -387,6 +349,7 @@ async def update_source(
             src.source_type, src.url = _detect_source_type(url)
     elif source_type is not None:
         from mpc_forge.services.source_types import resolve
+
         type_cls = resolve(source_type)
         if type_cls is None:
             raise ValueError(f"Tipo de source desconocido: {source_type!r}")
@@ -413,32 +376,25 @@ async def delete_source(db: AsyncSession, source_id: int) -> bool:
 
 
 async def seed_initial_if_empty(db: AsyncSession) -> int:
-    """Al arrancar por primera vez, si la tabla está vacía, insertamos el
-    catálogo curado completo (67 drives de MPCFill).
-    """
     existing = (await db.scalars(select(ArtSource))).first()
     if existing:
         return 0
     for s in _catalog_as_dicts():
-        db.add(ArtSource(
-            name=str(s["name"]),
-            url=str(s["url"]),
-            source_type=str(s["source_type"]),
-            description=str(s["description"]),
-            tags=str(s["tags"]),
-            pinned=bool(s["pinned"]),
-        ))
+        db.add(
+            ArtSource(
+                name=str(s["name"]),
+                url=str(s["url"]),
+                source_type=str(s["source_type"]),
+                description=str(s["description"]),
+                tags=str(s["tags"]),
+                pinned=bool(s["pinned"]),
+            )
+        )
     await db.commit()
     return len(_CURATED_CATALOG)
 
 
 async def restore_catalog(db: AsyncSession) -> dict[str, int]:
-    """Añade al catálogo cualquier drive del catálogo curado que el usuario
-    haya borrado. NO toca los drives que el usuario haya añadido a mano
-    ni renombra los que ya existen. Idempotente.
-
-    Returns dict con {added, skipped, total_curated}.
-    """
     existing_rows = (await db.scalars(select(ArtSource))).all()
     existing_urls = {(s.url or "").rstrip("/").lower() for s in existing_rows}
 
@@ -449,14 +405,16 @@ async def restore_catalog(db: AsyncSession) -> dict[str, int]:
         if url_norm in existing_urls:
             skipped += 1
             continue
-        db.add(ArtSource(
-            name=str(s["name"]),
-            url=str(s["url"]),
-            source_type=str(s["source_type"]),
-            description=str(s["description"]),
-            tags=str(s["tags"]),
-            pinned=bool(s["pinned"]),
-        ))
+        db.add(
+            ArtSource(
+                name=str(s["name"]),
+                url=str(s["url"]),
+                source_type=str(s["source_type"]),
+                description=str(s["description"]),
+                tags=str(s["tags"]),
+                pinned=bool(s["pinned"]),
+            )
+        )
         added += 1
     if added:
         await db.commit()
@@ -464,14 +422,10 @@ async def restore_catalog(db: AsyncSession) -> dict[str, int]:
 
 
 def catalog_size() -> int:
-    """Nº total de drives del catálogo curado (para mostrar en UI)."""
     return len(_CURATED_CATALOG)
 
 
 def to_download_url(url: str) -> str:
-    """Si es una URL de Google Drive de archivo, devuelve la URL de descarga
-    directa. Si no, devuelve la URL original.
-    """
     parsed = parse_gdrive_url(url)
     if parsed.kind == "file" and parsed.id:
         return f"https://drive.google.com/uc?id={parsed.id}&export=download"

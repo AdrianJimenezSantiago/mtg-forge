@@ -1,9 +1,3 @@
-"""Endpoints de la biblioteca de arte y del asistente de calibración.
-
-Ambos exponen infraestructura que ya existía pero no tenía superficie: el
-índice de drives solo era accesible desde el selector de una carta, y los
-offsets de dúplex había que adivinarlos a mano.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -39,8 +33,13 @@ def _csv_ints(value: str | None) -> list[int]:
 
 
 def _filters_from_query(
-    q: str, sources: str | None, variants: str | None,
-    exclude: str | None, expansion: str, card_type: str, tags: str | None,
+    q: str,
+    sources: str | None,
+    variants: str | None,
+    exclude: str | None,
+    expansion: str,
+    card_type: str,
+    tags: str | None,
 ) -> art_library.LibraryFilters:
     return art_library.LibraryFilters(
         query=q,
@@ -55,7 +54,6 @@ def _filters_from_query(
 
 @router.get("/api/library/overview")
 async def library_overview(db: DbDep) -> dict[str, Any]:
-    """Cifras globales del índice. Alimenta la cabecera de la vista."""
     return await art_library.overview(db)
 
 
@@ -70,21 +68,13 @@ async def library_browse(
     card_type: str = Query("", max_length=16),
     tags: str | None = None,
     offset: int = Query(0, ge=0),
-    limit: int = Query(art_library.DEFAULT_PAGE_SIZE, ge=1,
-                       le=art_library.MAX_PAGE_SIZE),
+    limit: int = Query(art_library.DEFAULT_PAGE_SIZE, ge=1, le=art_library.MAX_PAGE_SIZE),
     sort: str = Query(art_library.DEFAULT_SORT),
 ) -> dict[str, Any]:
-    """Una página de la biblioteca.
-
-    Los filtros llegan como listas separadas por comas para que la URL sea
-    compartible y se pueda guardar en marcadores: la vista escribe el estado
-    de filtrado en la barra de direcciones.
-    """
     if sort not in art_library.SORT_OPTIONS:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Orden invalido: {sort}. Validos: "
-            f"{', '.join(sorted(art_library.SORT_OPTIONS))}",
+            f"Orden invalido: {sort}. Validos: {', '.join(sorted(art_library.SORT_OPTIONS))}",
         )
 
     unknown = set(_csv(variants) + _csv(exclude)) - art_library.VARIANT_FLAGS.keys()
@@ -94,9 +84,7 @@ async def library_browse(
             f"Variantes desconocidas: {', '.join(sorted(unknown))}",
         )
 
-    filters = _filters_from_query(
-        q, sources, variants, exclude, expansion, card_type, tags
-    )
+    filters = _filters_from_query(q, sources, variants, exclude, expansion, card_type, tags)
     return await art_library.browse(db, filters, offset=offset, limit=limit, sort=sort)
 
 
@@ -111,15 +99,7 @@ async def library_facets(
     card_type: str = Query("", max_length=16),
     tags: str | None = None,
 ) -> dict[str, Any]:
-    """Contadores del conjunto filtrado.
-
-    A diferencia del selector de arte de una carta, aquí las facetas SÍ se
-    calculan sobre lo ya filtrado: el usuario está explorando y quiere saber
-    "de lo que estoy viendo, cuánto hay de cada cosa" para seguir acotando.
-    """
-    filters = _filters_from_query(
-        q, sources, variants, exclude, expansion, card_type, tags
-    )
+    filters = _filters_from_query(q, sources, variants, exclude, expansion, card_type, tags)
     return await art_library.facets(db, filters)
 
 
@@ -132,24 +112,19 @@ async def library_cards(
     expansion: str = Query("", max_length=16),
     limit: int = Query(500, ge=1, le=2000),
 ) -> dict[str, Any]:
-    """Vista agrupada por carta en lugar de por fichero.
-
-    Agrupa las catorce versiones de Sol Ring repartidas por seis drives en una
-    sola entrada con su contador.
-    """
     filters = _filters_from_query(q, sources, variants, None, expansion, "", None)
     return {"cards": await art_library.distinct_names(db, filters, limit=limit)}
 
 
 @router.get("/api/library/variants")
 async def library_variants() -> dict[str, Any]:
-    """Facetas de variante disponibles. Evita duplicar la lista en el frontend."""
-    return {"variants": list(art_library.VARIANT_FLAGS.keys()),
-            "sorts": list(art_library.SORT_OPTIONS.keys())}
+    return {
+        "variants": list(art_library.VARIANT_FLAGS.keys()),
+        "sorts": list(art_library.SORT_OPTIONS.keys()),
+    }
 
 
 class CalibrationRequest(BaseModel):
-    """Lo que el usuario ha medido en la hoja impresa."""
     measured_x_mm: float = Field(..., ge=-50, le=50)
     measured_y_mm: float = Field(..., ge=-50, le=50)
     flip_edge: Literal["long", "short"] = "long"
@@ -157,12 +132,6 @@ class CalibrationRequest(BaseModel):
 
 @router.post("/api/calibration/derive")
 async def derive_calibration(payload: CalibrationRequest) -> dict[str, Any]:
-    """Convierte la medición en los offsets del PDF.
-
-    El cálculo del signo lo hace el servidor a propósito: es donde se equivoca
-    todo el mundo, y pedirle al usuario que razone sobre el espejado del dúplex
-    convertiría el asistente en otro problema.
-    """
     result = calibration.derive_offsets(
         payload.measured_x_mm,
         payload.measured_y_mm,
@@ -176,11 +145,8 @@ async def calibration_sheet(
     page_size: str = Query("a4"),
     flip_edge: Literal["long", "short"] = "long",
 ) -> FileResponse:
-    """Genera y devuelve el PDF de calibración de dos páginas."""
     if page_size.lower() not in ("a4", "letter"):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado")
     path = await asyncio.to_thread(
         calibration.build_sheet, None, page_size=page_size, flip_edge=flip_edge
     )

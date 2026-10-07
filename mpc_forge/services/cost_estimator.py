@@ -1,12 +1,3 @@
-"""Estimador de coste MPC en USD y EUR con shipping incluido.
-
-Los precios base de MPC son en USD. Convertimos a EUR y añadimos el envío
-(base internacional + extra europeo) para dar el total realista al usuario.
-
-Los valores (tipo de cambio, shipping, tiers) se leen de `mpc_forge.config`
-en cada llamada, así los ajustes runtime que el usuario cambie desde
-`/settings` se aplican inmediatamente sin reiniciar.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass

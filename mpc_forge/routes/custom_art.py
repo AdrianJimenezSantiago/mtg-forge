@@ -1,4 +1,3 @@
-"""Endpoints REST para gestionar el arte custom local."""
 from __future__ import annotations
 
 from typing import Annotated
@@ -20,14 +19,12 @@ DbDep = Annotated[AsyncSession, Depends(get_session)]
 
 @router.post("/rescan", response_model=RescanResult)
 async def rescan(db: DbDep) -> RescanResult:
-    """Reindexa la carpeta de arte custom (%APPDATA%\\MPC-Forge\\custom_art\\)."""
     stats = await custom_art_service.rescan(db)
     return RescanResult(**stats)
 
 
 @router.post("/from-url", response_model=dict)
 async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict:
-    """Descarga una imagen de una URL y la guarda como arte custom."""
     try:
         art = await custom_art_service.add_from_url(
             db,
@@ -64,7 +61,6 @@ class CustomArtListItem(BaseModel):
 
 @router.get("/", response_model=list[CustomArtListItem])
 async def list_custom_arts(db: DbDep, card_name: str | None = None) -> list[CustomArtListItem]:
-    """Lista todos los custom arts, opcionalmente filtrados por nombre de carta."""
     stmt = select(CustomArt).order_by(CustomArt.card_name_normalized, CustomArt.filename)
     if card_name:
         stmt = stmt.where(
@@ -88,7 +84,6 @@ async def list_custom_arts(db: DbDep, card_name: str | None = None) -> list[Cust
 
 @router.delete("/{custom_art_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_custom_art(custom_art_id: int, db: DbDep) -> None:
-    """Elimina un custom art (del índice y del disco)."""
     ca = await db.get(CustomArt, custom_art_id)
     if not ca:
         raise HTTPException(status.HTTP_404_NOT_FOUND)

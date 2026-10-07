@@ -1,8 +1,3 @@
-"""Selector de artes, precarga en segundo plano y recomendadores.
-
-Extraído de `routes/decks.py` durante la división en sub-routers. La lógica no
-ha cambiado.
-"""
 from __future__ import annotations
 
 import logging
@@ -61,30 +56,33 @@ router = make_router()
 
 
 _RARITY_RANK = {
-    "mythic": 0, "rare": 1, "special": 2, "bonus": 3,
-    "uncommon": 4, "common": 5,
+    "mythic": 0,
+    "rare": 1,
+    "special": 2,
+    "bonus": 3,
+    "uncommon": 4,
+    "common": 5,
 }
 
 _SORT_KEYS = {
     "released_desc": lambda o: (o.released_at or "", o.set_code),
-    "released_asc":  lambda o: (o.released_at or "9999", o.set_code),
-    "set":           lambda o: (o.set_code, o.collector_number),
-    "rarity":        lambda o: (_RARITY_RANK.get(o.rarity, 9), o.released_at or ""),
-    "artist":        lambda o: ((o.artist or "zzz").lower(), o.released_at or ""),
+    "released_asc": lambda o: (o.released_at or "9999", o.set_code),
+    "set": lambda o: (o.set_code, o.collector_number),
+    "rarity": lambda o: (_RARITY_RANK.get(o.rarity, 9), o.released_at or ""),
+    "artist": lambda o: ((o.artist or "zzz").lower(), o.released_at or ""),
 }
 _REVERSED_SORTS = {"released_desc"}
 
 _FACET_PREDICATES = {
-    "full_art":   lambda o: o.full_art,
-    "textless":   lambda o: o.textless,
-    "promo":      lambda o: o.promo,
+    "full_art": lambda o: o.full_art,
+    "textless": lambda o: o.textless,
+    "promo": lambda o: o.promo,
     "borderless": lambda o: o.border_color == "borderless",
-    "retro":      lambda o: o.frame in ("1993", "1997"),
+    "retro": lambda o: o.frame in ("1993", "1997"),
 }
 
 
 def _thumb_for_local(art_row) -> str | None:
-    """URL de miniatura para un LocalArt ya descargado, o None."""
     if art_row is None or not art_row.relative_path:
         return None
     return thumbnails.url_for_relative(art_row.relative_path)
@@ -102,22 +100,6 @@ async def list_printings_for_card(
     q: str = Query("", max_length=120),
     only: str = Query("", max_length=200),
 ) -> ArtOptionsPage:
-    """Opciones de arte para una carta, paginadas y filtrables.
-
-    Antes esto devolvía TODAS las opciones en una respuesta: para una carta
-    como Sol Ring son ~900 impresiones y unos 400 KB de JSON que el frontend
-    recibía enteros para luego trocearlos en cliente. Ahora la paginación es
-    real y el filtrado ocurre en el servidor.
-
-    Los artes custom del usuario se devuelven completos en ``custom``, al
-    margen de la paginación: son pocos, son los que más le interesan, y
-    mezclarlos en la misma secuencia hacía que "página 3" significara cosas
-    distintas según cuántos customs hubiera.
-
-    ``only`` es una lista separada por comas de facetas exigidas
-    (``full_art,textless,promo,borderless,retro``); se combinan con AND.
-    ``q`` filtra por nombre de set, código, número de coleccionista o artista.
-    """
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
@@ -131,63 +113,68 @@ async def list_printings_for_card(
     custom_options: list[ArtOption] = []
     for face in ("front", "back"):
         for ca in await custom_art.find_for_card(db, dc.name, face=face):
-            is_chosen = (
-                (face == "front" and dc.custom_art_front_id == ca.id)
-                or (face == "back" and dc.custom_art_back_id == ca.id)
+            is_chosen = (face == "front" and dc.custom_art_front_id == ca.id) or (
+                face == "back" and dc.custom_art_back_id == ca.id
             )
-            custom_options.append(ArtOption(
-                kind="custom",
-                custom_art_id=ca.id,
-                variant_label=ca.variant_label,
-                filename=ca.filename,
-                face=face,
-                image_small=custom_art.custom_art_url(ca.relative_path),
-                thumb_url=thumbnails.url_for_relative(ca.relative_path),
-                is_chosen=is_chosen,
-            ))
+            custom_options.append(
+                ArtOption(
+                    kind="custom",
+                    custom_art_id=ca.id,
+                    variant_label=ca.variant_label,
+                    filename=ca.filename,
+                    face=face,
+                    image_small=custom_art.custom_art_url(ca.relative_path),
+                    thumb_url=thumbnails.url_for_relative(ca.relative_path),
+                    is_chosen=is_chosen,
+                )
+            )
 
     prints = await deck_service.fetch_printings_for_oracle(db, scryfall, dc.oracle_id)
     pref = await db.get(ArtPreference, dc.oracle_id) if dc.oracle_id else None
-    last_used = (
-        await history.last_scryfall_id_used(db, dc.oracle_id) if dc.oracle_id else None
-    )
+    last_used = await history.last_scryfall_id_used(db, dc.oracle_id) if dc.oracle_id else None
 
     print_ids = [p.scryfall_id for p in prints]
     local_arts: dict[str, object] = {}
     if print_ids:
-        rows = (await db.execute(
-            select(LocalArt).where(
-                LocalArt.scryfall_id.in_(print_ids), LocalArt.face == "front"
+        rows = (
+            (
+                await db.execute(
+                    select(LocalArt).where(
+                        LocalArt.scryfall_id.in_(print_ids), LocalArt.face == "front"
+                    )
+                )
             )
-        )).scalars().all()
+            .scalars()
+            .all()
+        )
         local_arts = {row.scryfall_id: row for row in rows}
 
     options: list[ArtOption] = []
     for p in prints:
-        options.append(ArtOption(
-            kind="scryfall",
-            scryfall_id=p.scryfall_id,
-            set_code=p.set_code,
-            set_name=p.set_name,
-            collector_number=p.collector_number,
-            frame=p.frame,
-            border_color=p.border_color,
-            full_art=p.full_art,
-            textless=p.textless,
-            promo=p.promo,
-            layout=p.layout,
-            artist=p.artist,
-            released_at=p.released_at,
-            rarity=p.rarity,
-            face="front",
-            image_small=p.image_normal,
-            thumb_url=_thumb_for_local(local_arts.get(p.scryfall_id)),
-            is_chosen=(
-                dc.custom_art_front_id is None and p.scryfall_id == dc.scryfall_id
-            ),
-            is_preferred=(pref is not None and pref.scryfall_id == p.scryfall_id),
-            is_last_used=(last_used is not None and last_used == p.scryfall_id),
-        ))
+        options.append(
+            ArtOption(
+                kind="scryfall",
+                scryfall_id=p.scryfall_id,
+                set_code=p.set_code,
+                set_name=p.set_name,
+                collector_number=p.collector_number,
+                frame=p.frame,
+                border_color=p.border_color,
+                full_art=p.full_art,
+                textless=p.textless,
+                promo=p.promo,
+                layout=p.layout,
+                artist=p.artist,
+                released_at=p.released_at,
+                rarity=p.rarity,
+                face="front",
+                image_small=p.image_normal,
+                thumb_url=_thumb_for_local(local_arts.get(p.scryfall_id)),
+                is_chosen=(dc.custom_art_front_id is None and p.scryfall_id == dc.scryfall_id),
+                is_preferred=(pref is not None and pref.scryfall_id == p.scryfall_id),
+                is_last_used=(last_used is not None and last_used == p.scryfall_id),
+            )
+        )
 
     facets = {
         "total": len(options),
@@ -204,15 +191,13 @@ async def list_printings_for_card(
                 status.HTTP_400_BAD_REQUEST,
                 f"Facetas desconocidas: {', '.join(sorted(unknown))}",
             )
-        options = [
-            o for o in options
-            if all(_FACET_PREDICATES[w](o) for w in wanted)
-        ]
+        options = [o for o in options if all(_FACET_PREDICATES[w](o) for w in wanted)]
 
     if q:
         needle = q.strip().lower()
         options = [
-            o for o in options
+            o
+            for o in options
             if needle in o.set_name.lower()
             or needle in o.set_code.lower()
             or needle in o.collector_number.lower()
@@ -222,7 +207,7 @@ async def list_printings_for_card(
     options.sort(key=_SORT_KEYS[sort], reverse=sort in _REVERSED_SORTS)
 
     total = len(options)
-    page = options[offset:offset + limit]
+    page = options[offset : offset + limit]
 
     return ArtOptionsPage(
         items=page,
@@ -240,19 +225,12 @@ async def preload_prints(
     deck_id: int,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> dict:
-    """Arranca precarga en background. Devuelve el estado inicial (total, done=0).
-
-    Si ya hay una precarga en curso para este mazo, la cancela y arranca una nueva.
-    Los oracle_ids ya cacheados (>=2 prints en BD) se procesan en <10ms cada uno;
-    solo los no cacheados llaman a Scryfall API.
-    """
     state = await preloader.start(deck_id, scryfall)
     return state.to_dict()
 
 
 @router.get("/{deck_id}/preload-progress")
 async def preload_progress(deck_id: int) -> dict:
-    """Estado de la precarga (para polling desde el frontend)."""
     state = preloader.get_state(deck_id)
     if state is None:
         return {"deck_id": deck_id, "total": 0, "done": 0, "in_progress": False}
@@ -261,7 +239,6 @@ async def preload_progress(deck_id: int) -> dict:
 
 @router.post("/{deck_id}/preload-cancel")
 async def preload_cancel(deck_id: int) -> dict:
-    """Cancela la precarga en curso (ej. cuando el user cambia de mazo)."""
     await preloader.cancel(deck_id)
     return {"deck_id": deck_id, "cancelled": True}
 
@@ -273,12 +250,6 @@ async def change_art(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> DeckCardView:
-    """Cambia el arte seleccionado para una carta del mazo.
-
-    - Si `custom_art_id` está poblado: usa ese arte custom en la cara indicada.
-    - Si `scryfall_id` está poblado: usa ese arte oficial y limpia el custom
-      correspondiente (para front). Optional: recordar globalmente.
-    """
     dc = await db.get(DeckCard, payload.deck_card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
@@ -318,8 +289,7 @@ async def change_art(
                     db.add(ArtPreference(oracle_id=dc.oracle_id, scryfall_id=payload.scryfall_id))
     else:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Debe indicarse scryfall_id o custom_art_id"
+            status.HTTP_400_BAD_REQUEST, "Debe indicarse scryfall_id o custom_art_id"
         )
 
     new_printing = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
@@ -329,20 +299,25 @@ async def change_art(
     }
     if payload.custom_art_id:
         ca = await db.get(CustomArt, payload.custom_art_id)
-        activity_payload.update({
-            "custom_art_id": payload.custom_art_id,
-            "custom_filename": ca.filename if ca else None,
-            "custom_variant": ca.variant_label if ca else None,
-        })
+        activity_payload.update(
+            {
+                "custom_art_id": payload.custom_art_id,
+                "custom_filename": ca.filename if ca else None,
+                "custom_variant": ca.variant_label if ca else None,
+            }
+        )
     else:
-        activity_payload.update({
-            "old_scryfall_id": old_sfid,
-            "new_scryfall_id": dc.scryfall_id,
-            "old_set": old_set, "old_number": old_number,
-            "new_set": new_printing.set_code if new_printing else None,
-            "new_number": new_printing.collector_number if new_printing else None,
-            "remember_globally": payload.remember_globally,
-        })
+        activity_payload.update(
+            {
+                "old_scryfall_id": old_sfid,
+                "new_scryfall_id": dc.scryfall_id,
+                "old_set": old_set,
+                "old_number": old_number,
+                "new_set": new_printing.set_code if new_printing else None,
+                "new_number": new_printing.collector_number if new_printing else None,
+                "remember_globally": payload.remember_globally,
+            }
+        )
     changed = (
         dc.scryfall_id != old_sfid
         or dc.custom_art_front_id != old_custom_front
@@ -350,8 +325,12 @@ async def change_art(
     )
     if changed:
         await deck_activity.log_event(
-            db, deck_id, K.CARD_ART_CHANGED,
-            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            db,
+            deck_id,
+            K.CARD_ART_CHANGED,
+            card_name=dc.name,
+            card_scryfall_id=dc.scryfall_id,
+            card_oracle_id=dc.oracle_id,
             payload=activity_payload,
         )
     await db.commit()
@@ -365,8 +344,12 @@ async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
     dc.include = not dc.include
     await deck_activity.log_event(
-        db, deck_id, K.CARD_INCLUDE_TOGGLED,
-        card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+        db,
+        deck_id,
+        K.CARD_INCLUDE_TOGGLED,
+        card_name=dc.name,
+        card_scryfall_id=dc.scryfall_id,
+        card_oracle_id=dc.oracle_id,
         payload={"new_include": dc.include, "role": dc.role, "quantity": dc.quantity},
     )
     await db.commit()
@@ -374,8 +357,6 @@ async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
 
 
 class ArtistRecommendRequest(BaseModel):
-    """Payload del recomendador. Solo requiere ``artist``; los oracle_ids
-    se derivan del deck en el servidor (evita al frontend enviarlos)."""
     artist: str
     role: str = "all"
 
@@ -413,15 +394,6 @@ async def recommend_by_artist(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> ArtistRecommendResponse:
-    """Sugiere impresiones del mazo hechas por ``artist``.
-
-    Uso típico: el usuario elige un arte de X para su carta A y quiere ver
-    qué OTRAS cartas del mazo tienen también arte de X. El endpoint devuelve
-    la mejor cover por cada carta (regular > full art > promo; más reciente).
-
-    Limitado a `MAX_ORACLES_PER_REQUEST` cartas únicas por request (~25);
-    el resto vuelve en `skipped_count` para que la UI ofrezca "cargar más".
-    """
     from mpc_forge.services.recommender import recommend_by_artist as _rec
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
@@ -432,9 +404,7 @@ async def recommend_by_artist(
     if role not in {"all", "mainboard", "commander", "sideboard"}:
         role = "all"
 
-    stmt = select(DeckCard.oracle_id).where(
-        DeckCard.deck_id == deck_id, DeckCard.include.is_(True)
-    )
+    stmt = select(DeckCard.oracle_id).where(DeckCard.deck_id == deck_id, DeckCard.include.is_(True))
     if role != "all":
         stmt = stmt.where(DeckCard.role == role)
     rows = (await db.execute(stmt)).all()
@@ -452,7 +422,6 @@ async def recommend_by_artist(
 
 
 class StyleRecommendRequest(BaseModel):
-    """Payload para recommend-by-style. Al menos un criterio debe activarse."""
     set_code: str | None = None
     borderless: bool = False
     showcase: bool = False
@@ -493,11 +462,6 @@ async def recommend_by_style_endpoint(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> StyleRecommendResponse:
-    """Extras · F3/T11: recomienda impresiones que cumplen criterios de estilo.
-
-    Al menos uno de ``set_code / borderless / showcase / extended / full_art``
-    debe estar activo. Los criterios se combinan con AND.
-    """
     from mpc_forge.services.recommender import recommend_by_style
 
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
@@ -509,7 +473,8 @@ async def recommend_by_style_endpoint(
         role = "all"
 
     stmt = select(DeckCard.oracle_id).where(
-        DeckCard.deck_id == deck_id, DeckCard.include.is_(True),
+        DeckCard.deck_id == deck_id,
+        DeckCard.include.is_(True),
     )
     if role != "all":
         stmt = stmt.where(DeckCard.role == role)
@@ -518,7 +483,8 @@ async def recommend_by_style_endpoint(
     total_unique = len(set(oracle_ids))
 
     result = await recommend_by_style(
-        scryfall, oracle_ids,
+        scryfall,
+        oracle_ids,
         set_code=payload.set_code,
         borderless=payload.borderless,
         showcase=payload.showcase,

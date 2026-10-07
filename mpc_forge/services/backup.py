@@ -1,4 +1,3 @@
-"""Backup y restore del estado local (BD + artes + cardbacks) a un .zip."""
 from __future__ import annotations
 
 import zipfile
@@ -16,16 +15,6 @@ def create_backup(
     tag: str = "",
     include_art: bool = True,
 ) -> Path:
-    """Genera un zip con la BD, los artes y los cardbacks.
-
-    ``tag`` marca el backup como automático (p.ej. ``"pre-migration"``) y lo
-    incluye en el nombre del fichero para que el usuario entienda de dónde
-    salió. Los backups con tag se podan automáticamente.
-
-    ``include_art=False`` produce un backup solo-BD: es lo que queremos antes
-    de una migración, porque las imágenes no las toca ninguna migración y
-    copiar decenas de GB en cada arranque haría el proceso inviable.
-    """
     out = output_dir or PATHS.backups_dir
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
@@ -62,11 +51,6 @@ def create_backup(
 def prune_tagged_backups(
     directory: Path | None = None, *, tag: str, keep: int = MAX_TAGGED_BACKUPS
 ) -> int:
-    """Borra los backups automáticos más antiguos con ese tag.
-
-    Sin esto, un usuario que actualice la app muchas veces acumularía un zip
-    por migración indefinidamente. Devuelve cuántos se borraron.
-    """
     out = directory or PATHS.backups_dir
     if not out.exists():
         return 0
@@ -86,21 +70,20 @@ def prune_tagged_backups(
 
 
 def list_backups(directory: Path | None = None) -> list[dict]:
-    """Lista los backups disponibles, del más reciente al más antiguo."""
     out = directory or PATHS.backups_dir
     if not out.exists():
         return []
     items = []
     for f in out.glob("mpc-forge-backup-*.zip"):
         stat = f.stat()
-        items.append({
-            "filename": f.name,
-            "path": str(f),
-            "bytes_size": stat.st_size,
-            "created_at": datetime.fromtimestamp(
-                stat.st_mtime, tz=UTC
-            ).isoformat(),
-            "automatic": "-pre-migration" in f.name,
-        })
+        items.append(
+            {
+                "filename": f.name,
+                "path": str(f),
+                "bytes_size": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                "automatic": "-pre-migration" in f.name,
+            }
+        )
     items.sort(key=lambda d: d["created_at"], reverse=True)
     return items

@@ -1,4 +1,3 @@
-"""Endpoints REST para leer y editar los ajustes runtime."""
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -21,11 +20,6 @@ class SettingsResponse(BaseModel):
     definitions: list[dict[str, Any]]
     values: dict[str, Any]
     secrets_set: list[str] = []
-    """Claves marcadas como ``secret`` que tienen un valor guardado.
-
-    Los secretos salen vacíos en ``values``; esta lista permite a la UI pintar
-    "configurada" sin que la credencial viaje al navegador.
-    """
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -33,13 +27,6 @@ class UpdateSettingsRequest(BaseModel):
 
 
 class PathsResponse(BaseModel):
-    """Rutas efectivas que la app está usando ahora mismo (defaults + overrides).
-
-    Sirve para pintar en la UI las rutas reales — antes estaban hardcodeadas
-    como ``%APPDATA%\\MPC-Forge\\...`` en el template, lo que se rompía en cuanto
-    el usuario personalizaba una. Todos los valores son strings con la ruta
-    absoluta resuelta.
-    """
     install_root: str
     data_dir: str
     db_path: str
@@ -52,9 +39,7 @@ class PathsResponse(BaseModel):
 
 @router.get("/", response_model=SettingsResponse)
 async def get_settings(db: DbDep) -> SettingsResponse:
-    values, secrets_set = settings_service.redact_values(
-        await settings_service.get_all(db)
-    )
+    values, secrets_set = settings_service.redact_values(await settings_service.get_all(db))
     return SettingsResponse(
         definitions=settings_service.definitions_dump(),
         values=values,
@@ -64,12 +49,6 @@ async def get_settings(db: DbDep) -> SettingsResponse:
 
 @router.get("/paths", response_model=PathsResponse)
 async def get_paths() -> PathsResponse:
-    """Snapshot de las rutas efectivas.
-
-    Se lee directamente de ``cfg.PATHS`` sin tocar BD — cfg.PATHS refleja ya
-    los overrides que el usuario haya puesto (apply_to_config los aplica al
-    guardar y al arrancar la app).
-    """
     return PathsResponse(
         install_root=str(install_root()),
         data_dir=str(cfg.PATHS.data_dir),

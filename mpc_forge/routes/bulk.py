@@ -1,9 +1,3 @@
-"""Endpoints del modo offline (importación del bulk data de Scryfall).
-
-Se separan de ``integrations.py``, que ya son 1.100 líneas, porque este es un
-subsistema con su propio ciclo de vida: manifiesto, descarga larga, progreso,
-cancelación y estado persistido.
-"""
 from __future__ import annotations
 
 import logging
@@ -43,16 +37,12 @@ class BulkStartResponse(BaseModel):
 
 @router.get("/status", response_model=BulkStatusResponse)
 async def status_endpoint(db: DbDep) -> BulkStatusResponse:
-    """Cuántas impresiones hay en local y estado de la importación en curso."""
     stats = await bulk_data.local_stats(db)
     return BulkStatusResponse(**stats, progress=bulk_data.get_progress())
 
 
 @router.get("/check", response_model=BulkCheckResponse)
-async def check_endpoint(
-    db: DbDep, kind: str = bulk_data.DEFAULT_KIND
-) -> BulkCheckResponse:
-    """Consulta a Scryfall si hay un volcado más reciente que el importado."""
+async def check_endpoint(db: DbDep, kind: str = bulk_data.DEFAULT_KIND) -> BulkCheckResponse:
     if kind not in bulk_data.BULK_KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Volcado desconocido: {kind}")
     needed, reason = await bulk_data.needs_sync(db, kind)
@@ -60,16 +50,7 @@ async def check_endpoint(
 
 
 @router.post("/sync", response_model=BulkStartResponse)
-async def start_sync(
-    kind: str = bulk_data.DEFAULT_KIND, force: bool = False
-) -> BulkStartResponse:
-    """Arranca la importación en segundo plano.
-
-    Devuelve inmediatamente: la descarga tarda varios minutos y el cliente
-    sigue el avance con ``GET /api/bulk/status``. Se rechaza si ya hay una
-    importación viva — dos descargas simultáneas saturarían la red y
-    multiplicarían la contención de escritura en SQLite.
-    """
+async def start_sync(kind: str = bulk_data.DEFAULT_KIND, force: bool = False) -> BulkStartResponse:
     if kind not in bulk_data.BULK_KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Volcado desconocido: {kind}")
 
@@ -77,8 +58,7 @@ async def start_sync(
     if current.get("active"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            f"Ya hay una importación en curso ({current['kind']}, "
-            f"{current['percent']}%)",
+            f"Ya hay una importación en curso ({current['kind']}, {current['percent']}%)",
         )
 
     async def _with_analyze() -> None:
@@ -87,6 +67,7 @@ async def start_sync(
         await analyze_table("printings")
 
     import asyncio
+
     task = asyncio.create_task(_with_analyze(), name=f"bulk-sync-{kind}")
     bulk_data._progress._task = task
 
@@ -99,15 +80,9 @@ async def start_sync(
 
 @router.post("/cancel")
 async def cancel_sync() -> dict[str, bool]:
-    """Cancela la importación en curso.
-
-    Lo ya importado se conserva: los lotes se confirman según llegan, así que
-    cancelar deja una base parcial perfectamente usable, no un estado corrupto.
-    """
     return {"cancelled": await bulk_data.cancel()}
 
 
 @router.get("/progress")
 async def progress_endpoint() -> dict[str, Any]:
-    """Progreso para el polling del frontend."""
     return bulk_data.get_progress()

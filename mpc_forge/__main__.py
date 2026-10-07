@@ -1,4 +1,3 @@
-"""Entry point: `python -m mpc_forge` o `mpc-forge`."""
 from __future__ import annotations
 
 import argparse
@@ -21,13 +20,16 @@ def _open_browser_when_ready(url: str, delay: float = 1.2) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="mpc-forge", description="Local MTG proxy printing pipeline")
+    parser = argparse.ArgumentParser(
+        prog="mpc-forge", description="Local MTG proxy printing pipeline"
+    )
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", default=DEFAULT_PORT, type=int)
     parser.add_argument("--no-browser", action="store_true", help="No abrir el navegador")
     parser.add_argument(
-        "--window", action="store_true",
-        help="Usar pywebview para abrir en ventana nativa (requiere `pip install pywebview`)"
+        "--window",
+        action="store_true",
+        help="Usar pywebview para abrir en ventana nativa (requiere `pip install pywebview`)",
     )
     args = parser.parse_args()
 

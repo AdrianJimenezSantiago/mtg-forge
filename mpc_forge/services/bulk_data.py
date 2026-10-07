@@ -1,41 +1,3 @@
-"""Importación del bulk data de Scryfall — el modo offline completo.
-
-El problema
------------
-Cada carta que la app no conoce es una petición HTTP a Scryfall, con un rate
-limit autoimpuesto de ~100 ms entre llamadas. Consecuencias medidas:
-
-* importar un Commander de 100 cartas en frío: 10-30 s
-* precargar las impresiones alternativas de ese mazo: minutos
-* abrir el selector de arte de una carta no precargada: 5-15 s
-* sin internet: nada de lo anterior funciona
-
-La solución
------------
-Scryfall publica volcados completos de su base de datos en
-``/bulk-data``. El volcado ``default_cards`` contiene TODAS las impresiones de
-TODAS las cartas (~500 MB de JSON, ~120 MB comprimido). Importándolo una vez a
-``PrintingCache``, todas esas operaciones pasan a ser consultas locales.
-
-Por qué es opt-in
------------------
-Ocupa cerca de 1 GB en SQLite y exige descargar más de 100 MB. Un usuario que
-solo quiere imprimir un mazo no debería pagar eso. Se activa desde Ajustes y
-se puede revertir.
-
-Streaming, no ``json.load``
----------------------------
-El volcado no cabe cómodamente en memoria: cargarlo entero son varios GB de
-objetos Python. Se procesa como flujo con ``ijson`` si está disponible, y con
-un parser incremental propio si no. Nunca hay más de un lote en memoria.
-
-Reanudable e idempotente
-------------------------
-Se registra el ``updated_at`` del manifiesto en ``BulkSyncState``. Si no ha
-cambiado desde la última importación, no se descarga nada. Los ``INSERT`` son
-``ON CONFLICT DO UPDATE`` sobre la clave primaria, así que reimportar no
-duplica: refresca.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -68,12 +30,6 @@ PROGRESS_EVERY = 5000
 
 @dataclass
 class BulkProgress:
-    """Estado observable de una importación en curso.
-
-    Vive en memoria: si la app se cierra a media importación, la siguiente
-    empieza de cero. Es aceptable porque la operación es idempotente y el
-    cuello de botella real es la descarga, no el parseo.
-    """
     kind: str = DEFAULT_KIND
     phase: str = "idle"
     rows_seen: int = 0
@@ -117,7 +73,6 @@ def get_progress() -> dict[str, Any]:
 
 
 async def cancel() -> bool:
-    """Cancela la importación en curso. Lo ya importado se conserva."""
     if _progress._task is None or _progress._task.done():
         return False
     _progress.cancelled = True
@@ -126,7 +81,6 @@ async def cancel() -> bool:
 
 
 async def fetch_manifest(kind: str = DEFAULT_KIND) -> dict[str, Any]:
-    """Devuelve la entrada del catálogo de bulk data para ``kind``."""
     if kind not in BULK_KINDS:
         raise ValueError(f"Volcado desconocido: {kind}. Válidos: {BULK_KINDS}")
     async with httpx.AsyncClient(
@@ -148,11 +102,6 @@ async def get_state(db: AsyncSession, kind: str = DEFAULT_KIND) -> BulkSyncState
 
 
 async def needs_sync(db: AsyncSession, kind: str = DEFAULT_KIND) -> tuple[bool, str]:
-    """¿Hay una versión más nueva que la importada?
-
-    Devuelve ``(hace_falta, motivo)``. El motivo se muestra en Ajustes para que
-    el usuario entienda por qué se le ofrece (o no) actualizar.
-    """
     state = await get_state(db, kind)
     try:
         manifest = await fetch_manifest(kind)
@@ -169,27 +118,13 @@ async def needs_sync(db: AsyncSession, kind: str = DEFAULT_KIND) -> tuple[bool, 
 def _ijson_available() -> bool:
     try:
         import ijson  # noqa: F401
+
         return True
     except ImportError:
         return False
 
 
 class _IncrementalArrayParser:
-    """Extrae objetos de un array JSON de nivel superior, trozo a trozo.
-
-    Es el respaldo para cuando ``ijson`` no está instalado. El volcado de
-    Scryfall tiene exactamente la forma ``[{...},{...},...]``, así que basta
-    con contar llaves fuera de cadenas y emitir cada objeto completo.
-
-    No pretende ser un parser JSON general — solo tiene que sobrevivir a esta
-    forma concreta sin cargar los 500 MB del fichero en memoria.
-
-    Detalle crítico: se mantiene ``_pos``, la posición hasta la que ya se ha
-    escaneado. Sin ella, cada llamada a ``feed`` volvería a recorrer el buffer
-    desde el principio y recontaría llaves que ya se habían contado, con lo que
-    la profundidad nunca volvería a cero y no se emitiría ni un solo objeto.
-    """
-
     def __init__(self) -> None:
         self._buf = ""
         self._pos = 0
@@ -221,20 +156,20 @@ class _IncrementalArrayParser:
             elif ch == "}":
                 self._depth -= 1
                 if self._depth == 0 and self._start >= 0:
-                    raw = buf[self._start:i + 1]
+                    raw = buf[self._start : i + 1]
                     self._start = -1
                     try:
                         yield json.loads(raw)
                     except json.JSONDecodeError:
                         log.warning("Objeto ilegible en el volcado; se omite")
-                    buf = buf[i + 1:]
+                    buf = buf[i + 1 :]
                     self._buf = buf
                     i = 0
                     continue
             i += 1
 
         if self._depth > 0 and self._start > 0:
-            self._buf = buf[self._start:]
+            self._buf = buf[self._start :]
             i -= self._start
             self._start = 0
         elif self._depth == 0 and self._start < 0:
@@ -245,12 +180,6 @@ class _IncrementalArrayParser:
 
 
 def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
-    """Convierte un objeto de Scryfall en una fila de ``PrintingCache``.
-
-    Devuelve ``None`` para las cartas que no queremos indexar: sin ``oracle_id``
-    (tokens de arte, cartas de doble cara mal formadas) o de tipos que nunca se
-    imprimen como proxy.
-    """
     scryfall_id = card.get("id")
     oracle_id = card.get("oracle_id")
     if not scryfall_id:
@@ -324,12 +253,6 @@ def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
-    """Escribe un lote con upsert sobre la clave primaria.
-
-    ``ON CONFLICT DO UPDATE`` en vez de borrar y reinsertar: así una
-    reimportación refresca los datos sin invalidar ni un instante las
-    referencias de ``deck_cards.scryfall_id``.
-    """
     if not rows:
         return 0
     stmt = sqlite_insert(PrintingCache).values(rows)
@@ -338,9 +261,7 @@ async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
         for c in PrintingCache.__table__.columns
         if c.name != "scryfall_id"
     }
-    await db.execute(
-        stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols)
-    )
+    await db.execute(stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols))
     await db.commit()
     return len(rows)
 
@@ -351,13 +272,8 @@ async def sync(
     *,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Descarga e importa el volcado. Bloquea hasta terminar.
-
-    Para dispararlo en segundo plano usa :func:`start`.
-    """
     global _progress
-    _progress = BulkProgress(kind=kind, phase="manifest",
-                             started_at=datetime.now(UTC))
+    _progress = BulkProgress(kind=kind, phase="manifest", started_at=datetime.now(UTC))
 
     try:
         manifest = await fetch_manifest(kind)
@@ -375,15 +291,18 @@ async def sync(
             }
 
         url = manifest["download_uri"]
-        log.info("Importando volcado %s (%s, %.0f MB)",
-                 kind, remote_updated[:10], _progress.bytes_total / 1e6)
+        log.info(
+            "Importando volcado %s (%s, %.0f MB)",
+            kind,
+            remote_updated[:10],
+            _progress.bytes_total / 1e6,
+        )
 
         _progress.phase = "downloading"
         written = await _stream_import(db, url, kind)
 
         _progress.phase = "importing"
-        await _record_state(db, kind, remote_updated, written,
-                            _progress.bytes_downloaded)
+        await _record_state(db, kind, remote_updated, written, _progress.bytes_downloaded)
 
         _progress.phase = "done"
         _progress.finished_at = datetime.now(UTC)
@@ -410,19 +329,21 @@ async def sync(
 
 
 async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
-    """Descarga y escribe por lotes. Devuelve cuántas filas se escribieron."""
     use_ijson = _ijson_available()
     parser = None if use_ijson else _IncrementalArrayParser()
     batch: list[dict[str, Any]] = []
     written = 0
     seen_ids: set[str] = set()
 
-    async with httpx.AsyncClient(
-        headers={"User-Agent": SCRYFALL_USER_AGENT},
-        timeout=httpx.Timeout(60.0, read=300.0),
-        follow_redirects=True,
-        verify=not ssl_insecure(),
-    ) as client, client.stream("GET", url) as response:
+    async with (
+        httpx.AsyncClient(
+            headers={"User-Agent": SCRYFALL_USER_AGENT},
+            timeout=httpx.Timeout(60.0, read=300.0),
+            follow_redirects=True,
+            verify=not ssl_insecure(),
+        ) as client,
+        client.stream("GET", url) as response,
+    ):
         response.raise_for_status()
 
         async def handle(card: dict[str, Any]) -> None:
@@ -463,9 +384,7 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
     return written
 
 
-async def _record_state(
-    db: AsyncSession, kind: str, updated_at: str, rows: int, size: int
-) -> None:
+async def _record_state(db: AsyncSession, kind: str, updated_at: str, rows: int, size: int) -> None:
     state = await db.get(BulkSyncState, kind)
     if state is None:
         state = BulkSyncState(kind=kind)
@@ -478,12 +397,6 @@ async def _record_state(
 
 
 def start(db_factory, kind: str = DEFAULT_KIND, *, force: bool = False):
-    """Lanza la importación en segundo plano y devuelve la tarea.
-
-    ``db_factory`` es un context manager async que produce una sesión — se
-    recibe en vez de una sesión abierta porque la importación dura minutos y
-    mantener abierta la sesión del request sería un error.
-    """
     async def _run() -> None:
         async with db_factory() as session:
             await sync(session, kind, force=force)
@@ -494,11 +407,8 @@ def start(db_factory, kind: str = DEFAULT_KIND, *, force: bool = False):
 
 
 async def local_stats(db: AsyncSession) -> dict[str, Any]:
-    """Cuántas impresiones hay en local y de cuándo es el volcado."""
     total = (await db.scalar(select(func.count()).select_from(PrintingCache))) or 0
-    unique = (await db.scalar(
-        select(func.count(func.distinct(PrintingCache.oracle_id)))
-    )) or 0
+    unique = (await db.scalar(select(func.count(func.distinct(PrintingCache.oracle_id))))) or 0
     states = (await db.execute(select(BulkSyncState))).scalars().all()
     return {
         "printings": total,

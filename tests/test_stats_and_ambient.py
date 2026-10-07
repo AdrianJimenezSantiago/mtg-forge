@@ -1,11 +1,3 @@
-"""Modal de estadísticas (gráficas propias) y fondo ambiental.
-
-El modal ya no usa Chart.js: sus gráficas son HTML/SVG animadas con CSS.
-Varias traducciones se componen en tiempo de ejecución
-(``window._t('stats_color_' + key)``), así que el test genérico de claves no
-las ve; aquí se comprueban las familias completas contra los valores que
-produce ``computeStats`` en deck-editor.js.
-"""
 from __future__ import annotations
 
 import re
@@ -43,19 +35,35 @@ class TestStatsModal:
         assert "Curva de maná" not in r.text
 
     def test_svg_segments_are_not_built_with_x_for(self):
-        """`x-for` no funciona dentro de <svg> (allí <template> no tiene
-        `.content`): los arcos se generan con Jinja."""
         html = _read("templates/deck.html")
         start = html.index('class="st-overlay')
         for svg in re.findall(r"<svg.*?</svg>", html[start:], flags=re.S):
             assert "x-for" not in svg
 
-    @pytest.mark.parametrize("family,keys", [
-        ("stats_color_", ["W", "U", "B", "R", "G", "M", "C"]),
-        ("stats_type_", ["Creature", "Instant", "Sorcery", "Enchantment", "Artifact",
-                         "Planeswalker", "Battle", "Land", "Other"]),
-        ("stats_rarity_", ["common", "uncommon", "rare", "mythic", "special", "bonus", "unknown"]),
-    ])
+    @pytest.mark.parametrize(
+        "family,keys",
+        [
+            ("stats_color_", ["W", "U", "B", "R", "G", "M", "C"]),
+            (
+                "stats_type_",
+                [
+                    "Creature",
+                    "Instant",
+                    "Sorcery",
+                    "Enchantment",
+                    "Artifact",
+                    "Planeswalker",
+                    "Battle",
+                    "Land",
+                    "Other",
+                ],
+            ),
+            (
+                "stats_rarity_",
+                ["common", "uncommon", "rare", "mythic", "special", "bonus", "unknown"],
+            ),
+        ],
+    )
     def test_dynamic_key_families_are_complete(self, family, keys):
         from mpc_forge.services.i18n import _TRANSLATIONS
 
@@ -64,17 +72,31 @@ class TestStatsModal:
             assert not missing, f"{lang}: faltan {family}{missing}"
 
     def test_js_produces_only_known_keys(self):
-        """Las listas de deck-editor.js y las familias traducidas coinciden."""
         js = _read("static/js/deck-editor.js")
         colors = re.search(r"const CURVE_COLORS = \[([^\]]+)\]", js).group(1)
         assert re.findall(r"'(\w)'", colors) == ["W", "U", "B", "R", "G", "M", "C"]
         rarity = re.search(r"const RARITY_ORDER = \[([^\]]+)\]", js).group(1)
         assert set(re.findall(r"'(\w+)'", rarity)) == {
-            "common", "uncommon", "rare", "mythic", "special", "bonus", "unknown"}
+            "common",
+            "uncommon",
+            "rare",
+            "mythic",
+            "special",
+            "bonus",
+            "unknown",
+        }
         types = re.search(r"const MAIN_TYPES = \[([^\]]+)\]", js).group(1)
         assert set(re.findall(r"'(\w+)'", types)) | {"Other"} == {
-            "Creature", "Instant", "Sorcery", "Enchantment", "Artifact",
-            "Planeswalker", "Battle", "Land", "Other"}
+            "Creature",
+            "Instant",
+            "Sorcery",
+            "Enchantment",
+            "Artifact",
+            "Planeswalker",
+            "Battle",
+            "Land",
+            "Other",
+        }
 
 
 class TestAmbientBackground:
@@ -87,7 +109,6 @@ class TestAmbientBackground:
         assert layer < script < shell
 
     async def test_ambient_script_is_not_deferred(self, client):
-        """Tiene que pintar antes del primer fotograma."""
         r = await client.get("/", headers=HTML)
         tag = re.search(r"<script[^>]*/static/js/ambient\.js[^>]*>", r.text).group(0)
         assert "defer" not in tag and "async" not in tag
@@ -105,8 +126,17 @@ class TestAmbientBackground:
         assert "mpc-ambient" in head and "fx-ambient-off" in head
 
     async def test_present_on_every_page(self, client):
-        for path in ("/", "/decks", "/history", "/collection", "/settings",
-                     "/print-planner", "/art-library", "/calibrate", "/no-existe"):
+        for path in (
+            "/",
+            "/decks",
+            "/history",
+            "/collection",
+            "/settings",
+            "/print-planner",
+            "/art-library",
+            "/calibrate",
+            "/no-existe",
+        ):
             r = await client.get(path, headers=HTML)
             assert 'class="fx-ambient-layer"' in r.text, path
 
@@ -114,5 +144,5 @@ class TestAmbientBackground:
         js = _read("static/js/ambient.js")
         assert "prefers-reduced-motion" in js
         css = _read("static/motion.css")
-        reduced = css[css.index("@media (prefers-reduced-motion: reduce)"):]
+        reduced = css[css.index("@media (prefers-reduced-motion: reduce)") :]
         assert "prefers-reduced-motion" in css

@@ -1,11 +1,3 @@
-"""El nombre del mazo incrustado en expresiones Alpine no rompe el JS.
-
-Un mazo llamado ``Y'shtola`` cerraba la cadena ``'{{ deck.name }}'`` antes de
-tiempo y Alpine lanzaba ``SyntaxError: unexpected token: identifier`` al abrir
-el PDF Studio, dejando la página sin inicializar. Aquí se renderizan las
-páginas con nombres hostiles y se compila cada expresión que contiene el
-nombre con Node, igual que haría Alpine en el navegador.
-"""
 from __future__ import annotations
 
 import json
@@ -53,16 +45,24 @@ def _assert_compiles(exprs: list[str]) -> None:
         "}"
     )
     proc = subprocess.run(
-        ["node", "-e", script], input=json.dumps(exprs),
-        capture_output=True, text=True, timeout=30,
+        ["node", "-e", script],
+        input=json.dumps(exprs),
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert proc.returncode == 0, proc.stderr
 
 
 async def _make_deck(client, name: str) -> dict:
-    r = await client.post("/api/decks/import/text", json={
-        "name": name, "text": "1 Sol Ring", "format": "commander",
-    })
+    r = await client.post(
+        "/api/decks/import/text",
+        json={
+            "name": name,
+            "text": "1 Sol Ring",
+            "format": "commander",
+        },
+    )
     assert r.status_code == 200, r.text
     return r.json()["deck"]
 

@@ -1,14 +1,3 @@
-"""Rate limit del cliente de Scryfall e import con caché local.
-
-Los tests del cliente usan un servidor falso (``httpx.MockTransport``) que
-aplica las mismas reglas que Scryfall, con los tiempos escalados para que la
-suite siga siendo rápida:
-
-* endpoints pesados (search/named/random/collection): un hueco mínimo entre
-  peticiones; si se viola, 429.
-* resto: un hueco mínimo más pequeño; si se viola, 429.
-* tras un 429, el servidor sigue devolviendo 429 durante el enfriamiento.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -31,10 +20,14 @@ JITTER = 0.06 if sys.platform == "win32" else 0.008
 
 
 class FakeScryfall:
-    """Servidor que aplica las reglas de rate limit de Scryfall."""
-
-    def __init__(self, *, heavy: float = HEAVY, general: float = GENERAL,
-                 cooldown: float = COOLDOWN, force_429: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        heavy: float = HEAVY,
+        general: float = GENERAL,
+        cooldown: float = COOLDOWN,
+        force_429: int = 0,
+    ) -> None:
         self.heavy = heavy
         self.general = general
         self.cooldown = cooldown
@@ -77,9 +70,12 @@ class FakeScryfall:
         path = request.url.path
         if path == "/cards/collection":
             import json
+
             idents = json.loads(request.content)["identifiers"]
-            data = [{"id": f"id-{i.get('name') or i.get('id')}", "name": i.get("name", "x")}
-                    for i in idents]
+            data = [
+                {"id": f"id-{i.get('name') or i.get('id')}", "name": i.get("name", "x")}
+                for i in idents
+            ]
             return httpx.Response(200, json={"data": data})
         if path == "/cards/search":
             page = int(request.url.params.get("page", "1"))
@@ -87,9 +83,14 @@ class FakeScryfall:
             next_page = (
                 f"https://api.scryfall.com/cards/search?q=x&page={page + 1}" if has_more else None
             )
-            return httpx.Response(200, json={
-                "data": [{"id": f"p{page}"}], "has_more": has_more, "next_page": next_page,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "data": [{"id": f"p{page}"}],
+                    "has_more": has_more,
+                    "next_page": next_page,
+                },
+            )
         if path == "/cards/autocomplete":
             return httpx.Response(200, json={"data": ["Sol Ring"]})
         return httpx.Response(200, json={"id": path.rsplit("/", 1)[-1]})
@@ -101,13 +102,15 @@ def make_client(server: FakeScryfall) -> ScryfallClient:
         transport=httpx.MockTransport(server.handler),
     )
     return ScryfallClient(
-        http, general_interval=GENERAL * 1.1, heavy_interval=HEAVY * 1.1, cooldown=COOLDOWN,
+        http,
+        general_interval=GENERAL * 1.1,
+        heavy_interval=HEAVY * 1.1,
+        cooldown=COOLDOWN,
     )
 
 
 class TestTieredLimits:
     async def test_mixed_concurrent_burst_never_trips_the_limit(self):
-        """Cinco "imports" concurrentes mezclando endpoints: cero 429."""
         server = FakeScryfall()
         sc = make_client(server)
 
@@ -213,8 +216,6 @@ class TestDeduplication:
 
 
 class _CountingScryfall:
-    """Envuelve el fake de conftest contando identificadores enviados."""
-
     def __init__(self, inner) -> None:
         self.inner = inner
         self.collection_calls: list[list[dict]] = []
@@ -235,6 +236,7 @@ class _CountingScryfall:
 @pytest.fixture
 def counting(client, fake_scryfall):
     from mpc_forge.services import deck_service
+
     deck_service._name_memo.clear()
     deck_service._prints_complete.clear()
     return _CountingScryfall(fake_scryfall)
@@ -246,9 +248,13 @@ class TestCacheFirstImport:
     async def _import(self, scryfall, text=TEXT):
         from mpc_forge.db import session_scope
         from mpc_forge.services import deck_service
+
         async with session_scope() as db:
             deck, unresolved = await deck_service.import_from_plaintext(
-                db, scryfall, "Deck", text,
+                db,
+                scryfall,
+                "Deck",
+                text,
             )
             return deck.id, unresolved
 
@@ -267,9 +273,9 @@ class TestCacheFirstImport:
     async def test_imports_by_id_use_the_cache(self, counting):
         from mpc_forge.db import session_scope
         from mpc_forge.services import deck_service
+
         await self._import(counting)
-        entries = [{"name": "Sol Ring", "quantity": 1, "scryfall_id": "sr-en",
-                    "role": "mainboard"}]
+        entries = [{"name": "Sol Ring", "quantity": 1, "scryfall_id": "sr-en", "role": "mainboard"}]
         async with session_scope() as db:
             out = await deck_service.resolve_cards(db, counting, entries)
         assert out[0]["resolved"] and out[0]["scryfall_id"] == "sr-en"
@@ -282,18 +288,24 @@ class TestCacheFirstImport:
 
         from mpc_forge.db import session_scope
         from mpc_forge.models import PrintingCache
+
         await self._import(counting)
         async with session_scope() as db:
-            await db.execute(update(PrintingCache).values(
-                fetched_at=datetime.now(UTC) - timedelta(days=30)))
+            await db.execute(
+                update(PrintingCache).values(fetched_at=datetime.now(UTC) - timedelta(days=30))
+            )
             await db.commit()
         await self._import(counting)
         assert len(counting.collection_calls) == 2
 
     async def test_front_face_name_resolves_a_dfc(self, counting, fake_scryfall):
         dfc = {
-            "id": "dos-en", "oracle_id": "oracle-delver", "set": "isd",
-            "collector_number": "51", "lang": "en", "layout": "transform",
+            "id": "dos-en",
+            "oracle_id": "oracle-delver",
+            "set": "isd",
+            "collector_number": "51",
+            "lang": "en",
+            "layout": "transform",
             "name": "Delver of Secrets // Insectile Aberration",
             "card_faces": [
                 {"name": "Delver of Secrets", "image_uris": {"png": "https://x.test/f.png"}},
@@ -313,26 +325,26 @@ class TestPrintsPreloadCache:
     async def test_single_printing_card_is_fetched_only_once(self, counting):
         from mpc_forge.db import session_scope
         from mpc_forge.services import deck_service
+
         await TestCacheFirstImport()._import(counting)
         for _ in range(3):
             async with session_scope() as db:
-                await deck_service.fetch_printings_for_oracle(
-                    db, counting, "oracle-command-tower")
+                await deck_service.fetch_printings_for_oracle(db, counting, "oracle-command-tower")
         assert counting.prints_calls == ["oracle-command-tower"]
 
 
 class TestTieredRateLimiter:
-    """Lógica de reserva, sin dormir: se congela el reloj."""
-
     @pytest.fixture
     def frozen(self, monkeypatch):
         from mpc_forge.services import rate_limiter
+
         clock = {"now": 1000.0}
         monkeypatch.setattr(rate_limiter.time, "monotonic", lambda: clock["now"])
         return clock
 
     def test_heavy_reservations_keep_heavy_spacing_even_with_light_traffic(self, frozen):
         from mpc_forge.services.rate_limiter import TieredRateLimiter
+
         lim = TieredRateLimiter(general=0.1, heavy=0.5)
         order = [True, False, False, False, False, False, True, False, True]
         slots = [(h, lim.reserve(h)) for h in order]
@@ -343,6 +355,7 @@ class TestTieredRateLimiter:
 
     def test_light_requests_fill_gaps_between_future_heavy_slots(self, frozen):
         from mpc_forge.services.rate_limiter import TieredRateLimiter
+
         lim = TieredRateLimiter(general=0.1, heavy=0.5)
         now = frozen["now"]
         assert lim.reserve(True) == now
@@ -369,6 +382,7 @@ class TestBatchedPreload:
 
     async def test_preload_batches_uncached_cards(self, counting, deck, monkeypatch):
         from mpc_forge.services import deck_service, preloader
+
         batches: list[list[str]] = []
 
         async def prints_by_oracle_ids(oids):
@@ -391,22 +405,29 @@ class TestBatchedPreload:
 
 class TestSplitXmlRegression:
     async def test_split_xml_with_print_runs_does_not_crash(self, client, deck, monkeypatch):
-        """``build-split-xml`` con ``create_runs`` usaba ``cfg`` sin importarlo → 500."""
         from pathlib import Path
 
         from mpc_forge.routes import export
         from mpc_forge.services.xml_generator import DeckCardResolved, XMLBuildResult
 
         async def fake_resolve(db, scryfall, art_cache, deck_obj):
-            return [DeckCardResolved(name=c.name, quantity=c.quantity, scryfall_id=c.scryfall_id,
-                                     front_path=Path("front.png")) for c in deck_obj.cards]
+            return [
+                DeckCardResolved(
+                    name=c.name,
+                    quantity=c.quantity,
+                    scryfall_id=c.scryfall_id,
+                    front_path=Path("front.png"),
+                )
+                for c in deck_obj.cards
+            ]
 
         def fake_build(*, cards, output_path, **_):
             return XMLBuildResult(xml_path=output_path, total_cards=sum(c.quantity for c in cards))
 
         monkeypatch.setattr(export, "resolve_deck_for_xml", fake_resolve)
         monkeypatch.setattr(export, "build_xml", fake_build)
-        r = await client.post(f"/api/decks/{deck['id']}/build-split-xml",
-                              json={"create_runs": True})
+        r = await client.post(
+            f"/api/decks/{deck['id']}/build-split-xml", json={"create_runs": True}
+        )
         assert r.status_code == 200, r.text
         assert len(r.json()["run_ids"]) == 1

@@ -1,4 +1,3 @@
-"""Factory de la aplicación FastAPI."""
 from __future__ import annotations
 
 import asyncio
@@ -53,17 +52,6 @@ _EXTRA_HOSTS_ENV = "MPC_FORGE_ALLOWED_HOSTS"
 
 
 def _preload_path_overrides() -> None:
-    """Aplica los overrides de paths.* ANTES de que create_app() haga los mounts.
-
-    Sin este preload, los mounts ``/art`` y ``/custom_art`` usarían los paths
-    default aunque el usuario tenga custom guardados en BD — porque el lifespan
-    de FastAPI corre DESPUÉS del mount de StaticFiles.
-
-    Leemos la BD con sqlite3 síncrono (no aiosqlite) — está bien porque solo
-    hacemos una SELECT rápida antes de que el event loop arranque. Si la BD no
-    existe (primera ejecución) o la tabla kv_store aún no está creada,
-    simplemente no hay overrides que aplicar.
-    """
     if not cfg.PATHS.db_path.exists():
         return
     try:
@@ -76,7 +64,7 @@ def _preload_path_overrides() -> None:
             conn.close()
         overrides = {}
         for key, value in rows:
-            short = key[len("settings.paths."):]
+            short = key[len("settings.paths.") :]
             if value and value.strip():
                 overrides[short] = value.strip()
         if overrides:
@@ -92,19 +80,6 @@ _preload_path_overrides()
 
 
 class BackgroundTasks:
-    """Registro de tareas de background con referencia fuerte.
-
-    ``asyncio`` solo guarda una referencia DÉBIL a las tareas creadas con
-    ``create_task``. Si nadie más las referencia, el recolector de basura puede
-    llevárselas a mitad de ejecución: la tarea desaparece sin excepción, sin
-    log y sin dejar rastro. Es un bug intermitente clásico y casi imposible de
-    diagnosticar desde un reporte de usuario.
-
-    Esta clase mantiene el set vivo hasta que cada tarea termina, registra las
-    excepciones que se hayan tragado, y permite cancelarlas todas ordenadamente
-    en el shutdown para que no sigan escribiendo en una BD que ya se cierra.
-    """
-
     def __init__(self) -> None:
         self._tasks: set[asyncio.Task] = set()
 
@@ -122,11 +97,11 @@ class BackgroundTasks:
         if exc is not None:
             log.error(
                 "La tarea de background %r terminó con excepción",
-                task.get_name(), exc_info=exc,
+                task.get_name(),
+                exc_info=exc,
             )
 
     async def shutdown(self, timeout: float = 5.0) -> None:
-        """Cancela las tareas pendientes y espera a que suelten sus recursos."""
         pending = [t for t in self._tasks if not t.done()]
         if not pending:
             return
@@ -134,25 +109,16 @@ class BackgroundTasks:
         for task in pending:
             task.cancel()
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*pending, return_exceptions=True), timeout
-            )
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout)
         except TimeoutError:
             log.warning(
-                "%d tareas no respondieron a la cancelación en %.0fs; "
-                "se continúa con el cierre.", len(pending), timeout,
+                "%d tareas no respondieron a la cancelación en %.0fs; se continúa con el cierre.",
+                len(pending),
+                timeout,
             )
 
 
 def _is_benign_connection_reset(context: dict) -> bool:
-    """True para el ``ConnectionResetError`` que asyncio registra en Windows
-    cuando el navegador cierra una conexión de golpe.
-
-    El bucle Proactor, al cerrar el transporte, llama a ``socket.shutdown()``
-    sobre un socket que el otro extremo ya reseteó (WinError 10054) y lo
-    reporta como ERROR con traza completa. La petición ya se respondió; no hay
-    nada que hacer salvo no asustar al usuario en el log.
-    """
     exc = context.get("exception")
     if not isinstance(exc, ConnectionResetError):
         return False
@@ -161,7 +127,6 @@ def _is_benign_connection_reset(context: dict) -> bool:
 
 
 def _silence_windows_connection_resets(loop: asyncio.AbstractEventLoop) -> None:
-    """Instala un exception handler que descarta solo ese caso benigno."""
     if sys.platform != "win32":
         return
     previous = loop.get_exception_handler()
@@ -208,7 +173,9 @@ async def lifespan(app: FastAPI):
             stats = await custom_art_service.rescan(db)
         log.info(
             "Custom art indexado: %d archivos (+%d nuevos, -%d borrados)",
-            stats["total"], stats["added"], stats["removed"],
+            stats["total"],
+            stats["added"],
+            stats["removed"],
         )
     except Exception as e:
         log.warning("Rescan de custom art falló: %s", e)
@@ -224,20 +191,24 @@ async def lifespan(app: FastAPI):
     async def _run_backfill():
         try:
             from mpc_forge.services import gdrive_indexer
+
             async with session_scope() as db:
                 await gdrive_indexer.backfill_normalized_names(db)
         except Exception as e:
             log.warning("Backfill de normalización falló: %s", e)
+
     app.state.background = BackgroundTasks()
     app.state.background.spawn(_run_backfill(), name="normalization-backfill")
 
     async def _run_dfc_sync():
         try:
             from mpc_forge.services import dfc_pairs
+
             async with session_scope() as db:
                 await dfc_pairs.sync_if_stale(db, app.state.scryfall)
         except Exception as e:
             log.warning("Sync de DFC pairs falló: %s", e)
+
     app.state.background.spawn(_run_dfc_sync(), name="dfc-pairs-sync")
 
     log.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
@@ -257,13 +228,6 @@ async def lifespan(app: FastAPI):
 
 
 class CachedStaticFiles(StaticFiles):
-    """StaticFiles con Cache-Control para que el navegador no re-descargue
-    los assets en cada refresh.
-
-    - /static/ (nuestros JS/CSS/imágenes) → 1 día (max-age=86400)
-    - /art/ y /custom_art/ (imágenes de cartas) → 30 días (max-age=2592000)
-      porque tienen un hash/UUID en el nombre y son efectivamente inmutables.
-    """
     def __init__(self, *args, max_age: int = 86400, **kwargs):
         super().__init__(*args, **kwargs)
         self._max_age = max_age
@@ -275,13 +239,17 @@ class CachedStaticFiles(StaticFiles):
 
 
 _NON_HTML_PREFIXES = (
-    "/api/", "/static/", "/art/", "/custom_art/", "/thumbs/",
-    "/local-source/", "/i18n/",
+    "/api/",
+    "/static/",
+    "/art/",
+    "/custom_art/",
+    "/thumbs/",
+    "/local-source/",
+    "/i18n/",
 )
 
 
 def _wants_html_page(request: Request) -> bool:
-    """¿Es una navegación del usuario que merece la página 404 con estilo?"""
     if request.method not in ("GET", "HEAD"):
         return False
     if request.url.path.startswith(_NON_HTML_PREFIXES):
@@ -290,7 +258,6 @@ def _wants_html_page(request: Request) -> bool:
 
 
 async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """404 del navegador → plantilla propia. Todo lo demás, como antes."""
     if exc.status_code == 404 and _wants_html_page(request):
         return ui.render_not_found(request)
     return await http_exception_handler(request, exc)
@@ -305,14 +272,13 @@ def create_app() -> FastAPI:
     )
 
     extra_hosts = {
-        h.strip().lower()
-        for h in os.environ.get(_EXTRA_HOSTS_ENV, "").split(",")
-        if h.strip()
+        h.strip().lower() for h in os.environ.get(_EXTRA_HOSTS_ENV, "").split(",") if h.strip()
     }
     if extra_hosts:
         log.info(
             "Hosts adicionales permitidos vía %s: %s",
-            _EXTRA_HOSTS_ENV, sorted(extra_hosts),
+            _EXTRA_HOSTS_ENV,
+            sorted(extra_hosts),
         )
 
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
@@ -323,9 +289,19 @@ def create_app() -> FastAPI:
     )
 
     app.mount("/static", CachedStaticFiles(directory=str(STATIC_DIR), max_age=86400), name="static")
-    app.mount("/art", CachedStaticFiles(directory=str(cfg.PATHS.art_dir), max_age=2592000), name="art")
-    app.mount("/custom_art", CachedStaticFiles(directory=str(cfg.PATHS.custom_art_dir), max_age=2592000), name="custom_art")
-    app.mount("/thumbs", CachedStaticFiles(directory=str(cfg.PATHS.thumbs_dir), max_age=2592000), name="thumbs")
+    app.mount(
+        "/art", CachedStaticFiles(directory=str(cfg.PATHS.art_dir), max_age=2592000), name="art"
+    )
+    app.mount(
+        "/custom_art",
+        CachedStaticFiles(directory=str(cfg.PATHS.custom_art_dir), max_age=2592000),
+        name="custom_art",
+    )
+    app.mount(
+        "/thumbs",
+        CachedStaticFiles(directory=str(cfg.PATHS.thumbs_dir), max_age=2592000),
+        name="thumbs",
+    )
 
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
 

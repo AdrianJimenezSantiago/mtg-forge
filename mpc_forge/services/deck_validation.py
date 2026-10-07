@@ -1,14 +1,3 @@
-"""Validación de mazos por formato.
-
-Commander (EDH): 100 cartas exactas = commander(s) + mainboard.
-    - Companion se cuenta APARTE (10ª carta oficial fuera del mazo de 100).
-    - Sideboard/maybeboard/tokens NO cuentan.
-
-Además del tamaño se comprueba la **legalidad** de cada carta: Scryfall
-publica el estado por formato de cada impresión y lo cacheamos en
-``PrintingCache.legalities``, así que detectar un baneado no cuesta ninguna
-petición de red.
-"""
 from __future__ import annotations
 
 import json
@@ -21,7 +10,6 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class IllegalCard:
-    """Una carta que no se puede jugar en el formato del mazo."""
     name: str
     status: str
     role: str
@@ -37,13 +25,6 @@ class DeckValidationResult:
     level: str
     breakdown: dict[str, int]
     illegal: list[IllegalCard] = field(default_factory=list)
-    """Cartas baneadas, restringidas o no legales en el formato.
-
-    Vacío también cuando simplemente no tenemos el dato: una carta cuyo
-    printing aún no está cacheado no se marca como ilegal. Es deliberado —
-    un falso positivo aquí haría dudar al usuario de un mazo correcto, que es
-    peor que no avisar.
-    """
 
 
 _COUNTING_ROLES_BY_FORMAT: dict[str, set[str]] = {
@@ -81,15 +62,6 @@ def check_legalities(
     fmt: str,
     cards: Iterable[tuple[str, str, str, bool]],
 ) -> list[IllegalCard]:
-    """Cartas del mazo que no son legales en el formato.
-
-    Args:
-        fmt: nombre del formato (case-insensitive).
-        cards: iterable de ``(nombre, role, legalities_json, include)``.
-            ``legalities_json`` es el JSON tal cual lo cachea
-            ``PrintingCache.legalities``; una cadena vacía significa que aún
-            no tenemos el dato.
-    """
     fmt = (fmt or "").lower().strip()
     if not fmt:
         return []
@@ -119,14 +91,6 @@ def validate_deck(
     cards: Iterable[tuple[str, int, bool]],
     illegal: list[IllegalCard] | None = None,
 ) -> DeckValidationResult:
-    """
-    Args:
-        fmt: nombre del formato (case-insensitive)
-        cards: iterable de (role, quantity, include) por cada DeckCard
-        illegal: resultado de :func:`check_legalities`, si se ha calculado.
-            Es un parámetro aparte porque requiere datos (las legalidades
-            cacheadas) que no todos los llamantes tienen a mano.
-    """
     fmt = (fmt or "commander").lower().strip()
     illegal = illegal or []
     breakdown: dict[str, int] = {}
@@ -169,9 +133,7 @@ def validate_deck(
             expected=expected,
             counted=counted,
             is_valid=False,
-            message=_compose_message(
-                f"Faltan {diff} cartas ({counted}/{expected})", illegal
-            ),
+            message=_compose_message(f"Faltan {diff} cartas ({counted}/{expected})", illegal),
             level=_level("warn", illegal),
             breakdown=breakdown,
             illegal=illegal,
@@ -182,9 +144,7 @@ def validate_deck(
         expected=expected,
         counted=counted,
         is_valid=False,
-        message=_compose_message(
-            f"Sobran {diff} cartas ({counted}/{expected})", illegal
-        ),
+        message=_compose_message(f"Sobran {diff} cartas ({counted}/{expected})", illegal),
         level=_level("warn", illegal),
         breakdown=breakdown,
         illegal=illegal,
@@ -192,15 +152,10 @@ def validate_deck(
 
 
 def _blocking(illegal: list[IllegalCard]) -> bool:
-    """¿Hay alguna carta que directamente no se puede jugar?"""
     return any(c.status in _BLOCKING_STATUSES for c in illegal)
 
 
 def _level(base: str, illegal: list[IllegalCard]) -> str:
-    """Una carta baneada es un error, no un aviso: el mazo no es jugable.
-
-    Una restringida solo sube a 'warn', porque sí se puede jugar con una copia.
-    """
     if _blocking(illegal):
         return "error"
     if illegal:

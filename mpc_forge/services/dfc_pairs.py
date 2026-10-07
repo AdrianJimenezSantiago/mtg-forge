@@ -1,32 +1,3 @@
-"""Cache de pares double-faced (DFC + meld) descargado de Scryfall.
-
-Objetivo
---------
-Cuando el usuario importa un mazo (Moxfield, texto plano, o de un URL de
-otro sitio), muchas cartas necesitan que sepamos su reverso: los DFC como
-Delver of Secrets, MDFCs (Zendikar Rising+) y meld pieces (Bruna/Gisela →
-Brisela). Consultarlo por carta a Scryfall es caro; precomputamos la lista
-completa una vez y la mantenemos fresca cada 7 días.
-
-Estrategia
-----------
-1. Sync inicial al arrancar (si tabla vacía o han pasado >7 días).
-2. Fuente: Scryfall search API con ``is:dfc`` e ``is:meld``.
-3. Guardamos en la tabla ``dfc_pairs`` con UNIQUE en front_name — idempotente.
-4. El resolver de decks consulta primero esta tabla (síncrono, memoria local)
-   y solo cae a Scryfall si no hay match.
-
-Rendimiento
------------
-- Sync completo: ~1500 pares DFC + ~15 meld pairs = ~1520 filas. Tarda ~10s.
-- Consulta local: O(log N) por WHERE indexado.
-- Compatible offline una vez sembrado.
-
-Referencia
-----------
-MPC Autofill hace exactamente lo mismo en su ``MTGIntegration.get_dfc_pairs``.
-Adaptamos aquí a nuestro cliente `ScryfallClient` y a nuestra BD.
-"""
 from __future__ import annotations
 
 import logging
@@ -45,22 +16,17 @@ SYNC_TTL = timedelta(days=7)
 
 _LAST_SYNC_KEY = "dfc_pairs.last_synced_at"
 
-_DFC_QUERY = "is:dfc -layout:art_series -(layout:double_faced_token -keyword:transform) -is:reversible"
+_DFC_QUERY = (
+    "is:dfc -layout:art_series -(layout:double_faced_token -keyword:transform) -is:reversible"
+)
 _MELD_QUERY = "is:meld"
 
 
 async def _fetch_paginated(scryfall: ScryfallClient, query: str) -> list[dict[str, Any]]:
-    """Recorre todas las páginas del search API para el query dado.
-
-    Scryfall pagina de 175 en 175. Un ``is:dfc`` devuelve ~1500 resultados.
-    La paginación pasa por el rate limiter del cliente (``/cards/search`` es un
-    endpoint de 2 peticiones/s).
-    """
     return await scryfall.search_all(query, unique="cards")
 
 
 def _dfc_pair_from_card(card: dict[str, Any]) -> DFCPair | None:
-    """Extrae front/back para una carta transform o modal_dfc (no meld)."""
     faces = card.get("card_faces") or []
     if len(faces) < 2:
         return None
@@ -79,15 +45,6 @@ def _dfc_pair_from_card(card: dict[str, Any]) -> DFCPair | None:
 
 
 def _meld_pairs_from_card(card: dict[str, Any]) -> list[DFCPair]:
-    """Extrae las relaciones meld_part → meld_result para una carta meld.
-
-    Un meld tiene 3 partes en all_parts: dos meld_parts (top/bottom) y un
-    meld_result (Brisela, Chittering Host, etc). Por cada meld_part que sea
-    esta carta, generamos una fila apuntando al meld_result como "back".
-
-    ``kind`` distingue meld_top/meld_bottom mirando el oracle text:
-    la mitad "de abajo" es la que dice "Melds with X".
-    """
     all_parts = card.get("all_parts") or []
     if not all_parts:
         return []
@@ -105,8 +62,7 @@ def _meld_pairs_from_card(card: dict[str, Any]) -> list[DFCPair]:
         return []
 
     is_self_meld_part = any(
-        p.get("id") == self_id and p.get("component") == "meld_part"
-        for p in all_parts
+        p.get("id") == self_id and p.get("component") == "meld_part" for p in all_parts
     )
     if not is_self_meld_part:
         return []
@@ -116,21 +72,16 @@ def _meld_pairs_from_card(card: dict[str, Any]) -> list[DFCPair]:
 
     kind = "meld_top" if is_top else "meld_bottom"
     bit = "Top" if is_top else "Bottom"
-    return [DFCPair(
-        front_name=self_name,
-        back_name=f"{result_name} {bit}",
-        kind=kind,
-    )]
+    return [
+        DFCPair(
+            front_name=self_name,
+            back_name=f"{result_name} {bit}",
+            kind=kind,
+        )
+    ]
 
 
 async def _fetch_all_pairs(scryfall: ScryfallClient) -> list[DFCPair]:
-    """Descarga todos los pares desde Scryfall.
-
-    Devuelve una lista de instancias DFCPair (no persistidas todavía).
-    Los duplicados por front_name se resuelven mantendo la primera aparición
-    — Scryfall devuelve una entrada por printing, pero solo nos interesa el
-    par de nombres (que no cambia entre impresiones).
-    """
     pairs: dict[str, DFCPair] = {}
 
     dfc_cards = await _fetch_paginated(scryfall, _DFC_QUERY)
@@ -162,7 +113,6 @@ async def _mark_synced(db: AsyncSession) -> None:
 
 
 async def _is_stale(db: AsyncSession) -> bool:
-    """True si la tabla está vacía o han pasado >7 días desde la última sync."""
     kv = await db.get(KeyValue, _LAST_SYNC_KEY)
     if not kv or not kv.value:
         return True
@@ -180,22 +130,14 @@ async def _count(db: AsyncSession) -> int:
 
 
 async def sync_if_stale(db: AsyncSession, scryfall: ScryfallClient) -> dict[str, Any]:
-    """Refresca la tabla desde Scryfall si TTL expirado o tabla vacía.
-
-    Idempotente y seguro para llamar en cada arranque: si acaba de sincronizarse,
-    no hace ninguna llamada de red.
-
-    Estrategia de reemplazo: recreamos toda la tabla en una transacción para
-    evitar estados intermedios donde falten pares. Si Scryfall falla, dejamos
-    la tabla anterior intacta.
-    """
     stale = await _is_stale(db)
     existing_count = await _count(db)
     if not stale and existing_count > 0:
         return {"synced": False, "pairs": existing_count, "reason": "up_to_date"}
 
-    log.info("Sincronizando DFC pairs desde Scryfall (existentes=%d, stale=%s)…",
-             existing_count, stale)
+    log.info(
+        "Sincronizando DFC pairs desde Scryfall (existentes=%d, stale=%s)…", existing_count, stale
+    )
     try:
         pairs = await _fetch_all_pairs(scryfall)
     except Exception as e:
@@ -209,39 +151,27 @@ async def sync_if_stale(db: AsyncSession, scryfall: ScryfallClient) -> dict[str,
     await _mark_synced(db)
     await db.commit()
 
-    log.info("DFC pairs sincronizados: %d pares (%d DFCs regulares, %d meld pieces)",
-             len(pairs),
-             sum(1 for p in pairs if p.kind in {"transform", "modal_dfc"}),
-             sum(1 for p in pairs if p.kind.startswith("meld_")))
+    log.info(
+        "DFC pairs sincronizados: %d pares (%d DFCs regulares, %d meld pieces)",
+        len(pairs),
+        sum(1 for p in pairs if p.kind in {"transform", "modal_dfc"}),
+        sum(1 for p in pairs if p.kind.startswith("meld_")),
+    )
     return {"synced": True, "pairs": len(pairs), "reason": "refreshed"}
 
 
 async def bulk_lookup(db: AsyncSession, names: list[str]) -> dict[str, dict[str, str]]:
-    """Lookup masivo de nombres → ``{"back_name": ..., "kind": ...}`` desde cache.
-
-    Uso: previews de import ("¿cuántas cartas de mi decklist son DFC?"),
-    analytics, y cualquier UI que necesite saber qué cartas son doble-cara
-    SIN hacer round-trip a Scryfall.
-
-    - Un solo `SELECT WHERE lower(front_name) IN (…)` — O(N) filas
-      escaneadas gracias al índice ``ix_dfc_pairs_front_lower``.
-    - Case-insensitive: el mapa de salida usa el nombre EXACTO que el
-      caller pidió (útil para reconciliar con el input original).
-
-    Devuelve solo las cartas que están en el cache. Las que no están en el
-    cache se omiten (no significa que no sean DFC — puede ser que el cache
-    esté desactualizado; el caller decide qué hacer).
-    """
     if not names:
         return {}
     lowered = [n.lower() for n in names if n]
-    rows = (await db.execute(
-        select(DFCPair.front_name, DFCPair.back_name, DFCPair.kind)
-        .where(func.lower(DFCPair.front_name).in_(lowered))
-    )).all()
-    by_lower: dict[str, tuple[str, str]] = {
-        f.lower(): (b, k) for f, b, k in rows
-    }
+    rows = (
+        await db.execute(
+            select(DFCPair.front_name, DFCPair.back_name, DFCPair.kind).where(
+                func.lower(DFCPair.front_name).in_(lowered)
+            )
+        )
+    ).all()
+    by_lower: dict[str, tuple[str, str]] = {f.lower(): (b, k) for f, b, k in rows}
     out: dict[str, dict[str, str]] = {}
     for n in names:
         if not n:
@@ -253,7 +183,6 @@ async def bulk_lookup(db: AsyncSession, names: list[str]) -> dict[str, dict[str,
 
 
 async def stats(db: AsyncSession) -> dict[str, Any]:
-    """Info para la UI de Ajustes / debug."""
     total = await _count(db)
     kv = await db.get(KeyValue, _LAST_SYNC_KEY)
     last = kv.value if kv else None

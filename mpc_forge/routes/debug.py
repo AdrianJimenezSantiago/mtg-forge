@@ -1,4 +1,3 @@
-"""Endpoints de debug: acceso al log temporal para diagnóstico."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -20,7 +19,6 @@ class LogInfoResponse(BaseModel):
 
 @router.get("/log/info", response_model=LogInfoResponse)
 async def log_info() -> LogInfoResponse:
-    """Info del log actual (existe, ruta, tamaño)."""
     p = logging_setup.current_log_path()
     if p is None or not p.exists():
         return LogInfoResponse(exists=False, path=None)
@@ -33,14 +31,12 @@ async def log_info() -> LogInfoResponse:
 
 @router.get("/log/tail", response_class=PlainTextResponse)
 async def log_tail(n: int = 200) -> str:
-    """Últimas N líneas del log, en texto plano."""
     n = max(1, min(n, 5000))
     return logging_setup.read_tail(n_lines=n)
 
 
 @router.get("/log/download")
 async def log_download():
-    """Descarga el log completo como archivo .txt para compartirlo."""
     p = logging_setup.current_log_path()
     if p is None or not p.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay log activo")

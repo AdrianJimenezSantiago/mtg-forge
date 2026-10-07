@@ -1,8 +1,3 @@
-"""Tests del modo offline (bulk data) y de la caché de imágenes del PDF.
-
-Cubren los ítems 9 y 11 de la hoja de ruta. Ninguno toca la red: el volcado de
-Scryfall se simula con un JSON pequeño de la misma forma que el real.
-"""
 from __future__ import annotations
 
 import json
@@ -149,13 +144,11 @@ class TestCardMapping:
 
 
 class TestIncrementalParser:
-    """El parser de respaldo para cuando ijson no está instalado."""
-
     def _parse_all(self, text: str, chunk_size: int) -> list[dict]:
         parser = bulk_data._IncrementalArrayParser()
         out = []
         for i in range(0, len(text), chunk_size):
-            out.extend(parser.feed(text[i:i + chunk_size]))
+            out.extend(parser.feed(text[i : i + chunk_size]))
         return out
 
     def test_parses_a_small_array(self):
@@ -164,28 +157,31 @@ class TestIncrementalParser:
 
     @pytest.mark.parametrize("chunk_size", [1, 3, 17, 128, 100000])
     def test_result_is_independent_of_chunk_boundaries(self, chunk_size):
-        """Los cortes de red caen en sitios arbitrarios, incluso a mitad de
-        una cadena o de un carácter de escape."""
         payload = json.dumps([SIMPLE_CARD, DFC_CARD, TOKEN_WITH_PARTS])
         cards = self._parse_all(payload, chunk_size)
         assert len(cards) == 3
         assert [c["id"] for c in cards] == ["aaaa-1111", "bbbb-2222", "cccc-3333"]
 
     def test_handles_braces_inside_strings(self):
-        """Un `{` dentro de una cadena no abre un objeto.
-
-        Los costes de maná de Magic son literalmente `{2}{U}{U}`, así que este
-        caso no es hipotético: aparece en casi todas las cartas.
-        """
-        tricky = {"id": "1", "oracle_id": "o", "name": "Counterspell",
-                  "layout": "normal", "mana_cost": "{U}{U}"}
+        tricky = {
+            "id": "1",
+            "oracle_id": "o",
+            "name": "Counterspell",
+            "layout": "normal",
+            "mana_cost": "{U}{U}",
+        }
         cards = self._parse_all(json.dumps([tricky]), 5)
         assert len(cards) == 1
         assert cards[0]["mana_cost"] == "{U}{U}"
 
     def test_handles_escaped_quotes(self):
-        tricky = {"id": "1", "oracle_id": "o", "layout": "normal",
-                  "name": 'Ach! Hans, Run!', "flavor": 'dijo \\"corre\\"'}
+        tricky = {
+            "id": "1",
+            "oracle_id": "o",
+            "layout": "normal",
+            "name": "Ach! Hans, Run!",
+            "flavor": 'dijo \\"corre\\"',
+        }
         cards = self._parse_all(json.dumps([tricky]), 7)
         assert len(cards) == 1
 
@@ -193,16 +189,11 @@ class TestIncrementalParser:
         assert self._parse_all("[]", 1) == []
 
     def test_buffer_does_not_grow_unbounded(self):
-        """El buffer debe vaciarse al emitir cada objeto.
-
-        Sin esto el parser acumularía los 500 MB del volcado en memoria, que es
-        justo lo que el streaming pretende evitar.
-        """
         parser = bulk_data._IncrementalArrayParser()
         payload = json.dumps([SIMPLE_CARD] * 50)
         consumed = 0
         for i in range(0, len(payload), 512):
-            consumed += len(list(parser.feed(payload[i:i + 512])))
+            consumed += len(list(parser.feed(payload[i : i + 512])))
         assert consumed == 50
         assert len(parser._buf) < 4096, (
             f"El buffer retiene {len(parser._buf)} caracteres tras procesar "
@@ -247,27 +238,32 @@ class TestProgressReporting:
         p = bulk_data.BulkProgress(bytes_total=1000, bytes_downloaded=250)
         assert p.to_dict()["percent"] == 25.0
 
-    @pytest.mark.parametrize("phase,expected", [
-        ("idle", False), ("manifest", True), ("downloading", True),
-        ("importing", True), ("done", False), ("error", False),
-    ])
+    @pytest.mark.parametrize(
+        "phase,expected",
+        [
+            ("idle", False),
+            ("manifest", True),
+            ("downloading", True),
+            ("importing", True),
+            ("done", False),
+            ("error", False),
+        ],
+    )
     def test_active_flag_matches_phase(self, phase, expected):
         assert bulk_data.BulkProgress(phase=phase).to_dict()["active"] is expected
 
 
 class TestImageReaderCache:
-    """Ítem 11: reutilizar el ImageReader para las cartas repetidas."""
-
     @pytest.fixture
     def sample_image(self, tmp_path) -> Path:
         pytest.importorskip("PIL")
         from PIL import Image
+
         path = tmp_path / "card.png"
         Image.new("RGB", (100, 140), (20, 40, 80)).save(path)
         return path
 
     def test_repeated_path_returns_the_same_object(self, sample_image):
-        """ReportLab solo deduplica los bytes si recibe el MISMO objeto."""
         cache = _ImageReaderCache()
         first = cache.get(str(sample_image))
         second = cache.get(str(sample_image))
@@ -282,6 +278,7 @@ class TestImageReaderCache:
 
     def test_different_paths_are_separate_entries(self, sample_image, tmp_path):
         from PIL import Image
+
         other = tmp_path / "other.png"
         Image.new("RGB", (100, 140), (200, 10, 10)).save(other)
 

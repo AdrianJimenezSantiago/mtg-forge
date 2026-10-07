@@ -1,5 +1,3 @@
-"""Tests de las features de esta iteración: duplicar, buscar cartas,
-deshacer eventos y progreso de build."""
 from __future__ import annotations
 
 
@@ -17,8 +15,7 @@ class TestDuplicateDeck:
         assert original_names == new_names
 
     async def test_duplicate_with_custom_name(self, client, deck):
-        r = await client.post(f"/api/decks/{deck['id']}/duplicate",
-                              json={"name": "My Variant"})
+        r = await client.post(f"/api/decks/{deck['id']}/duplicate", json={"name": "My Variant"})
         assert r.status_code == 201
         assert r.json()["name"] == "My Variant"
 
@@ -37,8 +34,7 @@ class TestDuplicateDeck:
         assert r.status_code == 404
 
     async def test_duplicate_with_empty_name_falls_back_to_default(self, client, deck):
-        r = await client.post(f"/api/decks/{deck['id']}/duplicate",
-                              json={"name": "   "})
+        r = await client.post(f"/api/decks/{deck['id']}/duplicate", json={"name": "   "})
         assert r.status_code == 400
 
 
@@ -109,15 +105,14 @@ class TestUndo:
 
     async def test_undo_card_moved(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "sideboard"})
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
 
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         moved_event = next(e for e in events if e["kind"] == "card_moved")
 
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{moved_event['id']}/undo"
-        )
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{moved_event['id']}/undo")
         assert r.status_code == 200
         assert "mainboard" in r.json()["summary"]
 
@@ -130,9 +125,7 @@ class TestUndo:
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         renamed = next(e for e in events if e["kind"] == "deck_renamed")
 
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{renamed['id']}/undo"
-        )
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{renamed['id']}/undo")
         assert r.status_code == 200
 
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
@@ -140,15 +133,12 @@ class TestUndo:
 
     async def test_undo_card_qty_changed(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Command Tower")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"quantity": 5})
+        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}", json={"quantity": 5})
 
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         qty_event = next(e for e in events if e["kind"] == "card_qty_changed")
 
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{qty_event['id']}/undo"
-        )
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{qty_event['id']}/undo")
         assert r.status_code == 200
 
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
@@ -156,17 +146,20 @@ class TestUndo:
         assert ct["quantity"] == 1
 
     async def test_undo_card_added_removes_the_card(self, client, deck):
-        r = await client.post(f"/api/decks/{deck['id']}/cards", json={
-            "name": "Lightning Bolt", "quantity": 1, "role": "mainboard",
-        })
+        r = await client.post(
+            f"/api/decks/{deck['id']}/cards",
+            json={
+                "name": "Lightning Bolt",
+                "quantity": 1,
+                "role": "mainboard",
+            },
+        )
         assert r.status_code == 201
 
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         added = next(e for e in events if e["kind"] == "card_added")
 
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{added['id']}/undo"
-        )
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{added['id']}/undo")
         assert r.status_code == 200
 
         deck_after = (await client.get(f"/api/decks/{deck['id']}")).json()
@@ -174,37 +167,34 @@ class TestUndo:
 
     async def test_undo_returns_409_if_state_diverged(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "sideboard"})
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         first_move = next(e for e in events if e["kind"] == "card_moved")
 
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "maybeboard"})
-
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{first_move['id']}/undo"
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "maybeboard"}
         )
+
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{first_move['id']}/undo")
         assert r.status_code == 409
 
     async def test_undo_non_reversible_returns_400(self, client, deck):
         events = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         created = next(e for e in events if e["kind"] == "deck_created")
 
-        r = await client.post(
-            f"/api/decks/{deck['id']}/activity/{created['id']}/undo"
-        )
+        r = await client.post(f"/api/decks/{deck['id']}/activity/{created['id']}/undo")
         assert r.status_code == 400
 
     async def test_undo_emits_new_event_in_timeline(self, client, deck):
         card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
-        await client.patch(f"/api/decks/{deck['id']}/cards/{card['id']}",
-                           json={"role": "sideboard"})
+        await client.patch(
+            f"/api/decks/{deck['id']}/cards/{card['id']}", json={"role": "sideboard"}
+        )
         events_before = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         moved = next(e for e in events_before if e["kind"] == "card_moved")
-        await client.post(
-            f"/api/decks/{deck['id']}/activity/{moved['id']}/undo"
-        )
+        await client.post(f"/api/decks/{deck['id']}/activity/{moved['id']}/undo")
 
         events_after = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         assert len(events_after) == len(events_before) + 1
@@ -221,12 +211,8 @@ class TestBuildProgress:
         assert data["deck_id"] == deck["id"]
 
     async def test_progress_state_after_manual_start(self, client, deck):
-        """Simulamos que el servicio se ha iniciado — el endpoint debe reflejarlo.
-
-        No podemos ejecutar build_xml aquí (necesitaría descargar arte real),
-        pero sí podemos verificar que el módulo build_progress se lee bien.
-        """
         from mpc_forge.services import build_progress
+
         build_progress.start(deck["id"], total=10, kind="xml")
         build_progress.tick(deck["id"], "Sol Ring")
         build_progress.tick(deck["id"], "Command Tower")
@@ -249,8 +235,6 @@ class TestBuildProgress:
 
 class TestPerformanceEndpoints:
     async def test_validation_endpoint_returns_only_validation(self, client, deck):
-        """Nuevo endpoint /validation: alternativa ligera a GET /{id} para
-        cuando solo hace falta refrescar contadores tras un toggle."""
         r = await client.get(f"/api/decks/{deck['id']}/validation")
         assert r.status_code == 200
         val = r.json()
@@ -268,7 +252,6 @@ class TestPerformanceEndpoints:
         assert r.status_code == 404
 
     async def test_list_decks_returns_summary_view(self, client, deck):
-        """list_decks devuelve DeckSummaryView (ligero), no DeckView completo."""
         r = await client.get("/api/decks/")
         assert r.status_code == 200
         summaries = r.json()
@@ -293,15 +276,22 @@ class TestPathOverrides:
         r = await client.get("/api/settings/paths")
         assert r.status_code == 200
         data = r.json()
-        for key in ("install_root", "data_dir", "db_path", "art_dir",
-                    "custom_art_dir", "exports_dir", "backups_dir", "cardbacks_dir"):
+        for key in (
+            "install_root",
+            "data_dir",
+            "db_path",
+            "art_dir",
+            "custom_art_dir",
+            "exports_dir",
+            "backups_dir",
+            "cardbacks_dir",
+        ):
             assert key in data, f"Falta {key}"
             assert data[key], f"{key} está vacío"
 
     async def test_paths_default_uses_install_root_when_writable(self):
-        """Cuando la carpeta de instalación es escribible, el default apunta
-        a install_root()/user-settings/ (modo portable)."""
         from mpc_forge.paths import install_root
+
         try:
             (install_root() / "user-settings").mkdir(parents=True, exist_ok=True)
             probe = install_root() / "user-settings" / ".write_test"
@@ -314,13 +304,13 @@ class TestPathOverrides:
             assert (install_root() / "user-settings").exists()
 
     async def test_with_overrides_never_changes_data_dir(self):
-        """Aunque el usuario pase overrides mala fe, data_dir y db_path
-        NUNCA se modifican — son inmutables por diseño."""
         from mpc_forge import config as cfg
+
         original_data_dir = cfg.PATHS.data_dir
         original_db_path = cfg.PATHS.db_path
         import tempfile
         from pathlib import Path
+
         new_art = Path(tempfile.gettempdir()) / "mtg_new_art"
         new_custom = Path(tempfile.gettempdir()) / "mtg_new_custom"
 
@@ -334,8 +324,8 @@ class TestPathOverrides:
         assert Path(new_paths.custom_art_dir).resolve() == new_custom.resolve()
 
     async def test_with_overrides_empty_string_keeps_default(self):
-        """Un override vacío = usa el default (no rompe la app)."""
         from mpc_forge import config as cfg
+
         new_paths = cfg.PATHS.with_overrides(
             art_dir="",
             exports_dir="   ",
@@ -344,43 +334,34 @@ class TestPathOverrides:
         assert new_paths.exports_dir == cfg.PATHS.exports_dir
 
     async def test_with_overrides_invalid_path_falls_back_silently(self):
-        """Si el path no se puede crear (permission denied), cae al default
-        sin lanzar excepción — la UI ya validó, pero por si acaso no
-        dejamos la app rota."""
         from mpc_forge import config as cfg
+
         new_paths = cfg.PATHS.with_overrides(
             art_dir="/tmp/\x00/invalid",
         )
         assert new_paths.art_dir == cfg.PATHS.art_dir
 
     async def test_saving_path_override_persists_and_applies(self, client):
-        """El flujo completo: PUT /api/settings/ con un paths.* válido lo
-        guarda y aplica a cfg.PATHS via apply_to_config."""
         import tempfile
 
         from mpc_forge import config as cfg
 
         custom_dir = tempfile.mkdtemp(prefix="mtgforge_path_test_")
 
-        r = await client.put("/api/settings/", json={
-            "values": {"paths.art_dir": custom_dir}
-        })
+        r = await client.put("/api/settings/", json={"values": {"paths.art_dir": custom_dir}})
         assert r.status_code == 200
 
         from pathlib import Path
+
         assert Path(cfg.PATHS.art_dir).resolve() == Path(custom_dir).resolve()
 
         r = await client.get("/api/settings/paths")
         assert Path(r.json()["art_dir"]).resolve() == Path(custom_dir).resolve()
 
-        r = await client.put("/api/settings/", json={
-            "values": {"paths.art_dir": ""}
-        })
+        r = await client.put("/api/settings/", json={"values": {"paths.art_dir": ""}})
         assert r.status_code == 200
 
     async def test_paths_definition_appears_in_settings_dump(self, client):
-        """Las nuevas SettingDefs de tipo 'path' aparecen en /api/settings/
-        con el grupo correcto y el tipo correcto."""
         r = await client.get("/api/settings/")
         defs = r.json()["definitions"]
         path_defs = [d for d in defs if d["key"].startswith("paths.")]

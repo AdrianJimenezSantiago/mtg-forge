@@ -1,25 +1,3 @@
-"""Snapshots de mazo: fotos congeladas que se pueden restaurar.
-
-``DeckActivity`` ya registraba evento a evento y permitía deshacer uno concreto,
-pero no respondía a "devuélvelo a como estaba antes del torneo". Deshacer
-veinte cambios uno a uno no es lo mismo que volver a un punto conocido.
-
-Un snapshot serializa la lista completa —cartas, cantidades, roles, artes
-elegidos— en un JSON y permite restaurarla o compararla con otra.
-
-Automáticos vs manuales
------------------------
-Las operaciones masivas (aplicar un tema de arte, localizar el mazo entero a
-otro idioma) crean un snapshot automático antes de tocar nada. Esos se podan:
-se conservan los ``MAX_AUTO_SNAPSHOTS`` más recientes por mazo. Los que crea el
-usuario a mano no se borran nunca — son suyos.
-
-Por qué JSON y no filas
------------------------
-Un snapshot es un valor inmutable que solo se lee entero. Normalizarlo en una
-tabla de "cartas del snapshot" añadiría un join y una FK por cada restauración
-sin ganar nada: nunca se consulta "en qué snapshots aparece Sol Ring".
-"""
 from __future__ import annotations
 
 import json
@@ -49,8 +27,10 @@ class DiffEntry:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "name": self.name, "change": self.change,
-            "before": self.before, "after": self.after,
+            "name": self.name,
+            "change": self.change,
+            "before": self.before,
+            "after": self.after,
         }
 
 
@@ -74,14 +54,19 @@ async def create(
     label: str = "",
     auto: bool = False,
 ) -> dict[str, Any] | None:
-    """Congela el estado actual del mazo."""
     deck = await db.get(Deck, deck_id)
     if deck is None:
         return None
 
-    cards = (await db.execute(
-        select(DeckCard).where(DeckCard.deck_id == deck_id).order_by(DeckCard.name)
-    )).scalars().all()
+    cards = (
+        (
+            await db.execute(
+                select(DeckCard).where(DeckCard.deck_id == deck_id).order_by(DeckCard.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     payload = {
         "version": PAYLOAD_VERSION,
@@ -103,8 +88,12 @@ async def create(
     if auto:
         await prune_auto(db, deck_id)
 
-    log.info("Snapshot '%s' creado para el mazo %d (%d cartas)",
-             snapshot.label, deck_id, snapshot.card_count)
+    log.info(
+        "Snapshot '%s' creado para el mazo %d (%d cartas)",
+        snapshot.label,
+        deck_id,
+        snapshot.card_count,
+    )
     return _snapshot_to_dict(snapshot)
 
 
@@ -125,21 +114,32 @@ def _snapshot_to_dict(s: DeckSnapshot) -> dict[str, Any]:
 
 
 async def list_for_deck(db: AsyncSession, deck_id: int) -> list[dict[str, Any]]:
-    rows = (await db.execute(
-        select(DeckSnapshot)
-        .where(DeckSnapshot.deck_id == deck_id)
-        .order_by(DeckSnapshot.created_at.desc())
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(DeckSnapshot)
+                .where(DeckSnapshot.deck_id == deck_id)
+                .order_by(DeckSnapshot.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [_snapshot_to_dict(s) for s in rows]
 
 
 async def prune_auto(db: AsyncSession, deck_id: int) -> int:
-    """Borra los snapshots automáticos más antiguos. Devuelve cuántos."""
-    rows = (await db.execute(
-        select(DeckSnapshot.id)
-        .where(DeckSnapshot.deck_id == deck_id, DeckSnapshot.auto.is_(True))
-        .order_by(DeckSnapshot.created_at.desc())
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(DeckSnapshot.id)
+                .where(DeckSnapshot.deck_id == deck_id, DeckSnapshot.auto.is_(True))
+                .order_by(DeckSnapshot.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     stale = list(rows)[MAX_AUTO_SNAPSHOTS:]
     if not stale:
@@ -152,16 +152,6 @@ async def prune_auto(db: AsyncSession, deck_id: int) -> int:
 async def restore(
     db: AsyncSession, snapshot_id: int, *, keep_current_as: str = ""
 ) -> dict[str, Any] | None:
-    """Devuelve el mazo al estado del snapshot.
-
-    Antes de sobrescribir se guarda el estado actual como snapshot automático:
-    restaurar por error no debe ser un callejón sin salida.
-
-    Las cartas se reemplazan por completo en vez de intentar un merge. Un
-    merge tendría que decidir qué hacer con las cartas añadidas después del
-    snapshot, y cualquier respuesta sorprendería a alguien; "vuelve exactamente
-    a como estaba" no tiene ambigüedad.
-    """
     snapshot = await db.get(DeckSnapshot, snapshot_id)
     if snapshot is None or snapshot.deck_id is None:
         return None
@@ -179,32 +169,36 @@ async def restore(
         log.warning(
             "El snapshot %d es de la versión %s y esta build espera la %s; "
             "se intenta restaurar igualmente.",
-            snapshot_id, payload.get("version"), PAYLOAD_VERSION,
+            snapshot_id,
+            payload.get("version"),
+            PAYLOAD_VERSION,
         )
 
     await create(
-        db, deck.id,
+        db,
+        deck.id,
         label=keep_current_as or f"Antes de restaurar «{snapshot.label}»",
         auto=True,
     )
 
     await db.execute(delete(DeckCard).where(DeckCard.deck_id == deck.id))
     for card in payload.get("cards", []):
-        db.add(DeckCard(
-            deck_id=deck.id,
-            oracle_id=card.get("oracle_id", ""),
-            name=card.get("name", ""),
-            quantity=int(card.get("quantity", 1)),
-            scryfall_id=card.get("scryfall_id", ""),
-            custom_art_front_id=card.get("custom_art_front_id"),
-            custom_art_back_id=card.get("custom_art_back_id"),
-            role=card.get("role", "mainboard"),
-            include=bool(card.get("include", True)),
-        ))
+        db.add(
+            DeckCard(
+                deck_id=deck.id,
+                oracle_id=card.get("oracle_id", ""),
+                name=card.get("name", ""),
+                quantity=int(card.get("quantity", 1)),
+                scryfall_id=card.get("scryfall_id", ""),
+                custom_art_front_id=card.get("custom_art_front_id"),
+                custom_art_back_id=card.get("custom_art_back_id"),
+                role=card.get("role", "mainboard"),
+                include=bool(card.get("include", True)),
+            )
+        )
     await db.commit()
 
-    log.info("Mazo %d restaurado al snapshot %d ('%s')",
-             deck.id, snapshot_id, snapshot.label)
+    log.info("Mazo %d restaurado al snapshot %d ('%s')", deck.id, snapshot_id, snapshot.label)
     return {
         "deck_id": deck.id,
         "snapshot_id": snapshot_id,
@@ -216,7 +210,6 @@ async def restore(
 async def diff(
     db: AsyncSession, snapshot_id: int, other_snapshot_id: int | None = None
 ) -> dict[str, Any] | None:
-    """Compara un snapshot con otro, o con el estado actual del mazo."""
     base = await db.get(DeckSnapshot, snapshot_id)
     if base is None or base.deck_id is None:
         return None
@@ -236,9 +229,11 @@ async def diff(
             return None
         other_label = other.label
     else:
-        rows = (await db.execute(
-            select(DeckCard).where(DeckCard.deck_id == base.deck_id)
-        )).scalars().all()
+        rows = (
+            (await db.execute(select(DeckCard).where(DeckCard.deck_id == base.deck_id)))
+            .scalars()
+            .all()
+        )
         other_cards = [_serialize_card(c) for c in rows]
         other_label = "Estado actual"
 
@@ -257,15 +252,7 @@ async def diff(
     }
 
 
-def _diff_lists(
-    before: list[dict[str, Any]], after: list[dict[str, Any]]
-) -> list[DiffEntry]:
-    """Compara dos listas de cartas serializadas.
-
-    Se indexa por ``oracle_id`` y no por nombre: el mazo puede haberse
-    localizado a otro idioma entre los dos estados, y entonces todas las cartas
-    saldrían como "eliminada" y "añadida" pese a ser las mismas.
-    """
+def _diff_lists(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[DiffEntry]:
     def index(cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
         for card in cards:
@@ -280,25 +267,21 @@ def _diff_lists(
     entries: list[DiffEntry] = []
 
     for key in a.keys() - b.keys():
-        entries.append(DiffEntry(a[key].get("name", key), "removed",
-                                 before=a[key].get("quantity")))
+        entries.append(DiffEntry(a[key].get("name", key), "removed", before=a[key].get("quantity")))
     for key in b.keys() - a.keys():
-        entries.append(DiffEntry(b[key].get("name", key), "added",
-                                 after=b[key].get("quantity")))
+        entries.append(DiffEntry(b[key].get("name", key), "added", after=b[key].get("quantity")))
 
     for key in a.keys() & b.keys():
         old, new = a[key], b[key]
         name = new.get("name", key)
         if old.get("quantity") != new.get("quantity"):
-            entries.append(DiffEntry(name, "quantity",
-                                     old.get("quantity"), new.get("quantity")))
-        if (old.get("scryfall_id") != new.get("scryfall_id")
-                or old.get("custom_art_front_id") != new.get("custom_art_front_id")):
-            entries.append(DiffEntry(name, "art",
-                                     old.get("scryfall_id"), new.get("scryfall_id")))
+            entries.append(DiffEntry(name, "quantity", old.get("quantity"), new.get("quantity")))
+        if old.get("scryfall_id") != new.get("scryfall_id") or old.get(
+            "custom_art_front_id"
+        ) != new.get("custom_art_front_id"):
+            entries.append(DiffEntry(name, "art", old.get("scryfall_id"), new.get("scryfall_id")))
         if old.get("role") != new.get("role"):
-            entries.append(DiffEntry(name, "role",
-                                     old.get("role"), new.get("role")))
+            entries.append(DiffEntry(name, "role", old.get("role"), new.get("role")))
 
     entries.sort(key=lambda e: (e.change, e.name))
     return entries

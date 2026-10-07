@@ -1,42 +1,3 @@
-"""Motor de migraciones incrementales NO destructivas.
-
-Sustituye al esquema anterior (``SCHEMA_VERSION`` + ``drop_all`` cuando la
-versión cambiaba), que borraba mazos, historial y colección del usuario en cada
-cambio de esquema. Ese comportamiento se ejecutó 8 veces en la vida del
-proyecto.
-
-Reglas de este módulo
----------------------
-
-1. **Nunca se borran datos.** No hay ``drop_all`` en ninguna ruta de código.
-2. Cada migración es un escalón numerado que lleva la BD de ``N-1`` a ``N``.
-3. Se aplican en orden, cada una en su propia transacción. Si una falla, se
-   hace rollback de esa migración y la versión NO avanza — la app arranca con
-   el esquema anterior en vez de quedarse a medias.
-4. Antes de tocar nada se crea un backup automático (salvo que la BD sea nueva
-   o no haya nada que aplicar).
-
-Por qué no Alembic
-------------------
-Alembic es la respuesta correcta para un servicio con despliegue controlado.
-Aquí distribuimos un ``.exe`` de PyInstaller: Alembic necesita que los scripts
-de migración viajen como *data files*, resuelve el ``script_location`` en
-runtime y arrastra su propio parser de configuración. Para un SQLite de un solo
-fichero con migraciones lineales (sin ramas, sin múltiples cabezas, sin
-downgrade real posible en SQLite) el coste de empaquetado no compensa. Este
-módulo cubre el mismo contrato en ~200 líneas y sin dependencias nuevas.
-
-Añadir una migración
---------------------
-Apéndala al final de ``MIGRATIONS`` con ``version`` = anterior + 1. Nunca
-edites ni renumeres una migración ya publicada: los usuarios que la aplicaron
-tienen esa versión sellada y no volverá a ejecutarse.
-
-Las sentencias deben ser idempotentes siempre que sea posible
-(``IF NOT EXISTS``, ``add_column_if_missing``), porque una migración
-interrumpida a mitad (corte de luz) puede reintentarse en el siguiente
-arranque.
-"""
 from __future__ import annotations
 
 import logging
@@ -52,12 +13,6 @@ BASELINE_VERSION = 8
 
 @dataclass(frozen=True)
 class Migration:
-    """Un escalón del ladder.
-
-    ``statements`` son SQL crudo. ``callback`` permite migraciones que
-    necesitan lógica Python (leer filas, transformarlas, reescribirlas);
-    recibe la conexión y se ejecuta después de las sentencias.
-    """
     version: int
     description: str
     statements: list[str] = field(default_factory=list)
@@ -65,7 +20,6 @@ class Migration:
 
 
 async def column_exists(conn, table: str, column: str) -> bool:
-    """¿Existe la columna? SQLite no tiene ``ADD COLUMN IF NOT EXISTS``."""
     result = await conn.execute(text(f"PRAGMA table_info({table})"))
     return column in {row[1] for row in result}
 
@@ -79,7 +33,6 @@ async def table_exists(conn, table: str) -> bool:
 
 
 async def add_column_if_missing(conn, table: str, column: str, ddl: str) -> bool:
-    """Añade la columna solo si falta. Devuelve True si la añadió."""
     if not await table_exists(conn, table):
         return False
     if await column_exists(conn, table, column):
@@ -90,8 +43,7 @@ async def add_column_if_missing(conn, table: str, column: str, ddl: str) -> bool
 
 
 LEGACY_COLUMNS: list[tuple[str, str, str]] = [
-    ("decks", "custom_cardback_art_id",
-     "INTEGER REFERENCES custom_arts(id) ON DELETE SET NULL"),
+    ("decks", "custom_cardback_art_id", "INTEGER REFERENCES custom_arts(id) ON DELETE SET NULL"),
     ("indexed_art", "tags", "VARCHAR(512) DEFAULT ''"),
     ("indexed_art", "is_full_art", "BOOLEAN DEFAULT 0"),
     ("indexed_art", "is_borderless", "BOOLEAN DEFAULT 0"),
@@ -192,12 +144,11 @@ LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
 
 
 async def read_version(conn) -> int | None:
-    """Versión actual del esquema, o None si la BD es nueva."""
     if not await table_exists(conn, "kv_store"):
         return None
-    row = (await conn.execute(
-        text("SELECT value FROM kv_store WHERE key='schema_version'")
-    )).first()
+    row = (
+        await conn.execute(text("SELECT value FROM kv_store WHERE key='schema_version'"))
+    ).first()
     if not row:
         return None
     try:
@@ -208,19 +159,12 @@ async def read_version(conn) -> int | None:
 
 async def stamp_version(conn, version: int) -> None:
     await conn.execute(
-        text("INSERT OR REPLACE INTO kv_store (key, value) "
-             "VALUES ('schema_version', :v)"),
+        text("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('schema_version', :v)"),
         {"v": str(version)},
     )
 
 
 async def adopt_legacy(conn) -> None:
-    """Adopta una BD del sistema antiguo sin borrar nada.
-
-    El sistema viejo hacía ``drop_all`` en este punto. Aquí, en cambio,
-    ``create_all`` ya ha creado las tablas que faltaban y solo hay que
-    asegurar las columnas que el viejo añadía en caliente.
-    """
     added = 0
     for table, column, ddl in LEGACY_COLUMNS:
         if await add_column_if_missing(conn, table, column, ddl):
@@ -230,15 +174,6 @@ async def adopt_legacy(conn) -> None:
 
 
 async def run(conn, *, on_backup=None) -> dict[str, object]:
-    """Aplica todas las migraciones pendientes.
-
-    ``conn`` es una conexión async ya dentro de ``engine.begin()``, con las
-    tablas de ``metadata.create_all`` ya creadas.
-
-    ``on_backup`` es un callable síncrono opcional que crea el backup de
-    seguridad. Se invoca UNA sola vez, justo antes de la primera migración
-    real, y solo si la BD ya tenía datos. Devuelve la ruta del backup.
-    """
     current = await read_version(conn)
     report: dict[str, object] = {
         "from_version": current,
@@ -257,7 +192,8 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
         log.warning(
             "La BD está en la versión %d, más nueva que la que soporta esta "
             "build (%d). Se continúa sin migrar — considera actualizar la app.",
-            current, LATEST_VERSION,
+            current,
+            LATEST_VERSION,
         )
         return report
 
@@ -266,7 +202,8 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
     if current < BASELINE_VERSION:
         log.info(
             "BD del sistema antiguo (v%s). Adoptando a v%d sin borrar datos.",
-            current, BASELINE_VERSION,
+            current,
+            BASELINE_VERSION,
         )
         if on_backup is not None and report["backup_path"] is None:
             report["backup_path"] = _safe_backup(on_backup)
@@ -301,7 +238,9 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
             log.exception(
                 "Migración %d falló. La BD se queda en la versión %d y la app "
                 "arranca normalmente. Backup: %s",
-                migration.version, current, report["backup_path"],
+                migration.version,
+                current,
+                report["backup_path"],
             )
             report["failed_at"] = migration.version
             break
@@ -313,21 +252,6 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
 
 
 async def _execute_tolerant(conn, stmt: str) -> None:
-    """Ejecuta una sentencia filtrando los errores que son "ya estaba hecho".
-
-    Dos casos se toleran, y solo esos dos:
-
-    * **duplicate column name / already exists** — un ``ALTER TABLE ... ADD
-      COLUMN`` no admite ``IF NOT EXISTS``. En vez de consultar PRAGMA antes de
-      cada sentencia, dejamos que falle y filtramos ese error concreto.
-
-    * **no such table**, únicamente en ``ALTER TABLE`` y ``CREATE INDEX`` — la
-      tabla no existía cuando corrió la migración porque ``create_all`` la
-      creará (o ya la creó) directamente con la columna incluida. Migrar una
-      tabla que el modelo va a materializar completa es un no-op legítimo.
-
-    Cualquier otro error se propaga y dispara el rollback del savepoint.
-    """
     try:
         await conn.execute(text(stmt))
     except Exception as e:
@@ -344,12 +268,6 @@ async def _execute_tolerant(conn, stmt: str) -> None:
 
 
 def _safe_backup(on_backup) -> str | None:
-    """Ejecuta el callback de backup sin dejar que un fallo bloquee el arranque.
-
-    Un backup fallido (disco lleno, permisos) es malo, pero impedir que la app
-    arranque es peor: el usuario se quedaría sin acceso a sus propios datos.
-    Se registra el error de forma bien visible y se continúa.
-    """
     try:
         path = on_backup()
         log.info("Backup previo a migración creado: %s", path)

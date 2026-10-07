@@ -1,44 +1,3 @@
-"""``S3SourceType``: indexa un bucket S3 o Cloudflare R2 público.
-
-Motivación
-----------
-Complementario a `HTTPListingSourceType`. Los usuarios comunitarios cada
-vez más alojan sus artes en Cloudflare R2 (gratis para lectura) o buckets
-S3 públicos, evitando la fragilidad de Google Drive y el rate-limit no
-documentado. Este tipo lista objetos de un bucket público mediante la API
-XML de S3 (que R2 también implementa) — sin credenciales.
-
-URLs aceptadas
---------------
-- ``s3://bucket-name/optional/prefix/``
-- ``https://bucket-name.s3.amazonaws.com/optional/prefix/``
-- ``https://bucket-name.s3.<region>.amazonaws.com/``
-- ``https://<hash>.r2.cloudflarestorage.com/bucket-name/``  (R2 dev domain)
-- ``https://cdn.example.com/`` con parámetro ``bucket=`` en la URL para R2
-  con custom domain (heurística: si no detecta bucket, se pide explícito).
-
-Formato del listing
--------------------
-S3 devuelve XML con `<Contents><Key>...</Key><Size>...</Size></Contents>`
-por objeto. Paginación via `ContinuationToken`. Máximo 1000 objetos por
-llamada — para buckets grandes iteramos.
-
-Descarga y thumbnails
----------------------
-El URL de descarga es directo al objeto: `{bucket-endpoint}/{key}`. Como
-S3/R2 no ofrece thumbnails on-the-fly (a diferencia de gdrive), la URL de
-thumbnail es la misma que download — para buckets grandes convendría
-redimensionar antes de subir (fuera del alcance de este tipo).
-
-Se guardan URLs en ``IndexedArt.download_url`` / ``thumb_url`` para no
-depender del ``file_id`` (que aquí es la key S3, potencialmente larga).
-
-Sin credenciales
-----------------
-Este tipo asume bucket PÚBLICO (lectura anónima). Los buckets S3 privados
-requieren AWS SDK + credenciales — fuera de alcance por complejidad y
-porque los drives comunitarios de MTG son públicos por naturaleza.
-"""
 from __future__ import annotations
 
 import logging
@@ -63,15 +22,6 @@ _MAX_PAGES = 100
 
 
 def _parse_s3_url(raw: str) -> tuple[str, str, str]:
-    """Devuelve ``(bucket, prefix, endpoint)`` a partir de una URL.
-
-    Reconoce:
-      - ``s3://bucket/prefix``            → ("bucket", "prefix", https://bucket.s3.amazonaws.com)
-      - ``https://bucket.s3.amazonaws.com/prefix`` → ("bucket", "prefix", https://bucket.s3.amazonaws.com)
-      - ``https://<hash>.r2.cloudflarestorage.com/bucket/prefix`` → ("bucket", "prefix", <endpoint>)
-
-    Levanta ValueError si no puede parsear.
-    """
     raw = (raw or "").strip()
     if not raw:
         raise ValueError("URL vacía")
@@ -132,8 +82,6 @@ _S3_TRUNCATED_RE = re.compile(r"<IsTruncated>(true|false)</IsTruncated>", re.IGN
 
 
 class S3SourceType(ArtSourceType):
-    """Bucket S3 o Cloudflare R2 público."""
-
     key: ClassVar[str] = "s3"
     label: ClassVar[str] = "S3 / Cloudflare R2 (público)"
 
@@ -148,10 +96,6 @@ class S3SourceType(ArtSourceType):
 
     @classmethod
     def download_url(cls, source: ArtSource, file_id: str) -> str:
-        """URL directa al objeto. `file_id` es la key S3 (path completo dentro
-        del bucket). Como puede tener slashes, devolvemos el URL sin
-        codificación adicional — la key ya viene URL-safe del listing.
-        """
         try:
             bucket, _, endpoint = _parse_s3_url(source.url)
         except ValueError:
@@ -166,14 +110,12 @@ class S3SourceType(ArtSourceType):
 
     @classmethod
     async def _list_page(
-        cls, client: httpx.AsyncClient, endpoint: str, prefix: str,
+        cls,
+        client: httpx.AsyncClient,
+        endpoint: str,
+        prefix: str,
         continuation_token: str | None,
     ) -> tuple[list[tuple[str, int]], str | None]:
-        """Devuelve ``(entries, next_token)`` para una página de ListObjectsV2.
-
-        `entries` es una lista de tuplas ``(key, size)``. `next_token` es
-        None si no hay más páginas.
-        """
         params: dict[str, str] = {
             "list-type": "2",
             "max-keys": str(_MAX_KEYS),
@@ -222,7 +164,10 @@ class S3SourceType(ArtSourceType):
             for page_idx in range(_MAX_PAGES):
                 try:
                     entries, next_token = await cls._list_page(
-                        client, endpoint, prefix, continuation_token,
+                        client,
+                        endpoint,
+                        prefix,
+                        continuation_token,
                     )
                 except httpx.HTTPStatusError as e:
                     raise ArtSourceTypeError(
@@ -239,7 +184,7 @@ class S3SourceType(ArtSourceType):
                     slash = key.rfind("/")
                     if slash > 0:
                         folder_path = key[:slash]
-                        filename = key[slash + 1:]
+                        filename = key[slash + 1 :]
                     else:
                         folder_path = ""
                         filename = key
@@ -260,5 +205,7 @@ class S3SourceType(ArtSourceType):
                 log.warning(
                     "S3 listing en source %d alcanzó el límite de %d páginas "
                     "(%d objetos como máximo). Es posible que falten archivos.",
-                    source.id, _MAX_PAGES, _MAX_PAGES * _MAX_KEYS,
+                    source.id,
+                    _MAX_PAGES,
+                    _MAX_PAGES * _MAX_KEYS,
                 )

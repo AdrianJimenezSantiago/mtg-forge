@@ -1,8 +1,3 @@
-"""Análisis de tokens del mazo y adición masiva de partes relacionadas.
-
-Extraído de `routes/decks.py` durante la división en sub-routers. La lógica no
-ha cambiado.
-"""
 from __future__ import annotations
 
 import logging
@@ -51,18 +46,6 @@ async def tokens_analysis(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> dict:
-    """Devuelve todos los tokens únicos que las cartas del mazo generan.
-
-    Consolida los `related_parts` (filtrando SOLO `component=='token'`) de
-    las cartas activas del mazo (con include=True), dedupe por scryfall_id,
-    y para cada token indica:
-      - metadata (nombre, tipo, colores, imagen)
-      - qué carta(s) del mazo lo genera
-      - si ya está en el mazo (con role='tokens')
-
-    Los meld parts/results NO se incluyen aquí: van por el botón individual
-    de cada carta porque son específicos y no consolidables.
-    """
     import json as _json
 
     generator_roles = {"commander", "mainboard", "sideboard"}
@@ -81,9 +64,7 @@ async def tokens_analysis(
 
     scryfall_ids = {c.scryfall_id for c in cards}
     printings = (
-        await db.scalars(
-            select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
-        )
+        await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids)))
     ).all()
     printings_by_id = {p.scryfall_id: p for p in printings}
 
@@ -102,31 +83,33 @@ async def tokens_analysis(
             token_sfid = part.get("id")
             if not token_sfid:
                 continue
-            entry = tokens_map.setdefault(token_sfid, {
-                "name": part.get("name") or "Token",
-                "generated_by": [],
-            })
-            entry["generated_by"].append({
-                "deck_card_id": dc.id,
-                "name": dc.name,
-                "quantity": dc.quantity,
-            })
+            entry = tokens_map.setdefault(
+                token_sfid,
+                {
+                    "name": part.get("name") or "Token",
+                    "generated_by": [],
+                },
+            )
+            entry["generated_by"].append(
+                {
+                    "deck_card_id": dc.id,
+                    "name": dc.name,
+                    "quantity": dc.quantity,
+                }
+            )
 
     if not tokens_map:
         return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
 
     token_sfids = list(tokens_map.keys())
     token_printings = (
-        await db.scalars(
-            select(PrintingCache).where(PrintingCache.scryfall_id.in_(token_sfids))
-        )
+        await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(token_sfids)))
     ).all()
     token_meta_by_id = {p.scryfall_id: p for p in token_printings}
 
     already_in_deck_rows = (
         await db.execute(
-            select(DeckCard.id, DeckCard.scryfall_id, DeckCard.quantity)
-            .where(
+            select(DeckCard.id, DeckCard.scryfall_id, DeckCard.quantity).where(
                 DeckCard.deck_id == deck_id,
                 DeckCard.scryfall_id.in_(token_sfids),
             )
@@ -154,18 +137,20 @@ async def tokens_analysis(
         in_deck = deck_card_id is not None
         if in_deck:
             already_count += 1
-        tokens_out.append({
-            "scryfall_id": sfid,
-            "name": (meta.name if meta else info["name"]) or "Token",
-            "type_line": meta.type_line if meta else "",
-            "colors": meta.colors.split(",") if (meta and meta.colors) else [],
-            "image_url": meta.image_normal if meta else None,
-            "set_code": meta.set_code if meta else "",
-            "in_deck": in_deck,
-            "deck_card_id": deck_card_id,
-            "quantity_in_deck": qty_in_deck,
-            "generated_by": info["generated_by"],
-        })
+        tokens_out.append(
+            {
+                "scryfall_id": sfid,
+                "name": (meta.name if meta else info["name"]) or "Token",
+                "type_line": meta.type_line if meta else "",
+                "colors": meta.colors.split(",") if (meta and meta.colors) else [],
+                "image_url": meta.image_normal if meta else None,
+                "set_code": meta.set_code if meta else "",
+                "in_deck": in_deck,
+                "deck_card_id": deck_card_id,
+                "quantity_in_deck": qty_in_deck,
+                "generated_by": info["generated_by"],
+            }
+        )
 
     tokens_out.sort(key=lambda t: (t["in_deck"], t["name"].lower()))
 
@@ -188,20 +173,12 @@ async def tokens_add_many(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> list[DeckCardView]:
-    """Añade varios tokens al mazo de una vez con role='tokens'.
-
-    - Idempotente: si un token ya está, lo salta (no incrementa quantity).
-    - Los tokens NO cuentan para el mazo de 100 (role='tokens' está excluido
-      de _COUNTING_ROLES_BY_FORMAT) pero SÍ van al PDF/XML (include=True).
-    """
     if not payload.scryfall_ids:
         return []
 
-    existing_ids = set((
-            await db.scalars(
-                select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id)
-            )
-        ).all())
+    existing_ids = set(
+        (await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))).all()
+    )
 
     ids_to_check = [s for s in payload.scryfall_ids if s not in existing_ids]
     cached_printings: dict[str, PrintingCache] = {}
@@ -238,7 +215,9 @@ async def tokens_add_many(
 
     if added:
         await deck_activity.log_event(
-            db, deck_id, K.RELATED_ADDED,
+            db,
+            deck_id,
+            K.RELATED_ADDED,
             payload={
                 "count": len(added),
                 "kind": "tokens",
@@ -258,13 +237,8 @@ async def add_related_cards(
     db: DbDep,
     scryfall: Annotated[ScryfallClient, Depends(_get_scryfall)],
 ) -> list[DeckCardView]:
-    """Añade automáticamente al mazo las cartas relacionadas (tokens, meld_result, meld_part).
-
-    Se añaden con role="tokens" para que aparezcan en la sección Tokens y no
-    cuenten para el mazo de 100. Cada una con quantity=1.
-    Se omiten las que ya estén en el mazo.
-    """
     import json as _json
+
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
@@ -278,13 +252,12 @@ async def add_related_cards(
     except (ValueError, TypeError):
         return []
 
-    existing_ids = set((
-            await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))
-        ).all())
+    existing_ids = set(
+        (await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))).all()
+    )
 
     candidate_sfids = {
-        part.get("id") for part in related
-        if part.get("id") and part["id"] not in existing_ids
+        part.get("id") for part in related if part.get("id") and part["id"] not in existing_ids
     }
     cached_map: dict[str, PrintingCache] = {}
     if candidate_sfids:
@@ -324,11 +297,16 @@ async def add_related_cards(
         components: dict[str, int] = {}
         for part in related:
             if part.get("id") in {a.scryfall_id for a in added}:
-                components[part.get("component") or "related"] = \
+                components[part.get("component") or "related"] = (
                     components.get(part.get("component") or "related", 0) + 1
+                )
         await deck_activity.log_event(
-            db, deck_id, K.RELATED_ADDED,
-            card_name=dc.name, card_scryfall_id=dc.scryfall_id, card_oracle_id=dc.oracle_id,
+            db,
+            deck_id,
+            K.RELATED_ADDED,
+            card_name=dc.name,
+            card_scryfall_id=dc.scryfall_id,
+            card_oracle_id=dc.oracle_id,
             payload={
                 "count": len(added),
                 "kind": "related",

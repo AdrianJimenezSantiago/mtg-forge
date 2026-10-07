@@ -1,22 +1,3 @@
-"""Exporta las imágenes del mazo como ZIP para gente que las quiere sueltas
-(p.ej. para MPCFill, para montar en otro editor de proxies, o para dárselas
-a un impresor externo — el caso que motivó esta feature).
-
-Contenido del ZIP:
-- una imagen por cara única (frente + reverso DFC si aplica). El nombre del
-  fichero es el nombre canónico de la carta según Scryfall, saneado para el
-  sistema de archivos.
-- ``decklist.txt`` en formato Moxfield-compatible con la lista completa.
-- ``README.txt`` mínimo explicando cómo se usan los ficheros.
-
-Naming DFC:
-- Frente: <cara_frontal>.<ext>   (p.ej. "Delver of Secrets.png")
-- Reverso: <cara_trasera>.<ext>  (p.ej. "Insectile Aberration.png")
-  Si no hay back_name, cae a "<frente>__back.<ext>".
-
-Se deduplican por path exacto para no meter la misma imagen 4 veces si
-la carta aparece 4 veces en el mazo.
-"""
 from __future__ import annotations
 
 import logging
@@ -34,25 +15,19 @@ _CONTROL = {chr(i) for i in range(0, 32)}
 
 
 def _safe_filename(name: str, max_len: int = 120) -> str:
-    """Sanea un nombre de carta para que sea un filename válido en Windows,
-    macOS y Linux. Preserva casi todo (comas, apóstrofes, paréntesis, etc.)
-    porque MPCFill hace matching por nombre y queremos conservar la forma
-    original todo lo posible."""
-    cleaned = ''.join('_' if (c in _FORBIDDEN or c in _CONTROL) else c for c in name)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    cleaned = cleaned.rstrip('. ')
+    cleaned = "".join("_" if (c in _FORBIDDEN or c in _CONTROL) else c for c in name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = cleaned.rstrip(". ")
     if not cleaned:
-        cleaned = 'unnamed'
+        cleaned = "unnamed"
     if len(cleaned) > max_len:
-        cleaned = cleaned[:max_len].rstrip('. ')
+        cleaned = cleaned[:max_len].rstrip(". ")
     return cleaned
 
 
 def _split_dfc(full_name: str) -> tuple[str, str | None]:
-    """Devuelve (front_face, back_face_or_None). Los nombres compuestos DFC
-    de Scryfall vienen como "Delver of Secrets // Insectile Aberration"."""
-    if ' // ' in full_name:
-        front, back = full_name.split(' // ', 1)
+    if " // " in full_name:
+        front, back = full_name.split(" // ", 1)
         return front.strip(), back.strip()
     return full_name.strip(), None
 
@@ -74,15 +49,6 @@ def build_images_zip(
     decklist_text: str,
     cardback_path: Path | None = None,
 ) -> ImageExportResult:
-    """Construye el ZIP en ``output_path``. No baja imágenes; asume que las
-    rutas de ``cards`` ya apuntan a ficheros existentes (mismo pipeline que
-    ``build_pdf``: el caller llama antes a ``resolve_deck_for_xml``).
-
-    ``cardback_path`` — si el mazo tiene un cardback específico configurado
-    (Deck.custom_cardback_art_id) o hay un cardback global, se incluye en el
-    ZIP como ``_cardback.<ext>``. El guion bajo hace que quede al principio
-    en la ordenación alfabética, y deja claro que es un fichero especial.
-    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     seen_files: dict[str, str] = {}
@@ -90,10 +56,10 @@ def build_images_zip(
     total_backs = 0
     included_cardback = False
 
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_STORED) as zf:
+    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_STORED) as zf:
         for c in cards:
             front_face, back_face = _split_dfc(c.name)
-            ext = Path(str(c.front_path)).suffix or '.png'
+            ext = Path(str(c.front_path)).suffix or ".png"
             arc_front = f"{_safe_filename(front_face)}{ext}"
 
             src = Path(str(c.front_path))
@@ -110,7 +76,7 @@ def build_images_zip(
 
             if c.back_path:
                 back_name = c.back_name or back_face or f"{front_face}__back"
-                back_ext = Path(str(c.back_path)).suffix or '.png'
+                back_ext = Path(str(c.back_path)).suffix or ".png"
                 arc_back = f"{_safe_filename(back_name)}{back_ext}"
 
                 back_src = Path(str(c.back_path))
@@ -136,14 +102,14 @@ def build_images_zip(
             except FileNotFoundError:
                 log.warning("Cardback no encontrado: %s", cardback_path)
 
-        zf.writestr('decklist.txt', decklist_text, compress_type=zipfile.ZIP_DEFLATED)
+        zf.writestr("decklist.txt", decklist_text, compress_type=zipfile.ZIP_DEFLATED)
 
         readme = _build_readme(
             len(cards),
             len([c for c in cards if c.back_path]),
             included_cardback,
         )
-        zf.writestr('README.txt', readme, compress_type=zipfile.ZIP_DEFLATED)
+        zf.writestr("README.txt", readme, compress_type=zipfile.ZIP_DEFLATED)
 
     total_files = len(seen_files) + 2
     return ImageExportResult(
@@ -165,7 +131,7 @@ def _build_readme(total_cards: int, total_dfc: int, included_cardback: bool) -> 
         f"- {total_cards} carta{'s' if total_cards != 1 else ''} única{'s' if total_cards != 1 else ''} (una imagen por carta).",
         f"- {total_dfc} carta{'s' if total_dfc != 1 else ''} DFC con reverso incluido.",
         "- Cada imagen se llama como la carta oficial (según Scryfall).",
-        "- Los reversos de DFC están nombrados por la cara-B (\"Insectile Aberration.png\"),",
+        '- Los reversos de DFC están nombrados por la cara-B ("Insectile Aberration.png"),',
         "  no por la cara-A. Si tu herramienta espera '<frente>__back.<ext>' renombra a mano.",
     ]
     if included_cardback:

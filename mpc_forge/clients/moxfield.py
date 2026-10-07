@@ -1,9 +1,3 @@
-"""Cliente para Moxfield (API pública no oficial).
-
-Moxfield no tiene API pública documentada; usamos los mismos endpoints que su web.
-En Windows suele funcionar con httpx + un User-Agent identificable.
-Si Cloudflare bloquea, hacemos fallback a cloudscraper (síncrono) en un thread.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +23,6 @@ class MoxfieldError(RuntimeError):
 
 
 def extract_deck_id(url_or_id: str) -> str:
-    """Acepta URL completa o solo el ID y devuelve el ID."""
     m = _DECK_ID_RE.search(url_or_id)
     if m:
         return m.group(1)
@@ -53,7 +46,6 @@ class MoxfieldClient:
         await self._client.aclose()
 
     async def fetch_deck(self, url_or_id: str) -> dict[str, Any]:
-        """Devuelve el JSON del mazo, probando v3 → v2 → cloudscraper."""
         deck_id = extract_deck_id(url_or_id)
         try:
             resp = await self._client.get(f"{_MOXFIELD_API_BASE}/decks/all/{deck_id}")
@@ -71,14 +63,15 @@ class MoxfieldClient:
 
 
 def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
-    """Fallback síncrono usando cloudscraper para pasar el JS challenge."""
     import cloudscraper
 
     scraper = cloudscraper.create_scraper()
-    scraper.headers.update({
-        "User-Agent": cfg.MOXFIELD_USER_AGENT,
-        "Referer": "https://www.moxfield.com/",
-    })
+    scraper.headers.update(
+        {
+            "User-Agent": cfg.MOXFIELD_USER_AGENT,
+            "Referer": "https://www.moxfield.com/",
+        }
+    )
     for base in (_MOXFIELD_API_BASE, _MOXFIELD_API_LEGACY):
         try:
             r = scraper.get(f"{base}/decks/all/{deck_id}", timeout=30)
@@ -94,18 +87,6 @@ def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
 
 
 def normalize_deck(payload: dict[str, Any]) -> dict[str, Any]:
-    """Convierte la respuesta de Moxfield a una estructura interna estable.
-
-    Devuelve:
-        {
-          "name": str,
-          "format": str,
-          "source_url": str,
-          "moxfield_id": str,
-          "commander": {name, scryfall_id} | None,
-          "cards": [{name, quantity, scryfall_id, set, number, role}, ...],
-        }
-    """
     deck_id = payload.get("publicId") or payload.get("id") or ""
     name = payload.get("name", "Imported deck")
     fmt = (payload.get("format") or "commander").lower()
@@ -171,14 +152,6 @@ _SECTION_ALIASES: dict[str, str] = {
 
 
 def _detect_section_header(line: str) -> str | None:
-    """Devuelve el nombre canónico de sección si `line` es una cabecera.
-
-    Reconoce:
-      - "//Commanders", "// Commanders" (formato Moxfield/MPCFill)
-      - "Mainboard", "Mainboard (99)" (formato humano)
-      - "SB:" en prefijo → sección sideboard (formato MTGO)
-    Devuelve None si no es cabecera. Case-insensitive.
-    """
     s = line.strip()
     if not s:
         return None
@@ -193,28 +166,6 @@ def _detect_section_header(line: str) -> str | None:
 
 
 def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
-    """Parser para copy-paste tradicional. Formatos aceptados:
-       "4 Lightning Bolt"
-       "4x Lightning Bolt"
-       "1 Sol Ring (C21) 263"
-       "1 Sol Ring [C21] 263"
-       "Lightning Bolt"  (asume 1)
-       "SB: 2 Blood Moon" (prefijo MTGO — asigna sideboard)
-
-    State machine (Extras · F1/T3): las cabeceras `//Commanders`,
-    `//Mainboard`, `Sideboard`, `Maybeboard`, etc. establecen el rol que
-    aplica a las cartas siguientes hasta el próximo cambio. Compatible con
-    los ImportSites (Moxfield, Archidekt, MTGGoldfish) que emiten estos
-    markers y con formatos humanos comunes (MTGA, MTGO, Deckstats).
-
-    Sin cabeceras (import "puro" de texto): todo va a "mainboard" y
-    ``create_deck_from_entries`` decide commander vía type_line — el
-    comportamiento antiguo se preserva por retro-compat.
-
-    Cada entrada incluye ``raw_line`` con el texto tal cual lo escribió el
-    usuario, para que si la resolución falla podamos mostrárselo de vuelta
-    exactamente igual (útil cuando hay typos o caracteres raros).
-    """
     entries: list[dict[str, Any]] = []
     line_re = re.compile(
         r"^\s*(?P<qty>\d+)?\s*[xX]?\s+"
@@ -245,18 +196,25 @@ def parse_plain_decklist(text: str) -> list[dict[str, Any]]:
 
         m = line_re.match(raw_clean)
         if not m:
-            entries.append({
-                "name": raw_clean.strip(), "quantity": 1, "set": None, "number": None,
+            entries.append(
+                {
+                    "name": raw_clean.strip(),
+                    "quantity": 1,
+                    "set": None,
+                    "number": None,
+                    "role": role_for_this_line,
+                    "raw_line": raw,
+                }
+            )
+            continue
+        entries.append(
+            {
+                "name": m.group("name").strip(),
+                "quantity": int(m.group("qty") or 1),
+                "set": (m.group("set") or "").lower() or None,
+                "number": m.group("num") or None,
                 "role": role_for_this_line,
                 "raw_line": raw,
-            })
-            continue
-        entries.append({
-            "name": m.group("name").strip(),
-            "quantity": int(m.group("qty") or 1),
-            "set": (m.group("set") or "").lower() or None,
-            "number": m.group("num") or None,
-            "role": role_for_this_line,
-            "raw_line": raw,
-        })
+            }
+        )
     return entries

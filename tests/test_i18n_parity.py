@@ -1,15 +1,3 @@
-"""Paridad y salud del registro de traducciones.
-
-Por qué existe
---------------
-El registro vive en un único diccionario Python de ~1.500 líneas. Nada impedía
-añadir una clave en español y olvidarla en inglés: la interfaz en inglés
-mostraba entonces el marcador ``[deck_confirmdelete_msg]`` en mitad de un
-diálogo de confirmación. La paridad estaba bien por disciplina, no por
-construcción.
-
-Estos tests la convierten en algo que CI garantiza.
-"""
 from __future__ import annotations
 
 import re
@@ -31,16 +19,13 @@ class TestKeyParity:
                 continue
             missing = base_keys - set(data)
             extra = set(data) - base_keys
-            assert not missing, (
-                f"Faltan {len(missing)} claves en '{lang}': {sorted(missing)[:10]}"
-            )
+            assert not missing, f"Faltan {len(missing)} claves en '{lang}': {sorted(missing)[:10]}"
             assert not extra, (
                 f"'{lang}' tiene {len(extra)} claves que no existen en "
                 f"'{BASE_LANG}': {sorted(extra)[:10]}"
             )
 
     def test_supported_langs_matches_the_registry(self):
-        """El selector de idioma no debe ofrecer idiomas sin traducciones."""
         declared = {code for code, _label in SUPPORTED_LANGS}
         assert declared == set(_TRANSLATIONS)
 
@@ -51,13 +36,6 @@ class TestKeyParity:
 
     @pytest.mark.parametrize("lang", sorted(_TRANSLATIONS))
     def test_placeholders_match_across_languages(self, lang):
-        """Una traducción no puede perder ni inventar un ``{placeholder}``.
-
-        ``"Added {n} card(s)"`` traducido sin el ``{n}`` deja al usuario sin el
-        número, y uno inventado revienta el ``.format()`` en tiempo de
-        ejecución. Es el fallo de traducción más caro y el más fácil de
-        detectar automáticamente.
-        """
         pattern = re.compile(r"\{(\w+)\}")
         base = _TRANSLATIONS[BASE_LANG]
         for key, value in _TRANSLATIONS[lang].items():
@@ -71,16 +49,12 @@ class TestKeyParity:
 
 class TestFallbackChain:
     def test_missing_key_falls_back_to_base_language(self, monkeypatch):
-        """Una clave ausente devuelve el idioma base, no ``[clave]``."""
-        monkeypatch.setitem(
-            _TRANSLATIONS, "xx", {"nav_decks": "Decks-XX"}
-        )
+        monkeypatch.setitem(_TRANSLATIONS, "xx", {"nav_decks": "Decks-XX"})
         t = i18n.get_translations("xx")
         assert t.nav_decks == "Decks-XX"
         assert t.nav_settings == _TRANSLATIONS[BASE_LANG]["nav_settings"]
 
     def test_unknown_key_still_returns_the_marker(self):
-        """Si la clave no existe en NINGÚN idioma, sigue siendo un error visible."""
         t = i18n.get_translations("en")
         assert t.esta_clave_no_existe == "[esta_clave_no_existe]"
 
@@ -92,8 +66,6 @@ class TestFallbackChain:
 
 
 class TestUsedKeysExist:
-    """Ninguna plantilla ni módulo JS debe referenciar una clave inexistente."""
-
     def _referenced_keys(self) -> set[str]:
         keys: set[str] = set()
         for path in (PROJECT_ROOT / "templates").glob("*.html"):
@@ -112,8 +84,7 @@ class TestUsedKeysExist:
         assert referenced, "No se encontró ninguna clave: ¿cambió el patrón de uso?"
         undefined = sorted(referenced - set(_TRANSLATIONS[BASE_LANG]))
         assert not undefined, (
-            f"{len(undefined)} claves usadas en la interfaz pero no definidas: "
-            f"{undefined[:15]}"
+            f"{len(undefined)} claves usadas en la interfaz pero no definidas: {undefined[:15]}"
         )
 
 

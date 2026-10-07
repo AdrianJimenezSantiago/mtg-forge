@@ -1,28 +1,3 @@
-"""``LocalFolderSourceType``: indexa una carpeta del sistema de archivos.
-
-Uso típico:
-- El usuario tiene una colección organizada en disco (ej. `D:/mtg-art/`) y
-  quiere buscarla desde el picker igual que un drive.
-- Un NAS compartido en la LAN (``\\\\SERVER\\mtg-art\\``) que varios usuarios
-  quieren usar sin subir a Drive.
-- La carpeta `custom_art/_downloaded/` de la propia app, si se quiere
-  poder buscarla como source más (útil para debug).
-
-URL
----
-Guardamos la ruta absoluta como URL (con prefijo ``file://`` opcional para
-distinguirla visualmente en la UI). Al indexar la resolvemos vía ``pathlib``.
-
-Descarga y thumbnails
----------------------
-Devolvemos URLs relativas ``/local-source/{source_id}/{file_id}`` — el
-``file_id`` es la ruta relativa dentro del source (URL-safe base64).
-Registrar la ruta HTTP ``/local-source/…`` es responsabilidad del setup en
-``app.py`` (fuera del alcance de esta Tarea 7 — ver TODO).
-
-TODO (P2): añadir la ruta HTTP que sirve estos ficheros con `FileResponse`,
-para que los thumbnails funcionen en el picker igual que con Drive.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -44,40 +19,30 @@ _SCAN_BATCH = 200
 
 
 def _encode_relpath(relpath: str) -> str:
-    """Codifica una ruta relativa a un file_id URL-safe.
-
-    Usamos base64 sin padding para que sirva como file_id en la BD (columna
-    String(128)) y en URLs sin escapes. La ruta puede tener slashes y
-    caracteres unicode, base64 lo aplana.
-    """
     return base64.urlsafe_b64encode(relpath.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def _decode_relpath(file_id: str) -> str:
-    """Inverso de ``_encode_relpath`` para reconstruir la ruta al descargar."""
     padding = "=" * (-len(file_id) % 4)
     return base64.urlsafe_b64decode(file_id + padding).decode("utf-8")
 
 
 class LocalFolderSourceType(ArtSourceType):
-    """Carpeta local del sistema de archivos.
-
-    Config:
-      - ``ArtSource.url`` = ruta absoluta (con o sin prefijo ``file://``).
-
-    Recorrido:
-      - Recursivo por defecto.
-      - Ignora ficheros ocultos (empiezan por ``.``) y carpetas comunes de
-        sistema (``__pycache__``, ``.git``, ``node_modules``, ``$RECYCLE.BIN``).
-      - Solo imágenes según ``_IMAGE_EXTENSIONS``.
-    """
     key: ClassVar[str] = "local-folder"
     label: ClassVar[str] = "Carpeta local"
 
-    _IGNORE_DIRS: ClassVar[frozenset[str]] = frozenset({
-        "__pycache__", ".git", ".hg", ".svn", "node_modules",
-        "$RECYCLE.BIN", "System Volume Information", ".DS_Store",
-    })
+    _IGNORE_DIRS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "__pycache__",
+            ".git",
+            ".hg",
+            ".svn",
+            "node_modules",
+            "$RECYCLE.BIN",
+            "System Volume Information",
+            ".DS_Store",
+        }
+    )
 
     @classmethod
     def validate_url(cls, url: str) -> str:
@@ -105,11 +70,6 @@ class LocalFolderSourceType(ArtSourceType):
 
     @classmethod
     def resolve_path(cls, source: ArtSource, file_id: str) -> Path:
-        """Reconstruye la ruta absoluta en disco para un ``file_id`` dado.
-
-        Verifica que la ruta resultante SIGUE dentro de la carpeta del source
-        (defensa contra path traversal). Lanza ``ArtSourceTypeError`` si no.
-        """
         base = Path(source.url).resolve()
         try:
             relpath = _decode_relpath(file_id)
@@ -130,9 +90,7 @@ class LocalFolderSourceType(ArtSourceType):
     async def list_files(cls, source: ArtSource) -> AsyncIterator[SourceFile]:
         base = Path(source.url).expanduser().resolve()
         if not base.is_dir():
-            raise ArtSourceTypeError(
-                f"La carpeta del source '{source.name}' no existe: {base}"
-            )
+            raise ArtSourceTypeError(f"La carpeta del source '{source.name}' no existe: {base}")
 
         def _scan_batch(iterator, size: int) -> list[SourceFile]:
             out: list[SourceFile] = []
@@ -152,15 +110,17 @@ class LocalFolderSourceType(ArtSourceType):
                     size = entry.stat().st_size
                 except OSError:
                     size = 0
-                out.append(SourceFile(
-                    file_id=_encode_relpath(relpath),
-                    filename=entry.name,
-                    folder_path=folder_path,
-                    size_bytes=size,
-                    mime_type=(
-                        f"image/{entry.suffix.lower().lstrip('.').replace('jpg', 'jpeg')}"
-                    ),
-                ))
+                out.append(
+                    SourceFile(
+                        file_id=_encode_relpath(relpath),
+                        filename=entry.name,
+                        folder_path=folder_path,
+                        size_bytes=size,
+                        mime_type=(
+                            f"image/{entry.suffix.lower().lstrip('.').replace('jpg', 'jpeg')}"
+                        ),
+                    )
+                )
                 if len(out) >= size_limit:
                     break
             return out

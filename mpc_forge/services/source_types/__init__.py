@@ -1,16 +1,3 @@
-"""Registro de tipos de source de arte.
-
-Importar el paquete tiene efecto lateral: cada subclase de ``ArtSourceType``
-se registra automáticamente en `base._REGISTRY` vía `__init_subclass__`. Los
-consumidores usan ``resolve(source_type)`` para obtener la clase adecuada.
-
-Ejemplo::
-
-    from mpc_forge.services.source_types import resolve
-    src_type_cls = resolve(source.source_type)   # → GDriveSourceType, etc.
-    async for file in src_type_cls.list_files(source):
-        ...
-"""
 from .base import (
     ArtSourceType,
     ArtSourceTypeError,

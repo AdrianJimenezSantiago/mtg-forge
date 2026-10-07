@@ -1,9 +1,3 @@
-"""CubeCobra — export plaintext oficial + nombre desde JSON API.
-
-CubeCobra ofrece:
-  - Descarga en texto plano: ``/cube/download/plaintext/{cube_id}``
-  - Metadatos JSON del cubo: ``/cube/api/cubejson/{cube_id}`` → ``{"name": "…"}``
-"""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -21,13 +15,6 @@ _DOWNLOAD_QUERY = (
 
 
 def _extract_cube_id(url: str) -> str | None:
-    """Extrae el cube_id del último segmento de la ruta.
-
-    Soporta:
-      ``/cube/list/{cube_id}``
-      ``/cube/overview/{cube_id}``
-      ``/cube/playtest/{cube_id}``
-    """
     path = urlparse(url).path or ""
     parts = [p for p in path.split("/") if p]
     return parts[-1] if parts else None
@@ -45,23 +32,13 @@ class CubeCobraSite(ImportSite):
         cube_id = _extract_cube_id(url)
         if not cube_id:
             raise InvalidURLError(url)
-        resp = await cls.request(
-            f"/cube/download/plaintext/{cube_id}?{_DOWNLOAD_QUERY}"
-        )
+        resp = await cls.request(f"/cube/download/plaintext/{cube_id}?{_DOWNLOAD_QUERY}")
         text = resp.text or ""
-        cleaned = "\n".join(
-            line for line in text.splitlines() if not line.startswith("# ")
-        )
+        cleaned = "\n".join(line for line in text.splitlines() if not line.startswith("# "))
         return cleaned.strip()
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Nombre del cubo desde la API JSON de CubeCobra.
-
-        Endpoint: ``/cube/api/cubejson/{cube_id}`` → ``{"name": "…", …}``.
-        Llamada independiente (no cacheable junto a retrieve_card_list porque
-        el texto plano y el JSON son endpoints distintos).
-        """
         cube_id = _extract_cube_id(url)
         if not cube_id:
             return None

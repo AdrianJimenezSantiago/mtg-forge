@@ -1,10 +1,3 @@
-"""Tests de las correcciones de robustez y rendimiento.
-
-Cada clase cubre un arreglo concreto y, sobre todo, fija el comportamiento para
-que no se pierda: varios de estos fallos eran invisibles hasta que alguien
-añadía código nuevo (una comparación de fechas, un mazo muy grande) y entonces
-reventaban en ejecución.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -21,11 +14,6 @@ from mpc_forge.services import deck_validation, thumbnails
 
 class TestTimezoneAwareColumns:
     async def test_datetimes_come_back_aware(self, client):
-        """SQLite descartaba el offset y devolvía datetimes naive.
-
-        La consecuencia era un TypeError en cuanto alguien comparaba el valor
-        leído contra `datetime.now(timezone.utc)`.
-        """
         async with session_scope() as db:
             deck = Deck(name="tz-test", format="commander")
             db.add(deck)
@@ -39,15 +27,19 @@ class TestTimezoneAwareColumns:
             assert stored.imported_at <= datetime.now(UTC)
 
     async def test_roundtrip_preserves_the_instant(self, client):
-        """Guardar en una zona y leer en UTC no debe mover el instante."""
         madrid = timezone(timedelta(hours=2))
         moment = datetime(2026, 6, 1, 14, 30, tzinfo=madrid)
 
         async with session_scope() as db:
             row = PrintingCache(
-                scryfall_id="tz-1", oracle_id="o-1", name="Tz Card",
-                set_code="tst", set_name="Test", collector_number="1",
-                rarity="common", fetched_at=moment,
+                scryfall_id="tz-1",
+                oracle_id="o-1",
+                name="Tz Card",
+                set_code="tst",
+                set_name="Test",
+                collector_number="1",
+                rarity="common",
+                fetched_at=moment,
             )
             db.add(row)
 
@@ -69,16 +61,22 @@ class TestInClauseChunking:
         assert list(_views._chunks([], 500)) == []
 
     async def test_view_survives_a_deck_larger_than_the_sqlite_limit(self, client):
-        """Un cubo de >999 cartas reventaba con "too many SQL variables"."""
         async with session_scope() as db:
             deck = Deck(name="cubo", format="commander")
             db.add(deck)
             await db.flush()
             for i in range(1100):
-                db.add(DeckCard(
-                    deck_id=deck.id, scryfall_id=f"sf-{i}", oracle_id=f"or-{i}",
-                    name=f"Carta {i}", quantity=1, role="mainboard", include=True,
-                ))
+                db.add(
+                    DeckCard(
+                        deck_id=deck.id,
+                        scryfall_id=f"sf-{i}",
+                        oracle_id=f"or-{i}",
+                        name=f"Carta {i}",
+                        quantity=1,
+                        role="mainboard",
+                        include=True,
+                    )
+                )
             deck_id = deck.id
 
         r = await client.get(f"/api/decks/{deck_id}")
@@ -88,7 +86,6 @@ class TestInClauseChunking:
 
 class TestThumbnailGeneration:
     async def test_concurrent_requests_generate_once(self, tmp_path, monkeypatch):
-        """40 tarjetas que comparten arte no deben generar 40 miniaturas."""
         pytest.importorskip("PIL")
         from PIL import Image
 
@@ -105,18 +102,11 @@ class TestThumbnailGeneration:
 
         monkeypatch.setattr(thumbnails, "_generate_sync", counting)
 
-        results = await asyncio.gather(
-            *(thumbnails.ensure_thumb(source) for _ in range(40))
-        )
+        results = await asyncio.gather(*(thumbnails.ensure_thumb(source) for _ in range(40)))
         assert all(r is not None for r in results)
         assert calls == 1, f"Se generó {calls} veces en lugar de una"
 
     async def test_decompression_bomb_is_rejected(self, tmp_path, monkeypatch):
-        """Una imagen que declara un tamaño absurdo no debe tumbar el proceso.
-
-        `custom_art/` es una carpeta donde el usuario suelta ficheros
-        descargados de terceros, así que no es un escenario hipotético.
-        """
         pytest.importorskip("PIL")
         from PIL import Image
 
@@ -128,14 +118,6 @@ class TestThumbnailGeneration:
         assert await thumbnails.ensure_thumb(source) is None
 
     async def test_size_guard_does_not_leak_to_other_code(self, tmp_path, monkeypatch):
-        """Bajar el límite aquí no debe afectar a nada más del proceso.
-
-        La primera versión de este guardia asignaba `Image.MAX_IMAGE_PIXELS`,
-        que es un global de TODO el proceso: el límite se quedaba puesto para
-        cualquier otro código que usara Pillow y, entre tests, contaminaba la
-        sesión entera. Se detectó porque el cálculo de pHash empezó a emitir
-        DecompressionBombWarning con imágenes de 32x32.
-        """
         pytest.importorskip("PIL")
         from PIL import Image
 
@@ -156,53 +138,79 @@ class TestLegalityChecking:
         return json.dumps(fmts)
 
     def test_banned_card_is_reported(self):
-        illegal = deck_validation.check_legalities("modern", [
-            ("Sol Ring", "mainboard", self._legal(modern="banned"), True),
-            ("Lightning Bolt", "mainboard", self._legal(modern="legal"), True),
-        ])
+        illegal = deck_validation.check_legalities(
+            "modern",
+            [
+                ("Sol Ring", "mainboard", self._legal(modern="banned"), True),
+                ("Lightning Bolt", "mainboard", self._legal(modern="legal"), True),
+            ],
+        )
         assert [c.name for c in illegal] == ["Sol Ring"]
         assert illegal[0].status == "banned"
 
     def test_maybeboard_is_ignored(self):
-        """El maybeboard es una lista de ideas, no parte del mazo."""
-        assert deck_validation.check_legalities("modern", [
-            ("Sol Ring", "maybeboard", self._legal(modern="banned"), True),
-        ]) == []
+        assert (
+            deck_validation.check_legalities(
+                "modern",
+                [
+                    ("Sol Ring", "maybeboard", self._legal(modern="banned"), True),
+                ],
+            )
+            == []
+        )
 
     def test_excluded_cards_are_ignored(self):
-        assert deck_validation.check_legalities("modern", [
-            ("Sol Ring", "mainboard", self._legal(modern="banned"), False),
-        ]) == []
+        assert (
+            deck_validation.check_legalities(
+                "modern",
+                [
+                    ("Sol Ring", "mainboard", self._legal(modern="banned"), False),
+                ],
+            )
+            == []
+        )
 
     def test_missing_data_never_produces_a_false_positive(self):
-        """Sin legalidades cacheadas no se inventa un veredicto.
-
-        Marcar una carta correcta como ilegal es peor que no avisar: haría
-        dudar al usuario de un mazo que está bien.
-        """
-        assert deck_validation.check_legalities("modern", [
-            ("Carta Nueva", "mainboard", "", True),
-        ]) == []
+        assert (
+            deck_validation.check_legalities(
+                "modern",
+                [
+                    ("Carta Nueva", "mainboard", "", True),
+                ],
+            )
+            == []
+        )
 
     def test_corrupt_json_does_not_break_the_view(self):
-        assert deck_validation.check_legalities("modern", [
-            ("Rota", "mainboard", "{no es json", True),
-        ]) == []
+        assert (
+            deck_validation.check_legalities(
+                "modern",
+                [
+                    ("Rota", "mainboard", "{no es json", True),
+                ],
+            )
+            == []
+        )
 
     def test_banned_card_makes_the_deck_invalid(self):
-        illegal = deck_validation.check_legalities("modern", [
-            ("Sol Ring", "mainboard", self._legal(modern="banned"), True),
-        ])
+        illegal = deck_validation.check_legalities(
+            "modern",
+            [
+                ("Sol Ring", "mainboard", self._legal(modern="banned"), True),
+            ],
+        )
         result = deck_validation.validate_deck("modern", [("mainboard", 60, True)], illegal)
         assert result.is_valid is False
         assert result.level == "error"
         assert "no legal" in result.message
 
     def test_restricted_is_a_warning_not_an_error(self):
-        """En Vintage una restringida se puede jugar, pero solo una copia."""
-        illegal = deck_validation.check_legalities("vintage", [
-            ("Black Lotus", "mainboard", self._legal(vintage="restricted"), True),
-        ])
+        illegal = deck_validation.check_legalities(
+            "vintage",
+            [
+                ("Black Lotus", "mainboard", self._legal(vintage="restricted"), True),
+            ],
+        )
         result = deck_validation.validate_deck("vintage", [("mainboard", 60, True)], illegal)
         assert result.level == "warn"
         assert result.is_valid is True
@@ -217,23 +225,57 @@ class TestLegalityChecking:
 class TestDeckPricing:
     async def test_price_sums_only_playable_roles(self, client):
         async with session_scope() as db:
-            db.add(PrintingCache(
-                scryfall_id="p-1", oracle_id="o-1", name="Cara", set_code="tst",
-                set_name="Test", collector_number="1", rarity="rare",
-                price_eur=10.0, price_usd=12.0,
-            ))
-            db.add(PrintingCache(
-                scryfall_id="p-2", oracle_id="o-2", name="Idea", set_code="tst",
-                set_name="Test", collector_number="2", rarity="rare",
-                price_eur=99.0, price_usd=99.0,
-            ))
+            db.add(
+                PrintingCache(
+                    scryfall_id="p-1",
+                    oracle_id="o-1",
+                    name="Cara",
+                    set_code="tst",
+                    set_name="Test",
+                    collector_number="1",
+                    rarity="rare",
+                    price_eur=10.0,
+                    price_usd=12.0,
+                )
+            )
+            db.add(
+                PrintingCache(
+                    scryfall_id="p-2",
+                    oracle_id="o-2",
+                    name="Idea",
+                    set_code="tst",
+                    set_name="Test",
+                    collector_number="2",
+                    rarity="rare",
+                    price_eur=99.0,
+                    price_usd=99.0,
+                )
+            )
             deck = Deck(name="precios", format="commander")
             db.add(deck)
             await db.flush()
-            db.add(DeckCard(deck_id=deck.id, scryfall_id="p-1", oracle_id="o-1",
-                            name="Cara", quantity=2, role="mainboard", include=True))
-            db.add(DeckCard(deck_id=deck.id, scryfall_id="p-2", oracle_id="o-2",
-                            name="Idea", quantity=1, role="maybeboard", include=True))
+            db.add(
+                DeckCard(
+                    deck_id=deck.id,
+                    scryfall_id="p-1",
+                    oracle_id="o-1",
+                    name="Cara",
+                    quantity=2,
+                    role="mainboard",
+                    include=True,
+                )
+            )
+            db.add(
+                DeckCard(
+                    deck_id=deck.id,
+                    scryfall_id="p-2",
+                    oracle_id="o-2",
+                    name="Idea",
+                    quantity=1,
+                    role="maybeboard",
+                    include=True,
+                )
+            )
             deck_id = deck.id
 
         price = (await client.get(f"/api/decks/{deck_id}")).json()["price"]
@@ -242,18 +284,34 @@ class TestDeckPricing:
         assert price["priced_cards"] == 2
 
     async def test_cards_without_price_are_counted_apart(self, client):
-        """Una carta sin precio no vale 0: vale "no lo sabemos"."""
         async with session_scope() as db:
-            db.add(PrintingCache(
-                scryfall_id="p-3", oracle_id="o-3", name="Sin precio",
-                set_code="tst", set_name="Test", collector_number="3",
-                rarity="rare", price_eur=None, price_usd=None,
-            ))
+            db.add(
+                PrintingCache(
+                    scryfall_id="p-3",
+                    oracle_id="o-3",
+                    name="Sin precio",
+                    set_code="tst",
+                    set_name="Test",
+                    collector_number="3",
+                    rarity="rare",
+                    price_eur=None,
+                    price_usd=None,
+                )
+            )
             deck = Deck(name="sin-precio", format="commander")
             db.add(deck)
             await db.flush()
-            db.add(DeckCard(deck_id=deck.id, scryfall_id="p-3", oracle_id="o-3",
-                            name="Sin precio", quantity=3, role="mainboard", include=True))
+            db.add(
+                DeckCard(
+                    deck_id=deck.id,
+                    scryfall_id="p-3",
+                    oracle_id="o-3",
+                    name="Sin precio",
+                    quantity=3,
+                    role="mainboard",
+                    include=True,
+                )
+            )
             deck_id = deck.id
 
         price = (await client.get(f"/api/decks/{deck_id}")).json()["price"]
@@ -263,21 +321,6 @@ class TestDeckPricing:
 
 
 class TestThumbPathNormalization:
-    """`thumb_path_for` debe dar la misma ruta para la misma carpeta.
-
-    En Windows la misma ruta se puede escribir de dos formas (corta 8.3 y
-    larga). El endpoint resuelve lo que pide el cliente para impedir el escape
-    de directorio, y `resolve()` devuelve la larga; si `art_dir` estaba
-    guardado en la corta, `relative_to` fallaba y TODAS las miniaturas caían al
-    cajón `_external`. Eso rompía el reparto por subdirectorios y provocaba
-    colisiones: dos "Sol Ring.png" de carpetas distintas compartían miniatura,
-    así que la rejilla mostraba el arte equivocado.
-
-    Aquí se reproduce con un enlace simbólico, que produce exactamente el mismo
-    desajuste (dos cadenas distintas, la misma carpeta real) y funciona en
-    cualquier plataforma.
-    """
-
     def test_same_dir_written_two_ways_gives_the_same_thumb(self, tmp_path, monkeypatch):
         real = tmp_path / "real_art"
         real.mkdir()
@@ -301,12 +344,6 @@ class TestThumbPathNormalization:
         assert via_alias == via_real
 
     def test_external_arts_with_the_same_name_do_not_collide(self, tmp_path, monkeypatch):
-        """Dos ficheros homónimos en carpetas distintas necesitan miniaturas distintas.
-
-        "Sol Ring.png" aparece en muchas carpetas de un drive de arte, así que
-        agrupar solo por nombre hacía que la última generada pisara a las
-        demás.
-        """
         paths = thumbnails.PATHS.with_overrides(art_dir=str(tmp_path / "arte"))
         monkeypatch.setattr(thumbnails, "PATHS", paths)
 

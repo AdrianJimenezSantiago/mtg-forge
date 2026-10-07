@@ -1,8 +1,3 @@
-"""Descarga y cachea artes de Scryfall a disco, con dedupe por SHA256.
-
-Regla de oro: NUNCA hay dos archivos con el mismo contenido en `art_dir`.
-Si dos scryfall_ids devuelven bytes idénticos, ambos apuntan al mismo LocalArt.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -32,8 +27,6 @@ _DOWNLOAD_CONCURRENCY = 8
 
 
 class ArtCache:
-    """Descargador y dedupe de imágenes."""
-
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client or httpx.AsyncClient(
             timeout=60.0,
@@ -57,17 +50,6 @@ class ArtCache:
         prefer: Prefer = "png",
         concurrency: int = _DOWNLOAD_CONCURRENCY,
     ) -> dict[tuple[str, Face], LocalArt | None]:
-        """Asegura que cada par ``(scryfall_id, face)`` tiene arte en disco.
-
-        Estrategia:
-          1. Lee de un tirón los ``LocalArt`` y ``PrintingCache`` existentes.
-          2. Determina qué peticiones son cache-hit, cuáles no tienen printing,
-             y cuáles requieren bajar bytes.
-          3. Descarga en paralelo (con :class:`AsyncRateLimiter` para respetar
-             la cadencia del CDN y un ``Semaphore`` para acotar concurrencia).
-          4. Escribe archivos y ``LocalArt`` de forma secuencial (misma sesión
-             async → no se puede paralelizar) y hace UN commit al final.
-        """
         if not requests:
             return {}
 
@@ -77,20 +59,17 @@ class ArtCache:
         sfids = {sfid for sfid, _ in unique}
 
         existing_rows = (
-            await db.scalars(
-                select(LocalArt).where(LocalArt.scryfall_id.in_(sfids))
-            )
+            await db.scalars(select(LocalArt).where(LocalArt.scryfall_id.in_(sfids)))
         ).all()
         existing_by_key: dict[tuple[str, Face], LocalArt] = {
-            (la.scryfall_id, la.face): la for la in existing_rows  # type: ignore[misc]
+            (la.scryfall_id, la.face): la
+            for la in existing_rows  # type: ignore[misc]
         }
 
         printings_by_id: dict[str, PrintingCache] = {
             p.scryfall_id: p
             for p in (
-                await db.scalars(
-                    select(PrintingCache).where(PrintingCache.scryfall_id.in_(sfids))
-                )
+                await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(sfids)))
             ).all()
         }
 
@@ -105,7 +84,8 @@ class ArtCache:
                     continue
                 log.warning(
                     "Cache miss en disco para %s (face=%s), re-descargando",
-                    sfid, face,
+                    sfid,
+                    face,
                 )
             printing = printings_by_id.get(sfid)
             if not printing:

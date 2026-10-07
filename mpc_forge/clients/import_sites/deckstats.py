@@ -1,11 +1,3 @@
-"""Deckstats — export como texto plano + nombre desde el slug de la URL.
-
-Formato de URL:
-  ``https://deckstats.net/decks/{user_id}/{deck_id}-{slug}``
-
-El slug ES el nombre del mazo con guiones. No necesitamos un segundo fetch:
-lo extraemos directamente de la ruta y lo convertimos a título.
-"""
 from __future__ import annotations
 
 import re
@@ -37,12 +29,6 @@ class DeckstatsSite(ImportSite):
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Extrae el nombre del mazo del slug de la URL.
-
-        ``/decks/123/456789-my-commander-deck`` → ``My Commander Deck``.
-        Sin fetch adicional. Devuelve ``None`` si la URL no tiene slug
-        (mazos sin nombre personalizado).
-        """
         path = urlparse(url).path or ""
         m = _DECKSTATS_PATH_RE.match(path)
         if not m:

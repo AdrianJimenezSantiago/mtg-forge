@@ -1,16 +1,3 @@
-"""Invariantes de los workflows de GitHub Actions.
-
-Por qué existe
---------------
-Un `run:` multilínea en un runner de Windows usa PowerShell por defecto, y
-PowerShell **no aborta** cuando falla un comando intermedio del bloque: solo
-cuenta el código de salida del último. Eso hizo que un `pip install` fallido
-se reportara como paso correcto, y el error real apareciera varios pasos
-después disfrazado de `ModuleNotFoundError` en pytest.
-
-Es un fallo caro precisamente porque el síntoma aparece lejos de la causa.
-Estos tests lo convierten en algo que se detecta al escribir el YAML.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,11 +14,6 @@ def _load(name: str) -> dict:
 
 
 def _runs_on_windows(job: dict) -> bool:
-    """¿Este job puede ejecutarse en Windows?
-
-    Contempla tanto `runs-on: windows-latest` como las matrices, donde el
-    sistema operativo llega por expresión (`${{ matrix.os }}`).
-    """
     runs_on = str(job.get("runs-on", ""))
     if "windows" in runs_on.lower():
         return True
@@ -64,18 +46,12 @@ def test_multiline_run_on_windows_declares_a_shell(workflow):
         "Bloques `run` multilínea en un runner de Windows sin `shell` explícito:\n  "
         + "\n  ".join(offenders)
         + "\n\nPowerShell no aborta ante el fallo de un comando intermedio, así que "
-          "el paso saldría en verde con el trabajo a medias. Añade `shell: bash`."
+        "el paso saldría en verde con el trabajo a medias. Añade `shell: bash`."
     )
 
 
 @pytest.mark.parametrize("workflow", ALL_WORKFLOWS)
 def test_every_step_has_a_name_or_is_trivial(workflow):
-    """Un paso multilínea sin nombre se muestra en la UI por su primera línea.
-
-    Es lo que hacía que el paso que instalaba el lockfile apareciera como
-    "Run python -m pip install --upgrade pip": el nombre no delataba en
-    absoluto lo que realmente estaba haciendo.
-    """
     unnamed: list[str] = []
     for job_name, job in _load(workflow)["jobs"].items():
         for step in job.get("steps", []):
@@ -89,19 +65,12 @@ def test_every_step_has_a_name_or_is_trivial(workflow):
 
 
 def test_release_installs_from_the_lockfile():
-    """La release debe ser reproducible: lockfile con hashes, no rangos."""
     text = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
     assert "--require-hashes -r requirements.lock" in text
     assert "pip install -r requirements.txt" not in text
 
 
 def test_lockfile_carries_environment_markers():
-    """El lock debe ser universal, no específico de la plataforma que lo generó.
-
-    `pip-compile` aplana las dependencias perdiendo sus marcadores: el lock
-    resultante listaba `uvloop` sin condición, y `uvloop` no tiene wheels para
-    Windows, así que el runner intentaba compilarlo desde fuente y fallaba.
-    """
     lock = (WORKFLOWS.parent.parent / "requirements.lock").read_text(encoding="utf-8")
     assert "uvloop" in lock, "¿cambió el conjunto de dependencias?"
     uvloop_line = next(ln for ln in lock.splitlines() if ln.startswith("uvloop=="))
@@ -112,23 +81,14 @@ def test_lockfile_carries_environment_markers():
 
 
 class TestNodeVersion:
-    """La versión de Node de CI debe cumplir el `engines` de package.json.
-
-    jsdom 30 exige Node >= 22.22 y undici 8 exige >= 22.19, pero los workflows
-    fijaban Node 20. `npm ci` solo AVISA sobre `engines`, así que instalaba
-    igualmente y el fallo aparecía mucho después en tiempo de ejecución, como
-    un `webidl.util.markAsUncloneable is not a function` dentro de undici —
-    imposible de relacionar con la causa a simple vista.
-    """
-
     def _required_major(self) -> int:
         import json
-        pkg = json.loads(
-            (WORKFLOWS.parent.parent / "package.json").read_text(encoding="utf-8")
-        )
+
+        pkg = json.loads((WORKFLOWS.parent.parent / "package.json").read_text(encoding="utf-8"))
         spec = (pkg.get("engines") or {}).get("node", "")
         assert spec, "package.json debe declarar engines.node"
         import re
+
         match = re.search(r"(\d+)", spec)
         assert match, f"No se pudo leer un major de engines.node={spec!r}"
         return int(match.group(1))
@@ -150,25 +110,12 @@ class TestNodeVersion:
                 )
 
     def test_engine_strict_is_enabled(self):
-        """`engine-strict` convierte el aviso de npm en un fallo inmediato."""
         npmrc = WORKFLOWS.parent.parent / ".npmrc"
         assert npmrc.exists(), "Falta .npmrc con engine-strict=true"
         assert "engine-strict=true" in npmrc.read_text(encoding="utf-8")
 
 
 class TestNodeScriptsArePortable:
-    """Los scripts de Node deben funcionar también en Windows.
-
-    `new URL(...).pathname` de una file:// URL devuelve "/C:/ruta/..." en
-    Windows: con una barra inicial de más y separadores POSIX. Pasado por
-    `path.join` produce una ruta inexistente, y el script de vendorizado
-    reportaba "FALTA" para los ocho assets justo después de un `npm ci`
-    correcto. La forma correcta es `fileURLToPath`.
-
-    El job de assets de CI solo corre en Ubuntu, así que esto no lo detecta
-    nadie salvo la release de Windows — y allí el síntoma es confuso.
-    """
-
     SCRIPTS = sorted((WORKFLOWS.parent.parent / "scripts").glob("*.mjs"))
 
     @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
@@ -182,16 +129,9 @@ class TestNodeScriptsArePortable:
 
 
 class TestFrozenLauncher:
-    """El ejecutable empaquetado debe aceptar los mismos flags que el módulo.
-
-    El launcher no parseaba argumentos: leía host y puerto solo de variables
-    de entorno. El `--port` del smoke test se ignoraba en silencio, el binario
-    escuchaba en 8765 y el curl al puerto pedido fallaba eternamente con un
-    "no respondió" que no apuntaba a nada.
-    """
-
     def _launcher(self):
         import importlib.util
+
         path = WORKFLOWS.parent.parent / "packaging" / "launcher.py"
         spec = importlib.util.spec_from_file_location("mpcforge_launcher", path)
         module = importlib.util.module_from_spec(spec)
@@ -207,14 +147,12 @@ class TestFrozenLauncher:
         assert self._launcher()._parse_args([]).port == 8765
 
     def test_env_var_still_works_but_flag_wins(self, monkeypatch):
-        """Compatibilidad: quien ya usara MPC_FORGE_PORT no debe romperse."""
         monkeypatch.setenv("MPC_FORGE_PORT", "9000")
         launcher = self._launcher()
         assert launcher._parse_args([]).port == 9000
         assert launcher._parse_args(["--port", "7777"]).port == 7777
 
     def test_smoke_test_uses_flags_the_launcher_understands(self):
-        """El paso de CI y el launcher no pueden divergir en silencio."""
         text = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
         assert "--no-browser" in text and "--port 8791" in text
         launcher = self._launcher()

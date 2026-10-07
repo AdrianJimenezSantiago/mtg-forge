@@ -1,8 +1,3 @@
-"""Archidekt — API JSON pública sin autenticación.
-
-Endpoint público: ``https://archidekt.com/api/decks/{deck_id}/``.
-Devuelve el mazo completo con cartas, categorías y nombre.
-"""
 from __future__ import annotations
 
 import re
@@ -25,7 +20,6 @@ class ArchidektSite(ImportSite):
 
     @classmethod
     async def _fetch_payload(cls, url: str) -> tuple[str, dict]:
-        """Descarga y devuelve (deck_id, payload). Guarda en _payload_cache."""
         path = urlparse(url).path or ""
         m = _ARCHIDEKT_ID_RE.search(path)
         if not m:
@@ -49,11 +43,6 @@ class ArchidektSite(ImportSite):
 
     @classmethod
     async def retrieve_deck_name(cls, url: str) -> str | None:
-        """Devuelve el nombre del mazo tal como está en Archidekt.
-
-        Reutiliza el payload cacheado por ``retrieve_card_list`` — sin segundo
-        fetch. El campo ``name`` es el título que el usuario asignó al mazo.
-        """
         deck_id, payload = await cls._fetch_payload(url)
         cls._payload_cache.pop(deck_id, None)
         deck_name = (payload.get("name") or "").strip()

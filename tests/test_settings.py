@@ -1,4 +1,3 @@
-"""Tests de la vista de Ajustes rediseñada + ssl_insecure runtime."""
 from __future__ import annotations
 
 
@@ -9,8 +8,12 @@ class TestSettingsRedesign:
         data = r.json()
         groups = sorted({d["group"] for d in data["definitions"]})
         assert groups == [
-            "Búsqueda avanzada", "General", "MPC Autofill",
-            "Precios y envío", "Red y conexión", "Ubicación de datos",
+            "Búsqueda avanzada",
+            "General",
+            "MPC Autofill",
+            "Precios y envío",
+            "Red y conexión",
+            "Ubicación de datos",
         ]
 
     async def test_ssl_insecure_setting_exists(self, client):
@@ -45,20 +48,17 @@ class TestSettingsRedesign:
 
 
 class TestSettingsHTML:
-    """Verificaciones básicas sobre el HTML — que no rompan silenciosamente
-    los pilares del rediseño."""
-
     async def test_settings_page_renders(self, client):
         r = await client.get("/settings")
         assert r.status_code == 200
         html = r.text
         for needle in [
-            'sticky top-0',
+            "sticky top-0",
             'x-model="searchQuery"',
-            'showDrivesModal',
-            'Red y conexión',
-            'MPC Autofill',
-            'ssl_insecure',
-            'resetAll',
+            "showDrivesModal",
+            "Red y conexión",
+            "MPC Autofill",
+            "ssl_insecure",
+            "resetAll",
         ]:
             assert needle in html, f"Falta {needle!r} en settings.html"
