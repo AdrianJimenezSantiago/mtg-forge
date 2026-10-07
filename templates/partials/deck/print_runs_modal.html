@@ -4,6 +4,7 @@
        @keydown.escape.window="closePrintRuns()">
     <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
                 max-h-[92vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="print-runs-title" x-trap="true"
          @click.stop>
 
       <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
@@ -12,7 +13,7 @@
             <i data-lucide="split-square-vertical" class="w-5 h-5"></i>
           </div>
           <div class="min-w-0">
-            <h2 class="text-lg font-semibold text-fg">Print runs</h2>
+            <h2 id="print-runs-title" class="text-lg font-semibold text-fg">Print runs</h2>
             <p class="text-xs text-fg-faint">
               MPC solo acepta pedidos de tamaño fijo (18, 36, …, 612). Aquí ves cómo se dividiría tu mazo.
             </p>
@@ -44,8 +45,8 @@
             </div>
           </div>
           <div x-show="printRunsMode === 'greedy'" class="flex items-center gap-2">
-            <label class="text-xs text-fg-muted">Techo por run:</label>
-            <select x-model="printRunsMaxTier" @change="loadPrintRuns()"
+            <label for="print-runs-max-tier" class="text-xs text-fg-muted">Techo por run:</label>
+            <select id="print-runs-max-tier" x-model="printRunsMaxTier" @change="loadPrintRuns()"
                     class="text-xs bg-bg-subtle border border-border-subtle rounded px-2 py-1
                            focus:outline-none focus:border-accent">
               <option value="">Sin límite (612)</option>

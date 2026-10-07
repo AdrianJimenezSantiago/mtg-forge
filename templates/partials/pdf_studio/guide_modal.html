@@ -3,21 +3,22 @@
      @click.self="closeGuide()"
      @keydown.escape.window="closeGuide()">
   <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
-              w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+              w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+       role="dialog" aria-modal="true" aria-labelledby="guide-title" x-trap="guideOpen">
 
     <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
       <div class="flex items-center gap-2">
         <i data-lucide="circle-help" class="w-4 h-4 text-accent"></i>
-        <h2 class="font-semibold text-fg">{{ t.pdf_guide_section_label }}</h2>
+        <h2 id="guide-title" class="font-semibold text-fg">{{ t.pdf_guide_section_label }}</h2>
         <span class="text-fg-faint text-xs">— {{ t.pdf_guide_subtitle }}</span>
       </div>
-      <button @click="closeGuide()" class="text-fg-faint hover:text-fg transition">
+      <button type="button" aria-label="{{ t.common_close }}" @click="closeGuide()" class="text-fg-faint hover:text-fg transition">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
 
     <div class="flex-1 overflow-hidden grid grid-cols-[200px_1fr] min-h-0">
-      <nav class="border-r border-border-subtle bg-bg-subtle/40 overflow-y-auto p-3">
+      <nav aria-label="{{ t.a11y_guide_index }}" class="border-r border-border-subtle bg-bg-subtle/40 overflow-y-auto p-3">
         <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2 px-2">Secciones</div>
         <ul class="space-y-0.5 text-[11px]">
           {% set _toc = [
@@ -47,7 +48,7 @@
         </ul>
       </nav>
 
-      <div class="overflow-y-auto p-5 space-y-6 text-sm leading-relaxed">
+      <div class="overflow-y-auto p-5 space-y-6 text-sm leading-relaxed" tabindex="0">
 
         <section id="guide-section-flujo">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">

@@ -1,4 +1,4 @@
-<main class="overflow-auto bg-bg-base relative" x-ref="canvasScroll">
+<section class="overflow-auto bg-bg-base relative" x-ref="canvasScroll">
 
   <div class="sticky top-0 z-10 bg-bg-inset/95 backdrop-blur border-b border-border-subtle
               px-4 py-2 flex items-center gap-4 text-xs">
@@ -11,7 +11,7 @@
 
     <div class="flex items-center gap-2 text-fg-muted">
       <span class="text-[10px] uppercase tracking-wider">{{ t.pdf_zoom }}</span>
-      <input type="range" min="20" max="150" step="5" x-model.number="zoom"
+      <input type="range" min="20" max="150" step="5" x-model.number="zoom" aria-label="{{ t.pdf_zoom }}"
              class="w-32 accent-accent">
       <span class="font-mono text-fg w-10 text-right"><span x-text="zoom"></span>%</span>
     </div>
@@ -64,4 +64,4 @@
       </div>
     </template>
   </div>
-</main>
+</section>

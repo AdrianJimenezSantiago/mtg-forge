@@ -3,13 +3,14 @@
        @click="backModal = null"
        @keydown.escape.window="backModal = null">
     <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-card max-w-md w-full p-4 space-y-3 animate-scale-in"
+         role="dialog" aria-modal="true" :aria-label="backModal.cardName" x-trap="true"
          @click.stop>
       <div class="flex items-center justify-between">
         <div class="min-w-0">
           <div class="text-xs text-fg-muted uppercase tracking-wider">Reverso de</div>
           <div class="font-medium truncate" x-text="backModal.cardName"></div>
         </div>
-        <button @click="backModal = null" class="text-fg-muted hover:text-fg p-1">
+        <button type="button" aria-label="{{ t.common_close }}" @click="backModal = null" class="text-fg-muted hover:text-fg p-1">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>

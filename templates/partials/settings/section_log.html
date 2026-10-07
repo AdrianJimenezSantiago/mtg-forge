@@ -57,9 +57,10 @@
       <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
            @click="showTail = false" @keydown.escape.window="showTail = false">
         <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl max-h-[85vh] flex flex-col"
+             role="dialog" aria-modal="true" aria-labelledby="log-tail-title" x-trap="true"
              @click.stop>
           <div class="flex items-center justify-between p-4 border-b border-border-subtle">
-            <h3 class="font-medium flex items-center gap-2">
+            <h3 id="log-tail-title" class="font-medium flex items-center gap-2">
               <i data-lucide="file-text" class="w-4 h-4 text-fg-muted"></i>
               {{ t.settings_log_tail_title }}
             </h3>
@@ -80,7 +81,7 @@
                   </span>
                 </template>
               </button>
-              <button @click="showTail = false" class="text-fg-muted hover:text-fg p-1">
+              <button type="button" aria-label="{{ t.common_close }}" @click="showTail = false" class="text-fg-muted hover:text-fg p-1">
                 <i data-lucide="x" class="w-5 h-5"></i>
               </button>
             </div>

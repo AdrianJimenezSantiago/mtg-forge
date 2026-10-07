@@ -1,4 +1,4 @@
-<aside class="app-sidebar sticky top-0 self-start h-screen w-64 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
+<aside aria-label="{{ t.a11y_sidebar }}" class="app-sidebar sticky top-0 self-start h-screen w-64 shrink-0 bg-arcane-panel border-r border-border-subtle flex flex-col">
   <div class="p-5 border-b border-border-subtle">
     <a href="/" class="flex items-center gap-3 group">
       <span class="fx-logo shadow-glow group-hover:scale-105 transition">
@@ -11,7 +11,7 @@
     </a>
   </div>
 
-  <nav class="app-sidebar__nav flex-1 min-h-0 p-3 space-y-1 text-sm overflow-y-auto" data-scroll-fade
+  <nav aria-label="{{ t.a11y_primary_nav }}" class="app-sidebar__nav flex-1 min-h-0 p-3 space-y-1 text-sm overflow-y-auto" data-scroll-fade
        x-data="sidebarData()" x-init="load()">
     {% set current = request.url.path %}
     {% set nav_items = [

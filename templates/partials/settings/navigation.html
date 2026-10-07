@@ -1,4 +1,4 @@
-<aside class="lg:w-52 shrink-0 hidden lg:block">
+<aside aria-label="{{ t.a11y_settings_sections }}" class="lg:w-52 shrink-0 hidden lg:block">
   <nav class="sticky top-24 space-y-0.5">
     <template x-for="s in sections" :key="s.key">
       <button @click="selectSection(s.key)"

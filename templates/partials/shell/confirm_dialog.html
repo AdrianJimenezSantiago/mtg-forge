@@ -11,6 +11,8 @@
        @click="$store.ui._closeConfirm(false)"></div>
   <div class="relative bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-md
               overflow-hidden"
+       role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"
+       x-trap="$store.ui.confirmState.open"
        x-transition:enter="ease-out duration-300"
        x-transition:enter-start="opacity-0 scale-90 translate-y-4"
        x-transition:enter-end="opacity-100 scale-100 translate-y-0"
@@ -26,7 +28,7 @@
           <i :data-lucide="$store.ui.confirmState.icon" class="w-5 h-5"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <h3 class="text-lg font-medium text-fg" x-text="$store.ui.confirmState.title"></h3>
+          <h3 id="confirm-title" class="text-lg font-medium text-fg" x-text="$store.ui.confirmState.title"></h3>
           <p class="mt-1.5 text-sm text-fg-muted whitespace-pre-line"
              x-text="$store.ui.confirmState.message"
              x-show="$store.ui.confirmState.message"></p>

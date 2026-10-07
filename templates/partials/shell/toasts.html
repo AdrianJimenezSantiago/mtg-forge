@@ -1,4 +1,4 @@
-<div x-data x-auto-animate.toasts
+<div x-data x-auto-animate.toasts role="status" aria-live="polite"
      class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
   <template x-for="t in $store.ui.toasts" :key="t.id">
     <div class="fx-toast pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border"
@@ -24,7 +24,7 @@
           <div class="text-sm font-medium text-fg" x-text="t.title"></div>
           <div class="text-xs text-fg-muted mt-0.5 break-words" x-text="t.message" x-show="t.message"></div>
         </div>
-        <button @click="$store.ui.dismissToast(t.id)"
+        <button type="button" @click="$store.ui.dismissToast(t.id)" aria-label="{{ t.common_close }}"
                 class="shrink-0 text-fg-faint hover:text-fg transition p-1 -m-1 rounded">
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>

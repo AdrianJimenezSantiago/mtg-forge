@@ -955,5 +955,14 @@
   "proof_show_backs": "Mostrar reversos DFC",
   "proof_slots": "slots",
   "proof_back_suffix": "(reverso)",
-  "proof_load_error": "No se pudo cargar el mazo"
+  "proof_load_error": "No se pudo cargar el mazo",
+  "a11y_sidebar": "Barra lateral",
+  "a11y_primary_nav": "Navegación principal",
+  "a11y_filters": "Filtros",
+  "a11y_art_detail": "Detalle del arte",
+  "a11y_settings_sections": "Secciones de ajustes",
+  "a11y_pdf_layout": "Maquetación",
+  "a11y_pdf_options": "Opciones de impresión",
+  "a11y_guide_index": "Índice de la guía",
+  "a11y_sort": "Ordenar"
 }

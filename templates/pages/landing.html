@@ -67,19 +67,19 @@
     </div>
 
     <div class="lp-hand-wrap">
-      <div class="lp-hand" role="list" aria-label="{{ t.landing_hand_label }}">
+      <div class="lp-hand" role="group" aria-label="{{ t.landing_hand_label }}">
         {% for slot in hand %}
           {% if slot.deck %}
-            <a href="/decks/{{ slot.deck.id }}" role="listitem"
+            <a href="/decks/{{ slot.deck.id }}"
                class="lp-card" data-tilt="foil" data-tilt-max="12"
                style="--i: {{ slot.i }}; --ia: {{ slot.ia }}; --z: {{ slot.z }}; --n: {{ slot.rank }}"
                title="{{ slot.deck.name }}">
-              <img src="{{ slot.deck.commander_image_url }}" alt="{{ slot.deck.name }}"
+              <img src="{{ slot.deck.commander_image_url }}" alt=""
                    data-deck-cover="{{ slot.deck.id }}" decoding="async">
               <span class="lp-card__label">{{ slot.deck.name }}</span>
             </a>
           {% else %}
-            <div role="listitem" aria-hidden="true"
+            <div aria-hidden="true"
                  class="lp-card lp-card--sample" data-tilt="foil" data-tilt-max="12"
                  style="--i: {{ slot.i }}; --ia: {{ slot.ia }}; --z: {{ slot.z }}; --n: {{ slot.rank }}">
               <div class="proxy proxy--{{ slot.color }}">

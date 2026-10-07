@@ -1,16 +1,18 @@
 <div x-show="cardbackModalOpen" x-transition x-cloak
      class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-     @click.self="closeCardbackPicker()">
+     @click.self="closeCardbackPicker()"
+     @keydown.escape.window="closeCardbackPicker()">
   <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
-              w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+              w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+       role="dialog" aria-modal="true" aria-labelledby="cardback-title" x-trap="cardbackModalOpen">
 
     <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
       <div class="flex items-center gap-2">
         <i data-lucide="images" class="w-4 h-4 text-accent"></i>
-        <h2 class="font-semibold text-fg">{{ t.pdf_cardback_title }}</h2>
+        <h2 id="cardback-title" class="font-semibold text-fg">{{ t.pdf_cardback_title }}</h2>
         <span class="text-fg-faint text-xs" x-text="deck?.name || ''"></span>
       </div>
-      <button @click="closeCardbackPicker()" class="text-fg-faint hover:text-fg transition">
+      <button type="button" aria-label="{{ t.common_close }}" @click="closeCardbackPicker()" class="text-fg-faint hover:text-fg transition">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
@@ -155,14 +157,14 @@
         <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length === 0"
              class="text-center py-4 text-fg-faint text-xs">
           No results. Try another keyword, or check in
-          <a href="/settings" class="text-accent hover:underline">{{ t.pdf_settings_link }}</a>
+          <a href="/settings" class="text-accent underline">{{ t.pdf_settings_link }}</a>
           that drives are indexed.
         </div>
 
         <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length === 0"
              class="text-center py-4 text-fg-faint text-xs">
           No se encontraron cardbacks en los drives indexados. Verifica en
-          <a href="/settings" class="text-accent hover:underline">{{ t.pdf_settings_link }}</a>
+          <a href="/settings" class="text-accent underline">{{ t.pdf_settings_link }}</a>
           que haya drives indexados con carpetas <code>Cardbacks/</code>.
         </div>
       </div>

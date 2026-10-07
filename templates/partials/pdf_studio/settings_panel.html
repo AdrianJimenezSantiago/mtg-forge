@@ -1,10 +1,10 @@
-<aside class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
+<aside aria-label="{{ t.a11y_pdf_options }}" class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
     page: true, positioning: false, card_guides: true, page_guides: false,
     duplex_guides: false, bleed: false, regmarks: false, backs: false, range: false } }">
   <div class="p-3 space-y-2 text-xs">
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.page = !open.page"
+      <button type="button" @click="open.page = !open.page" :aria-expanded="open.page"
               class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
         <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="layout-grid" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_page }}</span>
         <i :data-lucide="open.page ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
@@ -51,7 +51,7 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.positioning = !open.positioning"
+      <button type="button" @click="open.positioning = !open.positioning" :aria-expanded="open.positioning"
               class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
         <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="move" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_advanced_pos }}</span>
         <i :data-lucide="open.positioning ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
@@ -110,16 +110,16 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.card_guides = !open.card_guides"
-              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
-        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="scissors" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_card_guides }}</span>
-        <div class="flex items-center gap-2">
+      <div class="w-full flex items-center justify-between hover:bg-bg-subtle transition">
+        <button type="button" @click="open.card_guides = !open.card_guides" :aria-expanded="open.card_guides"
+                class="flex-1 flex items-center justify-between gap-2 p-2.5 text-left">
+          <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="scissors" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_card_guides }}</span>
           <span class="text-[10px] text-fg-faint" x-show="opts.card_guides_enabled"
                 x-text="opts.card_guides_style"></span>
-          <input type="checkbox" x-model="opts.card_guides_enabled"
-                 @click.stop class="accent-accent">
-        </div>
-      </button>
+        </button>
+        <input type="checkbox" x-model="opts.card_guides_enabled" aria-label="{{ t.pdf_card_guides }}"
+               class="accent-accent mr-2.5">
+      </div>
       <div x-show="open.card_guides" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.card_guides_enabled ? 'opacity-50 pointer-events-none' : ''">
 
@@ -202,7 +202,7 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.page_guides = !open.page_guides"
+      <button type="button" @click="open.page_guides = !open.page_guides" :aria-expanded="open.page_guides"
               class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
         <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="grid-3x3" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_page_guides }}</span>
         <span class="text-[10px] text-fg-faint" x-text="opts.page_guides"></span>
@@ -224,7 +224,7 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.duplex_guides = !open.duplex_guides"
+      <button type="button" @click="open.duplex_guides = !open.duplex_guides" :aria-expanded="open.duplex_guides"
               class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
         <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="flip-horizontal" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_duplex_section }}</span>
         <i :data-lucide="open.duplex_guides ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>
@@ -253,11 +253,13 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.bleed = !open.bleed"
-              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
-        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="droplet" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_bleed }}</span>
-        <input type="checkbox" x-model="opts.bleed_enabled" @click.stop class="accent-accent">
-      </button>
+      <div class="w-full flex items-center justify-between hover:bg-bg-subtle transition">
+        <button type="button" @click="open.bleed = !open.bleed" :aria-expanded="open.bleed"
+                class="flex-1 flex items-center p-2.5 text-left">
+          <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="droplet" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_summary_bleed }}</span>
+        </button>
+        <input type="checkbox" x-model="opts.bleed_enabled" aria-label="{{ t.pdf_summary_bleed }}" class="accent-accent mr-2.5">
+      </div>
       <div x-show="open.bleed" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.bleed_enabled ? 'opacity-50 pointer-events-none' : ''">
         <label class="block text-[11px]">
@@ -275,11 +277,13 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.regmarks = !open.regmarks"
-              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
-        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="target" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_registration_marks }}</span>
-        <input type="checkbox" x-model="opts.reg_marks_enabled" @click.stop class="accent-accent">
-      </button>
+      <div class="w-full flex items-center justify-between hover:bg-bg-subtle transition">
+        <button type="button" @click="open.regmarks = !open.regmarks" :aria-expanded="open.regmarks"
+                class="flex-1 flex items-center p-2.5 text-left">
+          <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="target" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_registration_marks }}</span>
+        </button>
+        <input type="checkbox" x-model="opts.reg_marks_enabled" aria-label="{{ t.pdf_registration_marks }}" class="accent-accent mr-2.5">
+      </div>
       <div x-show="open.regmarks" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.reg_marks_enabled ? 'opacity-50 pointer-events-none' : ''">
         <p class="text-[10px] text-fg-faint">Cuadrados negros en 3 esquinas para Silhouette Cameo / Cricut.</p>
@@ -299,11 +303,13 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.backs = !open.backs"
-              class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
-        <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="rotate-3d" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_backs_section_label }}</span>
-        <input type="checkbox" x-model="opts.include_backs" @click.stop class="accent-accent">
-      </button>
+      <div class="w-full flex items-center justify-between hover:bg-bg-subtle transition">
+        <button type="button" @click="open.backs = !open.backs" :aria-expanded="open.backs"
+                class="flex-1 flex items-center p-2.5 text-left">
+          <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="rotate-3d" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_backs_section_label }}</span>
+        </button>
+        <input type="checkbox" x-model="opts.include_backs" aria-label="{{ t.pdf_backs_section_label }}" class="accent-accent mr-2.5">
+      </div>
       <div x-show="open.backs" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.include_backs ? 'opacity-50 pointer-events-none' : ''">
 
@@ -409,7 +415,7 @@
     </div>
 
     <div class="border border-border-subtle rounded">
-      <button @click="open.range = !open.range"
+      <button type="button" @click="open.range = !open.range" :aria-expanded="open.range"
               class="w-full flex items-center justify-between p-2.5 hover:bg-bg-subtle transition">
         <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="list-ordered" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_range_section }}</span>
         <i :data-lucide="open.range ? 'chevron-up' : 'chevron-down'" class="w-4 h-4 text-fg-faint"></i>

@@ -119,8 +119,8 @@
 
     <div class="flex items-center gap-3 flex-wrap">
       <div class="flex items-center gap-2">
-        <label class="text-xs text-fg-muted shrink-0">{{ t.deck_stock_label }}</label>
-        <select x-model="cardstock"
+        <label for="deck-cardstock" class="text-xs text-fg-muted shrink-0">{{ t.deck_stock_label }}</label>
+        <select id="deck-cardstock" x-model="cardstock"
                 class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm
                        focus:outline-none focus:border-accent">
           {% for opt in ["(S30) Standard Smooth", "(S33) Superior Smooth", "(M31) Linen", "(M32) Superior Linen", "(P10) Plastic"] %}

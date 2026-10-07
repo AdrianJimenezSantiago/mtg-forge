@@ -4,6 +4,7 @@
        @keydown.escape.window="closeSimilar()">
     <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-4xl
                 max-h-[85vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="similar-arts-title" x-trap="true"
          @click.stop>
       <div class="flex items-center justify-between p-5 border-b border-border-subtle shrink-0">
         <div class="flex items-center gap-3 min-w-0">
@@ -11,13 +12,13 @@
             <i data-lucide="link-2" class="w-5 h-5"></i>
           </div>
           <div class="min-w-0">
-            <h2 class="text-lg font-semibold text-fg">Artes similares</h2>
+            <h2 id="similar-arts-title" class="text-lg font-semibold text-fg">Artes similares</h2>
             <p class="text-xs text-fg-faint truncate">
               Match perceptual (pHash) del arte <span x-text="similarSourceArt?.__label || ''"></span>
             </p>
           </div>
         </div>
-        <button @click="closeSimilar()" class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition">
+        <button type="button" aria-label="{{ t.common_close }}" @click="closeSimilar()" class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>

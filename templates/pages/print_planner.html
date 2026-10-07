@@ -54,7 +54,7 @@
 
   <div class="flex-1 overflow-hidden flex max-w-[1800px] mx-auto w-full">
 
-    <aside class="w-80 shrink-0 border-r border-border-subtle/60 flex flex-col">
+    <aside aria-label="{{ t.planner_pick_decks }}" class="w-80 shrink-0 border-r border-border-subtle/60 flex flex-col">
       <div class="shrink-0 px-4 py-3 flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-wider text-fg-muted">
           {{ t.planner_pick_decks }}
@@ -133,10 +133,10 @@
         </div>
 
         <div>
-          <label class="block text-[11px] text-fg-faint uppercase tracking-wider mb-1">
+          <label for="planner-max-tier" class="block text-[11px] text-fg-faint uppercase tracking-wider mb-1">
             {{ t.planner_ceiling }}
           </label>
-          <select x-model.number="maxTier" @change="buildPlan()"
+          <select id="planner-max-tier" x-model.number="maxTier" @change="buildPlan()"
                   class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
             <option :value="null">{{ t.planner_ceiling_auto }}</option>
             <template x-for="tier in tiers" :key="tier.size">
@@ -147,7 +147,7 @@
       </div>
     </aside>
 
-    <main class="flex-1 overflow-y-auto p-6 space-y-5">
+    <section class="flex-1 overflow-y-auto p-6 space-y-5">
 
       <template x-if="error">
         <div class="p-4 rounded-lg bg-danger-bg border border-danger-border text-danger text-sm"
@@ -344,7 +344,7 @@
           </div>
         </div>
       </template>
-    </main>
+    </section>
   </div>
 </div>
 {% endblock %}

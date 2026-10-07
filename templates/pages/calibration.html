@@ -39,20 +39,20 @@
 
         <div class="grid sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+            <label for="calibration-page-size" class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
               {{ t.calibration_page_size }}
             </label>
-            <select x-model="pageSize"
+            <select id="calibration-page-size" x-model="pageSize"
                     class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
               <option value="a4">A4</option>
               <option value="letter">Letter</option>
             </select>
           </div>
           <div>
-            <label class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
+            <label for="calibration-flip-edge" class="block text-[11px] uppercase tracking-wider text-fg-faint mb-1">
               {{ t.calibration_flip_edge }}
             </label>
-            <select x-model="flipEdge"
+            <select id="calibration-flip-edge" x-model="flipEdge"
                     class="w-full bg-bg-subtle border border-border rounded px-2 py-1.5 text-sm">
               <option value="long">{{ t.calibration_flip_long }}</option>
               <option value="short">{{ t.calibration_flip_short }}</option>

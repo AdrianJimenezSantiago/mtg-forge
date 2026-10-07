@@ -3,6 +3,7 @@
        @click="showDrivesModal = false"
        @keydown.escape.window="showDrivesModal = false">
     <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="drives-title" x-trap="true"
          @click.stop>
       <div x-data="artSourcesPanel()" x-init="load()" class="flex flex-col min-h-0 flex-1">
 
@@ -12,7 +13,7 @@
               <i data-lucide="image" class="w-4 h-4"></i>
             </div>
             <div class="min-w-0">
-              <h3 class="font-medium">{{ t.settings_manage_sources }}</h3>
+              <h3 id="drives-title" class="font-medium">{{ t.settings_manage_sources }}</h3>
               <p class="text-[11px] text-fg-faint mt-0.5">
                 <span x-text="sources.length"></span> {{ t.settings_drives_count_label }} ·
                 <span x-text="stats.total_files.toLocaleString()"></span> {{ t.settings_files_indexed_count }}

@@ -4,13 +4,14 @@
            x-transition.opacity>
         <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal animate-scale-in max-w-2xl w-full
                     max-h-[85vh] flex flex-col"
+             role="dialog" aria-modal="true" aria-labelledby="unresolved-title" x-trap="true"
              @click.outside="unresolvedModal.open = false">
           <div class="flex items-start gap-3 p-5 border-b border-border-subtle">
             <div class="w-10 h-10 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
               <i data-lucide="alert-triangle" class="w-5 h-5"></i>
             </div>
             <div class="min-w-0 flex-1">
-              <h3 class="font-semibold text-fg">{{ t.home_unresolved_title }}</h3>
+              <h3 id="unresolved-title" class="font-semibold text-fg">{{ t.home_unresolved_title }}</h3>
               <p class="text-xs text-fg-muted mt-1">
                 <span class="text-amber-400 font-medium" x-text="unresolvedModal.unresolved.length"></span>
                 <span x-text="unresolvedModal.unresolved.length === 1 ? ' {{ t.home_unresolved_not_resolved }}' : ' {{ t.home_unresolved_not_resolved_pl }}'"></span>
@@ -18,7 +19,7 @@
                 {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
               </p>
             </div>
-            <button @click="unresolvedModal.open = false"
+            <button type="button" aria-label="{{ t.common_close }}" @click="unresolvedModal.open = false"
                     class="p-1 rounded hover:bg-bg-subtle text-fg-muted hover:text-fg">
               <i data-lucide="x" class="w-4 h-4"></i>
             </button>

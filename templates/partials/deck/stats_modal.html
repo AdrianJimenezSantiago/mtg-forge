@@ -3,7 +3,7 @@
        @click="closeStats()"
        @keydown.escape.window="closeStats()">
     <div class="st-panel w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
-         role="dialog" aria-modal="true" aria-labelledby="st-title"
+         role="dialog" aria-modal="true" aria-labelledby="st-title" x-trap="true"
          @click.stop>
 
       <div class="st-head">
@@ -24,7 +24,7 @@
         </button>
       </div>
 
-      <div class="st-body" :class="{ 'is-ready': statsReady }">
+      <div class="st-body" tabindex="0" :class="{ 'is-ready': statsReady }">
 
         <template x-if="stats.totalCards === 0">
           <p class="st-empty">{{ t.stats_empty }}</p>

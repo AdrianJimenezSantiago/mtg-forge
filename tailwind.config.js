@@ -48,7 +48,7 @@ module.exports = {
         fg: {
           DEFAULT: '#e8e6dd',
           muted:   '#a8a8b8',
-          faint:   '#6a6a80',
+          faint:   '#8e8ea6',
         },
       },
       fontFamily: {

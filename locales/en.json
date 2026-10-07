@@ -955,5 +955,14 @@
   "proof_show_backs": "Show DFC backs",
   "proof_slots": "slots",
   "proof_back_suffix": "(back)",
-  "proof_load_error": "Could not load the deck"
+  "proof_load_error": "Could not load the deck",
+  "a11y_sidebar": "Sidebar",
+  "a11y_primary_nav": "Main navigation",
+  "a11y_filters": "Filters",
+  "a11y_art_detail": "Art details",
+  "a11y_settings_sections": "Settings sections",
+  "a11y_pdf_layout": "Layout",
+  "a11y_pdf_options": "Print options",
+  "a11y_guide_index": "Guide contents",
+  "a11y_sort": "Sort"
 }

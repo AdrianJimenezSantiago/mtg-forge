@@ -130,3 +130,10 @@ jobs:
 
       - name: Humo de arranque de la interfaz
         run: node scripts/check_pages_in_browser.mjs http://127.0.0.1:8000
+
+      - name: Instalar Chromium para Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Accesibilidad (axe-core)
+        run: python scripts/check_accessibility.py http://127.0.0.1:8000

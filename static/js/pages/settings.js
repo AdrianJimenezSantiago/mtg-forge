@@ -349,10 +349,10 @@ function settingsShell() {
       return {
         essential:   '#d4af37',
         refetchable: '#5b9bd5',
-        derived:     '#6a6a80',
+        derived:     '#8e8ea6',
         output:      '#4ade80',
         safety:      '#fb923c',
-      }[kind] || '#6a6a80';
+      }[kind] || '#8e8ea6';
     },
 
     diskFreeText(vol) {
@@ -461,13 +461,17 @@ function settingsShell() {
         : '';
       return `
         <div class="flex items-center gap-2">
-          <input type="password" autocomplete="off" spellcheck="false" value=""
+          <input id="${this.inputId(def)}" type="password" autocomplete="off" spellcheck="false" value=""
                  placeholder="${placeholder}"
                  @change="updateSecret('${def.key}', $event.target.value)"
                  class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                         focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">
           ${clearBtn}
         </div>`;
+    },
+
+    inputId(def) {
+      return `setting-${def.key}`;
     },
 
     renderInput(def) {
@@ -477,7 +481,7 @@ function settingsShell() {
       if (def.type === 'bool') {
         return `
           <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" class="sr-only peer" ${val ? 'checked' : ''}
+            <input id="${this.inputId(def)}" type="checkbox" class="sr-only peer" ${val ? 'checked' : ''}
                    @change="update('${def.key}', $event.target.checked)">
             <div class="w-11 h-6 bg-bg-subtle border border-border-subtle rounded-full
                         peer peer-checked:after:translate-x-full
@@ -491,18 +495,18 @@ function settingsShell() {
         const opts = def.choices.map(c =>
           `<option value="${c}" ${c === val ? 'selected' : ''}>${c}</option>`
         ).join('');
-        return `<select @change="update('${def.key}', $event.target.value)"
+        return `<select id="${this.inputId(def)}" @change="update('${def.key}', $event.target.value)"
                         class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                                focus:outline-none focus:border-accent min-w-[220px]">${opts}</select>`;
       }
       if (def.type === 'str') {
-        return `<input type="text" value="${escLabel}"
+        return `<input id="${this.inputId(def)}" type="text" value="${escLabel}"
                        @change="update('${def.key}', $event.target.value)"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                               focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
       }
       if (def.type === 'path') {
-        return `<input type="text" value="${escLabel}" placeholder=""
+        return `<input id="${this.inputId(def)}" type="text" value="${escLabel}" placeholder=""
                        @change="update('${def.key}', $event.target.value)"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                               font-mono focus:outline-none focus:border-accent w-72 md:w-80 max-w-full">`;
@@ -512,7 +516,7 @@ function settingsShell() {
         const min = def.min_value ?? '';
         const max = def.max_value ?? '';
         const parseFn = def.type === 'int' ? 'parseInt' : 'parseFloat';
-        return `<input type="number" value="${escLabel}" step="${step}"
+        return `<input id="${this.inputId(def)}" type="number" value="${escLabel}" step="${step}"
                        ${min !== '' ? `min="${min}"` : ''} ${max !== '' ? `max="${max}"` : ''}
                        @change="update('${def.key}', ${parseFn}($event.target.value))"
                        class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm text-right
@@ -536,7 +540,7 @@ function settingsShell() {
       return `
         <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 md:gap-4 items-center">
           <div class="min-w-0">
-            <label class="text-sm font-medium">${def.label}</label>
+            <label for="${this.inputId(def)}" class="text-sm font-medium">${def.label}</label>
             <div class="text-xs text-fg-muted mt-0.5">${desc}</div>
             ${defaultBadge}
           </div>

@@ -3,7 +3,8 @@
      @click.self="closeMiniArtPicker()"
      @keydown.escape.window="closeMiniArtPicker()">
   <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
-              w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+              w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+       role="dialog" aria-modal="true" aria-label="{{ t.pdf_mini_picker_title }}" x-trap="miniPickerOpen">
 
     <div class="flex items-center justify-between border-b border-border-subtle px-5 py-3">
       <div class="flex items-center gap-3 min-w-0">
@@ -35,7 +36,7 @@
           <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
           Editor completo
         </button>
-        <button @click="closeMiniArtPicker()" class="text-fg-faint hover:text-fg transition">
+        <button type="button" aria-label="{{ t.common_close }}" @click="closeMiniArtPicker()" class="text-fg-faint hover:text-fg transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>

@@ -316,3 +316,45 @@ class TestAmbientBackground:
         assert "@media (prefers-reduced-motion: reduce)" in read(
             TEMPLATES.parent / "static/css/motion.css"
         )
+
+
+class TestAccessibility:
+    OVERLAY = re.compile(r'class="[^"]*\bfixed inset-0\b[^"]*"[^>]*@keydown\.escape\.window', re.S)
+    BUTTON = re.compile(r"<button\b([^>]*)>(.*?)</button>", re.S)
+    NAMED = re.compile(r"\s:?(aria-label|title)=|\sx-text=")
+
+    def test_every_modal_is_a_labelled_focus_trapping_dialog(self):
+        problems = []
+        for path in sorted(TEMPLATES.rglob("*.html")):
+            html = read(path)
+            if not self.OVERLAY.search(html):
+                continue
+            name = path.relative_to(TEMPLATES)
+            if not re.search(r'role="(alert)?dialog"', html) or 'aria-modal="true"' not in html:
+                problems.append(f"{name}: falta role=dialog y aria-modal")
+            if "x-trap" not in html:
+                problems.append(f"{name}: el foco no queda atrapado (x-trap)")
+            if not re.search(r":?aria-label(ledby)?=", html):
+                problems.append(f"{name}: el diálogo no tiene nombre accesible")
+        assert not problems, "\n".join(problems)
+
+    def test_icon_only_buttons_have_an_accessible_name(self):
+        problems = []
+        for path in sorted(TEMPLATES.rglob("*.html")):
+            html = read(path)
+            for match in self.BUTTON.finditer(html):
+                attrs, body = match.groups()
+                text = re.sub(r"\{\{.*?\}\}", "x", re.sub(r"<[^>]+>", "", body)).strip()
+                if text or self.NAMED.search(attrs) or re.search(r"x-(text|html)=", body):
+                    continue
+                line = html[: match.start()].count("\n") + 1
+                problems.append(f"{path.relative_to(TEMPLATES)}:{line}")
+        assert not problems, "Botones sin nombre accesible:\n" + "\n".join(problems)
+
+    def test_the_layout_has_a_single_main_landmark(self):
+        offenders = [
+            str(path.relative_to(TEMPLATES))
+            for path in TEMPLATES.rglob("*.html")
+            if path.name != "base.html" and "<main" in read(path)
+        ]
+        assert not offenders, offenders
