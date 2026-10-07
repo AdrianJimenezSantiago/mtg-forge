@@ -235,7 +235,7 @@ To add or change a column:
 1. Update the model in `models.py` so new installs get it.
 2. Append a `Migration` to `MIGRATIONS` in `migrations.py`, with `version` equal
    to the previous one plus one.
-3. Run `pytest tests/test_migrations.py`.
+3. Run `pytest tests/backend/test_system.py`.
 
 Never edit or renumber a released migration, and never use `DROP TABLE`,
 `DROP COLUMN` or an unqualified `DELETE` — the test suite rejects them.
@@ -249,21 +249,40 @@ you touch a module in `services/`, leave its signatures annotated.
 
 ```
 mpc_forge/
-├── app.py            FastAPI factory and lifecycle
+├── app.py            FastAPI factory: middleware, static mounts, routers
+├── lifespan.py       startup and shutdown tasks
 ├── config.py         paths, MPC price tiers, defaults
 ├── db.py             engine, SQLite pragmas, indexes, FTS5
 ├── migrations.py     incremental migration ladder
 ├── models.py         ORM models
 ├── clients/          Scryfall, Moxfield and per-site deck importers
-├── routes/           REST endpoints and HTML views
-└── services/         business logic, one responsibility per module
-templates/            Jinja2 templates
+├── routes/           REST endpoints and HTML views (routes.ROUTERS)
+│   ├── decks/        deck CRUD, imports, art picker, tokens, activity
+│   └── export/       XML, PDF, images, decklists, cardbacks, files
+├── services/         business logic grouped by domain
+│   ├── cards/        Scryfall cache, bulk data, DFC pairs, preloading
+│   ├── decks/        importer, parser, validation, covers, undo, snapshots
+│   ├── art/          art cache, custom art, thumbnails, library, themes
+│   ├── indexing/     art sources, drive indexer and search, source types
+│   ├── printing/     PDF, XML, calibration, planner, print runs
+│   └── system/       settings, storage, backups, logging, i18n
+└── utils/            generic helpers (rate limiter, chunking, tasks)
+locales/              translations (es.json, en.json)
+templates/
+├── base.html         layout
+├── pages/            one template per view
+└── partials/         sections included by the pages
 static/
-├── js/               frontend ES modules
+├── css/              app stylesheets
+├── img/              logo and favicon
+├── js/core/          shared scripts (API client, shell, toasts, motion)
+├── js/pages/         one module per view
 ├── src/              Tailwind entry point
 └── vendor/           third-party assets (generated, committed)
 scripts/              asset build and CI helper scripts
-tests/                pytest suite
+tests/
+├── backend/          API and service tests by domain
+└── frontend/         templates, pages, static assets, translations
 packaging/            PyInstaller spec, launcher and build scripts
 ```
 
