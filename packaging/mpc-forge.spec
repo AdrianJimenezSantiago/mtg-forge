@@ -10,7 +10,7 @@ IS_MACOS = sys.platform == "darwin"
 _VENDOR = PROJECT_ROOT / "static" / "vendor"
 _REQUIRED_ASSETS = [
     "tailwind.css", "alpine.min.js", "alpine-collapse.min.js",
-    "alpine-focus.min.js", "lucide.min.js",
+    "alpine-focus.min.js", "auto-animate.min.js", "lucide.min.js",
     "mana.min.css", "fonts/mana.woff2",
 ]
 _missing = [a for a in _REQUIRED_ASSETS if not (_VENDOR / a).exists()]
@@ -65,6 +65,16 @@ a = Analysis(
         "notebook",
         "IPython",
         "pytest",
+        "pywt",
+        "scipy.integrate",
+        "scipy.interpolate",
+        "scipy.io",
+        "scipy.ndimage",
+        "scipy.optimize",
+        "scipy.signal",
+        "scipy.sparse",
+        "scipy.spatial",
+        "scipy.stats",
     ],
     noarchive=False,
     optimize=0,

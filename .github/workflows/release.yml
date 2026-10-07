@@ -66,7 +66,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements.lock
-          pip install pyinstaller
+          pip install pyinstaller==6.22.3
 
       - name: Setup Node (para los assets vendorizados)
         uses: actions/setup-node@v4
@@ -167,6 +167,21 @@ jobs:
             sleep 1
           done
 
+          if [ "$OK" = "1" ]; then
+            for path in /decks /static/js/core/boot.js /static/vendor/alpine.min.js \
+                        /static/vendor/fonts/mana.woff2 /i18n/en.js /api/settings/ \
+                        /api/calibration/sheet; do
+              if ! curl -sf -o /dev/null "http://127.0.0.1:8791${path}"; then
+                echo "::error::El binario no sirve ${path}"
+                OK=0
+              fi
+            done
+            if ! curl -sf "http://127.0.0.1:8791/api/drives/phash/stats" | grep -q '"available":true'; then
+              echo "::error::pHash no está disponible en el binario"
+              OK=0
+            fi
+          fi
+
           kill "$PID" 2>/dev/null || true
           wait "$PID" 2>/dev/null || true
 
@@ -174,7 +189,7 @@ jobs:
           cat smoke.log || true
 
           if [ "$OK" != "1" ]; then
-            echo "::error::El binario no respondió en 60s en el puerto 8791"
+            echo "::error::El binario no arrancó o no sirve todos sus recursos"
             exit 1
           fi
 

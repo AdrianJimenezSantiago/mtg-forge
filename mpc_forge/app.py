@@ -12,6 +12,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 from starlette.types import Scope
 
+from mpc_forge import __version__
 from mpc_forge import config as cfg
 from mpc_forge.lifespan import lifespan, preload_path_overrides
 from mpc_forge.middleware import (
@@ -97,7 +98,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="MPC Forge",
         description="Local Magic proxy printing pipeline.",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)

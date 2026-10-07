@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "mpc-forge"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local-first Magic: The Gathering proxy printing workflow — decklist to print-ready PDF or MPC Autofill XML"
 requires-python = ">=3.11"
 dependencies = [
@@ -39,6 +43,12 @@ dev = [
 
 [project.scripts]
 mpc-forge = "mpc_forge.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "mpc_forge.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["mpc_forge*"]
 
 [tool.ruff]
 line-length = 100

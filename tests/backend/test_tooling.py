@@ -96,3 +96,30 @@ def test_frozen_launcher_arguments(monkeypatch):
 
     release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
     assert "--no-browser" in release and "--port 8791" in release
+
+
+def test_the_bundle_keeps_what_the_frozen_app_needs():
+    spec = (ROOT / "packaging" / "mpc-forge.spec").read_text(encoding="utf-8")
+    excludes = set(re.findall(r'"(scipy\.[a-z_]+|pywt)"', spec))
+    assert excludes, "el spec debería recortar scipy"
+    assert not excludes & {"scipy.fft", "scipy.fftpack", "scipy.linalg", "scipy.special"}
+    vendored = re.search(r"_REQUIRED_ASSETS = \[(.*?)\]", spec, re.S).group(1)
+    for asset in re.findall(
+        r'src="/static/vendor/([^"?]+)', (ROOT / "templates" / "base.html").read_text()
+    ):
+        assert f'"{asset}"' in vendored, asset
+    for data in ("templates", "static", "locales"):
+        assert f'"{data}"' in spec, data
+
+
+def test_the_project_installs_in_editable_mode():
+    import tomllib
+
+    from mpc_forge import __version__
+
+    meta = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert meta["build-system"]["build-backend"] == "setuptools.build_meta"
+    assert meta["project"]["dynamic"] == ["version"]
+    assert meta["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mpc_forge.__version__"
+    assert meta["tool"]["setuptools"]["packages"]["find"]["include"] == ["mpc_forge*"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
