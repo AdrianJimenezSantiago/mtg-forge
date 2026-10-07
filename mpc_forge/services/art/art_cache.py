@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import aiofiles
 import httpx
@@ -63,8 +63,7 @@ class ArtCache:
             await db.scalars(select(LocalArt).where(LocalArt.scryfall_id.in_(sfids)))
         ).all()
         existing_by_key: dict[tuple[str, Face], LocalArt] = {
-            (la.scryfall_id, la.face): la
-            for la in existing_rows  # type: ignore[misc]
+            (la.scryfall_id, cast(Face, la.face)): la for la in existing_rows
         }
 
         printings_by_id: dict[str, PrintingCache] = {

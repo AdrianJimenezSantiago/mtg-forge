@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -91,7 +92,7 @@ async def undo_event(db: AsyncSession, event: DeckActivity) -> dict[str, Any]:
 async def _undo_card_moved(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     from_role = payload.get("from_role")
@@ -122,7 +123,7 @@ async def _undo_card_moved(
 async def _undo_card_qty_changed(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     old_qty = payload.get("old_qty")
@@ -154,7 +155,7 @@ async def _undo_card_qty_changed(
 async def _undo_card_include_toggled(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     prev_include = not payload.get("new_include", True)
@@ -179,7 +180,7 @@ async def _undo_card_include_toggled(
 async def _undo_card_art_changed(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     old_sfid = payload.get("old_scryfall_id")
@@ -222,7 +223,7 @@ async def _undo_card_art_changed(
 async def _undo_deck_renamed(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     old_name = payload.get("old_name")
@@ -241,7 +242,7 @@ async def _undo_deck_renamed(
 async def _undo_card_added(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     stacked = payload.get("stacked", False)
@@ -288,7 +289,7 @@ async def _undo_card_added(
 async def _undo_card_removed(
     db: AsyncSession,
     event: DeckActivity,
-    payload: dict,
+    payload: dict[str, Any],
     deck: Deck,
 ) -> dict[str, Any]:
     quantity = payload.get("quantity", 1)
@@ -329,7 +330,11 @@ async def _undo_card_removed(
     }
 
 
-_HANDLERS: dict[str, Any] = {
+_UndoHandler = Callable[
+    [AsyncSession, DeckActivity, dict[str, Any], Deck], Awaitable[dict[str, Any]]
+]
+
+_HANDLERS: dict[str, _UndoHandler] = {
     K.CARD_MOVED: _undo_card_moved,
     K.CARD_QTY_CHANGED: _undo_card_qty_changed,
     K.CARD_INCLUDE_TOGGLED: _undo_card_include_toggled,

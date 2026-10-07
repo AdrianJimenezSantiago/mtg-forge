@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from rapidfuzz import fuzz
 from sqlalchemy import func, or_, select, text
@@ -136,7 +137,7 @@ async def _search_fts5(
         return SearchPage(results=[], total=0)
 
     where_parts = ["indexed_art_fts MATCH :match"]
-    params: dict = {"match": fts_query, "limit": _MAX_CANDIDATES + 1}
+    params: dict[str, Any] = {"match": fts_query, "limit": _MAX_CANDIDATES + 1}
 
     if source_ids:
         ids = ",".join(str(int(x)) for x in source_ids)
@@ -326,7 +327,7 @@ async def _search_all(
                 base = base.where(col.is_(False))
 
     stmt = base.where(IndexedArt.name_normalized == q_norm).limit(_MAX_CANDIDATES + 1)
-    rows = (await db.execute(stmt)).all()
+    rows = list((await db.execute(stmt)).all())
 
     if len(rows) < 20:
         stmt = base.where(
@@ -396,7 +397,7 @@ async def list_cardbacks(
     source_ids: list[int] | None = None,
 ) -> list[SearchResult]:
     where_parts = ["ia.card_type = 'CARDBACK'"]
-    params: dict = {"limit": limit}
+    params: dict[str, Any] = {"limit": limit}
 
     if source_ids:
         ids = ",".join(str(int(x)) for x in source_ids)
@@ -445,7 +446,7 @@ async def list_cardbacks(
     return out
 
 
-async def stats(db: AsyncSession) -> dict:
+async def stats(db: AsyncSession) -> dict[str, Any]:
     total = int(await db.scalar(select(func.count(IndexedArt.id))) or 0)
     sources_with_index = int(
         await db.scalar(select(func.count(func.distinct(IndexedArt.source_id)))) or 0

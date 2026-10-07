@@ -37,14 +37,14 @@ def main() -> None:
 
     if args.window:
         try:
-            import pywebview  # type: ignore  # noqa: F401
+            import webview
         except ImportError:
             print("pywebview no está instalado. Ejecuta: pip install pywebview")
             print("Cayendo a modo navegador…")
             args.window = False
 
     if args.window:
-        import webview  # type: ignore
+        import webview
 
         def _run_server() -> None:
             uvicorn.run(

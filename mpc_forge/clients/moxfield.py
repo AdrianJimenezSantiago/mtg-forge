@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -50,13 +50,13 @@ class MoxfieldClient:
         try:
             resp = await self._client.get(f"{_MOXFIELD_API_BASE}/decks/all/{deck_id}")
             if resp.status_code == 200:
-                return resp.json()
+                return cast(dict[str, Any], resp.json())
         except httpx.HTTPError as e:
             log.debug("Moxfield v3 falló: %s", e)
         try:
             resp = await self._client.get(f"{_MOXFIELD_API_LEGACY}/decks/all/{deck_id}")
             if resp.status_code == 200:
-                return resp.json()
+                return cast(dict[str, Any], resp.json())
         except httpx.HTTPError as e:
             log.debug("Moxfield v2 falló: %s", e)
         return await asyncio.to_thread(_cloudscraper_fetch, deck_id)
@@ -76,7 +76,7 @@ def _cloudscraper_fetch(deck_id: str) -> dict[str, Any]:
         try:
             r = scraper.get(f"{base}/decks/all/{deck_id}", timeout=30)
             if r.status_code == 200:
-                return r.json()
+                return cast(dict[str, Any], r.json())
         except Exception as e:
             log.debug("cloudscraper %s falló: %s", base, e)
     raise MoxfieldError(

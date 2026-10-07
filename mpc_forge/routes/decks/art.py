@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any
 
 from fastapi import (
     Depends,
@@ -62,16 +63,16 @@ _SORT_KEYS = {
 }
 _REVERSED_SORTS = {"released_desc"}
 
-_FACET_PREDICATES = {
-    "full_art": lambda o: o.full_art,
-    "textless": lambda o: o.textless,
-    "promo": lambda o: o.promo,
+_FACET_PREDICATES: dict[str, Callable[[ArtOption], bool]] = {
+    "full_art": lambda o: bool(o.full_art),
+    "textless": lambda o: bool(o.textless),
+    "promo": lambda o: bool(o.promo),
     "borderless": lambda o: o.border_color == "borderless",
     "retro": lambda o: o.frame in ("1993", "1997"),
 }
 
 
-def _thumb_for_local(art_row) -> str | None:
+def _thumb_for_local(art_row: LocalArt | None) -> str | None:
     if art_row is None or not art_row.relative_path:
         return None
     return thumbnails.url_for_relative(art_row.relative_path)
@@ -123,7 +124,7 @@ async def list_printings_for_card(
     last_used = await history.last_scryfall_id_used(db, dc.oracle_id) if dc.oracle_id else None
 
     print_ids = [p.scryfall_id for p in prints]
-    local_arts: dict[str, object] = {}
+    local_arts: dict[str, LocalArt] = {}
     if print_ids:
         rows = (
             (
@@ -213,13 +214,13 @@ async def list_printings_for_card(
 async def preload_prints(
     deck_id: int,
     scryfall: ScryfallDep,
-) -> dict:
+) -> dict[str, Any]:
     state = await preloader.start(deck_id, scryfall)
     return state.to_dict()
 
 
 @router.get("/{deck_id}/preload-progress")
-async def preload_progress(deck_id: int) -> dict:
+async def preload_progress(deck_id: int) -> dict[str, Any]:
     state = preloader.get_state(deck_id)
     if state is None:
         return {"deck_id": deck_id, "total": 0, "done": 0, "in_progress": False}
@@ -227,7 +228,7 @@ async def preload_progress(deck_id: int) -> dict:
 
 
 @router.post("/{deck_id}/preload-cancel")
-async def preload_cancel(deck_id: int) -> dict:
+async def preload_cancel(deck_id: int) -> dict[str, Any]:
     await preloader.cancel(deck_id)
     return {"deck_id": deck_id, "cancelled": True}
 
@@ -282,7 +283,7 @@ async def change_art(
         )
 
     new_printing = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
-    activity_payload = {
+    activity_payload: dict[str, Any] = {
         "face": payload.face,
         "kind": "custom" if payload.custom_art_id else "official",
     }
@@ -432,7 +433,7 @@ class StyleMatchView(BaseModel):
 
 
 class StyleRecommendResponse(BaseModel):
-    query: dict
+    query: dict[str, Any]
     matched: list[StyleMatchView]
     unmatched_count: int
     skipped_count: int

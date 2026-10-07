@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
+from typing import Any
 
 from mpc_forge import config as cfg
 
@@ -22,7 +23,7 @@ MAX_SOURCE_PIXELS = 80_000_000
 _GENERATION_CONCURRENCY = 4
 _semaphore: asyncio.Semaphore | None = None
 
-_inflight: dict[Path, asyncio.Task] = {}
+_inflight: dict[Path, asyncio.Task[Any]] = {}
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -72,17 +73,17 @@ def _generate_sync(source: Path, target: Path) -> bool:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".webp.tmp")
-    with Image.open(source) as im:
-        width, height = im.size
+    with Image.open(source) as opened:
+        width, height = opened.size
         if width * height > MAX_SOURCE_PIXELS:
             raise SourceTooLargeError(
                 f"{source.name}: {width}x{height} px supera el límite de {MAX_SOURCE_PIXELS} px"
             )
-        im = ImageOps.exif_transpose(im)
-        if im.mode not in ("RGB", "RGBA"):
-            im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
-        im.thumbnail((THUMB_WIDTH, THUMB_HEIGHT), Image.LANCZOS)
-        im.save(tmp, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+        image = ImageOps.exif_transpose(opened)
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+        image.thumbnail((THUMB_WIDTH, THUMB_HEIGHT), Image.Resampling.LANCZOS)
+        image.save(tmp, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
     tmp.replace(target)
     return True
 

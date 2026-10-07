@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from fastapi import APIRouter
 
 ROUTER_PREFIX = "/api/decks"
-ROUTER_TAGS = ["decks"]
+ROUTER_TAGS: list[str | Enum] = ["decks"]
 
 
 def make_router() -> APIRouter:

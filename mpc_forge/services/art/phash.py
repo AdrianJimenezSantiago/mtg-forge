@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -29,8 +30,8 @@ def _check_deps() -> bool:
         return _pil is not None and _imagehash is not None
     _deps_checked = True
     try:
-        import imagehash as _ih_module  # type: ignore
-        from PIL import Image as _pil_module  # type: ignore
+        import imagehash as _ih_module
+        from PIL import Image as _pil_module
 
         _pil = _pil_module
         _imagehash = _ih_module
@@ -61,7 +62,7 @@ async def enabled(db: AsyncSession) -> bool:
 
 
 def compute_from_bytes(data: bytes) -> str | None:
-    if not is_available():
+    if not is_available() or _pil is None or _imagehash is None:
         return None
     try:
         img = _pil.open(io.BytesIO(data))
@@ -145,8 +146,8 @@ async def compute_missing_for_source(
     client: Any,
     source_id: int,
     limit: int = 500,
-    thumb_url_fn=None,
-) -> dict[str, int]:
+    thumb_url_fn: Callable[[IndexedArt], str] | None = None,
+) -> dict[str, Any]:
     if not is_available():
         return {"computed": 0, "failed": 0, "skipped": 0, "error": "deps missing"}
 
@@ -171,7 +172,7 @@ async def compute_missing_for_source(
 
     semaphore = asyncio.Semaphore(_RETROFIT_CONCURRENCY)
 
-    async def _one(art, url) -> tuple[Any, str | None]:
+    async def _one(art: IndexedArt, url: str) -> tuple[IndexedArt, str | None]:
         async with semaphore:
             return art, await compute_from_url(client, url)
 
@@ -199,7 +200,7 @@ async def compute_missing_for_source(
 
 
 def _default_thumb_url(art: IndexedArt, source: Any | None = None) -> str:
-    if getattr(art, "thumb_url", None):
+    if art.thumb_url:
         return art.thumb_url
 
     if source is not None:

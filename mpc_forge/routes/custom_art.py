@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,7 +21,7 @@ async def rescan(db: DbDep) -> RescanResult:
 
 
 @router.post("/from-url", response_model=dict)
-async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict:
+async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict[str, Any]:
     try:
         art = await custom_art_service.add_from_url(
             db,

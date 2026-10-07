@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any, cast
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import CursorResult, delete, func, select
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import CollectionEntry
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
 
 
-_SETS_CACHE: list[dict] | None = None
+_SETS_CACHE: list[dict[str, Any]] | None = None
 _SETS_CACHE_AT: float = 0.0
 _SETS_CACHE_TTL: float = 3600.0
 
@@ -32,7 +33,7 @@ WANTED_SET_TYPES = frozenset(
 )
 
 
-async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
+async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict[str, Any]]:
     global _SETS_CACHE, _SETS_CACHE_AT
 
     now = time.monotonic()
@@ -222,7 +223,7 @@ async def batch_toggle(payload: BatchToggleRequest, db: DbDep) -> BatchToggleRes
         result = await db.execute(
             delete(CollectionEntry).where(CollectionEntry.scryfall_id.in_(ids))
         )
-        removed = result.rowcount  # type: ignore
+        removed = cast(CursorResult[Any], result).rowcount
     else:
         existing = set(
             (

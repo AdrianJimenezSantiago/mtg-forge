@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import ClassVar
 
@@ -92,7 +92,7 @@ class LocalFolderSourceType(ArtSourceType):
         if not base.is_dir():
             raise ArtSourceTypeError(f"La carpeta del source '{source.name}' no existe: {base}")
 
-        def _scan_batch(iterator, size: int) -> list[SourceFile]:
+        def _scan_batch(iterator: Iterator[Path], size: int) -> list[SourceFile]:
             out: list[SourceFile] = []
             for entry in iterator:
                 if any(seg in cls._IGNORE_DIRS for seg in entry.parts):

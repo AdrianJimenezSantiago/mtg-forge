@@ -35,8 +35,8 @@ async def validate_and_enrich(
 
     by_key: dict[tuple[str, str], list[IndexedArt]] = {}
     for a in arts:
-        key = (a.expansion_code, a.collector_number)
-        by_key.setdefault(key, []).append(a)
+        if a.expansion_code and a.collector_number:
+            by_key.setdefault((a.expansion_code, a.collector_number), []).append(a)
 
     resolved: dict[tuple[str, str], PrintingCache] = {}
     keys = list(by_key.keys())

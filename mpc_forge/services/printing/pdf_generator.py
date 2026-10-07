@@ -4,7 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A3, A4, LETTER, landscape
@@ -144,7 +144,8 @@ def _page_size_pt(opts: PDFOptions) -> tuple[float, float]:
     size = _PAGE_SIZES.get(opts.page_size, A4)
     if opts.orientation == "landscape":
         size = landscape(size)
-    return size
+    width, height = size
+    return float(width), float(height)
 
 
 def compute_geometry(opts: PDFOptions, page_kind: str = "front") -> Geometry:
@@ -203,9 +204,9 @@ def _slot_position_mm(g: Geometry, col: int, row: int) -> tuple[float, float]:
 def _expand_slots(
     cards: list[DeckCardResolved],
     cardback_path: Path | None,
-) -> tuple[list[dict], list[dict | None]]:
-    fronts: list[dict] = []
-    backs: list[dict | None] = []
+) -> tuple[list[dict[str, Any]], list[dict[str, Any] | None]]:
+    fronts: list[dict[str, Any]] = []
+    backs: list[dict[str, Any] | None] = []
     for c in cards:
         for _ in range(c.quantity):
             fronts.append({"name": c.name, "path": str(c.front_path), "face": "front"})
@@ -280,9 +281,9 @@ def build_pdf(
     g_front = compute_geometry(opts, page_kind="front")
     per_page = g_front.cols * g_front.rows
 
-    pages: list[tuple[str, int, list[dict | None]]] = []
+    pages: list[tuple[str, int, list[dict[str, Any] | None]]] = []
 
-    front_chunks: list[list[dict | None]] = [
+    front_chunks: list[list[dict[str, Any] | None]] = [
         list(fronts[i : i + per_page]) for i in range(0, len(fronts), per_page)
     ]
 
@@ -294,7 +295,7 @@ def build_pdf(
             if any(b is not None for b in back_chunk):
                 pages.append(("back", pidx, list(back_chunk)))
     elif opts.include_backs and opts.backs_layout == "append":
-        real_backs: list[dict] = [b for b in backs if b is not None]
+        real_backs: list[dict[str, Any]] = [b for b in backs if b is not None]
         back_idx = 0
         if opts.backs_compact_fill and front_chunks:
             last = front_chunks[-1]
@@ -357,7 +358,7 @@ def _render_page(
     g: Geometry,
     opts: PDFOptions,
     kind: str,
-    chunk: list[dict | None],
+    chunk: list[dict[str, Any] | None],
     image_cache: _ImageReaderCache | None = None,
 ) -> None:
     is_back_duplex = kind == "back" and opts.backs_layout == "duplex"

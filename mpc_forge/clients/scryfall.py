@@ -5,7 +5,7 @@ import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import httpx
 
@@ -169,7 +169,7 @@ class ScryfallClient:
     @staticmethod
     def _backoff_delay(attempt: int) -> float:
         base = min(_RETRY_BASE_DELAY * (2**attempt), _RETRY_MAX_DELAY)
-        return base + random.uniform(0, 0.25)
+        return float(base) + random.uniform(0, 0.25)
 
     @staticmethod
     def _retry_after(resp: httpx.Response) -> float:
@@ -193,14 +193,14 @@ class ScryfallClient:
             fut.add_done_callback(_cleanup)
         else:
             self.stats["deduplicated"] += 1
-        return await asyncio.shield(fut)
+        return cast(T, await asyncio.shield(fut))
 
     async def _get_uncached(self, path: str, params: dict[str, Any] | None) -> dict[str, Any]:
         resp = await self._request_with_retry("GET", path, params=params)
         if resp.status_code == 404:
             return {}
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         key = ("GET", path, tuple(sorted((params or {}).items())))

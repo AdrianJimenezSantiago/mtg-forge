@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from urllib.parse import urlparse
 
 from .archidekt import ArchidektSite
@@ -34,7 +35,7 @@ def resolve_site(url: str) -> type[ImportSite] | None:
     return None
 
 
-def list_supported_sites() -> list[dict[str, str]]:
+def list_supported_sites() -> list[dict[str, Any]]:
     return [
         {
             "key": cls.key,

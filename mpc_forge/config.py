@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from platformdirs import user_data_dir
 
 from mpc_forge.paths import install_root
 
 APP_NAME = "MPC-Forge"
-APP_AUTHOR: str | bool = False
+APP_AUTHOR: Literal[False] = False
 
 MOXFIELD_USER_AGENT = "MPC-Forge/0.1 (personal-proxy-tool; contact: local)"
 
@@ -105,7 +106,7 @@ class Paths:
         cardbacks_dir: str | Path | None = None,
         thumbs_dir: str | Path | None = None,
     ) -> Paths:
-        def _pick(override, default):
+        def _pick(override: str | Path | None, default: Path) -> Path:
             if override is None or str(override).strip() == "":
                 return default
             try:

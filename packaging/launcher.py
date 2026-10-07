@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import threading
@@ -14,10 +15,8 @@ DEFAULT_PORT = 8765
 def _open_browser_later(url: str, delay: float = 1.5) -> None:
     def _open() -> None:
         time.sleep(delay)
-        try:
+        with contextlib.suppress(Exception):
             webbrowser.open(url)
-        except Exception:  # noqa: BLE001
-            pass
 
     threading.Thread(target=_open, daemon=True).start()
 
@@ -79,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         import uvicorn
+
         from mpc_forge.app import app
 
         uvicorn.run(
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\n  Cerrando MPC Forge...")
         return 0
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print()
         print("  ✗ Error al arrancar MPC Forge:")
         print(f"    {type(e).__name__}: {e}")
@@ -101,10 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         if sys.stdin is not None and sys.stdin.isatty():
             print()
             print("  Pulsa Enter para cerrar.")
-            try:
+            with contextlib.suppress(EOFError, KeyboardInterrupt):
                 input()
-            except (EOFError, KeyboardInterrupt):
-                pass
         return 1
     return 0
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from fastapi import (
     HTTPException,
@@ -33,7 +34,7 @@ async def tokens_analysis(
     deck_id: int,
     db: DbDep,
     scryfall: ScryfallDep,
-) -> dict:
+) -> dict[str, Any]:
     generator_roles = {"commander", "mainboard", "sideboard"}
     cards = (
         await db.scalars(
@@ -58,7 +59,7 @@ async def tokens_analysis(
         ).all()
     }
 
-    tokens_map: dict[str, dict] = {}
+    tokens_map: dict[str, dict[str, Any]] = {}
     for dc in cards:
         printing = printings_by_id.get(dc.scryfall_id)
         if not printing or not printing.related_parts:

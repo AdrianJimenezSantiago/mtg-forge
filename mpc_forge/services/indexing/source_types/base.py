@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from mpc_forge.models import ArtSource
 
@@ -33,7 +33,7 @@ class ArtSourceType:
     key: ClassVar[str] = ""
     label: ClassVar[str] = ""
 
-    def __init_subclass__(cls, /, register: bool = True, **kwargs) -> None:
+    def __init_subclass__(cls, /, register: bool = True, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         if not register:
             return

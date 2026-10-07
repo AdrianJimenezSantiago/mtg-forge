@@ -10,15 +10,15 @@ log = logging.getLogger(__name__)
 
 class BackgroundTasks:
     def __init__(self) -> None:
-        self._tasks: set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task[Any]] = set()
 
-    def spawn(self, coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task:
+    def spawn(self, coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task[Any]:
         task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._on_done)
         return task
 
-    def _on_done(self, task: asyncio.Task) -> None:
+    def _on_done(self, task: asyncio.Task[Any]) -> None:
         self._tasks.discard(task)
         if task.cancelled():
             return

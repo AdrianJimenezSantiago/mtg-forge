@@ -36,7 +36,7 @@ async def log_tail(n: int = 200) -> str:
 
 
 @router.get("/log/download")
-async def log_download():
+async def log_download() -> FileResponse:
     p = logging_setup.current_log_path()
     if p is None or not p.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay log activo")

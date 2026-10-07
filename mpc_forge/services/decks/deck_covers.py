@@ -59,41 +59,43 @@ async def covers_for_decks(db: AsyncSession, decks: Sequence[Deck]) -> dict[int,
     deck_ids = [d.id for d in decks]
 
     commanders_by_deck: dict[int, list[DeckCard]] = {}
-    for chunk in chunked(deck_ids):
-        rows = (
+    for id_chunk in chunked(deck_ids):
+        commander_rows = (
             await db.scalars(
                 select(DeckCard)
-                .where(DeckCard.deck_id.in_(chunk), DeckCard.role == COMMANDER_ROLE)
+                .where(DeckCard.deck_id.in_(id_chunk), DeckCard.role == COMMANDER_ROLE)
                 .order_by(DeckCard.id)
             )
         ).all()
-        for card in rows:
-            commanders_by_deck.setdefault(card.deck_id, []).append(card)
+        for commander in commander_rows:
+            commanders_by_deck.setdefault(commander.deck_id, []).append(commander)
 
     printing_ids: set[str] = {d.commander_scryfall_id for d in decks if d.commander_scryfall_id}
     for cards in commanders_by_deck.values():
         printing_ids.update(c.scryfall_id for c in cards if c.scryfall_id)
     printings: dict[str, PrintingCache] = {}
-    for chunk in chunked(printing_ids):
-        rows = (
-            await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
+    for sfid_chunk in chunked(printing_ids):
+        printing_rows = (
+            await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(sfid_chunk)))
         ).all()
-        printings.update({p.scryfall_id: p for p in rows})
+        printings.update({p.scryfall_id: p for p in printing_rows})
 
     chosen: dict[int, DeckCard | None] = {
         d.id: pick_cover_card(d, commanders_by_deck.get(d.id, []), printings) for d in decks
     }
     custom_ids = {c.custom_art_front_id for c in chosen.values() if c and c.custom_art_front_id}
     customs: dict[int, CustomArt] = {}
-    for chunk in chunked(custom_ids):
-        rows = (await db.scalars(select(CustomArt).where(CustomArt.id.in_(chunk)))).all()
-        customs.update({ca.id: ca for ca in rows})
+    for custom_chunk in chunked(custom_ids):
+        custom_rows = (
+            await db.scalars(select(CustomArt).where(CustomArt.id.in_(custom_chunk)))
+        ).all()
+        customs.update({ca.id: ca for ca in custom_rows})
 
     out: dict[int, DeckCover] = {}
     for deck in decks:
-        card = chosen[deck.id]
+        cover_card = chosen[deck.id]
         fallback = printings.get(deck.commander_scryfall_id) if deck.commander_scryfall_id else None
-        if card is None:
+        if cover_card is None:
             out[deck.id] = DeckCover(
                 image_url=_printing_image(fallback),
                 name=fallback.name if fallback else None,
@@ -101,15 +103,15 @@ async def covers_for_decks(db: AsyncSession, decks: Sequence[Deck]) -> dict[int,
             continue
 
         image: str | None = None
-        if card.custom_art_front_id:
-            ca = customs.get(card.custom_art_front_id)
+        if cover_card.custom_art_front_id:
+            ca = customs.get(cover_card.custom_art_front_id)
             if ca is not None:
                 image = custom_art.custom_art_url(ca.relative_path)
         if image is None:
-            image = _printing_image(printings.get(card.scryfall_id))
+            image = _printing_image(printings.get(cover_card.scryfall_id))
         if image is None:
             image = _printing_image(fallback)
-        out[deck.id] = DeckCover(image_url=image, name=card.name, card_id=card.id)
+        out[deck.id] = DeckCover(image_url=image, name=cover_card.name, card_id=cover_card.id)
     return out
 
 

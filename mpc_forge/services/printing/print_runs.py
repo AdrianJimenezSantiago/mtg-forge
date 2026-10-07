@@ -20,7 +20,7 @@ class PrintRunPlan:
     total_cards: int = 0
     wasted_slots: int = 0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.total_cards = sum(c.quantity for c in self.cards)
         self.wasted_slots = max(0, self.tier_size - self.total_cards)
 
@@ -37,7 +37,7 @@ class SplitResult:
     total_wasted_slots: int = 0
     total_subtotal_usd: float = 0.0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         pass
 
     def finalize(self) -> SplitResult:
@@ -105,7 +105,7 @@ def split_into_runs(
     current_total = 0
     run_index = 0
 
-    def _close_run():
+    def _close_run() -> None:
         nonlocal current, current_total, run_index
         if not current:
             return
@@ -192,14 +192,14 @@ def suggest_tier_combination(
             if t >= remaining:
                 combo = [t]
                 sc = _score(combo)
-                if best is None or sc < best_score:
+                if best_score is None or sc < best_score:
                     best, best_score = combo, sc
             if runs_left > 1 and t < remaining:
                 sub = _best_below(remaining - t, runs_left - 1)
                 if sub:
                     combo = [t, *sub]
                     sc = _score(combo)
-                    if best is None or sc < best_score:
+                    if best_score is None or sc < best_score:
                         best, best_score = combo, sc
 
         memo[key] = best or []

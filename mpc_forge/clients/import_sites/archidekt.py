@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import ClassVar
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 from .base import ImportSite, ImportSiteError, InvalidURLError, PayloadCache
@@ -19,7 +19,7 @@ class ArchidektSite(ImportSite):
     _payload_cache: ClassVar[PayloadCache] = PayloadCache()
 
     @classmethod
-    async def _fetch_payload(cls, url: str) -> tuple[str, dict]:
+    async def _fetch_payload(cls, url: str) -> tuple[str, dict[str, Any]]:
         path = urlparse(url).path or ""
         m = _ARCHIDEKT_ID_RE.search(path)
         if not m:
@@ -50,7 +50,7 @@ class ArchidektSite(ImportSite):
         return deck_name if deck_name else None
 
 
-def _payload_to_text(payload: dict) -> str:
+def _payload_to_text(payload: dict[str, Any]) -> str:
     cards = payload.get("cards") or []
 
     commanders: list[tuple[int, str]] = []

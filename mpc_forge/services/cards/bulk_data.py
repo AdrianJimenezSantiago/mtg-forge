@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from sqlalchemy import func, select
@@ -92,7 +93,7 @@ async def fetch_manifest(kind: str = DEFAULT_KIND) -> dict[str, Any]:
         resp.raise_for_status()
         for entry in resp.json().get("data", []):
             if entry.get("type") == kind:
-                return entry
+                return cast(dict[str, Any], entry)
     raise LookupError(f"Scryfall no publica un volcado de tipo {kind!r}")
 
 
@@ -329,7 +330,6 @@ async def sync(
 
 async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
     use_ijson = _ijson_available()
-    parser = None if use_ijson else _IncrementalArrayParser()
     batch: list[dict[str, Any]] = []
     written = 0
     seen_ids: set[str] = set()
@@ -365,7 +365,7 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
         if use_ijson:
             import ijson
 
-            async def byte_chunks():
+            async def byte_chunks() -> AsyncIterator[bytes]:
                 async for chunk in response.aiter_bytes(chunk_size=1 << 20):
                     _progress.bytes_downloaded += len(chunk)
                     yield chunk
@@ -373,6 +373,7 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
             async for card in ijson.items_async(byte_chunks(), "item"):
                 await handle(card)
         else:
+            parser = _IncrementalArrayParser()
             async for chunk in response.aiter_text(chunk_size=1 << 20):
                 _progress.bytes_downloaded += len(chunk.encode("utf-8"))
                 for card in parser.feed(chunk):
@@ -395,7 +396,12 @@ async def _record_state(db: AsyncSession, kind: str, updated_at: str, rows: int,
     await db.commit()
 
 
-def start(db_factory, kind: str = DEFAULT_KIND, *, force: bool = False):
+def start(
+    db_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
+    kind: str = DEFAULT_KIND,
+    *,
+    force: bool = False,
+) -> asyncio.Task[None]:
     async def _run() -> None:
         async with db_factory() as session:
             await sync(session, kind, force=force)

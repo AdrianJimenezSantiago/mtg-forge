@@ -7,6 +7,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from mpc_forge import config as cfg
 
@@ -128,7 +129,7 @@ def launch(xml_path: Path) -> int:
     cmd = [str(exe), "--directory", str(xml_path.parent)]
 
     log.info("Lanzando MPC Autofill: %s", " ".join(cmd))
-    kwargs: dict = {"cwd": str(exe.parent)}
+    kwargs: dict[str, Any] = {"cwd": str(exe.parent)}
     if sys.platform == "win32":
         DETACHED_PROCESS = 0x00000008
         CREATE_NEW_CONSOLE = 0x00000010

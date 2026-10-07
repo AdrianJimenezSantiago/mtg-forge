@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,7 +103,8 @@ def _related_parts(printing: PrintingCache | None) -> list[dict[str, str]]:
     if not printing or not printing.related_parts:
         return []
     try:
-        return json.loads(printing.related_parts)
+        parts: list[dict[str, str]] = json.loads(printing.related_parts)
+        return parts
     except (ValueError, TypeError):
         return []
 
@@ -118,11 +120,12 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
 
     is_dfc = bool(printing and printing.layout in DFC_LAYOUTS)
     stat = ctx.history_stats.get(dc.oracle_id) if dc.oracle_id else None
-    extra: dict = {}
+    extra: dict[str, Any] = {}
     if with_faces:
+        back = printing if printing and is_dfc else None
         extra = {
-            "back_thumbnail_url": printing.back_image_normal if is_dfc else None,
-            "back_name": printing.back_name if is_dfc else None,
+            "back_thumbnail_url": back.back_image_normal if back else None,
+            "back_name": back.back_name if back else None,
             "related_parts": _related_parts(printing),
         }
 
@@ -167,7 +170,7 @@ async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
     return (await _deckcards_to_views(db, [dc]))[0]
 
 
-def _validation_view(val: deck_validation.DeckValidationResult, **extra) -> DeckValidation:
+def _validation_view(val: deck_validation.DeckValidationResult, **extra: Any) -> DeckValidation:
     return DeckValidation(
         format=val.format,
         expected=val.expected,
@@ -190,7 +193,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
             )
         ).all()
     )
-    base = {
+    base: dict[str, Any] = {
         "id": deck.id,
         "name": deck.name,
         "moxfield_id": deck.moxfield_id,

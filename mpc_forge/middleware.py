@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from starlette.datastructures import URL
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
@@ -48,7 +48,7 @@ class LocalhostGuardMiddleware(BaseHTTPMiddleware):
         self._allowed = set(allowed_hosts or DEFAULT_ALLOWED_HOSTS)
         self._enforce_csrf = enforce_csrf
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         host_header = request.headers.get("host", "")
         if host_header:
             host = _hostname(host_header)

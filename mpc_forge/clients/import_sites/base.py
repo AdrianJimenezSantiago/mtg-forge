@@ -32,9 +32,9 @@ class PayloadCache:
     def __init__(self, ttl_seconds: float = 120.0, max_entries: int = 32) -> None:
         self._ttl = ttl_seconds
         self._max = max_entries
-        self._entries: dict[str, tuple[float, dict]] = {}
+        self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
 
-    def get(self, key: str) -> dict | None:
+    def get(self, key: str) -> dict[str, Any] | None:
         hit = self._entries.get(key)
         if hit is None:
             return None
@@ -44,7 +44,7 @@ class PayloadCache:
             return None
         return payload
 
-    def put(self, key: str, payload: dict) -> None:
+    def put(self, key: str, payload: dict[str, Any]) -> None:
         if len(self._entries) >= self._max:
             oldest = min(self._entries, key=lambda k: self._entries[k][0])
             self._entries.pop(oldest, None)

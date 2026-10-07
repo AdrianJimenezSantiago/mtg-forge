@@ -51,8 +51,8 @@ async def build_decklist_text(
             if lines:
                 lines.append("")
             lines.append(role_label)
-        for dc, printing in group:
-            lines.append(_format_line(dc, printing, fmt))
+        for card, cached in group:
+            lines.append(_format_line(card, cached, fmt))
 
     return "\n".join(lines) + "\n"
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import get_args
 
 from fastapi import APIRouter, HTTPException, status
 from slugify import slugify
@@ -12,10 +13,17 @@ from mpc_forge import config as cfg
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import Deck, DeckCard
 from mpc_forge.services.art.art_cache import ArtCache
+from mpc_forge.services.decks.decklist_export import Format as DecklistFormat
+
+__all__ = ["DecklistFormat"]
 from mpc_forge.services.printing import build_progress
 from mpc_forge.services.printing.xml_generator import DeckCardResolved, resolve_deck_for_xml
 
-DECKLIST_FORMATS = frozenset({"simple", "with_set", "arena"})
+DECKLIST_FORMATS: tuple[DecklistFormat, ...] = get_args(DecklistFormat)
+
+
+def parse_decklist_format(value: str | None) -> DecklistFormat | None:
+    return next((fmt for fmt in DECKLIST_FORMATS if fmt == value), None)
 
 
 def make_router() -> APIRouter:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 from collections.abc import AsyncIterator
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -67,7 +67,7 @@ class HTTPListingSourceType(ArtSourceType):
             resp = await client.get(url)
             resp.raise_for_status()
             try:
-                return resp.json()
+                return cast(dict[str, Any], resp.json())
             except ValueError as e:
                 raise ArtSourceTypeError(f"El manifest de {url} no es JSON válido: {e}") from e
 

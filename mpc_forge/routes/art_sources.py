@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import FileResponse
@@ -14,6 +15,7 @@ from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.indexing import art_sources, gdrive_indexer
 from mpc_forge.services.indexing.source_types import list_registered, resolve
 from mpc_forge.services.indexing.source_types.base import ArtSourceTypeError
+from mpc_forge.services.indexing.source_types.local_folder import LocalFolderSourceType
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ class ArtSourceView(BaseModel):
     index_error: str = ""
 
     @classmethod
-    def from_model(cls, s) -> ArtSourceView:
+    def from_model(cls, s: ArtSource) -> ArtSourceView:
         return cls(
             id=s.id,
             name=s.name,
@@ -189,7 +191,7 @@ async def index_source(
 
 
 @router.delete("/art-sources/{source_id}/index", status_code=status.HTTP_200_OK)
-async def clear_index(source_id: int, db: DbDep) -> dict:
+async def clear_index(source_id: int, db: DbDep) -> dict[str, Any]:
     n = await gdrive_indexer.clear_index(db, source_id)
     return {"deleted": n}
 
@@ -281,17 +283,13 @@ async def serve_local_source_file(
     source_id: int,
     file_id: str,
     db: DbDep,
-):
+) -> FileResponse:
     source = await db.get(ArtSource, source_id)
     if not source or source.source_type != "local-folder":
         raise HTTPException(404, "Source no encontrado o no es de tipo local-folder")
 
-    cls = resolve("local-folder")
-    if cls is None:
-        raise HTTPException(500, "LocalFolderSourceType no disponible")
-
     try:
-        path = cls.resolve_path(source, file_id)  # type: ignore[attr-defined]
+        path = LocalFolderSourceType.resolve_path(source, file_id)
     except ArtSourceTypeError as e:
         raise HTTPException(400, str(e)) from e
     return FileResponse(path)

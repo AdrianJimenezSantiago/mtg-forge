@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import ClassVar
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 from .base import ImportSite, ImportSiteError, InvalidURLError, PayloadCache
@@ -35,7 +35,7 @@ class MoxfieldSite(ImportSite):
         return base
 
     @classmethod
-    async def _fetch_payload(cls, url: str) -> tuple[str, dict]:
+    async def _fetch_payload(cls, url: str) -> tuple[str, dict[str, Any]]:
         deck_id = _extract_deck_id(url)
         if not deck_id:
             raise InvalidURLError(url)
@@ -74,7 +74,7 @@ class MoxfieldSite(ImportSite):
         return deck_name if deck_name else None
 
 
-def _payload_to_text(payload: dict) -> str:
+def _payload_to_text(payload: dict[str, Any]) -> str:
     boards = payload.get("boards") or {}
     out: list[str] = []
 

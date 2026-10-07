@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
 from mpc_forge.routes.dependencies import ArtCacheDep, DbDep, ScryfallDep
 from mpc_forge.routes.export._shared import (
-    DECKLIST_FORMATS,
     export_path,
     get_deck_or_404,
     make_router,
+    parse_decklist_format,
     resolve_with_progress,
 )
 from mpc_forge.routes.export.cardbacks import resolve_deck_cardback
@@ -119,9 +119,12 @@ class BuildProgressResponse(BaseModel):
     percent: float
 
 
-def _one_of(value: str, allowed: tuple[str, ...], default: str) -> str:
+_Choice = TypeVar("_Choice", bound=str)
+
+
+def _one_of(value: str, allowed: tuple[_Choice, ...], default: _Choice) -> _Choice:
     v = (value or "").lower().strip()
-    return v if v in allowed else default
+    return next((choice for choice in allowed if choice == v), default)
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -152,8 +155,8 @@ def _pdf_options(payload: BuildPDFRequest) -> PDFOptions:
     card_width = _legacy_or(payload.guides_width_pt, payload.card_guides_width_pt)
 
     return PDFOptions(
-        page_size=_one_of(payload.page_size, ("a4", "letter", "a3"), "a4"),  # type: ignore[arg-type]
-        orientation=_one_of(payload.orientation, ("portrait", "landscape"), "portrait"),  # type: ignore[arg-type]
+        page_size=_one_of(payload.page_size, ("a4", "letter", "a3"), "a4"),
+        orientation=_one_of(payload.orientation, ("portrait", "landscape"), "portrait"),
         cols=max(0, min(20, payload.cols)),
         rows=max(0, min(20, payload.rows)),
         gap_x_mm=_clamp(gap_x, 0.0, 50.0),
@@ -165,14 +168,14 @@ def _pdf_options(payload: BuildPDFRequest) -> PDFOptions:
         bleed_enabled=payload.bleed_enabled,
         bleed_mm=_clamp(payload.bleed_mm, 0.0, 10.0),
         card_guides_enabled=card_guides_enabled,
-        card_guides_style=_one_of(card_style, ("corners", "full"), "corners"),  # type: ignore[arg-type]
-        card_guides_shape=_one_of(payload.card_guides_shape, ("square", "round"), "square"),  # type: ignore[arg-type]
-        card_guides_pattern=_one_of(card_pattern, ("solid", "dashed", "dotted"), "solid"),  # type: ignore[arg-type]
-        card_guides_placement=_one_of(card_placement, ("outside", "middle", "inside"), "outside"),  # type: ignore[arg-type]
+        card_guides_style=_one_of(card_style, ("corners", "full"), "corners"),
+        card_guides_shape=_one_of(payload.card_guides_shape, ("square", "round"), "square"),
+        card_guides_pattern=_one_of(card_pattern, ("solid", "dashed", "dotted"), "solid"),
+        card_guides_placement=_one_of(card_placement, ("outside", "middle", "inside"), "outside"),
         card_guides_length_mm=_clamp(card_length, 0.5, 30.0),
         card_guides_color=card_color if card_color.startswith("#") else "#606060",
         card_guides_width_pt=_clamp(card_width, 0.1, 3.0),
-        page_guides=_one_of(payload.page_guides, ("none", "full_lines", "corners_only"), "none"),  # type: ignore[arg-type]
+        page_guides=_one_of(payload.page_guides, ("none", "full_lines", "corners_only"), "none"),
         hide_card_guides_front=payload.hide_card_guides_front,
         hide_card_guides_back=payload.hide_card_guides_back,
         hide_page_guides_front=payload.hide_page_guides_front,
@@ -181,8 +184,8 @@ def _pdf_options(payload: BuildPDFRequest) -> PDFOptions:
         reg_marks_inset_mm=_clamp(payload.reg_marks_inset_mm, 0.0, 50.0),
         reg_marks_size_mm=_clamp(payload.reg_marks_size_mm, 1.0, 20.0),
         include_backs=payload.include_backs,
-        backs_layout=_one_of(payload.backs_layout, ("append", "duplex"), "append"),  # type: ignore[arg-type]
-        backs_content=_one_of(payload.backs_content, ("dfc_only", "all_cards"), "all_cards"),  # type: ignore[arg-type]
+        backs_layout=_one_of(payload.backs_layout, ("append", "duplex"), "append"),
+        backs_content=_one_of(payload.backs_content, ("dfc_only", "all_cards"), "all_cards"),
         backs_compact_fill=payload.backs_compact_fill,
         page_range=payload.page_range[:200],
         show_footer=payload.show_footer,
@@ -281,11 +284,11 @@ async def export_images_endpoint(
     deck = await get_deck_or_404(db, deck_id)
     resolved = await resolve_with_progress(db, scryfall, art_cache, deck, kind="pdf")
 
-    fmt = payload.decklist_format if payload.decklist_format in DECKLIST_FORMATS else "with_set"
+    fmt = parse_decklist_format(payload.decklist_format) or "with_set"
     decklist_text = await decklist_export.build_decklist_text(
         db,
         deck_id,
-        fmt=fmt,  # type: ignore[arg-type]
+        fmt=fmt,
         include_headers=True,
     )
 

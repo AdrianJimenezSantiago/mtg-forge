@@ -100,7 +100,7 @@ def build_sheet(
     return target
 
 
-def _draw_front(c, cx, cy, width, height, mm) -> None:
+def _draw_front(c: Any, cx: float, cy: float, width: float, height: float, mm: float) -> None:
     c.setFont("Helvetica-Bold", 14)
     c.drawCentredString(cx, height - 20 * mm, "CALIBRACIÓN DE DÚPLEX — ANVERSO")
     c.setFont("Helvetica", 9)
@@ -124,7 +124,9 @@ def _draw_front(c, cx, cy, width, height, mm) -> None:
     c.drawCentredString(cx, 18 * mm, "Las reglas están numeradas en milímetros desde el centro.")
 
 
-def _draw_back(c, cx, cy, width, height, mm, flip_edge: FlipEdge) -> None:
+def _draw_back(
+    c: Any, cx: float, cy: float, width: float, height: float, mm: float, flip_edge: FlipEdge
+) -> None:
     c.setFont("Helvetica-Bold", 14)
     c.drawCentredString(cx, height - 20 * mm, "CALIBRACIÓN DE DÚPLEX — REVERSO")
     c.setFont("Helvetica", 9)
@@ -148,7 +150,7 @@ def _draw_back(c, cx, cy, width, height, mm, flip_edge: FlipEdge) -> None:
     )
 
 
-def _draw_ruler(c, cx, cy, mm, *, horizontal: bool) -> None:
+def _draw_ruler(c: Any, cx: float, cy: float, mm: float, *, horizontal: bool) -> None:
     c.setLineWidth(0.3)
     c.setFont("Helvetica", 6)
 
@@ -170,7 +172,7 @@ def _draw_ruler(c, cx, cy, mm, *, horizontal: bool) -> None:
                 c.drawString(cx + tick + 1.2 * mm, y - 0.8 * mm, str(offset))
 
 
-def _draw_corner_marks(c, width, height, mm) -> None:
+def _draw_corner_marks(c: Any, width: float, height: float, mm: float) -> None:
     inset = 10 * mm
     size = 5 * mm
     c.setLineWidth(0.4)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
@@ -44,7 +45,7 @@ _NON_HTML_PREFIXES = (
 
 
 class CachedStaticFiles(StaticFiles):
-    def __init__(self, *args, max_age: int = ONE_DAY, **kwargs) -> None:
+    def __init__(self, *args: Any, max_age: int = ONE_DAY, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._cache_control = f"public, max-age={max_age}"
 
@@ -63,7 +64,8 @@ def _wants_html_page(request: Request) -> bool:
     return "text/html" in request.headers.get("accept", "")
 
 
-async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+async def _http_exception_handler(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, StarletteHTTPException)
     if exc.status_code == 404 and _wants_html_page(request):
         return ui.render_not_found(request)
     return await http_exception_handler(request, exc)

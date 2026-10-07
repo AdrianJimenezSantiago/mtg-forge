@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 log = logging.getLogger(__name__)
 
@@ -19,12 +20,12 @@ class Migration:
     callback: Callable[[object], Awaitable[None]] | None = None
 
 
-async def column_exists(conn, table: str, column: str) -> bool:
+async def column_exists(conn: AsyncConnection, table: str, column: str) -> bool:
     result = await conn.execute(text(f"PRAGMA table_info({table})"))
     return column in {row[1] for row in result}
 
 
-async def table_exists(conn, table: str) -> bool:
+async def table_exists(conn: AsyncConnection, table: str) -> bool:
     result = await conn.execute(
         text("SELECT name FROM sqlite_master WHERE type='table' AND name=:t"),
         {"t": table},
@@ -32,7 +33,7 @@ async def table_exists(conn, table: str) -> bool:
     return result.first() is not None
 
 
-async def add_column_if_missing(conn, table: str, column: str, ddl: str) -> bool:
+async def add_column_if_missing(conn: AsyncConnection, table: str, column: str, ddl: str) -> bool:
     if not await table_exists(conn, table):
         return False
     if await column_exists(conn, table, column):
@@ -154,7 +155,7 @@ MIGRATIONS: list[Migration] = [
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
 
 
-async def read_version(conn) -> int | None:
+async def read_version(conn: AsyncConnection) -> int | None:
     if not await table_exists(conn, "kv_store"):
         return None
     row = (
@@ -168,14 +169,14 @@ async def read_version(conn) -> int | None:
         return BASELINE_VERSION
 
 
-async def stamp_version(conn, version: int) -> None:
+async def stamp_version(conn: AsyncConnection, version: int) -> None:
     await conn.execute(
         text("INSERT OR REPLACE INTO kv_store (key, value) VALUES ('schema_version', :v)"),
         {"v": str(version)},
     )
 
 
-async def adopt_legacy(conn) -> None:
+async def adopt_legacy(conn: AsyncConnection) -> None:
     added = 0
     for table, column, ddl in LEGACY_COLUMNS:
         if await add_column_if_missing(conn, table, column, ddl):
@@ -184,12 +185,15 @@ async def adopt_legacy(conn) -> None:
         log.info("Adopción legacy: %d columnas añadidas sin pérdida de datos", added)
 
 
-async def run(conn, *, on_backup=None) -> dict[str, object]:
+async def run(
+    conn: AsyncConnection, *, on_backup: Callable[[], object] | None = None
+) -> dict[str, object]:
     current = await read_version(conn)
+    applied: list[int | str] = []
     report: dict[str, object] = {
         "from_version": current,
         "to_version": LATEST_VERSION,
-        "applied": [],
+        "applied": applied,
         "backup_path": None,
         "fresh": current is None,
     }
@@ -221,7 +225,7 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
         await adopt_legacy(conn)
         await stamp_version(conn, BASELINE_VERSION)
         current = BASELINE_VERSION
-        report["applied"].append("adopt-legacy")
+        applied.append("adopt-legacy")
     else:
         await adopt_legacy(conn)
 
@@ -256,13 +260,13 @@ async def run(conn, *, on_backup=None) -> dict[str, object]:
             report["failed_at"] = migration.version
             break
         current = migration.version
-        report["applied"].append(migration.version)
+        applied.append(migration.version)
 
     report["to_version"] = current
     return report
 
 
-async def _execute_tolerant(conn, stmt: str) -> None:
+async def _execute_tolerant(conn: AsyncConnection, stmt: str) -> None:
     try:
         await conn.execute(text(stmt))
     except Exception as e:
@@ -278,7 +282,7 @@ async def _execute_tolerant(conn, stmt: str) -> None:
         raise
 
 
-def _safe_backup(on_backup) -> str | None:
+def _safe_backup(on_backup: Callable[[], object]) -> str | None:
     try:
         path = on_backup()
         log.info("Backup previo a migración creado: %s", path)

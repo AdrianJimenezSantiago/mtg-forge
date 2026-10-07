@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,15 +12,15 @@ from mpc_forge.services.art.art_cache import ArtCache
 
 
 def get_scryfall(request: Request) -> ScryfallClient:
-    return request.app.state.scryfall
+    return cast(ScryfallClient, request.app.state.scryfall)
 
 
 def get_moxfield(request: Request) -> MoxfieldClient:
-    return request.app.state.moxfield
+    return cast(MoxfieldClient, request.app.state.moxfield)
 
 
 def get_art_cache(request: Request) -> ArtCache:
-    return request.app.state.art_cache
+    return cast(ArtCache, request.app.state.art_cache)
 
 
 DbDep = Annotated[AsyncSession, Depends(get_session)]

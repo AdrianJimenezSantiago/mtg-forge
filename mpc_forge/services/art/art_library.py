@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar, Unpack
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ VARIANT_FLAGS = {
     "alt_art": IndexedArt.is_alt_art,
 }
 
-SORT_OPTIONS = {
+SORT_OPTIONS: dict[str, tuple[Any, ...]] = {
     "name": (IndexedArt.name_normalized.asc(), IndexedArt.id.asc()),
     "name_desc": (IndexedArt.name_normalized.desc(), IndexedArt.id.desc()),
     "recent": (IndexedArt.indexed_at.desc(), IndexedArt.id.desc()),
@@ -65,7 +65,10 @@ class LibraryFilters:
         )
 
 
-def _apply_filters(stmt: Select, filters: LibraryFilters) -> Select:
+_Stmt = TypeVar("_Stmt", bound=Select[Unpack[tuple[Any, ...]]])
+
+
+def _apply_filters(stmt: _Stmt, filters: LibraryFilters) -> _Stmt:
     if filters.source_ids:
         stmt = stmt.where(IndexedArt.source_id.in_(filters.source_ids))
 

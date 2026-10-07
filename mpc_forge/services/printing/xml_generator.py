@@ -61,7 +61,8 @@ def _meld_result_id(printing: PrintingCache) -> str | None:
         return None
     for part in related:
         if part.get("component") == "meld_result":
-            return part.get("id")
+            meld_id = part.get("id")
+            return str(meld_id) if meld_id else None
     return None
 
 

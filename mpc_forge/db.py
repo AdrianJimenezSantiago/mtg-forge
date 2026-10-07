@@ -3,9 +3,16 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 
 from sqlalchemy import event, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from mpc_forge import config as cfg
 from mpc_forge import migrations
@@ -27,7 +34,7 @@ engine = create_async_engine(
 
 
 @event.listens_for(engine.sync_engine, "connect")
-def _sqlite_pragmas(dbapi_conn, _connection_record):
+def _sqlite_pragmas(dbapi_conn: Any, _connection_record: Any) -> None:
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA busy_timeout=30000")
@@ -87,7 +94,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        def _make_backup():
+        def _make_backup() -> Path:
             return backup_service.create_backup(tag="pre-migration")
 
         report = await migrations.run(conn, on_backup=_make_backup)
@@ -130,7 +137,7 @@ async def analyze_table(table: str) -> None:
         log.exception("ANALYZE %s falló (no es crítico)", table)
 
 
-async def _try_setup_fts5(conn) -> bool:
+async def _try_setup_fts5(conn: AsyncConnection) -> bool:
     try:
         await conn.execute(
             text(

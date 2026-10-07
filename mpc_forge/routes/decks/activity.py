@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
+from typing import Any
 
 from fastapi import (
     HTTPException,
@@ -37,7 +38,7 @@ class ActivityEntry(BaseModel):
     card_name: str | None
     card_scryfall_id: str | None
     card_oracle_id: str | None
-    payload: dict
+    payload: dict[str, Any]
     summary: str
 
 
@@ -71,15 +72,17 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
     if not deck_rows:
         return []
 
-    activity_counts: dict[int, int] = dict(
-        (
+    activity_counts: dict[int, int] = {
+        deck_id: count
+        for deck_id, count in (
             await db.execute(
                 select(DeckActivity.deck_id, func.count(DeckActivity.id))
                 .where(DeckActivity.deck_id.isnot(None))
                 .group_by(DeckActivity.deck_id)
             )
         ).all()
-    )
+        if deck_id is not None
+    }
 
     last_id_subq = (
         select(func.max(DeckActivity.id).label("last_id"), DeckActivity.deck_id.label("d"))
@@ -98,7 +101,9 @@ async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
         )
     ).all()
     last_activity: dict[int, tuple[datetime, str, str]] = {
-        deck_id: (created_at, kind, summary) for deck_id, created_at, kind, summary in last_rows
+        deck_id: (created_at, kind, summary)
+        for deck_id, created_at, kind, summary in last_rows
+        if deck_id is not None
     }
 
     covers = await deck_covers.covers_for_decks(db, [d for d, _ in deck_rows])
@@ -145,7 +150,7 @@ async def list_activity(
     limit = max(1, min(limit, 2000))
     rows = await deck_activity.list_for_deck(db, deck_id, kinds=kinds_list, limit=limit)
 
-    def _parse_payload(raw: str) -> dict:
+    def _parse_payload(raw: str) -> dict[str, Any]:
         try:
             v = json.loads(raw or "{}")
             return v if isinstance(v, dict) else {"_raw": v}

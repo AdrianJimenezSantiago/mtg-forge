@@ -3,6 +3,7 @@ from __future__ import annotations
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from mpc_forge import config as cfg
 
@@ -69,7 +70,7 @@ def prune_tagged_backups(
     return removed
 
 
-def list_backups(directory: Path | None = None) -> list[dict]:
+def list_backups(directory: Path | None = None) -> list[dict[str, Any]]:
     out = directory or cfg.PATHS.backups_dir
     if not out.exists():
         return []
@@ -85,5 +86,5 @@ def list_backups(directory: Path | None = None) -> list[dict]:
                 "automatic": "-pre-migration" in f.name,
             }
         )
-    items.sort(key=lambda d: d["created_at"], reverse=True)
+    items.sort(key=lambda d: str(d["created_at"]), reverse=True)
     return items

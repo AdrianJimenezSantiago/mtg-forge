@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -64,7 +65,7 @@ class IndexQueue:
         self._queue: asyncio.Queue[int] = asyncio.Queue()
         self._jobs: dict[int, IndexJob] = {}
         self._order: list[int] = []
-        self._worker_task: asyncio.Task | None = None
+        self._worker_task: asyncio.Task[Any] | None = None
         self._cancel_flag: bool = False
         self._batch_id: str | None = None
         self._batch_started_at: float | None = None
@@ -279,7 +280,7 @@ class IndexQueue:
 
         log.info("IndexQueue worker terminado")
 
-    def _make_progress_callback(self, source_id: int):
+    def _make_progress_callback(self, source_id: int) -> Callable[..., None]:
         def callback(
             files_added: int = 0,
             files_updated: int = 0,

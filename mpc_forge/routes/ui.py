@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -54,7 +57,7 @@ templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
 router = APIRouter(tags=["ui"])
 
 
-def _t_context(request: Request) -> dict:
+def _t_context(request: Request) -> dict[str, Any]:
     lang = detect_lang(request)
     return {"t": get_translations(lang), "lang": lang}
 
@@ -95,18 +98,36 @@ async def set_language(
     return response
 
 
-async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[Deck]:
-    decks = []
-    for deck, count, cover in await deck_covers.decks_with_covers(db, limit):
-        deck.card_count = count
-        deck.commander_image_url = cover.image_url
-        deck.commander_name = cover.name
-        decks.append(deck)
-    return decks
+@dataclass(frozen=True, slots=True)
+class DeckTile:
+    id: int
+    name: str
+    format: str
+    moxfield_id: str | None
+    updated_at: datetime
+    card_count: int
+    commander_image_url: str | None
+    commander_name: str | None
 
 
-async def _workshop_status(db: AsyncSession) -> dict:
-    summary = {
+async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[DeckTile]:
+    return [
+        DeckTile(
+            id=deck.id,
+            name=deck.name,
+            format=deck.format,
+            moxfield_id=deck.moxfield_id,
+            updated_at=deck.updated_at,
+            card_count=count,
+            commander_image_url=cover.image_url,
+            commander_name=cover.name,
+        )
+        for deck, count, cover in await deck_covers.decks_with_covers(db, limit)
+    ]
+
+
+async def _workshop_status(db: AsyncSession) -> dict[str, Any]:
+    summary: dict[str, Any] = {
         "printings": 0,
         "offline": False,
         "art_files": 0,
@@ -141,11 +162,11 @@ _SAMPLE_CARD_COLORS = ("w", "u", "b", "r", "g")
 _HAND_POSITIONS = (0, -1, 1, -2, 2)
 
 
-def _build_hand(decks: list[Deck], t) -> list[dict]:
+def _build_hand(decks: list[DeckTile], t: Any) -> list[dict[str, Any]]:
     covers = [d for d in decks if d.commander_image_url][: len(_HAND_POSITIONS)]
     slots = []
     for rank, pos in enumerate(_HAND_POSITIONS):
-        slot = {"i": pos, "ia": abs(pos), "z": 10 - abs(pos), "rank": rank}
+        slot: dict[str, Any] = {"i": pos, "ia": abs(pos), "z": 10 - abs(pos), "rank": rank}
         if rank < len(covers):
             slot["deck"] = covers[rank]
         else:

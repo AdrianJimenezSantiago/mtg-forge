@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from typing import Any
 
 log = logging.getLogger(__name__)
 
 
-def is_benign_connection_reset(context: dict) -> bool:
+def is_benign_connection_reset(context: dict[str, Any]) -> bool:
     exc = context.get("exception")
     if not isinstance(exc, ConnectionResetError):
         return False
@@ -20,7 +21,7 @@ def silence_windows_connection_resets(loop: asyncio.AbstractEventLoop) -> None:
         return
     previous = loop.get_exception_handler()
 
-    def handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    def handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
         if is_benign_connection_reset(context):
             log.debug("Conexión cerrada por el cliente: %s", context.get("exception"))
             return

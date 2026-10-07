@@ -5,8 +5,10 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from sqlalchemy import delete, func, select
@@ -16,6 +18,7 @@ from mpc_forge import config as cfg
 from mpc_forge.models import ArtSource, IndexedArt, KeyValue
 from mpc_forge.services.art import phash
 from mpc_forge.services.indexing.source_types import resolve
+from mpc_forge.services.indexing.source_types.base import ArtSourceType
 from mpc_forge.services.system.logging_setup import redact
 from mpc_forge.ssl_config import ssl_insecure
 
@@ -936,13 +939,13 @@ def reload_tag_vocabulary() -> None:
 
 
 class _LazyAliasMap:
-    def get(self, key, default=None):
+    def get(self, key: str, default: str | None = None) -> str | None:
         return _get_vocab()[1].get(key, default)
 
-    def __contains__(self, key):
+    def __contains__(self, key: object) -> bool:
         return key in _get_vocab()[1]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> str:
         return _get_vocab()[1][key]
 
 
@@ -1134,6 +1137,9 @@ _IMAGE_MIMES = {
 _FIELDS = "nextPageToken,files(id,name,mimeType,size,parents,shortcutDetails)"
 
 
+ProgressCallback = Callable[..., None]
+
+
 @dataclass
 class IndexResult:
     source_id: int
@@ -1149,7 +1155,7 @@ async def _drive_api_list(
     folder_id: str,
     api_key: str,
     only_images: bool = True,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     if only_images:
         q = (
             f"'{folder_id}' in parents and trashed=false and ("
@@ -1160,7 +1166,7 @@ async def _drive_api_list(
     else:
         q = f"'{folder_id}' in parents and trashed=false"
 
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     page_token: str | None = None
     while True:
         params = {
@@ -1188,7 +1194,7 @@ async def _index_via_api(
     source: ArtSource,
     folder_id: str,
     api_key: str,
-    on_progress=None,
+    on_progress: ProgressCallback | None = None,
 ) -> IndexResult:
     files_added = 0
     files_updated = 0
@@ -1285,7 +1291,7 @@ async def _index_via_api(
                         queue.append((item_id, subpath))
                     continue
 
-                if mime not in _IMAGE_MIMES:
+                if mime not in _IMAGE_MIMES or not item_id:
                     continue
 
                 existing = existing_by_file_id.get(item_id)
@@ -1354,7 +1360,7 @@ async def _index_via_scraping(
     db: AsyncSession,
     source: ArtSource,
     folder_id: str,
-    on_progress=None,
+    on_progress: ProgressCallback | None = None,
 ) -> IndexResult:
     url = f"https://drive.google.com/embeddedfolderview?id={folder_id}#list"
     files_added = 0
@@ -1465,7 +1471,7 @@ def _extract_folder_id(url: str) -> str | None:
 async def index_source(
     db: AsyncSession,
     source_id: int,
-    on_progress=None,
+    on_progress: ProgressCallback | None = None,
 ) -> IndexResult:
     source = await db.get(ArtSource, source_id)
     if not source:
@@ -1556,7 +1562,10 @@ async def index_source(
 
 
 async def _index_generic(
-    db: AsyncSession, source: ArtSource, type_cls, on_progress=None
+    db: AsyncSession,
+    source: ArtSource,
+    type_cls: type[ArtSourceType],
+    on_progress: ProgressCallback | None = None,
 ) -> IndexResult:
     phash_active = await phash.enabled(db)
     phash_client = None
@@ -1578,7 +1587,7 @@ async def _index_generic(
         ).all()
     }
 
-    async def _partial_commit():
+    async def _partial_commit() -> None:
         nonlocal since_last_commit
         try:
             await db.commit()

@@ -276,16 +276,16 @@ async def _resolve_from_cache(
     cards: dict[str, dict[str, Any]] = {}
     hits: set[int] = set()
     for idx, e in enumerate(entries):
-        row: PrintingCache | None = None
+        cached: PrintingCache | None = None
         if e.get("scryfall_id"):
-            row = by_id.get(e["scryfall_id"])
+            cached = by_id.get(e["scryfall_id"])
         elif e.get("set") and e.get("number"):
-            row = by_set_num.get((e["set"], e["number"]))
+            cached = by_set_num.get((e["set"], e["number"]))
         else:
             memo = _memo_lookup(e.get("name", ""))
-            row = by_id.get(memo) if memo else None
-        if row is not None and fresh(row):
-            cards[f"idx:{idx}"] = _row_as_card(row)
+            cached = by_id.get(memo) if memo else None
+        if cached is not None and fresh(cached):
+            cards[f"idx:{idx}"] = _row_as_card(cached)
             hits.add(idx)
     return cards, hits
 
