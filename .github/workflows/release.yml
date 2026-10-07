@@ -179,7 +179,7 @@ jobs:
           fi
 
       - name: Upload as workflow artifact (siempre disponible)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: MPC-Forge-${{ matrix.asset_suffix }}
           path: packaging/dist/${{ env.ASSET_NAME }}
