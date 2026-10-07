@@ -9,19 +9,14 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from mpc_forge.models import (
-    Deck,
-)
+from mpc_forge.models import Deck
+from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.services.decks import deck_activity, localization
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.routes.decks._common import (
-    make_router,
-)
 
 router = make_router()
 
@@ -105,7 +100,5 @@ async def autocomplete_card(
     try:
         return await scryfall.autocomplete(q)
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning("Autocomplete falló para %r: %s", q, e)
+        log.warning("Autocomplete falló para %r: %s", q, e)
         return []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import (
@@ -13,23 +14,16 @@ from mpc_forge.models import (
     DeckCard,
     PrintingCache,
 )
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.decks._views import _deckcards_to_views
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
-from mpc_forge.schemas import (
-    DeckCardView,
-)
+from mpc_forge.schemas import DeckCardView
 from mpc_forge.services.cards import printings
 from mpc_forge.services.decks import deck_activity
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.routes.decks._common import (
-    make_router,
-)
-from mpc_forge.routes.decks._views import (
-    _deckcards_to_views,
-)
 
 router = make_router()
 
@@ -40,8 +34,6 @@ async def tokens_analysis(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> dict:
-    import json as _json
-
     generator_roles = {"commander", "mainboard", "sideboard"}
     cards = (
         await db.scalars(
@@ -57,10 +49,14 @@ async def tokens_analysis(
         return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
 
     scryfall_ids = {c.scryfall_id for c in cards}
-    printings = (
-        await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids)))
-    ).all()
-    printings_by_id = {p.scryfall_id: p for p in printings}
+    printings_by_id = {
+        p.scryfall_id: p
+        for p in (
+            await db.scalars(
+                select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
+            )
+        ).all()
+    }
 
     tokens_map: dict[str, dict] = {}
     for dc in cards:
@@ -68,7 +64,7 @@ async def tokens_analysis(
         if not printing or not printing.related_parts:
             continue
         try:
-            related = _json.loads(printing.related_parts)
+            related = json.loads(printing.related_parts)
         except (ValueError, TypeError):
             continue
         for part in related:
@@ -231,8 +227,6 @@ async def add_related_cards(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[DeckCardView]:
-    import json as _json
-
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
@@ -242,7 +236,7 @@ async def add_related_cards(
         return []
 
     try:
-        related = _json.loads(printing.related_parts)
+        related = json.loads(printing.related_parts)
     except (ValueError, TypeError):
         return []
 

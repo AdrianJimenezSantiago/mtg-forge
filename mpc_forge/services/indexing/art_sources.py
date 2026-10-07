@@ -237,7 +237,6 @@ async def list_sources(db: AsyncSession) -> list[ArtSource]:
 
 
 def _detect_source_type(url: str) -> tuple[str, str]:
-
     raw = (url or "").strip()
 
     parsed = parse_gdrive_url(raw)

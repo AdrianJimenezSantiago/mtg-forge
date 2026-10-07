@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import re
+import traceback
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -45,8 +46,6 @@ class RedactSecretsFilter(logging.Filter):
             record.msg = cleaned
             record.args = ()
         if record.exc_info:
-            import traceback
-
             record.exc_text = redact("".join(traceback.format_exception(*record.exc_info)))
         return True
 

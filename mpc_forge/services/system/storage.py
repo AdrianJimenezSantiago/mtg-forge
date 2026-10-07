@@ -159,7 +159,6 @@ def _mount_point(path: Path) -> Path:
 
 
 def _backups_summary() -> dict[str, Any]:
-
     try:
         items = backup_service.list_backups(cfg.PATHS.backups_dir)
     except OSError:
@@ -319,7 +318,6 @@ def _purge_exports(older_than_days: int) -> tuple[int, int]:
 
 
 def _purge_logs() -> tuple[int, int]:
-
     directory = _logs_dir()
     if not directory.is_dir():
         return 0, 0
@@ -330,7 +328,6 @@ def _purge_logs() -> tuple[int, int]:
 
 
 def _purge_backups(keep: int) -> tuple[int, int]:
-
     directory = cfg.PATHS.backups_dir
     before = {b["path"]: int(b["bytes_size"]) for b in backup_service.list_backups(directory)}
     backup_service.prune_tagged_backups(directory, tag="pre-migration", keep=max(0, keep))

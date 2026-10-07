@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
@@ -37,8 +37,6 @@ async def validate_and_enrich(
     for a in arts:
         key = (a.expansion_code, a.collector_number)
         by_key.setdefault(key, []).append(a)
-
-    from sqlalchemy import tuple_
 
     resolved: dict[tuple[str, str], PrintingCache] = {}
     keys = list(by_key.keys())

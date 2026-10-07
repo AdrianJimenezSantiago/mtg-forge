@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ from mpc_forge.models import CustomArt, Deck, DeckCard, PrintingCache
 from mpc_forge.services.art import custom_art as custom_art_service
 from mpc_forge.services.art.art_cache import ArtCache, Face
 from mpc_forge.services.cards.printings import upsert_printing
+from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +46,6 @@ class XMLBuildResult:
 
 
 def _slug(text: str) -> str:
-    import re
-
     text = text.replace("//", " ")
     text = text.replace("-", " ")
     text = "".join(c for c in text.lower() if c.isalnum() or c == " ")
@@ -221,7 +221,6 @@ async def plan_deck_slots(
     db: AsyncSession,
     deck: Deck,
 ) -> list[DeckCardResolved]:
-
     cards = (
         await db.scalars(
             select(DeckCard)
@@ -229,10 +228,16 @@ async def plan_deck_slots(
             .order_by(DeckCard.role, DeckCard.name)
         )
     ).all()
+    scryfall_ids = {dc.scryfall_id for dc in cards if dc.scryfall_id}
+    printings_by_id: dict[str, PrintingCache] = {}
+    for chunk in chunked(scryfall_ids):
+        rows = await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
+        printings_by_id.update({p.scryfall_id: p for p in rows})
+
     out: list[DeckCardResolved] = []
     _placeholder = Path("")
     for dc in cards:
-        pc = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
+        pc = printings_by_id.get(dc.scryfall_id) if dc.scryfall_id else None
         has_back = bool(pc and pc.back_name)
         out.append(
             DeckCardResolved(

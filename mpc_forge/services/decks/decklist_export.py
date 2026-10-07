@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from slugify import slugify
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,7 +77,5 @@ def _format_line(dc: DeckCard, printing: PrintingCache | None, fmt: Format) -> s
 
 
 def filename_for(deck_name: str, fmt: Format) -> str:
-    from slugify import slugify
-
     slug = slugify(deck_name) or "deck"
     return f"{slug}-{fmt}.txt"

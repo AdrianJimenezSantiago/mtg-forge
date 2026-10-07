@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import unicodedata
@@ -8,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
@@ -884,8 +885,6 @@ _DEFAULT_TAG_VOCABULARY: dict[str, frozenset[str]] = {
 
 
 def _load_user_vocab_overrides() -> dict[str, frozenset[str]]:
-    import json
-
     path = cfg.PATHS.data_dir / "tag_vocabulary.json"
     if not path.exists():
         return {}
@@ -1191,8 +1190,6 @@ async def _index_via_api(
     api_key: str,
     on_progress=None,
 ) -> IndexResult:
-    from sqlalchemy import func
-
     files_added = 0
     files_updated = 0
     folders_visited = 0
@@ -1535,8 +1532,6 @@ async def index_source(
                 )
                 result = await _index_generic(db, source, type_cls, on_progress=on_progress)
 
-    from sqlalchemy import func
-
     source.indexed_at = datetime.now(UTC)
     source.indexed_files = int(
         await db.scalar(select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source.id))
@@ -1563,12 +1558,9 @@ async def index_source(
 async def _index_generic(
     db: AsyncSession, source: ArtSource, type_cls, on_progress=None
 ) -> IndexResult:
-
     phash_active = await phash.enabled(db)
     phash_client = None
     if phash_active:
-        import httpx
-
         phash_client = httpx.AsyncClient(
             timeout=15.0,
             verify=not ssl_insecure(),
@@ -1698,8 +1690,6 @@ async def _index_generic(
 
 
 async def clear_index(db: AsyncSession, source_id: int) -> int:
-    from sqlalchemy import func
-
     n = int(
         await db.scalar(select(func.count(IndexedArt.id)).where(IndexedArt.source_id == source_id))
         or 0
@@ -1718,7 +1708,6 @@ _NORMALIZATION_VERSION_KEY = "gdrive.normalization_version"
 
 
 async def backfill_normalized_names(db: AsyncSession) -> int:
-
     kv = await db.get(KeyValue, _NORMALIZATION_VERSION_KEY)
     try:
         current = int(kv.value) if kv else 0

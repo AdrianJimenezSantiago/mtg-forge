@@ -66,7 +66,6 @@ ignore = [
     "E501",
     "S311",
     "RUF001", "RUF002", "RUF003",
-    "E402",
     "S608",
 ]
 
@@ -78,6 +77,7 @@ ignore = [
     "S105", "S106", "S108", "S603", "S607",
     "DTZ001", "DTZ005", "PERF", "B", "RUF012", "RUF007", "F841",
 ]
+"tests/conftest.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

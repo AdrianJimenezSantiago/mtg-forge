@@ -160,7 +160,6 @@ async def add_from_url(
     variant: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> CustomArt:
-
     url = to_download_url(url.strip())
 
     close_client = client is None

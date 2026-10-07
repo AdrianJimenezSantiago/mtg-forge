@@ -106,7 +106,7 @@ async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list
 
 
 async def _workshop_status(db: AsyncSession) -> dict:
-    status = {
+    summary = {
         "printings": 0,
         "offline": False,
         "art_files": 0,
@@ -116,24 +116,24 @@ async def _workshop_status(db: AsyncSession) -> dict:
     }
     try:
         local = await bulk_data.local_stats(db)
-        status["printings"] = int(local.get("printings") or 0)
-        status["offline"] = bool(local.get("syncs"))
+        summary["printings"] = int(local.get("printings") or 0)
+        summary["offline"] = bool(local.get("syncs"))
     except Exception:
         log.warning("No se pudo leer el estado del volcado de Scryfall", exc_info=True)
     try:
         art = await gdrive_search.stats(db)
-        status["art_files"] = int(art.get("total_files") or 0)
-        status["art_sources"] = int(art.get("sources_indexed") or 0)
+        summary["art_files"] = int(art.get("total_files") or 0)
+        summary["art_sources"] = int(art.get("sources_indexed") or 0)
     except Exception:
         log.warning("No se pudo leer el estado del índice de arte", exc_info=True)
     try:
-        status["decks"] = int(await db.scalar(select(func.count()).select_from(Deck)) or 0)
-        status["collection"] = int(
+        summary["decks"] = int(await db.scalar(select(func.count()).select_from(Deck)) or 0)
+        summary["collection"] = int(
             await db.scalar(select(func.count()).select_from(CollectionEntry)) or 0
         )
     except Exception:
         log.warning("No se pudieron contar mazos y colección", exc_info=True)
-    return status
+    return summary
 
 
 _SAMPLE_CARD_COLORS = ("w", "u", "b", "r", "g")

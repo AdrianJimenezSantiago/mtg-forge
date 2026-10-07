@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.models import ArtSource, IndexedArt, KeyValue
@@ -179,9 +179,8 @@ async def _search_fts5(
         ORDER BY rank
         LIMIT :limit
     """
-    from sqlalchemy import text as sa_text
 
-    result = await db.execute(sa_text(sql), params)
+    result = await db.execute(text(sql), params)
     rows = result.mappings().all()
     if not rows:
         return SearchPage(results=[], total=0)
@@ -396,8 +395,6 @@ async def list_cardbacks(
     limit: int = 100,
     source_ids: list[int] | None = None,
 ) -> list[SearchResult]:
-    from sqlalchemy import text as sa_text
-
     where_parts = ["ia.card_type = 'CARDBACK'"]
     params: dict = {"limit": limit}
 
@@ -415,7 +412,7 @@ async def list_cardbacks(
         ORDER BY s.name, ia.filename
         LIMIT :limit
     """
-    result = await db.execute(sa_text(sql), params)
+    result = await db.execute(text(sql), params)
     rows = result.mappings().all()
 
     out: list[SearchResult] = []
@@ -449,8 +446,6 @@ async def list_cardbacks(
 
 
 async def stats(db: AsyncSession) -> dict:
-    from sqlalchemy import func
-
     total = int(await db.scalar(select(func.count(IndexedArt.id))) or 0)
     sources_with_index = int(
         await db.scalar(select(func.count(func.distinct(IndexedArt.source_id)))) or 0

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import DeckCard, PrintingCache
 from mpc_forge.services.cards.printings import upsert_printing
+from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,24 @@ async def try_localize_card(
     return await upsert_printing(db, raw)
 
 
+async def _localized_candidates(
+    db: AsyncSession, bases: list[PrintingCache], lang: str
+) -> dict[tuple[str, str, str], PrintingCache]:
+    oracle_ids = {b.oracle_id for b in bases if b.oracle_id}
+    if not oracle_ids:
+        return {}
+    found: dict[tuple[str, str, str], PrintingCache] = {}
+    for chunk in chunked(oracle_ids):
+        rows = await db.scalars(
+            select(PrintingCache).where(
+                PrintingCache.oracle_id.in_(chunk), PrintingCache.lang == lang
+            )
+        )
+        for row in rows:
+            found.setdefault((row.oracle_id, row.set_code, row.collector_number), row)
+    return found
+
+
 async def localize_deck(
     db: AsyncSession,
     scryfall: ScryfallClient,
@@ -65,13 +84,14 @@ async def localize_deck(
 
     current_sfids = {dc.scryfall_id for dc in cards if not dc.custom_art_front_id}
     current_by_sfid: dict[str, PrintingCache] = {}
-    if current_sfids:
-        rows = (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(current_sfids))
-            )
-        ).all()
-        current_by_sfid = {p.scryfall_id: p for p in rows}
+    for chunk in chunked(current_sfids):
+        rows = await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
+        current_by_sfid.update({p.scryfall_id: p for p in rows})
+    candidates = (
+        await _localized_candidates(db, list(current_by_sfid.values()), lang)
+        if lang != "en"
+        else {}
+    )
 
     localized = 0
     unchanged = 0
@@ -88,7 +108,13 @@ async def localize_deck(
             unchanged += 1
             continue
 
-        localized_printing = await try_localize_card(db, scryfall, dc.scryfall_id, lang)
+        localized_printing = (
+            candidates.get((current.oracle_id, current.set_code, current.collector_number))
+            if current and current.oracle_id and current.set_code and current.collector_number
+            else None
+        )
+        if localized_printing is None:
+            localized_printing = await try_localize_card(db, scryfall, dc.scryfall_id, lang)
         if localized_printing is None:
             unavailable.append(dc.name)
             continue

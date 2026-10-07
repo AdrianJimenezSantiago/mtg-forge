@@ -7,7 +7,11 @@ from fastapi import (
     status,
 )
 
+from mpc_forge.clients.import_sites import list_supported_sites
+from mpc_forge.clients.import_sites.base import ImportSiteError
 from mpc_forge.clients.moxfield import MoxfieldError
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.decks._views import _deck_to_view
 from mpc_forge.routes.dependencies import DbDep, MoxfieldDep, ScryfallDep
 from mpc_forge.schemas import (
     ImportFromMoxfieldRequest,
@@ -22,15 +26,6 @@ from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.clients.import_sites import list_supported_sites
-from mpc_forge.clients.import_sites.base import ImportSiteError
-from mpc_forge.routes.decks._common import (
-    make_router,
-)
-from mpc_forge.routes.decks._views import (
-    _deck_to_view,
-)
 
 router = make_router()
 
@@ -115,7 +110,6 @@ async def import_text(
 
 @router.get("/import/supported-sites", response_model=list[SupportedSite])
 async def supported_import_sites() -> list[SupportedSite]:
-
     return [SupportedSite(**s) for s in list_supported_sites()]
 
 
@@ -125,7 +119,6 @@ async def import_url(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> ImportResult:
-
     try:
         deck, unresolved = await importer.import_from_url(
             db,

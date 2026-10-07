@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -203,7 +203,6 @@ class IndexQueue:
             self._batch_started_at = None
 
     async def _worker(self) -> None:
-
         log.info("IndexQueue worker arrancado")
 
         while not self._queue.empty():
@@ -257,8 +256,6 @@ class IndexQueue:
 
                 try:
                     async with session_scope() as db:
-                        from datetime import datetime
-
                         src = await db.get(ArtSource, sid)
                         if src:
                             src.indexed_at = datetime.now(UTC)

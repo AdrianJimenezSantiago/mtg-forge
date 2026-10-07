@@ -129,8 +129,6 @@ async def set_cards(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[SetCardInfo]:
-    import httpx
-
     all_cards: list[dict] = []
     async with httpx.AsyncClient(
         base_url=SCRYFALL_API,

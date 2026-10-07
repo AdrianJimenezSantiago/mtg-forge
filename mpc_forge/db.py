@@ -91,7 +91,6 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         def _make_backup():
-
             return backup_service.create_backup(tag="pre-migration")
 
         report = await migrations.run(conn, on_backup=_make_backup)

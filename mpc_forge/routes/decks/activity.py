@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 
@@ -13,17 +14,16 @@ from sqlalchemy import func, select
 
 from mpc_forge.models import (
     Deck,
+    DeckActivity,
     DeckCard,
 )
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.decks import deck_activity, deck_covers
+from mpc_forge.services.decks import undo as undo_svc
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.models import DeckActivity
-from mpc_forge.routes.decks._common import make_router
-from mpc_forge.routes.dependencies import DbDep
-from mpc_forge.services.decks import undo as undo_svc
 
 router = make_router()
 
@@ -59,7 +59,6 @@ class DeckWithActivityView(BaseModel):
 
 @router.get("/_/with-activity", response_model=list[DeckWithActivityView])
 async def list_decks_with_activity(db: DbDep) -> list[DeckWithActivityView]:
-
     deck_rows = (
         await db.execute(
             select(Deck, func.count(DeckCard.id).label("card_count"))
@@ -147,10 +146,8 @@ async def list_activity(
     rows = await deck_activity.list_for_deck(db, deck_id, kinds=kinds_list, limit=limit)
 
     def _parse_payload(raw: str) -> dict:
-        import json as _json
-
         try:
-            v = _json.loads(raw or "{}")
+            v = json.loads(raw or "{}")
             return v if isinstance(v, dict) else {"_raw": v}
         except (ValueError, TypeError):
             return {"_error": "invalid_json", "_raw": raw}
@@ -180,7 +177,6 @@ class UndoResponse(BaseModel):
 
 @router.post("/{deck_id}/activity/{event_id}/undo", response_model=UndoResponse)
 async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
-
     event = await db.get(DeckActivity, event_id)
     if not event or event.deck_id != deck_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Evento no encontrado")
@@ -199,6 +195,5 @@ async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoRes
 
 @router.get("/_/undoable-kinds")
 async def get_undoable_kinds(response: Response) -> list[str]:
-
     response.headers["Cache-Control"] = "public, max-age=3600"
     return sorted(undo_svc.UNDOABLE_KINDS)

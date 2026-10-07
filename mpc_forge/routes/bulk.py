@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -63,8 +64,6 @@ async def start_sync(kind: str = bulk_data.DEFAULT_KIND, force: bool = False) ->
         async with session_scope() as session:
             await bulk_data.sync(session, kind, force=force)
         await analyze_table("printings")
-
-    import asyncio
 
     task = asyncio.create_task(_with_analyze(), name=f"bulk-sync-{kind}")
     bulk_data._progress._task = task

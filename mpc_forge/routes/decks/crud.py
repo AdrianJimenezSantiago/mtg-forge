@@ -17,6 +17,11 @@ from mpc_forge.models import (
     DeckCard,
     PrintingCache,
 )
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.decks._views import (
+    _deck_to_view,
+    _deckcard_to_view,
+)
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.schemas import (
     AddCardRequest,
@@ -33,14 +38,6 @@ from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.routes.decks._common import (
-    make_router,
-)
-from mpc_forge.routes.decks._views import (
-    _deck_to_view,
-    _deckcard_to_view,
-)
 
 router = make_router()
 

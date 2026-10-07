@@ -66,7 +66,6 @@ class Paths:
 
     @classmethod
     def default(cls) -> Paths:
-
         portable = install_root() / "user-settings"
         root: Path
         try:

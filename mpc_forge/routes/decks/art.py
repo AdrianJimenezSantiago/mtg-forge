@@ -23,6 +23,8 @@ from mpc_forge.models import (
     LocalArt,
     PrintingCache,
 )
+from mpc_forge.routes.decks._common import make_router
+from mpc_forge.routes.decks._views import _deckcard_to_view
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.schemas import (
     ArtOption,
@@ -30,7 +32,7 @@ from mpc_forge.schemas import (
     ChangeArtRequest,
     DeckCardView,
 )
-from mpc_forge.services.art import custom_art, thumbnails
+from mpc_forge.services.art import custom_art, recommender, thumbnails
 from mpc_forge.services.cards import preloader, printings
 from mpc_forge.services.decks import deck_activity
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
@@ -38,14 +40,6 @@ from mpc_forge.services.printing import history
 
 log = logging.getLogger(__name__)
 
-
-from mpc_forge.routes.decks._common import (
-    make_router,
-)
-from mpc_forge.routes.decks._views import (
-    _deckcard_to_view,
-)
-from mpc_forge.services.art import recommender
 
 router = make_router()
 
@@ -389,7 +383,6 @@ async def recommend_by_artist(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: ScryfallDep,
 ) -> ArtistRecommendResponse:
-
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
@@ -456,7 +449,6 @@ async def recommend_by_style_endpoint(
     db: Annotated[AsyncSession, Depends(get_session)],
     scryfall: ScryfallDep,
 ) -> StyleRecommendResponse:
-
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
