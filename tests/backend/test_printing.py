@@ -449,3 +449,49 @@ def test_pdf_image_reader_cache_decodes_each_file_once(tmp_path):
     assert (cache.misses, cache.hits) == (1, 3)
     assert "1 imágenes únicas" in cache.summary() and "75%" in cache.summary()
     assert cache.get(str(second)) is not readers[0] and cache.misses == 2
+
+
+async def test_every_export_uses_the_deck_cardback(client, deck, monkeypatch):
+    from mpc_forge import config as cfg
+    from mpc_forge.db import session_scope
+    from mpc_forge.models import CustomArt
+
+    back = cfg.PATHS.custom_art_dir / "backs" / "mi-reverso.png"
+    back.parent.mkdir(parents=True, exist_ok=True)
+    back.write_bytes(b"\x89PNG\r\n\x1a\nback")
+    async with session_scope() as db:
+        art = CustomArt(
+            filename=back.name,
+            relative_path="backs/mi-reverso.png",
+            card_name_normalized="mi reverso",
+            face="front",
+        )
+        db.add(art)
+        await db.commit()
+        art_id = art.id
+    r = await client.put(
+        f"/api/decks/{deck['id']}/cardback-settings", json={"custom_art_id": art_id}
+    )
+    assert r.json()["using_custom"] is True
+
+    used: list = []
+
+    async def fake_resolve(db, scryfall, art_cache, deck_obj, on_progress=None):
+        return [_slot("Sol Ring")]
+
+    def fake_build(*, cards, output_path, cardback_path, **_):
+        used.append(cardback_path)
+        return XMLBuildResult(xml_path=output_path, total_cards=len(cards))
+
+    monkeypatch.setattr(export_xml, "build_xml", fake_build)
+    monkeypatch.setattr(export_xml, "resolve_deck_for_xml", fake_resolve)
+    from mpc_forge.routes.export import _shared
+
+    monkeypatch.setattr(_shared, "resolve_deck_for_xml", fake_resolve)
+    assert (
+        await client.post(f"/api/decks/{deck['id']}/build-xml", json={"create_run": False})
+    ).status_code == 200
+    assert (
+        await client.post(f"/api/decks/{deck['id']}/build-split-xml", json={"create_runs": False})
+    ).status_code == 200
+    assert used == [back, back]

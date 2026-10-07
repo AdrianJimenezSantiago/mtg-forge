@@ -947,5 +947,13 @@
   "pdf_comment_open_editor": "ofrece un botón \"Abrir en el editor completo\".",
   "pdf_click_instruction": "Click aplicar ·",
   "pdf_dblclick_instruction": "Doble click recordar globalmente ·",
-  "pdf_duplex_btn": "Duplex"
+  "pdf_duplex_btn": "Duplex",
+  "proof_title": "Proof",
+  "proof_back_to_editor": "← Editor",
+  "proof_subtitle": "Cuadrícula completa a tamaño casi real. Así se imprimirá cada slot del XML.",
+  "proof_zoom": "Zoom",
+  "proof_show_backs": "Mostrar reversos DFC",
+  "proof_slots": "slots",
+  "proof_back_suffix": "(reverso)",
+  "proof_load_error": "No se pudo cargar el mazo"
 }

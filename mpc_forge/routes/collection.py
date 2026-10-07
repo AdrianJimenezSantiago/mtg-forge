@@ -3,23 +3,19 @@ from __future__ import annotations
 import logging
 import time
 
-import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 
 from mpc_forge.clients.scryfall import ScryfallClient
-from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
-from mpc_forge.ssl_config import ssl_insecure
-from mpc_forge.utils.rate_limiter import AsyncRateLimiter
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
 
 
-_SETS_CACHE: dict[str, list[dict]] | None = None
+_SETS_CACHE: list[dict] | None = None
 _SETS_CACHE_AT: float = 0.0
 _SETS_CACHE_TTL: float = 3600.0
 
@@ -44,17 +40,7 @@ async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict]:
         return _SETS_CACHE
 
     log.info("Fetching sets list from Scryfall (cache miss / stale)")
-    async with httpx.AsyncClient(
-        base_url=SCRYFALL_API,
-        headers={"User-Agent": SCRYFALL_USER_AGENT, "Accept": "application/json"},
-        timeout=30.0,
-        verify=not ssl_insecure(),
-    ) as client:
-        resp = await client.get("/sets")
-        resp.raise_for_status()
-        data = resp.json()
-
-    sets_raw = data.get("data", [])
+    sets_raw = await scryfall_client.sets()
 
     filtered = []
     for s in sets_raw:
@@ -129,37 +115,9 @@ async def set_cards(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[SetCardInfo]:
-    all_cards: list[dict] = []
-    async with httpx.AsyncClient(
-        base_url=SCRYFALL_API,
-        headers={"User-Agent": SCRYFALL_USER_AGENT, "Accept": "application/json"},
-        timeout=30.0,
-        verify=not ssl_insecure(),
-    ) as client:
-        limiter = AsyncRateLimiter(0.10)
-        params = {
-            "q": f"set:{set_code} -is:digital",
-            "unique": "prints",
-            "order": "set",
-        }
-        await limiter.acquire()
-        resp = await client.get("/cards/search", params=params)
-        if resp.status_code == 404:
-            return []
-        resp.raise_for_status()
-        page = resp.json()
-
-        while page:
-            all_cards.extend(page.get("data", []))
-            if not page.get("has_more"):
-                break
-            next_url = page.get("next_page")
-            if not next_url:
-                break
-            await limiter.acquire()
-            resp = await client.get(next_url)
-            resp.raise_for_status()
-            page = resp.json()
+    all_cards = await scryfall.search_all(
+        f"set:{set_code} -is:digital", unique="prints", order="set"
+    )
 
     owned_ids = set(
         (

@@ -947,5 +947,13 @@
   "pdf_comment_open_editor": "offers an \"Open in full editor\" button.",
   "pdf_click_instruction": "Click to apply ·",
   "pdf_dblclick_instruction": "Double click to remember globally ·",
-  "pdf_duplex_btn": "Duplex"
+  "pdf_duplex_btn": "Duplex",
+  "proof_title": "Proof",
+  "proof_back_to_editor": "← Editor",
+  "proof_subtitle": "Full grid at near real size. This is how every XML slot will be printed.",
+  "proof_zoom": "Zoom",
+  "proof_show_backs": "Show DFC backs",
+  "proof_slots": "slots",
+  "proof_back_suffix": "(back)",
+  "proof_load_error": "Could not load the deck"
 }

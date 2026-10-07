@@ -235,6 +235,9 @@ class ScryfallClient:
             params["set"] = set_code
         return await self._get("/cards/named", params=params)
 
+    async def sets(self) -> list[dict[str, Any]]:
+        return (await self._get("/sets")).get("data") or []
+
     async def by_id(self, scryfall_id: str) -> dict[str, Any]:
         return await self._get(f"/cards/{scryfall_id}")
 

@@ -104,3 +104,11 @@ class TestNotFoundPage:
         assert r.status_code == 404 and 'class="nf"' not in r.text
         r = await client.post("/esto-no-existe", headers=HTML)
         assert r.status_code in (404, 405) and 'class="nf"' not in r.text
+
+
+async def test_proof_page_is_translated(client, deck):
+    r = await client.get(f"/decks/{deck['id']}/proof", headers=HTML)
+    assert "Cuadrícula completa" in r.text
+    client.cookies.set("lang", "en")
+    r = await client.get(f"/decks/{deck['id']}/proof", headers=HTML)
+    assert "Show DFC backs" in r.text and "Cuadrícula" not in r.text

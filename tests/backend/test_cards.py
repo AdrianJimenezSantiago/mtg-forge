@@ -479,3 +479,46 @@ async def test_dfc_pair_lookup(client):
         in (await client.get("/api/dfc-pairs/lookup?names=DELVER of secrets")).json()["found"]
     )
     assert (await client.get("/api/dfc-pairs/lookup?names=")).json()["total_queried"] == 0
+
+
+async def test_collection_goes_through_the_scryfall_client(client, fake_scryfall):
+    from mpc_forge.routes import collection
+
+    collection._SETS_CACHE = None
+    calls = []
+
+    async def sets():
+        calls.append("sets")
+        return [
+            {
+                "code": "c21",
+                "name": "Commander 2021",
+                "set_type": "commander",
+                "card_count": 2,
+                "released_at": "2021-04-23",
+            },
+            {"code": "tc21", "name": "Tokens", "set_type": "token", "card_count": 5},
+            {"code": "emp", "name": "Vacío", "set_type": "expansion", "card_count": 0},
+        ]
+
+    async def search_all(query, **params):
+        calls.append((query, params))
+        return [
+            {
+                "id": "sr-en",
+                "oracle_id": "o",
+                "name": "Sol Ring",
+                "collector_number": "263",
+                "image_uris": {"small": "s.jpg"},
+            }
+        ]
+
+    fake_scryfall.sets = sets
+    fake_scryfall.search_all = search_all
+    listed = (await client.get("/api/collection/sets")).json()
+    assert [s["code"] for s in listed] == ["c21"]
+    await client.get("/api/collection/sets")
+    cards = (await client.get("/api/collection/sets/c21/cards")).json()
+    assert cards[0]["scryfall_id"] == "sr-en" and cards[0]["owned"] is False
+    assert calls == ["sets", ("set:c21 -is:digital", {"unique": "prints", "order": "set"})]
+    collection._SETS_CACHE = None

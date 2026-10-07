@@ -14,12 +14,12 @@ function proofView(deckId) {
     get groupedSlots() {
       if (!this.deck) return [];
       const labels = {
-        commander: 'Comandante',
-        mainboard: 'Mazo',
-        companion: 'Compañero',
-        sideboard: 'Sideboard',
-        maybeboard: 'Maybeboard',
-        tokens: 'Tokens',
+        commander: window._t('deck_role_commander'),
+        mainboard: window._t('deck_role_mainboard'),
+        companion: window._t('deck_role_companion'),
+        sideboard: window._t('deck_role_sideboard'),
+        maybeboard: window._t('deck_role_maybeboard'),
+        tokens: window._t('deck_tokens'),
       };
       const order = ['commander', 'mainboard', 'companion', 'sideboard', 'maybeboard', 'tokens'];
       const groups = {};
@@ -40,8 +40,8 @@ function proofView(deckId) {
           if (this.showBacks && c.is_dfc) {
             groups[c.role].push({
               key: `${c.id}-back-${i}`,
-              name: c.name + ' (reverso)',
-              thumbnail: c.thumbnail_url,
+              name: `${c.back_name || c.name} ${window._t('proof_back_suffix')}`,
+              thumbnail: c.back_thumbnail_url || c.thumbnail_url,
               is_dfc: true,
               face: 'back',
               copy_index: i,
@@ -63,8 +63,9 @@ function proofView(deckId) {
     async load() {
       this.loading = true;
       try {
-        const r = await fetch(`/api/decks/${this.deckId}`);
-        this.deck = await r.json();
+        this.deck = await window.api.decks.get(this.deckId);
+      } catch (e) {
+        window.toast?.(window._t('proof_load_error'), e.message, 'error');
       } finally {
         this.loading = false;
       }

@@ -29,7 +29,6 @@ from mpc_forge.services.printing.print_runs import (
 )
 from mpc_forge.services.printing.xml_generator import (
     build_xml,
-    default_cardback_path,
     plan_deck_slots,
     resolve_deck_for_xml,
 )
@@ -100,7 +99,7 @@ async def build_xml_endpoint(
         output_path=export_path(deck.name, ".xml"),
         cardstock=cardstock,
         foil=foil,
-        cardback_path=default_cardback_path(),
+        cardback_path=await resolve_deck_cardback(db, deck),
         web_mode=payload.web_mode,
     )
     build_progress.finish(deck_id)
