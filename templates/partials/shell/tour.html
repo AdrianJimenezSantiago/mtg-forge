@@ -8,15 +8,15 @@
 
     <template x-if="$store.tour.spot">
       <div class="tour-spot" aria-hidden="true"
-           :style="`left:${$store.tour.spot?.x}px;top:${$store.tour.spot?.y}px;width:${$store.tour.spot?.w}px;height:${$store.tour.spot?.h}px`"></div>
+           :style="`transform:translate(${$store.tour.spot?.x}px,${$store.tour.spot?.y}px);width:${$store.tour.spot?.w}px;height:${$store.tour.spot?.h}px`"></div>
     </template>
 
     <div id="tour-card" data-tour-dialog
          role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
          x-trap="$store.tour.active"
          class="tour-card"
-         :class="['tour-card--' + $store.tour.pos.side, $store.tour.step?.hero ? 'tour-card--hero' : '']"
-         :style="`left:${$store.tour.pos.x}px;top:${$store.tour.pos.y}px;--arrow:${$store.tour.pos.arrow}px`">
+         :class="['tour-card--' + $store.tour.pos.side, $store.tour.step?.hero ? 'tour-card--hero' : '', $store.tour.placed ? '' : 'tour-card--placing']"
+         :style="`transform:translate(${$store.tour.pos.x}px,${$store.tour.pos.y}px);--arrow:${$store.tour.pos.arrow}px;visibility:${$store.tour.placed ? 'visible' : 'hidden'}`">
 
       <span class="tour-card__arrow" x-show="!$store.tour.centered && $store.tour.pos.side !== 'inside'"></span>
       <template x-if="$store.tour.step?.hero">

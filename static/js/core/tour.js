@@ -131,6 +131,9 @@
       busy: false,
       spot: null,
       pos: { x: 0, y: 0, side: 'center', arrow: 0 },
+      // La tarjeta no se ve hasta tener su posición calculada: si se pintara en
+      // (0,0) y luego se moviera, el navegador lo contaría como layout shift.
+      placed: false,
       _queue: [],
       _target: null,
       _raf: 0,
@@ -181,6 +184,7 @@
         this.steps = def.steps
         this.index = 0
         this.spot = null
+        this.placed = false
         this.active = true
         this._listen(true)
         await this._show(0, 1)
@@ -258,6 +262,7 @@
             side: 'center',
             arrow: 0,
           }
+          await this._reveal()
           return
         }
         const r = visibleRect(this._target)
@@ -271,6 +276,15 @@
         rect.height = rect.bottom - rect.top
         this.spot = { x: rect.left, y: rect.top, w: rect.width, h: rect.height }
         this.pos = place(rect, size, this.step?.placement)
+        await this._reveal()
+      },
+
+      // Primera colocación: se aplica la posición sin transición y se muestra en
+      // el fotograma siguiente, para que no se deslice desde la posición anterior.
+      async _reveal() {
+        if (this.placed) return
+        await new Promise((r) => requestAnimationFrame(r))
+        this.placed = true
       },
 
       _onViewport() {
@@ -336,6 +350,7 @@
         this._listen(false)
         this._target = null
         this.spot = null
+        this.placed = false
       },
     })
   })

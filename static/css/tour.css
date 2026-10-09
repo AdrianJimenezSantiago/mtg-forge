@@ -23,14 +23,16 @@
 
 .tour-spot {
   position: fixed;
+  left: 0;
+  top: 0;
   border-radius: 12px;
   box-shadow:
     0 0 0 2px rgba(233, 200, 106, 0.95),
     0 0 28px 6px rgba(212, 175, 55, 0.35),
     0 0 0 9999px rgba(5, 7, 12, 0.74);
+  /* Se mueve con transform: un cambio de left/top cuenta como layout shift. */
   transition:
-    left 380ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1),
     width 380ms cubic-bezier(0.22, 1, 0.36, 1),
     height 380ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
@@ -46,6 +48,8 @@
 
 .tour-card {
   position: fixed;
+  left: 0;
+  top: 0;
   width: min(360px, calc(100vw - 24px));
   pointer-events: auto;
   color: #e8e6dd;
@@ -55,11 +59,10 @@
   border: 1px solid transparent;
   border-radius: 16px;
   box-shadow: 0 30px 70px -18px rgba(0, 0, 0, 0.85), 0 0 40px -10px rgba(212, 175, 55, 0.35);
-  transition:
-    left 380ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 380ms cubic-bezier(0.22, 1, 0.36, 1);
-  animation: tour-pop 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: tour-fade 260ms ease-out both;
 }
+.tour-card--placing { transition: none; }
 .tour-card--hero {
   width: min(460px, calc(100vw - 24px));
   text-align: center;
@@ -138,10 +141,6 @@
 }
 
 @keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes tour-pop {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to { opacity: 1; transform: none; }
-}
 @keyframes tour-pulse {
   0% { opacity: 0.9; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.06); }
