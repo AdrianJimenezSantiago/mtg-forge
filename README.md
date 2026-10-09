@@ -327,8 +327,32 @@ pip install -e ".[build]"
 ```
 
 The output is `packaging\dist\MPC-Forge\`; zip that folder to distribute it.
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds on
-`windows-latest` and attaches the zip to the GitHub release.
+
+### Releases
+
+Every push to `main` is released automatically once its CI run is green:
+`.github/workflows/release.yml` works out the next version, runs the tests on
+Windows, builds Windows, macOS and Linux binaries with that version stamped in,
+and only then creates the tag and the GitHub release (marked as latest, with
+generated notes). The version follows semver from the latest `vX.Y.Z` tag and
+the commits since it:
+
+| Commits since the last release contain…                                     | Bump                    |
+| --------------------------------------------------------------------------- | ----------------------- |
+| `[major]`, `BREAKING CHANGE` or `type!:`                                    | major (`2.7.3 → 3.0.0`) |
+| `[minor]`, `feat:` or a subject starting with Add, Implement, Introduce…    | minor (`2.7.3 → 2.8.0`) |
+| anything else                                                               | patch (`2.7.3 → 2.7.4`) |
+| only `[skip release]` commits                                               | no release              |
+
+A patch never goes past `.9` (`2.7.9 → 2.8.0`), so versions stay short. Releases
+run one at a time, and a commit that is already part of a release is never
+released again, so numbers always go up in commit order. To release by hand or
+force a bump, run the *Release* workflow from the Actions tab. Check what the
+next version would be with `python scripts/next_version.py plan`.
+
+`mpc_forge/__init__.py` holds the development marker `0.0.0` (shown as *dev* in
+the sidebar); never edit it by hand — the release stamps the real version into
+the build.
 
 To regenerate the icon after editing `packaging/make_icon.py`:
 

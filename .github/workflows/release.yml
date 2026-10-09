@@ -1,20 +1,88 @@
 name: Release
 
+# Cada push a main publica una release en cuanto el CI de ese commit termina en
+# verde. La versión la calcula scripts/next_version.py a partir del último tag
+# (semver: major solo si se pide, minor si se añade algo, patch en lo demás y
+# nunca más allá de x.y.9). El tag se crea solo si los tres binarios compilan.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Tipo de versión (auto la deduce de los commits)
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
 
 permissions:
   contents: write
 
+# Las releases se calculan una detrás de otra para que los números no choquen.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  plan:
+    name: Calcular versión
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Siguiente versión
+        id: plan
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          python scripts/next_version.py plan --ref HEAD --bump "$BUMP" > plan.json
+          cat plan.json
+          python - <<'PY'
+          import json, os
+          plan = json.load(open("plan.json"))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"release={'true' if plan['release'] else 'false'}\n")
+              out.write(f"sha={plan['sha']}\n")
+              out.write(f"version={plan.get('version', '')}\n")
+              out.write(f"tag={plan.get('tag', '')}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              if plan["release"]:
+                  summary.write(
+                      f"### Release {plan['tag']}\n\n{plan['bump']} desde "
+                      f"{plan['previous']} · {plan['commits']} commits\n"
+                  )
+              else:
+                  summary.write(f"### Sin release\n\n{plan['reason']}\n")
+          PY
+
   test:
     name: Tests antes de publicar
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -36,7 +104,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.label }}
-    needs: test
+    needs: [plan, test]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -54,6 +122,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -80,6 +150,10 @@ jobs:
           npm run vendor
           npm run build:css
 
+      - name: Sellar la versión en el código
+        shell: bash
+        run: python scripts/next_version.py stamp "${{ needs.plan.outputs.version }}"
+
       - name: Build with PyInstaller
         shell: bash
         run: |
@@ -92,14 +166,7 @@ jobs:
       - name: Determine version
         id: version
         shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="dev-$(git rev-parse --short HEAD)"
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Version: ${VERSION}"
+        run: echo "version=${{ needs.plan.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -200,11 +267,25 @@ jobs:
           path: packaging/dist/${{ env.ASSET_NAME }}
           retention-days: 30
 
-      - name: Upload to GitHub Release (solo en push de tag)
-        if: startsWith(github.ref, 'refs/tags/')
+  publish:
+    name: Publicar ${{ needs.plan.outputs.tag }}
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar los binarios
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Crear tag y release
         uses: softprops/action-gh-release@v2
         with:
-          files: packaging/dist/${{ env.ASSET_NAME }}
+          tag_name: ${{ needs.plan.outputs.tag }}
+          name: ${{ needs.plan.outputs.tag }}
+          target_commitish: ${{ needs.plan.outputs.sha }}
+          files: dist/*
           generate_release_notes: true
+          make_latest: 'true'
           draft: false
           prerelease: false

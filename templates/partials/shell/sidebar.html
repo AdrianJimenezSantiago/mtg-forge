@@ -230,7 +230,7 @@
   <div class="p-3 px-4 border-t border-border-subtle relative">
     <div class="flex items-center gap-2 text-[11px] text-fg-faint">
       <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
-      <span>v0.1.0 · local-only</span>
+      <span>{{ APP_VERSION }} · local-only</span>
       <div x-data="{ open: false }" class="ml-auto -my-1" @click.outside="open = false"
            @keydown.escape="open = false">
         <button type="button" data-tour="nav-tour" @click="open = !open" :aria-expanded="open"

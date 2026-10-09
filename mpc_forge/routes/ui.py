@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mpc_forge import __version__
 from mpc_forge.clients.import_sites import list_supported_sites
 from mpc_forge.middleware import is_same_origin
 from mpc_forge.models import CollectionEntry, Deck
@@ -53,6 +54,7 @@ templates.env.globals["i18n_v"] = i18n_service.bundle_version
 
 templates.env.globals["SUPPORTED_LANGS"] = SUPPORTED_LANGS
 templates.env.globals["LANG_FLAGS"] = LANG_FLAGS
+templates.env.globals["APP_VERSION"] = "dev" if __version__ == "0.0.0" else f"v{__version__}"
 
 router = APIRouter(tags=["ui"])
 
