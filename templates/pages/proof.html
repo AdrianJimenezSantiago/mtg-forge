@@ -7,7 +7,7 @@
 {% block content %}
 <div x-data="proofView({{ deck.id }})" x-init="load()" class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
 
-  <div class="flex flex-wrap items-end justify-between gap-4">
+  <div data-tour="proof-header" class="flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0">
       <a href="/decks/{{ deck.id }}" class="text-fg-muted hover:text-fg text-sm">{{ t.proof_back_to_editor }}</a>
       <h1 class="text-2xl font-semibold tracking-tight mt-2 truncate">{{ t.proof_title }} · {{ deck.name }}</h1>
@@ -15,7 +15,7 @@
         {{ t.proof_subtitle }}
       </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div data-tour="proof-controls" class="flex items-center gap-3">
       <label class="text-xs text-fg-muted flex items-center gap-2">
         {{ t.proof_zoom }}
         <input type="range" min="60" max="200" step="10" x-model.number="cardWidth"

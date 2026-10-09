@@ -11,4 +11,35 @@
       </template>
     </div>
   </div>
+
+  <div data-tour="settings-tour"
+       class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-4">
+    <div class="flex items-center gap-2">
+      <i data-lucide="graduation-cap" class="w-4 h-4 text-accent"></i>
+      <h2 class="font-medium">{{ t.tour_settings_title }}</h2>
+    </div>
+    <p class="text-xs text-fg-muted">{{ t.tour_settings_desc }}</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" @click="$store.tour.restartAll()"
+              class="px-4 py-2 rounded-md text-sm font-medium bg-accent text-bg-base hover:bg-accent-glow transition
+                     inline-flex items-center gap-2">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        {{ t.tour_menu_all }}
+      </button>
+      <button type="button" @click="$store.tour.start('settings')"
+              class="px-4 py-2 rounded-md text-sm border border-border-strong text-fg-muted hover:text-fg
+                     hover:bg-bg-subtle transition inline-flex items-center gap-2">
+        <i data-lucide="map-pin" class="w-4 h-4"></i>
+        {{ t.tour_settings_page }}
+      </button>
+    </div>
+    <label class="flex items-start gap-2.5 text-sm text-fg-muted cursor-pointer">
+      <input type="checkbox" class="accent-accent w-4 h-4 mt-0.5"
+             :checked="$store.tour.auto" @change="$store.tour.setAuto($event.target.checked)">
+      <span>
+        <span class="text-fg">{{ t.tour_settings_auto }}</span>
+        <span class="block text-xs text-fg-faint">{{ t.tour_settings_auto_desc }}</span>
+      </span>
+    </label>
+  </div>
 </div>

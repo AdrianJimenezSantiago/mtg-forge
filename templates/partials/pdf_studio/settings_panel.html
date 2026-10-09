@@ -1,4 +1,4 @@
-<aside aria-label="{{ t.a11y_pdf_options }}" class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
+<aside data-tour="pdf-settings" aria-label="{{ t.a11y_pdf_options }}" class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
     page: true, positioning: false, card_guides: true, page_guides: false,
     duplex_guides: false, bleed: false, regmarks: false, backs: false, range: false } }">
   <div class="p-3 space-y-2 text-xs">
@@ -304,7 +304,7 @@
 
     <div class="border border-border-subtle rounded">
       <div class="w-full flex items-center justify-between hover:bg-bg-subtle transition">
-        <button type="button" @click="open.backs = !open.backs" :aria-expanded="open.backs"
+        <button type="button" data-tour="pdf-cardback" @click="open.backs = !open.backs" :aria-expanded="open.backs"
                 class="flex-1 flex items-center p-2.5 text-left">
           <span class="inline-flex items-center gap-2 font-medium text-fg"><i data-lucide="rotate-3d" class="w-3.5 h-3.5 text-fg-faint"></i>{{ t.pdf_backs_section_label }}</span>
         </button>

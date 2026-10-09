@@ -43,7 +43,7 @@
     </div>
 
     <div class="space-y-2">
-      <button @click="buildPdf(true)"
+      <button data-tour="pdf-build" @click="buildPdf(true)"
               :disabled="buildingPdf || !deck || totalPages === 0"
               class="w-full h-10 rounded font-semibold text-sm bg-accent hover:bg-accent-hover
                      disabled:opacity-40 disabled:cursor-not-allowed transition
@@ -82,7 +82,7 @@
 
     <div>
       <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_presets_label }}</div>
-      <div class="grid grid-cols-2 gap-1.5">
+      <div data-tour="pdf-presets" class="grid grid-cols-2 gap-1.5">
         <button @click="applyPreset('mpc_classic')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
           MPC classic

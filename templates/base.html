@@ -18,12 +18,15 @@
   <script defer src="/static/js/core/api.js?v={{ asset_v('js/core/api.js') }}"></script>
   <script defer src="/static/js/core/shell.js?v={{ asset_v('js/core/shell.js') }}"></script>
   <script defer src="/static/js/core/art-upload.js?v={{ asset_v('js/core/art-upload.js') }}"></script>
+  <script defer src="/static/js/core/tour-steps.js?v={{ asset_v('js/core/tour-steps.js') }}"></script>
+  <script defer src="/static/js/core/tour.js?v={{ asset_v('js/core/tour.js') }}"></script>
 
   {% block view_module %}{% endblock %}
 
   <script defer src="/static/vendor/alpine.min.js?v={{ asset_v('vendor/alpine.min.js') }}"></script>
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_v('css/app.css') }}">
   <link rel="stylesheet" href="/static/css/motion.css?v={{ asset_v('css/motion.css') }}">
+  <link rel="stylesheet" href="/static/css/tour.css?v={{ asset_v('css/tour.css') }}">
   {% block extra_head %}{% endblock %}
 
   <link rel="expect" href="#app-content-end" blocking="render">
@@ -52,6 +55,8 @@
   {% include "partials/shell/confirm_dialog.html" %}
 
   {% include "partials/shell/art_upload_modal.html" %}
+
+  {% include "partials/shell/tour.html" %}
 
   <script src="/i18n/{{ lang | default('es') }}.js?v={{ i18n_v() }}"></script>
 

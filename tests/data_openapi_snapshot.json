@@ -65,6 +65,7 @@
       true
     ]
   ],
+  "DELETE /api/tour/": [],
   "GET /": [],
   "GET /api/art-sources/": [],
   "GET /api/art-sources/catalog-info": [],
@@ -392,6 +393,7 @@
     ]
   ],
   "GET /api/thumbs/stats": [],
+  "GET /api/tour/": [],
   "GET /collection": [],
   "GET /decks/{deck_id}": [
     [
@@ -658,6 +660,7 @@
   "POST /api/mpc-autofill/launch": [],
   "POST /api/tag-vocabulary/reload": [],
   "POST /api/thumbs/clear": [],
+  "POST /api/tour/seen": [],
   "POST /set-lang": [],
   "PUT /api/decks/{deck_id}/cardback-settings": [
     [
@@ -666,5 +669,6 @@
       true
     ]
   ],
-  "PUT /api/settings/": []
+  "PUT /api/settings/": [],
+  "PUT /api/tour/auto": []
 }

@@ -1,7 +1,7 @@
-<aside aria-label="{{ t.a11y_settings_sections }}" class="lg:w-52 shrink-0 hidden lg:block">
+<aside data-tour="settings-nav" aria-label="{{ t.a11y_settings_sections }}" class="lg:w-52 shrink-0 hidden lg:block">
   <nav class="sticky top-24 space-y-0.5">
     <template x-for="s in sections" :key="s.key">
-      <button @click="selectSection(s.key)"
+      <button @click="selectSection(s.key)" :data-tour="'settings-nav-' + s.key"
               :class="activeSection === s.key && !searchQuery
                         ? 'bg-bg-subtle text-accent-glow border-l-2 border-accent'
                         : 'text-fg-muted hover:bg-bg-subtle hover:text-fg border-l-2 border-transparent'"

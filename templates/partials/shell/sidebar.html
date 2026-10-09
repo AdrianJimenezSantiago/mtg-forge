@@ -15,18 +15,19 @@
        x-data="sidebarData()" x-init="load()">
     {% set current = request.url.path %}
     {% set nav_items = [
-      ('/',           'house',        t.nav_home),
-      ('/decks',      'layers',       t.nav_decks),
-      ('/collection', 'library',      t.nav_collection),
-      ('/art-library',   'images',    t.nav_library),
-      ('/print-planner', 'package',   t.nav_planner),
-      ('/calibrate',     'crosshair', t.nav_calibrate),
-      ('/history',    'history',      t.nav_history),
-      ('/settings',   'settings',     t.nav_settings),
+      ('/',           'house',        t.nav_home,       'home'),
+      ('/decks',      'layers',       t.nav_decks,      'decks'),
+      ('/collection', 'library',      t.nav_collection, 'collection'),
+      ('/art-library',   'images',    t.nav_library,    'library'),
+      ('/print-planner', 'package',   t.nav_planner,    'planner'),
+      ('/calibrate',     'crosshair', t.nav_calibrate,  'calibrate'),
+      ('/history',    'history',      t.nav_history,    'history'),
+      ('/settings',   'settings',     t.nav_settings,   'settings'),
     ] %}
-    {% for path, icon, label in nav_items %}
+    {% for path, icon, label, tour_id in nav_items %}
       {% set active = (path == '/' and current == '/') or (path != '/' and current.startswith(path)) %}
       <a href="{{ path }}"
+         data-tour="nav-{{ tour_id }}"
          {% if active %}aria-current="page"{% endif %}
          class="group relative flex items-center gap-3 px-3 py-2.5 rounded-md transition border-l-2 border-transparent
                 {% if active %}
@@ -107,7 +108,7 @@
       </div>
     </template>
 
-    <div x-data="globalCardSearch()" class="pt-4 mt-4 border-t border-border-subtle relative"
+    <div x-data="globalCardSearch()" data-tour="nav-search" class="pt-4 mt-4 border-t border-border-subtle relative"
          @click.outside="if (!document.getElementById('global-search-results')?.contains($event.target)) open = false"
          @keydown.escape.window="open = false"
          @resize.window="open && place()">
@@ -209,7 +210,7 @@
   </nav>
 
   <div class="px-4 pb-2 border-t border-border-subtle pt-3">
-    <form method="post" action="/set-lang" class="flex items-center gap-2">
+    <form method="post" action="/set-lang" data-tour="nav-lang" class="flex items-center gap-2">
       <i data-lucide="globe" class="w-4 h-4 text-fg-faint shrink-0"></i>
       {% for code, name in SUPPORTED_LANGS %}
         <button type="submit" name="lang" value="{{ code }}"
@@ -226,14 +227,38 @@
     </form>
   </div>
 
-  <div class="p-3 px-4 border-t border-border-subtle">
+  <div class="p-3 px-4 border-t border-border-subtle relative">
     <div class="flex items-center gap-2 text-[11px] text-fg-faint">
       <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
       <span>v0.1.0 · local-only</span>
+      <div x-data="{ open: false }" class="ml-auto -my-1" @click.outside="open = false"
+           @keydown.escape="open = false">
+        <button type="button" data-tour="nav-tour" @click="open = !open" :aria-expanded="open"
+                title="{{ t.tour_menu_title }}"
+                class="p-1 rounded border border-transparent text-fg-faint hover:text-accent-glow
+                       hover:border-border-subtle transition inline-flex items-center gap-1">
+          <i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i>
+          <span>{{ t.tour_menu_short }}</span>
+        </button>
+        <div x-show="open" x-transition.origin.bottom.left x-cloak
+             class="absolute bottom-full left-3 right-3 mb-1 bg-bg-elevated border border-border-strong rounded-lg
+                    shadow-modal p-1 z-50">
+          <button type="button" @click="open = false; $store.tour.replayPage()"
+                  class="w-full text-left text-xs px-3 py-2 rounded hover:bg-bg-subtle text-fg flex items-center gap-2">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent"></i>
+            {{ t.tour_menu_page }}
+          </button>
+          <button type="button" @click="open = false; $store.tour.restartAll()"
+                  class="w-full text-left text-xs px-3 py-2 rounded hover:bg-bg-subtle text-fg flex items-center gap-2">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-accent"></i>
+            {{ t.tour_menu_all }}
+          </button>
+        </div>
+      </div>
       <button type="button" data-ambient-toggle aria-pressed="true"
               data-label-on="{{ t.ambient_turn_off }}" data-label-off="{{ t.ambient_turn_on }}"
               title="{{ t.ambient_turn_off }}" aria-label="{{ t.ambient_turn_off }}"
-              class="fx-ambient-toggle ml-auto -my-1 p-1 rounded border border-transparent
+              class="fx-ambient-toggle -my-1 p-1 rounded border border-transparent
                      text-fg-faint hover:text-accent-glow hover:border-border-subtle transition">
         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
       </button>

@@ -2,7 +2,7 @@
 
   <div class="space-y-4">
 
-    <div class="flex items-center gap-2 text-sm flex-wrap">
+    <div data-tour="deck-filters" class="flex items-center gap-2 text-sm flex-wrap">
       <input type="search" x-model="filter" placeholder="{{ t.deck_filter_placeholder }}"
              aria-label="{{ t.deck_filter_placeholder }}"
              class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm w-72
@@ -37,7 +37,7 @@
           <span class="text-xs">{{ t.deck_view_list }}</span>
         </button>
       </div>
-      <button @click="showAddCard = !showAddCard"
+      <button data-tour="deck-add" @click="showAddCard = !showAddCard"
               class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle text-fg-muted hover:text-fg
                      px-3 py-1.5 rounded-md transition">
         <span x-show="!showAddCard">{{ t.deck_add_card }}</span>
@@ -146,7 +146,7 @@
                    rarityBorderClass(card.rarity)
                  ]">
 
-              <button @click="openArtPicker(card)"
+              <button data-tour="deck-row-art" @click="openArtPicker(card)"
                       class="shrink-0 w-11 h-[60px] rounded-md overflow-hidden border border-border-subtle
                              hover:border-accent/60 transition relative bg-bg-base"
                       title="{{ t.deck_card_change_art }}">
@@ -248,14 +248,14 @@
                 </div>
               </div>
 
-              <div class="flex flex-col items-end justify-center gap-1 shrink-0" @click.stop>
+              <div data-tour="deck-row-actions" class="flex flex-col items-end justify-center gap-1 shrink-0" @click.stop>
                 <div class="flex items-center gap-0.5">
                   <button @click="openArtPicker(card)"
                           class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
                           title="{{ t.deck_card_change_art }}">
                     <i data-lucide="image" class="w-3.5 h-3.5"></i>
                   </button>
-                  <button type="button" @click="uploadArtFor(card)"
+                  <button data-tour="deck-row-upload" type="button" @click="uploadArtFor(card)"
                           class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
                           title="{{ t.art_upload_title }}">
                     <i data-lucide="upload" class="w-3.5 h-3.5"></i>

@@ -23,6 +23,7 @@ from mpc_forge.routes import (
     snapshots,
     storage,
     thumbs,
+    tour,
     ui,
 )
 
@@ -48,5 +49,6 @@ ROUTERS: tuple[APIRouter, ...] = (
     bulk.router,
     thumbs.router,
     storage.router,
+    tour.router,
     debug.router,
 )

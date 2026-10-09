@@ -19,7 +19,7 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4" x-data="importPanel()" x-init="loadSites()">
 
-    <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
+    <div data-tour="decks-import-url" class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
                 hover:border-accent/30 transition">
       <div class="flex items-center gap-2 mb-3">
         <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
@@ -79,7 +79,7 @@
       </form>
     </div>
 
-    <div id="import-text"
+    <div data-tour="decks-import-text" id="import-text"
          class="fx-target bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card
                 hover:border-accent/30 transition scroll-mt-6">
       <div class="flex items-center gap-2 mb-3">
@@ -126,7 +126,7 @@
     </div>
 
     {% if not decks %}
-      <div class="text-center py-16 border border-dashed border-border-subtle rounded-xl">
+      <div data-tour="decks-empty" class="text-center py-16 border border-dashed border-border-subtle rounded-xl">
         <div class="w-14 h-14 mx-auto rounded-full bg-bg-subtle flex items-center justify-center text-fg-faint mb-3">
           <i data-lucide="inbox" class="w-6 h-6"></i>
         </div>
@@ -134,10 +134,10 @@
         <p class="text-xs text-fg-faint mt-1">{{ t.home_empty_subtitle }}</p>
       </div>
     {% else %}
-      <div x-data="deckListActions()" data-deal
+      <div data-tour="decks-grid" x-data="deckListActions()" data-deal
            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {% for deck in decks %}
-          <div data-tilt="foil" data-tilt-max="8"
+          <div data-tour="decks-card" data-tilt="foil" data-tilt-max="8"
                class="group relative bg-bg-elevated border border-border-subtle hover:border-accent/40
                       rounded-xl shadow-card hover:shadow-glow overflow-hidden">
             <a href="/decks/{{ deck.id }}" class="block">

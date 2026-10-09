@@ -18,7 +18,7 @@
       <p class="text-sm text-fg-muted mt-2 max-w-2xl">{{ t.calibration_intro }}</p>
     </header>
 
-    <ol class="flex items-center gap-2 mb-8 text-xs">
+    <ol data-tour="calib-steps" class="flex items-center gap-2 mb-8 text-xs">
       <template x-for="n in [1, 2, 3]" :key="n">
         <li class="flex items-center gap-2">
           <span :class="step >= n ? 'bg-accent text-bg-base' : 'bg-bg-subtle text-fg-faint'"

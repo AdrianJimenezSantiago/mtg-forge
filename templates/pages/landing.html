@@ -27,7 +27,7 @@
       </h1>
       <p class="lp-lede">{{ t.landing_hero_sub }}</p>
 
-      <form class="lp-import" @submit.prevent="importUrl" novalidate>
+      <form data-tour="home-import" class="lp-import" @submit.prevent="importUrl" novalidate>
         <label for="lp-import-url" class="sr-only">{{ t.landing_import_label }}</label>
         <div class="lp-import__field">
           <i data-lucide="link" class="lp-import__icon"></i>
@@ -60,13 +60,13 @@
         </div>
       </form>
 
-      <p class="lp-alt">
+      <p data-tour="home-text" class="lp-alt">
         {{ t.landing_import_or_text }}
         <a href="/decks#import-text">{{ t.landing_import_text_link }}</a>
       </p>
     </div>
 
-    <div class="lp-hand-wrap">
+    <div data-tour="home-hand" class="lp-hand-wrap">
       <div class="lp-hand" role="group" aria-label="{{ t.landing_hand_label }}">
         {% for slot in hand %}
           {% if slot.deck %}
@@ -109,7 +109,7 @@
       <h2 class="lp-h2">{{ t.landing_continue_title }}</h2>
       <a href="/decks" class="lp-link">{{ t.landing_continue_all }}</a>
     </header>
-    <div class="lp-recent">
+    <div data-tour="home-recent" class="lp-recent">
       {% for deck in recent_decks %}
         <a href="/decks/{{ deck.id }}" class="lp-recent__item">
           <span class="lp-recent__cover">
@@ -134,7 +134,7 @@
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_flow_title }}</h2>
     </header>
-    <div class="lp-flow" data-reveal>
+    <div data-tour="home-flow" class="lp-flow" data-reveal>
       <span class="lp-flow__line" aria-hidden="true"></span>
       <ol class="lp-flow__steps">
       {% for n in range(1, 5) %}
@@ -158,7 +158,7 @@
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_tools_title }}</h2>
     </header>
-    <div class="lp-tools">
+    <div data-tour="home-tools" class="lp-tools">
       <a class="lp-studio" href="{{ '/decks/%d/pdf' % latest_deck.id if latest_deck else '/decks' }}">
         <div class="lp-studio__sheet" aria-hidden="true">
           <svg viewBox="0 0 170 220" role="presentation">
@@ -223,7 +223,7 @@
     <header class="lp-section__head">
       <h2 class="lp-h2">{{ t.landing_status_title }}</h2>
     </header>
-    <div class="lp-status">
+    <div data-tour="home-status" class="lp-status">
       <div class="lp-status__item">
         <span class="lp-status__icon"><i data-lucide="database"></i></span>
         <div>

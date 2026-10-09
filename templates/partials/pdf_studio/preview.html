@@ -25,12 +25,12 @@
 
     <div class="flex-1"></div>
 
-    <span class="hidden xl:inline-flex items-center gap-1.5 text-[11px] text-fg-faint" x-show="deck && totalPages > 0">
+    <span class="inline-flex items-center text-fg-faint cursor-help" x-show="deck && totalPages > 0"
+          role="img" title="{{ t.pdf_drop_hint }}" aria-label="{{ t.pdf_drop_hint }}">
       <i data-lucide="upload" class="w-3.5 h-3.5"></i>
-      {{ t.pdf_drop_hint }}
     </span>
 
-    <button @click="openGuide()"
+    <button data-tour="pdf-guide" @click="openGuide()"
             class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px]
                    text-fg-muted hover:text-accent hover:bg-bg-subtle transition
                    border border-transparent hover:border-border-subtle"
@@ -61,7 +61,7 @@
           <span class="text-fg-faint/70">·</span>
           <span x-text="page.kind === 'back' ? '{{ t.pdf_page_backs }}' + (page.mirror ? ' {{ t.pdf_page_backs_mirrored | replace(t.pdf_page_backs + " ", "") }}' : '') : '{{ t.pdf_page_fronts }}'"></span>
         </div>
-        <div class="shadow-modal rounded-sm bg-white overflow-hidden preview-page"
+        <div data-tour="pdf-page" class="shadow-modal rounded-sm bg-white overflow-hidden preview-page"
              :style="`width: ${geomForKind(page.kind).page_w_mm * pxPerMm}px;
                       height: ${geomForKind(page.kind).page_h_mm * pxPerMm}px;`"
              @click="onPreviewClick($event)"

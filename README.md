@@ -125,6 +125,16 @@ Node.js is **not** required: the compiled frontend assets are committed in
    - *PDF Studio* — a PDF for your own printer or a print shop, or *Export ZIP*
      for one image per card.
 
+### Guided tour
+
+The first time you open the app a short welcome tour walks through the sidebar,
+and each screen (deck editor, PDF Studio, collection, planner, settings…) shows
+its own mini guide the first time you visit it. Use the arrow keys to move and
+<kbd>Esc</kbd> to close. Replay them at any time from **Guide** at the bottom of
+the sidebar (this screen or the full tutorial) or from *Settings → General*,
+where you can also turn the automatic guides off. What you have already seen is
+stored in the database, so it survives restarts of the desktop window.
+
 ### Custom art
 
 The easiest way is from the app itself: open a card's art picker and press

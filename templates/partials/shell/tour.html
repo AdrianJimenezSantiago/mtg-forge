@@ -1,0 +1,82 @@
+<div x-data>
+<template x-if="$store.tour.active">
+  <div class="tour-root fixed inset-0"
+       @keydown.escape.window="$store.tour.skip()"
+       @keydown.window="$store.tour.onKey($event)">
+
+    <div class="tour-blocker" :class="$store.tour.centered ? 'tour-blocker--dim' : ''"></div>
+
+    <template x-if="$store.tour.spot">
+      <div class="tour-spot" aria-hidden="true"
+           :style="`left:${$store.tour.spot?.x}px;top:${$store.tour.spot?.y}px;width:${$store.tour.spot?.w}px;height:${$store.tour.spot?.h}px`"></div>
+    </template>
+
+    <div id="tour-card" data-tour-dialog
+         role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body"
+         x-trap="$store.tour.active"
+         class="tour-card"
+         :class="['tour-card--' + $store.tour.pos.side, $store.tour.step?.hero ? 'tour-card--hero' : '']"
+         :style="`left:${$store.tour.pos.x}px;top:${$store.tour.pos.y}px;--arrow:${$store.tour.pos.arrow}px`">
+
+      <span class="tour-card__arrow" x-show="!$store.tour.centered && $store.tour.pos.side !== 'inside'"></span>
+      <template x-if="$store.tour.step?.hero">
+        <div class="tour-hero-glow" aria-hidden="true"></div>
+      </template>
+
+      <div class="relative p-5" :class="$store.tour.step?.hero ? 'pt-7 px-7' : ''">
+        <div class="flex items-center gap-3" :class="$store.tour.step?.hero ? 'flex-col' : ''">
+          <span class="tour-icon" x-html="$store.tour.icon"></span>
+          <div class="min-w-0" :class="$store.tour.step?.hero ? 'text-center' : ''">
+            <div class="text-[10px] uppercase tracking-widest text-fg-faint">
+              <span x-text="$store.tour.tourLabel"></span>
+              · <span class="font-mono" x-text="`${$store.tour.index + 1}/${$store.tour.total}`"></span>
+            </div>
+            <h2 id="tour-title" class="font-display text-accent-glow leading-snug"
+                :class="$store.tour.step?.hero ? 'text-2xl mt-1' : 'text-base'"
+                x-text="$store.tour.title"></h2>
+          </div>
+        </div>
+
+        <p id="tour-body" class="tour-body text-sm text-fg-muted leading-relaxed mt-3"
+           x-html="$store.tour.body"></p>
+
+        <div class="tour-progress mt-4" aria-hidden="true">
+          <span :style="`width:${$store.tour.progress}%`"></span>
+        </div>
+
+        <div class="flex items-center justify-between gap-2 mt-4">
+          <div class="flex items-center gap-1">
+            <button type="button" @click="$store.tour.skip()"
+                    class="text-xs text-fg-faint hover:text-fg px-2 py-1.5 rounded hover:bg-bg-subtle transition">
+              {{ t.tour_skip }}
+            </button>
+            <template x-if="$store.tour.tourId === 'welcome' && $store.tour.index === 0">
+              <button type="button" @click="$store.tour.dismissAll()"
+                      class="text-xs text-fg-faint hover:text-fg px-2 py-1.5 rounded hover:bg-bg-subtle transition">
+                {{ t.tour_never }}
+              </button>
+            </template>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" x-show="$store.tour.index > 0" @click="$store.tour.prev()"
+                    class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded-md border border-border-subtle
+                           hover:border-border-strong hover:bg-bg-subtle transition inline-flex items-center gap-1"
+                    aria-label="{{ t.tour_prev }}">
+              <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+              <span class="hidden sm:inline">{{ t.tour_prev }}</span>
+            </button>
+            <button type="button" @click="$store.tour.next()" x-init="$nextTick(() => $el.focus())"
+                    class="text-xs font-medium px-3.5 py-1.5 rounded-md bg-accent text-bg-base hover:bg-accent-glow
+                           transition inline-flex items-center gap-1.5 shadow-glow">
+              <span x-text="$store.tour.index === 0 && $store.tour.step?.hero && !$store.tour.isLast
+                              ? window._T.tour_start
+                              : ($store.tour.isLast ? window._T.tour_finish : window._T.tour_next)"></span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+</div>
