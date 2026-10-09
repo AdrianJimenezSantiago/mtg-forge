@@ -279,7 +279,7 @@ jobs:
           merge-multiple: true
 
       - name: Crear tag y release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.plan.outputs.tag }}
           name: ${{ needs.plan.outputs.tag }}
