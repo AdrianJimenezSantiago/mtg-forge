@@ -89,7 +89,9 @@ async def _load_context(db: AsyncSession, cards: list[DeckCard]) -> _CardContext
     return _CardContext(
         printings=await _printings_by_id(db, {c.scryfall_id for c in cards}),
         customs=await _customs_by_id(
-            db, {c.custom_art_front_id for c in cards if c.custom_art_front_id}
+            db,
+            {c.custom_art_front_id for c in cards if c.custom_art_front_id}
+            | {c.custom_art_back_id for c in cards if c.custom_art_back_id},
         ),
         prints_count=await _prints_count_by_oracle(db, oracle_ids),
         custom_count=await _custom_count_by_name(
@@ -123,8 +125,12 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
     extra: dict[str, Any] = {}
     if with_faces:
         back = printing if printing and is_dfc else None
+        back_thumb = back.back_image_normal if back else None
+        custom_back = ctx.customs.get(dc.custom_art_back_id) if dc.custom_art_back_id else None
+        if back and custom_back:
+            back_thumb = custom_art.custom_art_url(custom_back.relative_path)
         extra = {
-            "back_thumbnail_url": back.back_image_normal if back else None,
+            "back_thumbnail_url": back_thumb,
             "back_name": back.back_name if back else None,
             "related_parts": _related_parts(printing),
         }
@@ -159,15 +165,19 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
     )
 
 
-async def _deckcards_to_views(db: AsyncSession, cards: list[DeckCard]) -> list[DeckCardView]:
+async def _deckcards_to_views(
+    db: AsyncSession, cards: list[DeckCard], *, with_faces: bool = False
+) -> list[DeckCardView]:
     if not cards:
         return []
     ctx = await _load_context(db, cards)
-    return [_card_view(dc, ctx, with_faces=False) for dc in cards]
+    return [_card_view(dc, ctx, with_faces=with_faces) for dc in cards]
 
 
 async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
-    return (await _deckcards_to_views(db, [dc]))[0]
+    # Una sola carta: incluye las caras para que quien la sustituya en su lista
+    # (p. ej. tras cambiar el arte) no pierda el reverso de una DFC.
+    return (await _deckcards_to_views(db, [dc], with_faces=True))[0]
 
 
 def _validation_view(val: deck_validation.DeckValidationResult, **extra: Any) -> DeckValidation:

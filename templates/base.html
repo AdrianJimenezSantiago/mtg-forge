@@ -17,6 +17,7 @@
   <script defer src="/static/vendor/auto-animate.min.js?v={{ asset_v('vendor/auto-animate.min.js') }}"></script>
   <script defer src="/static/js/core/api.js?v={{ asset_v('js/core/api.js') }}"></script>
   <script defer src="/static/js/core/shell.js?v={{ asset_v('js/core/shell.js') }}"></script>
+  <script defer src="/static/js/core/art-upload.js?v={{ asset_v('js/core/art-upload.js') }}"></script>
 
   {% block view_module %}{% endblock %}
 
@@ -49,6 +50,8 @@
   {% include "partials/shell/toasts.html" %}
 
   {% include "partials/shell/confirm_dialog.html" %}
+
+  {% include "partials/shell/art_upload_modal.html" %}
 
   <script src="/i18n/{{ lang | default('es') }}.js?v={{ i18n_v() }}"></script>
 

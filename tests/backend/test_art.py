@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from mpc_forge import config as cfg
 from mpc_forge.db import session_scope
 from mpc_forge.models import OracleArtistCache
-from mpc_forge.services.art import art_library, phash, thumbnails
+from mpc_forge.services.art import art_library, custom_art, phash, thumbnails
 from mpc_forge.services.art.recommender import _fold, _pick_best_printing
 
 needs_pillow = pytest.mark.skipif(
@@ -298,3 +299,210 @@ class TestRecommender:
         assert (await client.post(url, json={})).json()["matched"] == []
         styled = (await client.post(url, json={"set_code": "c21", "borderless": False})).json()
         assert "matched" in styled and styled["query"]["set_code"] == "c21"
+
+
+def _png_bytes(size=(745, 1040), color=(30, 60, 120), mode="RGB", fmt="PNG", **save) -> bytes:
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new(mode, size, color).save(out, fmt, **save)
+    return out.getvalue()
+
+
+async def _upload(client, data: bytes, name="arte.png", **form):
+    fields = {"card_name": "Sol Ring", **form}
+    return await client.post(
+        "/api/custom-art/upload",
+        data=fields,
+        files={"file": (name, data, "application/octet-stream")},
+    )
+
+
+@needs_pillow
+class TestCustomArtUpload:
+    async def test_upload_is_listed_in_the_picker_and_assignable(self, client, deck):
+        r = await _upload(client, _png_bytes(), variant="Anime")
+        assert r.status_code == 200, r.text
+        art = r.json()
+        assert (art["face"], art["variant_label"], art["duplicate"]) == ("front", "Anime", False)
+        assert (art["width"], art["height"], art["dpi"], art["warnings"]) == (745, 1040, 300, [])
+        assert art["filename"] == "Sol Ring - Anime.png"
+        assert art["relative_path"].startswith("_uploaded/")
+        stored = cfg.PATHS.custom_art_dir / art["relative_path"]
+        assert stored.is_file()
+
+        served = await client.get(art["image_url"])
+        assert served.status_code == 200 and served.content == stored.read_bytes()
+
+        card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
+        prints = f"/api/decks/{deck['id']}/cards/{card['id']}/prints"
+        page = (await client.get(prints)).json()
+        assert [c["custom_art_id"] for c in page["custom"]] == [art["id"]]
+
+        r = await client.post(
+            f"/api/decks/{deck['id']}/cards/change-art",
+            json={"deck_card_id": card["id"], "custom_art_id": art["id"], "face": "front"},
+        )
+        assert r.status_code == 200 and r.json()["custom_art_front_id"] == art["id"]
+
+        # El rescan relee el nombre del fichero y no duplica ni pierde la fila.
+        rescan = (await client.post("/api/custom-art/rescan")).json()
+        assert rescan["removed"] == 0 and rescan["added"] == 0
+        assert custom_art.parse_filename(Path(art["relative_path"])) == (
+            "sol ring",
+            "front",
+            "Anime",
+        )
+
+    async def test_same_image_twice_is_deduplicated(self, client, deck):
+        first = (await _upload(client, _png_bytes(color=(1, 2, 3)))).json()
+        again = (await _upload(client, _png_bytes(color=(1, 2, 3)), variant="Otra")).json()
+        assert again["duplicate"] is True and again["id"] == first["id"]
+        listed = (await client.get("/api/custom-art/", params={"card_name": "Sol Ring"})).json()
+        assert len(listed) == 1
+
+    async def test_repeated_variant_labels_get_numbered(self, client, deck):
+        a = (await _upload(client, _png_bytes(color=(10, 0, 0)), variant="Anime")).json()
+        b = (await _upload(client, _png_bytes(color=(20, 0, 0)), variant="anime")).json()
+        c = (await _upload(client, _png_bytes(color=(30, 0, 0)))).json()
+        d = (await _upload(client, _png_bytes(color=(40, 0, 0)))).json()
+        assert [x["variant_label"] for x in (a, b, c, d)] == ["Anime", "anime 2", None, "2"]
+        assert len({x["image_url"] for x in (a, b, c, d)}) == 4
+
+    async def test_back_face_and_name_sanitising(self, client, deck):
+        r = await _upload(
+            client,
+            _png_bytes(color=(0, 90, 0)),
+            card_name="Fire // Ice",
+            face="back",
+            variant="Mi (versión) [x]",
+        )
+        art = r.json()
+        assert r.status_code == 200 and art["face"] == "back"
+        assert art["card_name_normalized"] == "fire // ice"
+        assert "[BACK]" in art["filename"] and "/" not in art["filename"]
+        assert "(" not in art["variant_label"] and "[" not in art["variant_label"]
+
+    async def test_rejects_what_cannot_be_printed(self, client, deck):
+        cases = {
+            "not_an_image": b"esto no es una imagen",
+            "unsupported_format": _png_bytes(fmt="GIF"),
+            "too_small": _png_bytes(size=(120, 160)),
+            "empty": b"",
+        }
+        for code, data in cases.items():
+            r = await _upload(client, data)
+            assert r.status_code == 400, (code, r.text)
+            assert r.json()["detail"]["code"] == code
+
+        corrupt = _png_bytes()[:4000]
+        r = await _upload(client, corrupt)
+        assert r.status_code == 400 and r.json()["detail"]["code"] == "corrupt"
+
+        assert (await _upload(client, _png_bytes(), face="side")).status_code == 422
+        assert (await _upload(client, _png_bytes(), fit="zoom")).status_code == 422
+        assert (await _upload(client, _png_bytes(), card_name="")).status_code == 422
+        assert (await client.get("/api/custom-art/")).json() == []
+
+    async def test_size_limit(self, client, deck, monkeypatch):
+        monkeypatch.setattr(custom_art, "MAX_UPLOAD_BYTES", 1000)
+        r = await _upload(client, _png_bytes(size=(400, 560)) + os.urandom(2000))
+        assert r.status_code == 413 and r.json()["detail"]["code"] == "too_large"
+
+    async def test_warnings_and_fit_modes(self, client, deck):
+        wide = _png_bytes(size=(1000, 700), color=(200, 10, 10))
+        stretched = (await _upload(client, wide)).json()
+        codes = {w["code"] for w in stretched["warnings"]}
+        assert codes == {"aspect_mismatch"} and stretched["adjusted"] is False
+        assert (stretched["width"], stretched["height"]) == (1000, 700)
+
+        cropped = (await _upload(client, wide, fit="crop")).json()
+        assert cropped["adjusted"] is True and cropped["id"] != stretched["id"]
+        assert custom_art.ratio_is_card_like(cropped["width"], cropped["height"])
+        assert cropped["height"] == 700 and {w["code"] for w in cropped["warnings"]} == {
+            "low_resolution"
+        }
+
+        contained = (await _upload(client, wide, fit="contain")).json()
+        assert (contained["width"], contained["height"]) == (1000, 1397)
+        assert contained["warnings"] == []
+
+        # Una imagen ya con proporción de carta (con sangrado MPC) no se toca.
+        mpc = (await _upload(client, _png_bytes(size=(822, 1122)), fit="crop")).json()
+        assert mpc["adjusted"] is False and mpc["warnings"] == []
+
+        low = (await _upload(client, _png_bytes(size=(300, 419), color=(5, 5, 5)))).json()
+        assert low["warnings"] == [
+            {
+                "code": "low_resolution",
+                "dpi": 121,
+                "recommended": 300,
+                "ratio": None,
+                "expected": None,
+            }
+        ]
+
+        alpha = _png_bytes(mode="RGBA", color=(0, 0, 0, 0))
+        assert {w["code"] for w in (await _upload(client, alpha)).json()["warnings"]} == {
+            "transparency"
+        }
+
+    async def test_exif_rotation_is_applied(self, client, deck):
+        from PIL import Image
+
+        img = Image.new("RGB", (1040, 745), (9, 9, 9))
+        exif = img.getexif()
+        exif[0x0112] = 6
+        out = io.BytesIO()
+        img.save(out, "JPEG", exif=exif.tobytes())
+        art = (await _upload(client, out.getvalue(), name="foto.jpg")).json()
+        assert art["adjusted"] is True and (art["width"], art["height"]) == (745, 1040)
+        assert art["filename"].endswith(".jpg") and art["warnings"] == []
+
+    async def test_delete_removes_file_and_upload_folder(self, client, deck):
+        art = (await _upload(client, _png_bytes(color=(77, 77, 77)))).json()
+        stored = cfg.PATHS.custom_art_dir / art["relative_path"]
+        assert stored.is_file()
+        assert (await client.delete(f"/api/custom-art/{art['id']}")).status_code == 204
+        assert not stored.exists() and not stored.parent.exists()
+        assert stored.parent.parent.name == custom_art.UPLOADED_SUBDIR
+
+    async def test_dfc_back_face_upload_shows_in_the_card_view(self, client):
+        from mpc_forge.db import session_scope
+        from mpc_forge.services.cards.printings import upsert_printings
+        from mpc_forge.services.decks.importer import create_deck_from_entries
+        from tests.backend.test_cards import DFC_CARD
+
+        async with session_scope() as db:
+            await upsert_printings(db, [DFC_CARD])
+            await db.commit()
+            deck = await create_deck_from_entries(
+                db,
+                "DFC",
+                [
+                    {
+                        "name": DFC_CARD["name"],
+                        "quantity": 1,
+                        "scryfall_id": DFC_CARD["id"],
+                        "oracle_id": DFC_CARD["oracle_id"],
+                        "resolved": True,
+                        "role": "mainboard",
+                    }
+                ],
+            )
+            deck_id = deck.id
+        card = (await client.get(f"/api/decks/{deck_id}")).json()["cards"][0]
+        assert card["is_dfc"] and card["back_thumbnail_url"] == "https://img/back.jpg"
+
+        art = (
+            await _upload(client, _png_bytes(color=(3, 3, 90)), card_name=card["name"], face="back")
+        ).json()
+        r = await client.post(
+            f"/api/decks/{deck_id}/cards/change-art",
+            json={"deck_card_id": card["id"], "custom_art_id": art["id"], "face": "back"},
+        )
+        assert r.status_code == 200
+        view = r.json()
+        assert view["custom_art_back_id"] == art["id"] and view["custom_art_front_id"] is None
+        assert view["back_thumbnail_url"] == art["image_url"]
+        assert view["thumbnail_url"] == "https://img/front.jpg"

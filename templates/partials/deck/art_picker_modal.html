@@ -1,11 +1,24 @@
 <template x-if="artPickerOpen">
   <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
        @click="closeArtPicker()"
-       @keydown.escape.window="closeArtPicker()">
-    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-[1600px]
+       @keydown.escape.window="!$store.artUpload.open && closeArtPicker()"
+       @paste.window="onPickerPaste($event)">
+    <div class="relative bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-[1600px]
                 h-[92vh] flex flex-col overflow-hidden"
          role="dialog" aria-modal="true" aria-label="{{ t.picker_title }}" x-trap="true"
-         @click.stop>
+         @click.stop
+         @dragover="onPickerDragOver($event)"
+         @dragleave="onPickerDragLeave($event)"
+         @drop="onPickerDrop($event)">
+
+      <div x-show="pickerDragOver" x-cloak
+           class="absolute inset-0 z-20 m-3 rounded-2xl border-2 border-dashed border-accent bg-bg-base/85
+                  flex flex-col items-center justify-center gap-3 text-accent pointer-events-none">
+        <i data-lucide="upload" class="w-10 h-10"></i>
+        <div class="text-base font-medium text-fg">
+          {{ t.art_upload_drop_on_card }} <span class="text-accent-glow" x-text="pickerCard?.name || ''"></span>
+        </div>
+      </div>
 
       <div class="flex items-center justify-between p-4 border-b border-border-subtle shrink-0 gap-4">
         <div class="flex items-center gap-3 min-w-0">
@@ -41,11 +54,19 @@
             </div>
           </div>
         </div>
-        <button @click="closeArtPicker()"
-                class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
-                title="{{ t.deck_close_esc }}">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" @click="uploadArtFor(pickerCard)"
+                  class="text-xs bg-accent/10 hover:bg-accent/20 border border-accent/40 text-accent
+                         px-3 py-1.5 rounded transition inline-flex items-center gap-1.5">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            {{ t.art_upload_button }}
+          </button>
+          <button @click="closeArtPicker()"
+                  class="shrink-0 text-fg-muted hover:text-fg p-2 rounded hover:bg-bg-subtle transition"
+                  title="{{ t.deck_close_esc }}">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
 
       <div class="flex-1 min-h-0 flex overflow-hidden">
@@ -316,6 +337,16 @@
           </template>
 
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            <template x-if="!pickerLoading && (pickerFilters.source === 'all' || pickerFilters.source === 'custom')">
+              <button type="button" @click="uploadArtFor(pickerCard)"
+                      class="aspect-[63/88] rounded-md border-2 border-dashed border-border-strong text-fg-muted
+                             hover:border-accent hover:text-accent hover:bg-accent/5 transition
+                             flex flex-col items-center justify-center gap-2 p-3 text-center">
+                <i data-lucide="image-plus" class="w-7 h-7"></i>
+                <span class="text-xs font-medium">{{ t.art_upload_tile }}</span>
+                <span class="text-[10px] text-fg-faint">{{ t.art_upload_tile_hint }}</span>
+              </button>
+            </template>
             <template x-for="art in pickerVisibleArts" :key="art.__key">
               <div class="group relative">
                 <button @click="pickArt(art, false)"

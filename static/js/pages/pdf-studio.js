@@ -1,5 +1,9 @@
 const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
 
+// Hueco del preview resaltado mientras se arrastra una imagen. Vive fuera del
+// estado de Alpine: un nodo DOM dentro de un proxy reactivo rompe setAttribute.
+let dropTarget = null;
+
 function pdfStudio(deckId) { return {
   deckId,
   deck: null,
@@ -773,6 +777,100 @@ function pdfStudio(deckId) { return {
     } finally {
       this.cbPickingId = null;
     }
+  },
+
+  async uploadCardback(file = null) {
+    const current = this.cardbackSettings?.image_url || this.cardbackSettings?.default_image_url || null;
+    const result = await window.artUpload.open({
+      title: window._t('art_upload_cardback_title'),
+      displayName: this.deck?.name || '',
+      cardName: `_cardback_${this.deck?.name || 'deck'}`,
+      face: 'back',
+      currentImage: current,
+      file,
+    });
+    if (!result || !result.art) return;
+    try {
+      await this._setCardback(result.art.id);
+      await this._loadLocalArts();
+    } catch (e) {
+      console.error('uploadCardback:', e);
+      if (window.toast) window.toast(window._t('common_error'), e.message);
+    }
+  },
+
+  async uploadArtForSlot(cardId, face = 'front', file = null) {
+    const card = (this.deck?.cards || []).find(c => c.id === cardId);
+    if (!card) return;
+    const result = await window.artUpload.open({
+      cardName: card.name,
+      displayName: face === 'back' && card.back_name ? card.back_name : card.name,
+      face,
+      currentImage: face === 'back' ? card.back_thumbnail_url : card.thumbnail_url,
+      deckId: this.deckId,
+      deckCardId: card.id,
+      file,
+    });
+    if (!result || !result.card) return;
+    const cards = this.deck.cards || [];
+    const idx = cards.findIndex(c => c.id === result.card.id);
+    if (idx >= 0) cards[idx] = result.card;
+    if (this.miniPickerOpen && this.miniPickerCard?.id === card.id) this.closeMiniArtPicker();
+  },
+
+  uploadFromMiniPicker(file = null) {
+    if (!this.miniPickerCard) return;
+    this.uploadArtForSlot(this.miniPickerCard.id, this.miniPickerFace, file);
+  },
+
+  _clearDropHighlight() {
+    const el = dropTarget;
+    if (!el) return;
+    el.setAttribute('fill', el.dataset.prevFill || 'transparent');
+    el.removeAttribute('stroke');
+    el.removeAttribute('stroke-width');
+    dropTarget = null;
+  },
+
+  onPreviewDragOver(ev) {
+    if (!window.artUpload.hasFile(ev.dataTransfer)) return;
+    const el = ev.target.closest && ev.target.closest('[data-slot-kind]');
+    if (!el) { this._clearDropHighlight(); return; }
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    if (dropTarget === el) return;
+    this._clearDropHighlight();
+    el.dataset.prevFill = el.getAttribute('fill') || '';
+    el.setAttribute('fill', 'rgba(212, 175, 55, 0.35)');
+    el.setAttribute('stroke', '#d4af37');
+    el.setAttribute('stroke-width', '0.8');
+    dropTarget = el;
+  },
+
+  onPreviewDragLeave(ev) {
+    if (ev.currentTarget.contains(ev.relatedTarget)) return;
+    this._clearDropHighlight();
+  },
+
+  onPreviewDrop(ev) {
+    const el = ev.target.closest && ev.target.closest('[data-slot-kind]');
+    this._clearDropHighlight();
+    const file = window.artUpload.fileFrom(ev.dataTransfer);
+    if (!el || !file) return;
+    ev.preventDefault();
+    if (el.getAttribute('data-slot-kind') === 'cardback') {
+      this.uploadCardback(file);
+      return;
+    }
+    const cardId = Number(el.getAttribute('data-card-id'));
+    if (cardId) this.uploadArtForSlot(cardId, el.getAttribute('data-face') || 'front', file);
+  },
+
+  onMiniPickerDrop(ev) {
+    const file = window.artUpload.fileFrom(ev.dataTransfer);
+    if (!file) return;
+    ev.preventDefault();
+    this.uploadFromMiniPicker(file);
   },
 
   async _setCardback(customArtId) {

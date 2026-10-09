@@ -79,6 +79,8 @@ function deckEditor(deckId) {
     pickerFacets: {},
     _pickerAbort: null,
     pickerAddUrl: '',
+    uploadDropCardId: null,
+    pickerDragOver: false,
     pickerFilters: {
       q: '',
       source: 'all',
@@ -895,6 +897,78 @@ function deckEditor(deckId) {
         );
         this.closeArtPicker();
       }
+    },
+
+    uploadFaces(card) {
+      const faces = [{value: 'front', label: `${window._t('art_upload_face_front')} — ${card.name}`}];
+      if (card.is_dfc || card.back_name) {
+        faces.push({value: 'back', label: `${window._t('art_upload_face_back')} — ${card.back_name || card.name}`});
+      }
+      return faces;
+    },
+
+    async uploadArtFor(card, file = null, face = 'front') {
+      if (!card) return;
+      this.selectedCardId = card.id;
+      const result = await window.artUpload.open({
+        cardName: card.name,
+        face,
+        faces: this.uploadFaces(card),
+        currentImages: {front: card.thumbnail_url, back: card.back_thumbnail_url},
+        deckId: this.deckId,
+        deckCardId: card.id,
+        file,
+      });
+      if (!result || !result.card) return;
+      this._updateCard(result.card);
+      delete this._pickerCache[card.id];
+      if (this.artPickerOpen && this.pickerCard?.id === card.id) this.closeArtPicker();
+      this.loadEstimate();
+    },
+
+    onRowDragOver(ev, card) {
+      if (!window.artUpload.hasFile(ev.dataTransfer)) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'copy';
+      this.uploadDropCardId = card.id;
+    },
+    onRowDragLeave(ev, card) {
+      if (ev.currentTarget.contains(ev.relatedTarget)) return;
+      if (this.uploadDropCardId === card.id) this.uploadDropCardId = null;
+    },
+    onRowDrop(ev, card) {
+      const file = window.artUpload.fileFrom(ev.dataTransfer);
+      this.uploadDropCardId = null;
+      if (!file) return;
+      ev.preventDefault();
+      this.uploadArtFor(card, file);
+    },
+
+    onPickerDragOver(ev) {
+      if (!window.artUpload.hasFile(ev.dataTransfer)) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'copy';
+      this.pickerDragOver = true;
+    },
+    onPickerDragLeave(ev) {
+      if (ev.currentTarget.contains(ev.relatedTarget)) return;
+      this.pickerDragOver = false;
+    },
+    onPickerPaste(ev) {
+      if (Alpine.store('artUpload').open || !this.pickerCard) return;
+      const target = ev.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      const file = window.artUpload.fileFrom(ev.clipboardData);
+      if (!file) return;
+      ev.preventDefault();
+      this.uploadArtFor(this.pickerCard, file);
+    },
+    onPickerDrop(ev) {
+      this.pickerDragOver = false;
+      const file = window.artUpload.fileFrom(ev.dataTransfer);
+      if (!file || !this.pickerCard) return;
+      ev.preventDefault();
+      this.uploadArtFor(this.pickerCard, file);
     },
 
     async addCustomFromUrl() {

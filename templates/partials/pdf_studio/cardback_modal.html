@@ -1,7 +1,9 @@
 <div x-show="cardbackModalOpen" x-transition x-cloak
      class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
      @click.self="closeCardbackPicker()"
-     @keydown.escape.window="closeCardbackPicker()">
+     @keydown.escape.window="!$store.artUpload.open && closeCardbackPicker()"
+     @dragover.prevent
+     @drop.prevent="window.artUpload.hasFile($event.dataTransfer) && uploadCardback(window.artUpload.fileFrom($event.dataTransfer))">
   <div class="bg-bg-inset border border-border-subtle rounded-lg shadow-modal
               w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
        role="dialog" aria-modal="true" aria-labelledby="cardback-title" x-trap="cardbackModalOpen">
@@ -49,6 +51,15 @@
           {{ t.common_reset }}
         </button>
       </div>
+
+      <button type="button" @click="uploadCardback()"
+              class="w-full rounded-lg border-2 border-dashed border-border-strong text-fg-muted
+                     hover:border-accent hover:text-accent hover:bg-accent/5 transition
+                     flex items-center justify-center gap-3 px-4 py-4">
+        <i data-lucide="image-plus" class="w-5 h-5"></i>
+        <span class="text-sm font-medium">{{ t.art_upload_cardback_title }}</span>
+        <span class="text-[11px] text-fg-faint">{{ t.art_upload_tile_hint }}</span>
+      </button>
 
       <div>
         <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">

@@ -488,6 +488,7 @@
   "POST /api/collection/toggle-owned": [],
   "POST /api/custom-art/from-url": [],
   "POST /api/custom-art/rescan": [],
+  "POST /api/custom-art/upload": [],
   "POST /api/decks/import/moxfield": [],
   "POST /api/decks/import/text": [],
   "POST /api/decks/import/url": [],

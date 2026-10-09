@@ -136,7 +136,11 @@
             <div data-flash-row
                  class="flex gap-3 px-3 py-2.5 border-b border-border-subtle last:border-b-0
                         hover:bg-bg-subtle/60 transition relative"
+                 @dragover="onRowDragOver($event, card)"
+                 @dragleave="onRowDragLeave($event, card)"
+                 @drop="onRowDrop($event, card)"
                  :class="[
+                   uploadDropCardId === card.id ? 'bg-accent/10 ring-2 ring-inset ring-accent' : '',
                    selectedCardId === card.id ? 'bg-bg-subtle/80 ring-1 ring-inset ring-accent/40' : '',
                    !card.include ? 'opacity-50' : '',
                    rarityBorderClass(card.rarity)
@@ -250,6 +254,11 @@
                           class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
                           title="{{ t.deck_card_change_art }}">
                     <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button type="button" @click="uploadArtFor(card)"
+                          class="p-1 rounded hover:bg-accent/15 text-fg-muted hover:text-accent transition"
+                          title="{{ t.art_upload_title }}">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
                   </button>
                   <button @click="changeQty(card, card.quantity - 1)" :disabled="card.quantity <= 1"
                           class="p-1 rounded hover:bg-bg-base text-fg-muted hover:text-fg disabled:opacity-30"

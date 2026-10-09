@@ -127,8 +127,27 @@ Node.js is **not** required: the compiled frontend assets are committed in
 
 ### Custom art
 
-Drop images into the `custom_art/` folder and they appear in the picker next to
-the official printings. The file name decides the match:
+The easiest way is from the app itself: open a card's art picker and press
+**Upload image** (or the *Upload your own image* tile), drag an image onto the
+card in the deck list or onto its slot in *PDF Studio*, or paste one with
+<kbd>Ctrl</kbd>+<kbd>V</kbd> while the picker is open. Before saving you get a
+card-shaped preview next to the current art, and the image is checked:
+
+- PNG, JPG or WEBP, up to 30 MB and at least 200 px per side; anything else is
+  rejected, as are corrupt or animated files.
+- Resolution: a warning below ~240 dpi at card size (745×1040 px is 300 dpi).
+- Proportions: images that are not 63×88 (MPC images with bleed are fine) can be
+  cropped to the centre, fitted with black borders, or kept stretched.
+- Photos are rotated according to their EXIF orientation; uploading the same
+  image twice for a card reuses the existing copy.
+
+Uploads are stored under `custom_art/_uploaded/`, assigned to the card straight
+away and offered for that card in every deck. Card backs can be uploaded the
+same way from *PDF Studio → Card back*.
+
+You can still drop images into the `custom_art/` folder yourself and press
+*Rescan*; they appear in the picker next to the official printings. The file
+name decides the match:
 
 | File name                     | Matches                                   |
 | ----------------------------- | ----------------------------------------- |
