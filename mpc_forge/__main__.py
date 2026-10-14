@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 import time
 import webbrowser
@@ -31,7 +32,16 @@ def main() -> None:
         action="store_true",
         help="Usar pywebview para abrir en ventana nativa (requiere `pip install pywebview`)",
     )
+    parser.add_argument(
+        "--no-update", action="store_true", help="No buscar una versión nueva al arrancar"
+    )
     args = parser.parse_args()
+
+    from mpc_forge import updater
+
+    exit_code = updater.check_on_startup(sys.argv[1:], no_update=args.no_update)
+    if exit_code is not None:
+        sys.exit(exit_code)
 
     url = f"http://{args.host}:{args.port}"
 

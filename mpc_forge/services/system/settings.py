@@ -64,6 +64,18 @@ DEFINITIONS: list[SettingDef] = [
         description="Se busca en la carpeta de cardbacks como <nombre>.png/.jpg.",
     ),
     SettingDef(
+        key="auto_update",
+        label="Actualizar al arrancar",
+        type="bool",
+        group="General",
+        default=True,
+        description=(
+            "Al abrir la app, si hay conexión, busca una versión nueva (la última release "
+            "o, si la ejecutas desde un clon de git, origin/main) y la instala antes de "
+            "arrancar. Tus datos no se tocan."
+        ),
+    ),
+    SettingDef(
         key="preferred_language",
         label="Idioma preferido de las cartas",
         type="str",

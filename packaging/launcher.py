@@ -42,6 +42,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="No abrir el navegador al arrancar",
     )
+    parser.add_argument(
+        "--no-update",
+        action="store_true",
+        help="No buscar una versión nueva al arrancar",
+    )
+    # Lo usa el binario nuevo de una actualización para sustituir al antiguo.
+    parser.add_argument("--apply-update", metavar="PLAN", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -56,10 +63,25 @@ def _data_dir_hint() -> str:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
+    if args.apply_update:
+        from pathlib import Path
+
+        from mpc_forge import updater
+
+        return updater.apply_update(Path(args.apply_update))
+
     print("=" * 60)
     print("  MPC Forge — proxy printing pipeline for MTG")
     print("=" * 60)
     print()
+
+    from mpc_forge import updater
+
+    exit_code = updater.check_on_startup(
+        sys.argv[1:] if argv is None else argv, no_update=args.no_update
+    )
+    if exit_code is not None:
+        return exit_code
 
     host = args.host
     port = args.port

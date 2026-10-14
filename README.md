@@ -104,9 +104,30 @@ python -m mpc_forge
 | `--host H`     | Bind address (default `127.0.0.1`).                            |
 | `--no-browser` | Do not open a browser tab on startup.                          |
 | `--window`     | Open in a native window instead (`pip install pywebview`).     |
+| `--no-update`  | Skip the update check on startup.                              |
 
 Node.js is **not** required: the compiled frontend assets are committed in
 `static/vendor/`.
+
+### Automatic updates
+
+Every time it starts, the app checks for a newer version if there is an internet
+connection, and installs it before opening:
+
+- **Executable.** It asks GitHub for the [latest release](https://github.com/AdrianJimenezSantiago/mtg-forge/releases/latest)
+  (a new one is published after every green push to `main`). If it is newer, it
+  downloads the package for your platform, verifies its checksum, replaces the
+  program files and opens again with the new version. The `user-settings/`
+  folder is kept as is.
+- **From source.** If your clone is on `main` with no local changes, it fetches
+  `origin/main`, fast-forwards, reinstalls the dependencies when
+  `requirements.txt` changed, and restarts. Other branches, local changes or a
+  `main` that has diverged are never touched.
+
+Offline, or if anything goes wrong, the app simply starts with the version you
+have. Turn it off in *Settings → General → Actualizar al arrancar*, with
+`--no-update`, or with `MPC_FORGE_NO_UPDATE=1`. Versions before this feature
+have to be updated by hand once.
 
 ## Getting started
 

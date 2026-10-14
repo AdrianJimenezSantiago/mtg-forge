@@ -217,7 +217,7 @@ jobs:
             BIN="packaging/dist/MPC-Forge/MPC-Forge"
           fi
 
-          "$BIN" --no-browser --port 8791 > smoke.log 2>&1 &
+          "$BIN" --no-browser --no-update --port 8791 > smoke.log 2>&1 &
           PID=$!
 
           OK=0
