@@ -5,6 +5,7 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -134,7 +135,8 @@ def test_extract_and_find_root_for_each_package_layout(tmp_path):
     updater.extract(tpath, tmp_path / "l")
     root = updater.find_new_root(tmp_path / "l", Path("MPC-Forge"))
     assert root == tmp_path / "l" / "MPC-Forge"
-    assert (root / "MPC-Forge").stat().st_mode & 0o100
+    if sys.platform != "win32":  # Windows no tiene bit de ejecución
+        assert (root / "MPC-Forge").stat().st_mode & 0o100
 
 
 def test_extract_rejects_paths_outside_the_package(tmp_path):
