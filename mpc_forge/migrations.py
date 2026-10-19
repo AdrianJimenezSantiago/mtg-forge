@@ -150,6 +150,13 @@ MIGRATIONS: list[Migration] = [
             "DROP INDEX IF EXISTS ix_deck_activity_deck_id",
         ],
     ),
+    Migration(
+        version=14,
+        description="Marca de impresión solo digital en printings",
+        statements=[
+            "ALTER TABLE printings ADD COLUMN digital BOOLEAN NOT NULL DEFAULT 0",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

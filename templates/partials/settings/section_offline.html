@@ -21,6 +21,10 @@
       </div>
     </div>
 
+    <p class="text-xs text-fg-muted" x-show="lastSync" x-cloak>
+      {{ t.settings_offline_last_sync }} <span x-text="lastSync"></span>
+    </p>
+
     <div x-show="active" x-cloak class="space-y-2">
       <div class="flex justify-between text-xs text-fg-muted">
         <span x-text="progress.kind || ''"></span>
@@ -52,8 +56,10 @@
       </button>
     </div>
 
-    <p class="text-xs text-fg-muted" x-show="!status.ijson_available" x-cloak>
-      {{ t.settings_offline_ijson_hint }}
-    </p>
+    <div class="space-y-4 pt-1">
+      <template x-for="def in defsInGroup('Datos de cartas')" :key="def.key">
+        <div x-html="renderRow(def)"></div>
+      </template>
+    </div>
   </div>
 </div>

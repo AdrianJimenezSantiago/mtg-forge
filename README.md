@@ -68,8 +68,8 @@ art are cached.
   free space left on each drive and one-click cleanup of everything that can be
   regenerated or downloaded again. Your database, custom art and cardbacks are
   never offered for deletion.
-- **Offline mode (API only for now).** Optionally import Scryfall's bulk data so
-  card resolution and printing lookups never touch the network. See
+- **Offline card data.** Optionally import Scryfall's bulk data so card
+  resolution, autocomplete and printing lookups are answered locally. See
   [Working with Scryfall](#working-with-scryfall).
 - **Bilingual interface.** English and Spanish.
 
@@ -227,10 +227,16 @@ so that importing and opening many decks in a row never gets the app blocked:
   resolved without the network, identical in-flight requests are shared, and
   alternate printings for a whole deck are fetched with a handful of combined
   searches rather than one search per card.
-- **Offline mode.** Importing Scryfall's bulk data (about 1 GB on disk) turns
-  lookups into local queries. There is no button for it in the interface yet;
-  start it from the interactive API docs at `http://127.0.0.1:8765/docs` with
-  `POST /api/bulk/sync`, and follow progress with `GET /api/bulk/progress`.
+- **Offline mode.** *Settings → Offline mode* imports Scryfall's
+  [bulk data](https://scryfall.com/docs/api/bulk-data) (`default_cards`: an
+  ~80 MB `jsonl.gz` download, about 115,000 printings and ~210 MB in the
+  database; around a minute and a half). With it, resolving decklist names,
+  adding a card, autocomplete and alternate printings are answered from the
+  local database, and only what is not there goes to the API. Prices and
+  legalities come with it. Once imported it is refreshed in the background at
+  startup when it is more than a week old and Scryfall has published a newer
+  file (*Keep card data up to date*, on by default). The API is also available:
+  `POST /api/bulk/sync`, `GET /api/bulk/progress`, `POST /api/bulk/cancel`.
 
 Images are downloaded from `cards.scryfall.io` and cached on disk.
 

@@ -240,16 +240,22 @@ async def add_card(
     if not deck:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
 
-    if payload.set_code and payload.collector_number:
-        raw = await scryfall.by_set_and_number(payload.set_code, payload.collector_number)
-    else:
-        raw = await scryfall.named(payload.name, set_code=payload.set_code)
-    if not raw:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, f"Carta «{payload.name}» no encontrada en Scryfall"
-        )
-
-    printing = await printings.upsert_printing(db, raw)
+    printing = await printings.find_local_printing(
+        db,
+        name=payload.name,
+        set_code=payload.set_code,
+        collector_number=payload.collector_number,
+    )
+    if printing is None:
+        if payload.set_code and payload.collector_number:
+            raw = await scryfall.by_set_and_number(payload.set_code, payload.collector_number)
+        else:
+            raw = await scryfall.named(payload.name, set_code=payload.set_code)
+        if not raw:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Carta «{payload.name}» no encontrada en Scryfall"
+            )
+        printing = await printings.upsert_printing(db, raw)
 
     existing = None
     if printing.oracle_id:

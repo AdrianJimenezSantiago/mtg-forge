@@ -59,6 +59,7 @@ class PrintingCache(Base):
     full_art: Mapped[bool] = mapped_column(Boolean, default=False)
     textless: Mapped[bool] = mapped_column(Boolean, default=False)
     promo: Mapped[bool] = mapped_column(Boolean, default=False)
+    digital: Mapped[bool] = mapped_column(Boolean, default=False)
     layout: Mapped[str] = mapped_column(String(32), default="normal")
     mana_cost: Mapped[str] = mapped_column(String(64), default="")
     cmc: Mapped[float] = mapped_column(default=0.0)

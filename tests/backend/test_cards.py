@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import sys
 import time
@@ -386,7 +387,15 @@ class TestBulkData:
         )
 
         parts = json.loads(bulk_data.card_to_row(TOKEN_MAKER)["related_parts"])
-        assert {p["component"] for p in parts} == {"token"}
+        assert {p["component"] for p in parts} == {"token", "combo_piece"}
+
+        priced = {**SIMPLE_CARD, "digital": True, "prices": {"usd": "1.50", "eur": None}}
+        row = bulk_data.card_to_row(priced)
+        expected = printings.printing_fields(priced)
+        assert {k: v for k, v in row.items() if k not in ("scryfall_id", "fetched_at")} == {
+            k: v for k, v in expected.items() if k != "fetched_at"
+        }
+        assert (row["price_usd"], row["price_eur"], row["digital"]) == (1.5, None, True)
 
         assert bulk_data.card_to_row({"id": "d", "layout": "art_series", "name": "x"}) is None
         assert bulk_data.card_to_row({"name": "Rota"}) is None
@@ -395,34 +404,26 @@ class TestBulkData:
         )
         assert (minimal["cmc"], minimal["colors"], minimal["image_normal"]) == (0.0, "", None)
 
-    def test_incremental_parser_is_independent_of_chunk_boundaries(self):
-        def parse(text: str, chunk: int) -> list[dict]:
-            parser = bulk_data._IncrementalArrayParser()
-            return [
-                card
-                for i in range(0, len(text), chunk)
-                for card in parser.feed(text[i : i + chunk])
-            ]
+    async def test_jsonl_gz_reader_is_independent_of_chunk_boundaries(self):
+        cards = [SIMPLE_CARD, DFC_CARD, TOKEN_MAKER, {"id": "4", "flavor": 'dijo "corre"\n'}]
+        body = "\n".join(json.dumps(c) for c in cards).encode()
+        payload = gzip.compress(body)
 
-        payload = json.dumps([SIMPLE_CARD, DFC_CARD, TOKEN_MAKER])
-        for chunk in (1, 3, 17, 128, 100000):
-            assert [c["id"] for c in parse(payload, chunk)] == [
-                "aaaa-1111",
-                "bbbb-2222",
-                "cccc-3333",
-            ], chunk
-        tricky = [
-            {"id": "1", "name": "Counterspell", "mana_cost": "{U}{U}"},
-            {"id": "2", "name": "Ach! Hans, Run!", "flavor": 'dijo \\"corre\\"'},
-        ]
-        parsed = parse(json.dumps(tricky), 5)
-        assert len(parsed) == 2 and parsed[0]["mana_cost"] == "{U}{U}"
-        assert parse("[]", 1) == []
+        async def read(data: bytes, size: int) -> list[str]:
+            async def chunks():
+                for i in range(0, len(data), size):
+                    yield data[i : i + size]
 
-        parser = bulk_data._IncrementalArrayParser()
-        big = json.dumps([SIMPLE_CARD] * 50)
-        consumed = sum(len(list(parser.feed(big[i : i + 512]))) for i in range(0, len(big), 512))
-        assert consumed == 50 and len(parser._buf) < 4096
+            return [c["id"] async for c in bulk_data._jsonl_cards(chunks())]
+
+        expected = ["aaaa-1111", "bbbb-2222", "cccc-3333", "4"]
+        for size in (1, 7, 300, 1 << 20):
+            assert await read(payload, size) == expected, size
+        # Un .gz puede traer varios miembros concatenados.
+        two_members = gzip.compress(b"\n".join(json.dumps(c).encode() for c in cards[:2]) + b"\n")
+        two_members += gzip.compress(json.dumps(cards[2]).encode())
+        assert await read(two_members, 5) == expected[:3]
+        assert await read(gzip.compress(b""), 4) == []
 
     def test_progress_reporting(self):
         assert bulk_data.BulkProgress().to_dict()["percent"] == 0.0
@@ -452,6 +453,175 @@ class TestBulkData:
         assert (await client.get("/api/bulk/check?kind=inventado")).status_code == 400
         cancel = await client.post("/api/bulk/cancel")
         assert cancel.status_code == 200 and cancel.json()["cancelled"] is False
+
+
+def _print(sfid: str, name: str, set_code: str, released: str, **extra) -> dict:
+    return {
+        "id": sfid,
+        "oracle_id": f"oracle-{name.split(' // ')[0].lower()}",
+        "name": name,
+        "set": set_code,
+        "collector_number": sfid,
+        "lang": "en",
+        "layout": "normal",
+        "released_at": released,
+        "prices": {"usd": "2.00"},
+        "legalities": {"commander": "legal"},
+        **extra,
+    }
+
+
+OFFLINE_PRINTS = [
+    _print("bolt-old", "Lightning Bolt", "lea", "1993-08-05"),
+    _print("bolt-new", "Lightning Bolt", "m11", "2010-07-16"),
+    _print("bolt-promo", "Lightning Bolt", "pm11", "2011-01-01", promo=True),
+    _print("bolt-arena", "Lightning Bolt", "ha1", "2019-11-14", digital=True),
+    _print("bolt-gold", "Lightning Bolt", "wc97", "2012-01-01", border_color="gold"),
+    _print("bolt-fr", "Lightning Bolt", "fbb", "2015-01-01", lang="fr"),
+    _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01"),
+    _print("vial", "Aether Vial", "dst", "2004-02-06"),
+    _print("eowyn", "Éowyn, Lady of Rohan", "ltr", "2023-06-23"),
+    _print(
+        "delver",
+        "Delver of Secrets // Insectile Aberration",
+        "isd",
+        "2011-09-30",
+        layout="transform",
+    ),
+    _print("goblin", "Goblin", "tm11", "2010-07-16", layout="token"),
+]
+
+
+async def _seed_offline(*, synced: bool = True) -> None:
+    rows = [bulk_data.card_to_row(c) for c in OFFLINE_PRINTS]
+    async with session_scope() as s:
+        await bulk_data._flush(s, [r for r in rows if r])
+        if synced:
+            await bulk_data._record_state(s, "default_cards", "2026-10-01T00:00:00Z", len(rows), 0)
+
+
+class TestOfflineLookups:
+    async def test_bulk_upsert_keeps_every_column_and_uses_executemany(self, client):
+        many = [
+            bulk_data.card_to_row(_print(f"id-{i}", f"Card {i}", "tst", "2020-01-01"))
+            for i in range(bulk_data.BATCH_SIZE)
+        ]
+        async with session_scope() as s:
+            assert await bulk_data._flush(s, [r for r in many if r]) == bulk_data.BATCH_SIZE
+            await bulk_data._flush(s, [bulk_data.card_to_row(_print("id-0", "Card 0", "tst", "x"))])
+            row = await s.get(PrintingCache, "id-0")
+            assert (row.price_usd, json.loads(row.legalities)) == (2.0, {"commander": "legal"})
+            assert row.released_at == "x"
+
+    async def test_names_resolve_locally_to_the_default_paper_printing(self, client, fake_scryfall):
+        await _seed_offline()
+        calls: list = []
+
+        async def collection(idents):
+            calls.append(idents)
+            return []
+
+        fake_scryfall.collection = collection
+        printings._name_memo.clear()
+        async with session_scope() as s:
+            out = await printings.resolve_cards(
+                s,
+                fake_scryfall,
+                [
+                    {"name": "lightning bolt"},
+                    {"name": "Lightning Bolt", "set": "LEA"},
+                    {"name": "Delver of Secrets"},
+                    {"name": "Æther Vial"},
+                    {"name": "éowyn, lady of rohan"},
+                    {"name": "Carta Inexistente"},
+                ],
+            )
+        assert [o.get("scryfall_id") for o in out] == [
+            "bolt-new",
+            "bolt-old",
+            "delver",
+            "vial",
+            "eowyn",
+            None,
+        ]
+        assert calls == [[{"name": "Carta Inexistente"}]]
+
+    async def test_names_are_not_guessed_from_a_partial_cache(self, client, fake_scryfall):
+        await _seed_offline(synced=False)
+        printings._name_memo.clear()
+        async with session_scope() as s:
+            out = await printings.resolve_cards(s, fake_scryfall, [{"name": "Lightning Bolt"}])
+            assert await printings.find_local_printing(s, name="Lightning Bolt") is None
+            assert await printings.local_autocomplete(s, "light") is None
+        assert out[0]["scryfall_id"] == "lb-en"
+
+    async def test_add_card_and_autocomplete_skip_the_api(self, client, deck, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.named = fake_scryfall.by_set_and_number = offline
+        fake_scryfall.autocomplete = offline
+
+        r = await client.post(f"/api/decks/{deck['id']}/cards", json={"name": "Lightning Bolt"})
+        assert r.status_code == 201, r.text
+        assert r.json()["scryfall_id"] == "bolt-new"
+        r = await client.post(
+            f"/api/decks/{deck['id']}/cards",
+            json={
+                "name": "Lightning Bolt",
+                "set_code": "LEA",
+                "collector_number": "bolt-old",
+                "role": "sideboard",
+            },
+        )
+        assert r.json()["scryfall_id"] == "bolt-old"
+
+        names = (await client.get("/api/decks/_/autocomplete?q=li")).json()
+        assert names == ["Lightning Bolt"]
+        assert (await client.get("/api/decks/_/autocomplete?q=SECRETS")).json() == [
+            "Delver of Secrets // Insectile Aberration"
+        ]
+        assert (await client.get("/api/decks/_/autocomplete?q=gob")).json() == []
+        assert (await client.get("/api/decks/_/autocomplete?q=_%25")).json() == []
+
+    async def test_cancel_stops_a_running_import(self, client, monkeypatch):
+        started = asyncio.Event()
+
+        async def slow_sync(db, kind, *, force=False):
+            started.set()
+            bulk_data._progress = bulk_data.BulkProgress(kind=kind, phase="downloading")
+            await asyncio.sleep(30)
+
+        monkeypatch.setattr(bulk_data, "sync", slow_sync)
+        task = bulk_data.start()
+        await started.wait()
+        with pytest.raises(RuntimeError):
+            bulk_data.start()
+        assert (await client.post("/api/bulk/sync")).status_code == 409
+        assert (await client.post("/api/bulk/cancel")).json() == {"cancelled": True}
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not bulk_data.is_running()
+
+    async def test_refresh_only_reimports_an_existing_stale_dump(self, client, monkeypatch):
+        started: list[str] = []
+        monkeypatch.setattr(bulk_data, "start", lambda kind="default_cards": started.append(kind))
+
+        async def needs_sync(db, kind):
+            return True, "nuevo"
+
+        monkeypatch.setattr(bulk_data, "needs_sync", needs_sync)
+        async with session_scope() as s:
+            assert await bulk_data.refresh_if_stale(s) is False
+            await _seed_offline()
+            assert await bulk_data.refresh_if_stale(s) is False
+            state = await bulk_data.get_state(s)
+            state.synced_at = datetime.now(UTC) - bulk_data.REFRESH_AFTER - timedelta(hours=1)
+            await s.commit()
+            assert await bulk_data.refresh_if_stale(s) is True
+        assert started == ["default_cards"]
 
 
 async def test_dfc_pair_lookup(client):

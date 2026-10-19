@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient, is_double_faced, related_parts_from_card
@@ -39,7 +39,8 @@ PRINTS_BATCH_SIZE = 15
 
 
 def normalize_card_name(name: str) -> str:
-    return (name or "").strip().lower().replace("’", "'").replace("`", "'")
+    # Scryfall ya no usa la ligadura: «Æther Vial» es hoy «Aether Vial».
+    return (name or "").strip().lower().replace("’", "'").replace("`", "'").replace("æ", "ae")
 
 
 def _name_keys(name: str) -> list[str]:
@@ -88,7 +89,7 @@ async def bulk_synced(db: AsyncSession) -> bool:
     return (await db.get(BulkSyncState, "default_cards")) is not None
 
 
-def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
+def printing_fields(card: dict[str, Any]) -> dict[str, Any]:
     front_img = card.get("image_uris") or {}
     back_img: dict[str, str] = {}
     back_name = None
@@ -123,6 +124,7 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
         "full_art": bool(card.get("full_art", False)),
         "textless": bool(card.get("textless", False)),
         "promo": bool(card.get("promo", False)),
+        "digital": bool(card.get("digital", False)),
         "layout": card.get("layout") or "normal",
         "mana_cost": mana_cost,
         "cmc": float(card.get("cmc", 0.0) or 0.0),
@@ -156,7 +158,7 @@ def _printing_fields(card: dict[str, Any]) -> dict[str, Any]:
 async def upsert_printing(db: AsyncSession, card: dict[str, Any]) -> PrintingCache:
     scryfall_id = card["id"]
     obj = await db.get(PrintingCache, scryfall_id)
-    fields = _printing_fields(card)
+    fields = printing_fields(card)
     if obj is None:
         obj = PrintingCache(scryfall_id=scryfall_id, **fields)
         db.add(obj)
@@ -186,7 +188,7 @@ async def upsert_printings(
 
     out: dict[str, PrintingCache] = {}
     for sfid, card in by_id.items():
-        fields = _printing_fields(card)
+        fields = printing_fields(card)
         obj = existing.get(sfid)
         if obj is None:
             obj = PrintingCache(scryfall_id=sfid, **fields)
@@ -197,6 +199,142 @@ async def upsert_printings(
         out[sfid] = obj
     await db.flush()
     return out
+
+
+_NAME_CHUNK = 50
+
+
+def _sql_lower_variants(key: str) -> set[str]:
+    # lower() de SQLite sólo baja ASCII: «Éowyn» queda como «Éowyn», no «éowyn».
+    return {key, "".join(c if c.isascii() else c.upper() for c in key)}
+
+
+def _default_print_rank(row: Any, preferred_set: str | None, today: str) -> tuple[Any, ...]:
+    return (
+        bool(preferred_set) and row.set_code != preferred_set,
+        (row.released_at or "") > today,
+        bool(row.digital),
+        bool(row.promo),
+        row.border_color == "gold",
+    )
+
+
+async def find_local_by_names(
+    db: AsyncSession, wanted: Iterable[tuple[str, str | None]]
+) -> dict[tuple[str, str | None], str]:
+    """(nombre normalizado, set preferido) → scryfall_id de la impresión que Scryfall
+    daría por defecto.
+
+    Sólo tiene sentido con el volcado importado: sin él la caché es parcial y
+    elegir entre las impresiones que haya sería arbitrario.
+    """
+    wanted = set(wanted)
+    names = {name for name, _ in wanted}
+    if not names:
+        return {}
+    cols = (
+        PrintingCache.scryfall_id,
+        PrintingCache.name,
+        PrintingCache.set_code,
+        PrintingCache.digital,
+        PrintingCache.promo,
+        PrintingCache.border_color,
+        PrintingCache.released_at,
+    )
+    candidates: dict[str, list[Any]] = {}
+    lowered = func.lower(PrintingCache.name)
+    for chunk in chunked({v for n in names for v in _sql_lower_variants(n)}):
+        rows = await db.execute(select(*cols).where(lowered.in_(chunk), PrintingCache.lang == "en"))
+        for row in rows:
+            candidates.setdefault(normalize_card_name(row.name), []).append(row)
+
+    # Cartas de dos caras/partidas: el decklist suele traer sólo la cara frontal.
+    missing = names - candidates.keys()
+    variants = {v for n in missing for v in _sql_lower_variants(n)}
+    for chunk in chunked(variants, _NAME_CHUNK):
+        ranges = [and_(lowered >= f"{k} // ", lowered < f"{k} /0") for k in chunk]
+        rows = await db.execute(select(*cols).where(or_(*ranges), PrintingCache.lang == "en"))
+        for row in rows:
+            front = normalize_card_name(row.name).split(" // ", 1)[0]
+            if front in missing:
+                candidates.setdefault(front, []).append(row)
+
+    today = datetime.now(UTC).date().isoformat()
+    best: dict[tuple[str, str | None], str] = {}
+    for name, preferred_set in wanted:
+        rows = candidates.get(name)
+        if rows:
+            newest_first = sorted(rows, key=lambda r: r.released_at or "", reverse=True)
+            pick = min(newest_first, key=lambda r: _default_print_rank(r, preferred_set, today))
+            best[(name, preferred_set)] = pick.scryfall_id
+    return best
+
+
+async def find_local_printing(
+    db: AsyncSession,
+    *,
+    name: str = "",
+    set_code: str | None = None,
+    collector_number: str | None = None,
+) -> PrintingCache | None:
+    if not await bulk_synced(db):
+        return None
+    if set_code and collector_number:
+        return await db.scalar(
+            select(PrintingCache).where(
+                PrintingCache.set_code == set_code.lower(),
+                PrintingCache.collector_number == collector_number,
+                PrintingCache.lang == "en",
+            )
+        )
+    key = (normalize_card_name(name), (set_code or "").lower() or None)
+    if not key[0]:
+        return None
+    sfid = (await find_local_by_names(db, [key])).get(key)
+    return await db.get(PrintingCache, sfid) if sfid else None
+
+
+_AUTOCOMPLETE_LIMIT = 20
+
+_NON_DECK_LAYOUTS = (
+    "token",
+    "double_faced_token",
+    "emblem",
+    "art_series",
+    "planar",
+    "scheme",
+    "vanguard",
+)
+
+
+async def local_autocomplete(db: AsyncSession, query: str) -> list[str] | None:
+    """Como /cards/autocomplete pero contra el volcado; None si no está importado."""
+    if not await bulk_synced(db):
+        return None
+    q = normalize_card_name(query)
+    if len(q) < 2:
+        return []
+    lowered = func.lower(PrintingCache.name)
+    base = (
+        select(PrintingCache.name)
+        .where(
+            PrintingCache.digital.is_(False),
+            PrintingCache.layout.not_in(_NON_DECK_LAYOUTS),
+        )
+        .distinct()
+        .order_by(PrintingCache.name)
+        .limit(_AUTOCOMPLETE_LIMIT)
+    )
+    names = list((await db.scalars(base.where(lowered >= q, lowered < q + "\uffff"))).all())
+    if len(names) < _AUTOCOMPLETE_LIMIT:
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        more = await db.scalars(base.where(lowered.like(f"%{escaped}%", escape="\\")))
+        names.extend(n for n in more if n not in names)
+    return names[:_AUTOCOMPLETE_LIMIT]
+
+
+def _name_set_key(entry: dict[str, Any]) -> tuple[str, str | None]:
+    return normalize_card_name(entry.get("name", "")), (entry.get("set") or "").lower() or None
 
 
 def _row_as_card(row: PrintingCache) -> dict[str, Any]:
@@ -240,6 +378,7 @@ async def _resolve_from_cache(
 
     wanted_ids: set[str] = set()
     wanted_sets: set[str] = set()
+    wanted_names: set[tuple[str, str | None]] = set()
     for e in entries:
         if e.get("scryfall_id"):
             wanted_ids.add(e["scryfall_id"])
@@ -249,6 +388,11 @@ async def _resolve_from_cache(
             memo = _memo_lookup(e.get("name", ""))
             if memo:
                 wanted_ids.add(memo)
+            elif bulk and (key := _name_set_key(e))[0]:
+                wanted_names.add(key)
+
+    by_name = await find_local_by_names(db, wanted_names) if wanted_names else {}
+    wanted_ids.update(by_name.values())
 
     by_id: dict[str, PrintingCache] = {}
     for chunk in chunked(list(wanted_ids)):
@@ -282,8 +426,8 @@ async def _resolve_from_cache(
         elif e.get("set") and e.get("number"):
             cached = by_set_num.get((e["set"], e["number"]))
         else:
-            memo = _memo_lookup(e.get("name", ""))
-            cached = by_id.get(memo) if memo else None
+            sfid = _memo_lookup(e.get("name", "")) or by_name.get(_name_set_key(e))
+            cached = by_id.get(sfid) if sfid else None
         if cached is not None and fresh(cached):
             cards[f"idx:{idx}"] = _row_as_card(cached)
             hits.add(idx)

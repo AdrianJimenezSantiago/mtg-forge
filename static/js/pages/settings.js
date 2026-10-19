@@ -103,7 +103,7 @@ function settingsShell() {
         { key: 'network',      label: _t('settings_nav_network'),      icon: 'wifi',          group: 'Red y conexión' },
         { key: 'autofill',     label: _t('settings_nav_autofill'),     icon: 'zap',           group: 'MPC Autofill' },
         { key: 'art-sources',  label: _t('settings_nav_art_sources'),  icon: 'image',         group: null },
-        { key: 'offline',      label: _t('settings_nav_offline'),      icon: 'cloud-download', group: null },
+        { key: 'offline',      label: _t('settings_nav_offline'),      icon: 'cloud-download', group: 'Datos de cartas' },
         { key: 'custom-art',   label: _t('settings_nav_custom_art'),   icon: 'folder',        group: null },
         { key: 'backup',       label: _t('settings_nav_backup'),       icon: 'archive',       group: null },
         { key: 'storage',      label: _t('settings_nav_storage'),      icon: 'hard-drive',    group: null },
@@ -552,7 +552,7 @@ function settingsShell() {
 
 function bulkData() {
   return {
-    status: { printings: 0, unique_cards: 0, ijson_available: true, progress: {} },
+    status: { printings: 0, unique_cards: 0, progress: {} },
     checking: false,
     starting: false,
     _pollTimer: null,
@@ -563,6 +563,10 @@ function bulkData() {
     },
 
     get progress() { return this.status.progress || {}; },
+    get lastSync() {
+      const s = (this.status.syncs || []).find(x => x.kind === 'default_cards');
+      return s && s.updated_at ? new Date(s.updated_at).toLocaleDateString() : '';
+    },
     get active()   { return !!this.progress.active; },
     get percent()  { return Math.round(this.progress.percent || 0); },
 
@@ -616,7 +620,11 @@ function bulkData() {
         if (!this.active) {
           clearInterval(this._pollTimer);
           this._pollTimer = null;
-          window.toast(window._t('bulk_done'), window._t('bulk_done_desc'));
+          if (this.progress.phase === 'done') {
+            window.toast(window._t('bulk_done'), window._t('bulk_done_desc'));
+          } else if (this.progress.error && !this.progress.cancelled) {
+            window.toast(window._t('common_error'), this.progress.error);
+          }
         }
       }, 1500);
     },

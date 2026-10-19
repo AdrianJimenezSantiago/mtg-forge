@@ -185,6 +185,7 @@ class TestSettings:
             by_group.setdefault(d["group"], []).append(d["key"])
         assert sorted(by_group) == [
             "Búsqueda avanzada",
+            "Datos de cartas",
             "General",
             "MPC Autofill",
             "Precios y envío",

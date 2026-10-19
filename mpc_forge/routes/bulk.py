@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from mpc_forge.db import analyze_table, session_scope
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.cards import bulk_data
 
@@ -18,7 +16,6 @@ log = logging.getLogger(__name__)
 class BulkStatusResponse(BaseModel):
     printings: int = 0
     unique_cards: int = 0
-    ijson_available: bool = False
     syncs: list[dict[str, Any]] = []
     progress: dict[str, Any] = {}
 
@@ -53,20 +50,13 @@ async def start_sync(kind: str = bulk_data.DEFAULT_KIND, force: bool = False) ->
     if kind not in bulk_data.BULK_KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Volcado desconocido: {kind}")
 
-    current = bulk_data.get_progress()
-    if current.get("active"):
+    if bulk_data.is_running():
+        current = bulk_data.get_progress()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             f"Ya hay una importación en curso ({current['kind']}, {current['percent']}%)",
         )
-
-    async def _with_analyze() -> None:
-        async with session_scope() as session:
-            await bulk_data.sync(session, kind, force=force)
-        await analyze_table("printings")
-
-    task = asyncio.create_task(_with_analyze(), name=f"bulk-sync-{kind}")
-    bulk_data._progress._task = task
+    bulk_data.start(kind, force=force)
 
     return BulkStartResponse(
         started=True,

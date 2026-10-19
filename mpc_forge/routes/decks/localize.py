@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from mpc_forge.models import Deck
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
+from mpc_forge.services.cards import printings
 from mpc_forge.services.decks import deck_activity, localization
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
@@ -93,11 +94,15 @@ async def localize_deck_endpoint(
 @router.get("/_/autocomplete")
 async def autocomplete_card(
     q: str,
+    db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[str]:
     if not q or len(q.strip()) < 2:
         return []
     try:
+        local = await printings.local_autocomplete(db, q)
+        if local is not None:
+            return local
         return await scryfall.autocomplete(q)
     except Exception as e:
         log.warning("Autocomplete falló para %r: %s", q, e)
