@@ -8,61 +8,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import DeckCard, PrintingCache
-from mpc_forge.services.cards.printings import upsert_printing
+from mpc_forge.services.cards.printings import upsert_printings
 from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
 
+PrintKey = tuple[str, str, str]
 
-async def try_localize_card(
-    db: AsyncSession,
-    scryfall: ScryfallClient,
-    scryfall_id: str,
-    lang: str,
-) -> PrintingCache | None:
-    if lang == "en":
-        return await db.get(PrintingCache, scryfall_id)
 
-    base = await db.get(PrintingCache, scryfall_id)
-    if not base or not base.set_code or not base.collector_number:
-        return None
-    if base.lang == lang:
-        return base
+def _key(p: PrintingCache) -> PrintKey:
+    return (p.oracle_id, p.set_code, p.collector_number)
 
-    if base.oracle_id:
-        candidates = (
-            await db.scalars(
-                select(PrintingCache).where(
-                    PrintingCache.oracle_id == base.oracle_id,
-                    PrintingCache.set_code == base.set_code,
-                    PrintingCache.collector_number == base.collector_number,
-                    PrintingCache.lang == lang,
-                )
-            )
-        ).all()
-        if candidates:
-            return candidates[0]
 
-    try:
-        raw = await scryfall.by_set_and_number(base.set_code, base.collector_number, lang=lang)
-    except Exception as e:
-        log.debug(
-            "Localización de %s/%s a %s falló: %s", base.set_code, base.collector_number, lang, e
-        )
-        return None
-    if not raw:
-        return None
-
-    return await upsert_printing(db, raw)
+def _localizable(p: PrintingCache | None) -> bool:
+    return bool(p and p.oracle_id and p.set_code and p.collector_number)
 
 
 async def _localized_candidates(
     db: AsyncSession, bases: list[PrintingCache], lang: str
-) -> dict[tuple[str, str, str], PrintingCache]:
+) -> dict[PrintKey, PrintingCache]:
     oracle_ids = {b.oracle_id for b in bases if b.oracle_id}
     if not oracle_ids:
         return {}
-    found: dict[tuple[str, str, str], PrintingCache] = {}
+    found: dict[PrintKey, PrintingCache] = {}
     for chunk in chunked(oracle_ids):
         rows = await db.scalars(
             select(PrintingCache).where(
@@ -70,8 +38,22 @@ async def _localized_candidates(
             )
         )
         for row in rows:
-            found.setdefault((row.oracle_id, row.set_code, row.collector_number), row)
+            found.setdefault(_key(row), row)
     return found
+
+
+async def _fetch_localized(
+    scryfall: ScryfallClient, missing: list[PrintingCache], lang: str
+) -> list[dict[str, Any]]:
+    if not missing:
+        return []
+    try:
+        return await scryfall.prints_in_lang(
+            [(p.set_code, p.collector_number) for p in missing], lang
+        )
+    except Exception as e:
+        log.warning("Localización a %s de %d cartas falló: %s", lang, len(missing), e)
+        return []
 
 
 async def localize_deck(
@@ -87,11 +69,18 @@ async def localize_deck(
     for chunk in chunked(current_sfids):
         rows = await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
         current_by_sfid.update({p.scryfall_id: p for p in rows})
-    candidates = (
-        await _localized_candidates(db, list(current_by_sfid.values()), lang)
-        if lang != "en"
-        else {}
-    )
+
+    pending = [p for p in current_by_sfid.values() if p.lang != lang and _localizable(p)]
+    candidates = await _localized_candidates(db, pending, lang)
+
+    # Primero la red y después todas las escrituras: con la transacción abierta
+    # durante las llamadas, el resto de escritores (y el volcado) esperarían
+    # hasta el busy_timeout y fallarían con «database is locked».
+    missing = list({_key(p): p for p in pending if _key(p) not in candidates}.values())
+    fetched = await _fetch_localized(scryfall, missing, lang)
+    for row in (await upsert_printings(db, fetched)).values():
+        if row.lang == lang:
+            candidates.setdefault(_key(row), row)
 
     localized = 0
     unchanged = 0
@@ -109,17 +98,10 @@ async def localize_deck(
             continue
 
         localized_printing = (
-            candidates.get((current.oracle_id, current.set_code, current.collector_number))
-            if current and current.oracle_id and current.set_code and current.collector_number
-            else None
+            candidates.get(_key(current)) if current and _localizable(current) else None
         )
         if localized_printing is None:
-            localized_printing = await try_localize_card(db, scryfall, dc.scryfall_id, lang)
-        if localized_printing is None:
             unavailable.append(dc.name)
-            continue
-        if localized_printing.scryfall_id == dc.scryfall_id:
-            unchanged += 1
             continue
         dc.scryfall_id = localized_printing.scryfall_id
         localized += 1

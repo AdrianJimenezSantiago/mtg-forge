@@ -204,6 +204,35 @@ class TestExportAndLocalization:
         assert (second["localized"], second["unchanged"]) == (0, 1)
         assert (await client.post(url, json={"lang": "klingon"})).status_code == 400
 
+    async def test_localization_goes_back_to_english(self, client, deck):
+        url = f"/api/decks/{deck['id']}/localize"
+        await client.post(url, json={"lang": "es"})
+        back = (await client.post(url, json={"lang": "en"})).json()
+        assert (back["localized"], back["unchanged"]) == (1, 2)
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        assert "sr-es" not in {c["scryfall_id"] for c in cards}
+
+    async def test_localization_asks_once_and_writes_after_the_network(
+        self, client, deck, fake_scryfall
+    ):
+        from tests.backend.test_cards import _db_is_writable
+
+        inner = fake_scryfall.prints_in_lang
+        calls: list = []
+
+        async def prints_in_lang(set_numbers, lang):
+            calls.append((sorted(set_numbers), lang, _db_is_writable()))
+            return await inner(set_numbers, lang)
+
+        async def by_set_and_number(*args, **kwargs):
+            raise AssertionError("la localización va en lote")
+
+        fake_scryfall.prints_in_lang = prints_in_lang
+        fake_scryfall.by_set_and_number = by_set_and_number
+        r = await client.post(f"/api/decks/{deck['id']}/localize", json={"lang": "es"})
+        assert r.json()["localized"] == 1
+        assert calls == [([("c21", "234"), ("c21", "263"), ("c21", "347")], "es", True)]
+
 
 class TestDeckLifecycle:
     async def test_duplicate(self, client, deck):

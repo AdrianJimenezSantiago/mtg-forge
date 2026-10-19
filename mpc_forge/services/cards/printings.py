@@ -10,6 +10,7 @@ from typing import Any
 
 from rapidfuzz import fuzz, process
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient, is_double_faced, related_parts_from_card
@@ -164,18 +165,26 @@ def printing_fields(card: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def upsert_rows(db: AsyncSession, rows: list[dict[str, Any]]) -> None:
+    """INSERT … ON CONFLICT DO UPDATE: sin la carrera de leer y luego insertar
+    cuando el volcado escribe la misma fila a la vez."""
+    if not rows:
+        return
+    stmt = sqlite_insert(PrintingCache)
+    update_cols = {
+        c.name: getattr(stmt.excluded, c.name)
+        for c in PrintingCache.__table__.columns
+        if c.name != "scryfall_id"
+    }
+    # executemany: una sentencia por fila. Con .values(rows) serían ~80k
+    # parámetros por lote, por encima del límite de SQLite en Windows (32766).
+    await db.execute(
+        stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols), rows
+    )
+
+
 async def upsert_printing(db: AsyncSession, card: dict[str, Any]) -> PrintingCache:
-    scryfall_id = card["id"]
-    obj = await db.get(PrintingCache, scryfall_id)
-    fields = printing_fields(card)
-    if obj is None:
-        obj = PrintingCache(scryfall_id=scryfall_id, **fields)
-        db.add(obj)
-    else:
-        for k, v in fields.items():
-            setattr(obj, k, v)
-    await db.flush()
-    return obj
+    return (await upsert_printings(db, [card]))[card["id"]]
 
 
 async def upsert_printings(
@@ -188,25 +197,38 @@ async def upsert_printings(
     if not by_id:
         return {}
 
-    existing: dict[str, PrintingCache] = {}
-    for chunk in chunked(list(by_id)):
-        for row in (
-            await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
-        ).all():
-            existing[row.scryfall_id] = row
-
+    await upsert_rows(
+        db, [{"scryfall_id": sfid, **printing_fields(c)} for sfid, c in by_id.items()]
+    )
     out: dict[str, PrintingCache] = {}
-    for sfid, card in by_id.items():
-        fields = printing_fields(card)
-        obj = existing.get(sfid)
-        if obj is None:
-            obj = PrintingCache(scryfall_id=sfid, **fields)
-            db.add(obj)
-        else:
-            for k, v in fields.items():
-                setattr(obj, k, v)
-        out[sfid] = obj
-    await db.flush()
+    for chunk in chunked(list(by_id)):
+        rows = await db.scalars(
+            select(PrintingCache)
+            .where(PrintingCache.scryfall_id.in_(chunk))
+            .execution_options(populate_existing=True)
+        )
+        out.update({row.scryfall_id: row for row in rows})
+    return out
+
+
+async def ensure_printings(
+    db: AsyncSession, scryfall: ScryfallClient, scryfall_ids: Iterable[str]
+) -> dict[str, PrintingCache]:
+    """Las impresiones pedidas: las que falten, en lotes de /cards/collection y
+    escritas después de la red, no una petición por id con la transacción abierta."""
+    ids = [i for i in dict.fromkeys(scryfall_ids) if i]
+    out: dict[str, PrintingCache] = {}
+    for chunk in chunked(ids):
+        rows = await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))
+        out.update({row.scryfall_id: row for row in rows})
+    missing = [i for i in ids if i not in out]
+    if missing:
+        try:
+            fetched = await scryfall.collection([{"id": i} for i in missing])
+        except Exception as e:
+            log.warning("No se pudieron traer %d impresiones de Scryfall: %s", len(missing), e)
+            fetched = []
+        out.update(await upsert_printings(db, fetched))
     return out
 
 
@@ -226,16 +248,35 @@ _ODDBALL_SET_TYPES = frozenset(
 # Sin escaneo bueno la carta se imprime borrosa: mejor otra impresión.
 _POOR_IMAGE = frozenset({"lowres", "placeholder", "missing"})
 
+# Versiones especiales que Scryfall no da por defecto: The List, Secret Lair,
+# Masterpieces, borderless, showcase, marcos retro…
+_SPECIAL_SETS = frozenset({"plst"})
+_SPECIAL_SET_TYPES = frozenset(
+    {"box", "masterpiece", "promo", "from_the_vault", "spellbook", "premium_deck", "arsenal"}
+)
+_SPECIAL_BORDERS = frozenset({"borderless", "gold", "silver"})
+_SPECIAL_FRAME_EFFECTS = frozenset(
+    {"showcase", "extendedart", "inverted", "etched", "fullart", "textured", "galaxyfoil"}
+)
+_RETRO_FRAMES = frozenset({"1993", "1997"})
 
-def _default_print_rank(row: Any, preferred_set: str | None, today: str) -> tuple[Any, ...]:
+
+def _default_print_rank(row: Any, preferred_set: str | None) -> tuple[Any, ...]:
+    # Sin penalizar fechas futuras: Scryfall sí da por defecto los sets en preventa,
+    # y una preventa sin escaneo ya cae por _POOR_IMAGE.
+    effects = set((row.frame_effects or "").split(","))
     return (
         bool(preferred_set) and row.set_code != preferred_set,
-        (row.released_at or "") > today,
         bool(row.digital),
         row.set_type in _ODDBALL_SET_TYPES,
-        row.image_status in _POOR_IMAGE,
+        row.set_code in _SPECIAL_SETS or row.set_type in _SPECIAL_SET_TYPES,
         bool(row.promo),
-        row.border_color == "gold",
+        row.border_color in _SPECIAL_BORDERS,
+        bool(row.full_art),
+        bool(effects & _SPECIAL_FRAME_EFFECTS),
+        bool(row.textless),
+        row.frame in _RETRO_FRAMES,
+        row.image_status in _POOR_IMAGE,
     )
 
 
@@ -262,6 +303,10 @@ async def find_local_by_names(
         PrintingCache.released_at,
         PrintingCache.set_type,
         PrintingCache.image_status,
+        PrintingCache.full_art,
+        PrintingCache.textless,
+        PrintingCache.frame,
+        PrintingCache.frame_effects,
     )
     candidates: dict[str, list[Any]] = {}
     lowered = func.lower(PrintingCache.name)
@@ -281,13 +326,12 @@ async def find_local_by_names(
             if front in missing:
                 candidates.setdefault(front, []).append(row)
 
-    today = datetime.now(UTC).date().isoformat()
     best: dict[tuple[str, str | None], str] = {}
     for name, preferred_set in wanted:
         found = candidates.get(name)
         if found:
             newest_first = sorted(found, key=lambda r: r.released_at or "", reverse=True)
-            pick = min(newest_first, key=lambda r: _default_print_rank(r, preferred_set, today))
+            pick = min(newest_first, key=lambda r: _default_print_rank(r, preferred_set))
             best[(name, preferred_set)] = pick.scryfall_id
     return best
 
@@ -584,7 +628,9 @@ async def resolve_cards(
         elif e.get("set") and e.get("number"):
             to_lookup.append({"set": e["set"], "collector_number": e["number"]})
         else:
-            to_lookup.append({"name": e["name"]})
+            # /cards/collection no encuentra «Fire // Ice» por el nombre completo,
+            # pero sí por la cara frontal.
+            to_lookup.append({"name": e["name"].split(" // ", 1)[0].strip() or e["name"]})
 
     resolved_map: dict[str, dict[str, Any]] = {}
     meld_result_ids: set[str] = set()
@@ -601,10 +647,12 @@ async def resolve_cards(
     for c in cached_cards.values():
         meld_result_ids.update(_meld_result_ids(c))
 
+    # Toda la red antes de escribir: una transacción abierta durante las llamadas
+    # bloquearía al resto de escritores (y al volcado) hasta el busy_timeout.
+    fetched: list[dict[str, Any]] = []
     if to_lookup:
-        cards = await scryfall.collection(to_lookup)
-        await upsert_printings(db, cards)
-        for c in cards:
+        fetched = await scryfall.collection(to_lookup)
+        for c in fetched:
             index_card(c)
             _memo_name(c.get("name", ""), c["id"])
 
@@ -620,7 +668,9 @@ async def resolve_cards(
         )
         need = [{"id": sfid} for sfid in meld_result_ids if sfid not in have]
         if need:
-            await upsert_printings(db, await scryfall.collection(need))
+            fetched += await scryfall.collection(need)
+
+    await upsert_printings(db, fetched)
 
     out: list[dict[str, Any]] = []
     for idx, e in enumerate(entries):

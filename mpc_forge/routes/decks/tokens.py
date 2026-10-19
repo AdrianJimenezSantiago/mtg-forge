@@ -93,10 +93,7 @@ async def tokens_analysis(
         return {"tokens": [], "total_unique": 0, "already_in_deck": 0, "missing": 0}
 
     token_sfids = list(tokens_map.keys())
-    token_printings = (
-        await db.scalars(select(PrintingCache).where(PrintingCache.scryfall_id.in_(token_sfids)))
-    ).all()
-    token_meta_by_id = {p.scryfall_id: p for p in token_printings}
+    token_meta_by_id = await printings.ensure_printings(db, scryfall, token_sfids)
 
     already_in_deck_rows = (
         await db.execute(
@@ -108,17 +105,7 @@ async def tokens_analysis(
     ).all()
     in_deck_by_sfid = {sfid: (dc_id, qty) for dc_id, sfid, qty in already_in_deck_rows}
 
-    missing_meta = [s for s in token_sfids if s not in token_meta_by_id]
-    for sfid in missing_meta:
-        try:
-            raw = await scryfall.by_id(sfid)
-            if raw:
-                cached = await printings.upsert_printing(db, raw)
-                token_meta_by_id[sfid] = cached
-        except Exception as e:
-            log.warning("No se pudo cachear metadata de token %s: %s", sfid, e)
-    if missing_meta:
-        await db.commit()
+    await db.commit()
 
     tokens_out = []
     already_count = 0
@@ -171,15 +158,9 @@ async def tokens_add_many(
         (await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))).all()
     )
 
-    ids_to_check = [s for s in payload.scryfall_ids if s not in existing_ids]
-    cached_printings: dict[str, PrintingCache] = {}
-    if ids_to_check:
-        rows = (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(ids_to_check))
-            )
-        ).all()
-        cached_printings = {p.scryfall_id: p for p in rows}
+    cached_printings = await printings.ensure_printings(
+        db, scryfall, [s for s in payload.scryfall_ids if s not in existing_ids]
+    )
 
     added: list[DeckCard] = []
     for sfid in payload.scryfall_ids:
@@ -187,10 +168,7 @@ async def tokens_add_many(
             continue
         cached = cached_printings.get(sfid)
         if not cached:
-            raw = await scryfall.by_id(sfid)
-            if not raw:
-                continue
-            cached = await printings.upsert_printing(db, raw)
+            continue
         new_dc = DeckCard(
             deck_id=deck_id,
             oracle_id=cached.oracle_id or "",
@@ -245,17 +223,11 @@ async def add_related_cards(
         (await db.scalars(select(DeckCard.scryfall_id).where(DeckCard.deck_id == deck_id))).all()
     )
 
-    candidate_sfids = {
-        part.get("id") for part in related if part.get("id") and part["id"] not in existing_ids
-    }
-    cached_map: dict[str, PrintingCache] = {}
-    if candidate_sfids:
-        rows = (
-            await db.scalars(
-                select(PrintingCache).where(PrintingCache.scryfall_id.in_(candidate_sfids))
-            )
-        ).all()
-        cached_map = {p.scryfall_id: p for p in rows}
+    cached_map = await printings.ensure_printings(
+        db,
+        scryfall,
+        [part["id"] for part in related if part.get("id") and part["id"] not in existing_ids],
+    )
 
     added: list[DeckCard] = []
     for part in related:
@@ -264,10 +236,7 @@ async def add_related_cards(
             continue
         cached = cached_map.get(sfid)
         if not cached:
-            raw = await scryfall.by_id(sfid)
-            if not raw:
-                continue
-            cached = await printings.upsert_printing(db, raw)
+            continue
 
         new_dc = DeckCard(
             deck_id=deck_id,

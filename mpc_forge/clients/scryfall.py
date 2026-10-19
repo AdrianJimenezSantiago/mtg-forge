@@ -39,6 +39,9 @@ _RETRYABLE_5XX = {500, 502, 503, 504}
 
 _COLLECTION_CHUNK = 75
 
+# Scryfall rechaza (400) una búsqueda con 20 o más condiciones anidadas.
+_LANG_BATCH = 18
+
 
 def _is_heavy(url: str) -> bool:
     path = httpx.URL(url).path if "://" in url else url.split("?", 1)[0]
@@ -275,6 +278,27 @@ class ScryfallClient:
             order="released",
             dir="asc",
         )
+
+    async def prints_in_lang(
+        self, set_numbers: list[tuple[str, str]], lang: str
+    ) -> list[dict[str, Any]]:
+        """Las impresiones (set, número) en `lang` que existan, en búsquedas de
+        _LANG_BATCH en vez de una petición por carta."""
+        pairs = list(dict.fromkeys((s.lower(), n) for s, n in set_numbers if s and n))
+        out: list[dict[str, Any]] = []
+        for i in range(0, len(pairs), _LANG_BATCH):
+            chunk = pairs[i : i + _LANG_BATCH]
+            clause = " or ".join(f'(set:{s} cn:"{n.replace(chr(34), "")}")' for s, n in chunk)
+            try:
+                out.extend(await self.search_all(f"lang:{lang} ({clause})", unique="prints"))
+            except httpx.HTTPStatusError as e:
+                if not (400 <= e.response.status_code < 500) or e.response.status_code == 429:
+                    raise
+                # Una consulta que Scryfall no entiende: carta a carta.
+                for s, n in chunk:
+                    if card := await self.by_set_and_number(s, n, lang=lang):
+                        out.append(card)
+        return out
 
     async def collection(self, identifiers: list[dict[str, str]]) -> list[dict[str, Any]]:
         unique: list[dict[str, str]] = []

@@ -11,7 +11,7 @@ from typing import Any, cast
 
 import httpx
 from sqlalchemy import func, select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.config import SCRYFALL_API, SCRYFALL_USER_AGENT
@@ -171,22 +171,32 @@ def card_to_row(card: dict[str, Any]) -> dict[str, Any] | None:
     return {"scryfall_id": scryfall_id, **printings.printing_fields(card)}
 
 
+_LOCKED_RETRIES = 3
+
+
 async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
     if not rows:
         return 0
-    stmt = sqlite_insert(PrintingCache)
-    update_cols = {
-        c.name: getattr(stmt.excluded, c.name)
-        for c in PrintingCache.__table__.columns
-        if c.name != "scryfall_id"
-    }
-    # executemany: una sentencia por fila. Con .values(rows) serían ~80k
-    # parámetros por lote, por encima del límite de SQLite en Windows (32766).
-    await db.execute(
-        stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols), rows
-    )
-    await db.commit()
-    return len(rows)
+    for attempt in range(_LOCKED_RETRIES + 1):
+        try:
+            await printings.upsert_rows(db, rows)
+            await db.commit()
+            return len(rows)
+        except OperationalError as e:
+            await db.rollback()
+            # busy_timeout ya esperó 30 s; si otro escritor sigue, se reintenta el lote
+            # en vez de perder la importación entera.
+            if "locked" not in str(e.orig) or attempt == _LOCKED_RETRIES:
+                raise
+            log.warning("BD ocupada al importar el volcado; reintentando el lote")
+    return 0
+
+
+def _short_error(e: BaseException) -> str:
+    # Los errores de SQLAlchemy incluyen la sentencia y miles de parámetros.
+    if isinstance(e, DBAPIError) and e.orig is not None:
+        return f"{type(e.orig).__name__}: {e.orig}"
+    return str(e)[:300]
 
 
 async def sync(
@@ -247,7 +257,7 @@ async def sync(
         raise
     except Exception as e:
         _progress.phase = "error"
-        _progress.error = str(e)
+        _progress.error = _short_error(e)
         _progress.finished_at = datetime.now(UTC)
         log.exception("La importación del volcado %s falló", kind)
         raise

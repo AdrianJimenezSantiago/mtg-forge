@@ -18,7 +18,7 @@ from mpc_forge.config import DEFAULT_CARDBACK_NAME
 from mpc_forge.models import CustomArt, Deck, DeckCard, PrintingCache
 from mpc_forge.services.art import custom_art as custom_art_service
 from mpc_forge.services.art.art_cache import ArtCache, Face
-from mpc_forge.services.cards.printings import upsert_printing
+from mpc_forge.services.cards.printings import ensure_printings
 from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
@@ -95,24 +95,7 @@ async def resolve_deck_for_xml(
         }
 
     scryfall_ids = {c.scryfall_id for c in cards if c.scryfall_id}
-    printings_by_id: dict[str, PrintingCache] = {}
-    if scryfall_ids:
-        printings_by_id = {
-            p.scryfall_id: p
-            for p in (
-                await db.scalars(
-                    select(PrintingCache).where(PrintingCache.scryfall_id.in_(scryfall_ids))
-                )
-            ).all()
-        }
-
-    missing_printings = [sfid for sfid in scryfall_ids if sfid not in printings_by_id]
-    if missing_printings:
-        for sfid in missing_printings:
-            card = await scryfall.by_id(sfid)
-            if card:
-                printings_by_id[sfid] = await upsert_printing(db, card)
-        await db.commit()
+    printings_by_id = await ensure_printings(db, scryfall, scryfall_ids)
 
     meld_result_ids: dict[str, str] = {}
     for dc in cards:
@@ -123,14 +106,8 @@ async def resolve_deck_for_xml(
                 meld_result_ids[dc.scryfall_id] = mrid
 
     if meld_result_ids:
-        meld_ids = set(meld_result_ids.values())
-        missing_meld = [m for m in meld_ids if m not in printings_by_id]
-        if missing_meld:
-            for sfid in missing_meld:
-                card = await scryfall.by_id(sfid)
-                if card:
-                    printings_by_id[sfid] = await upsert_printing(db, card)
-            await db.commit()
+        printings_by_id.update(await ensure_printings(db, scryfall, set(meld_result_ids.values())))
+    await db.commit()
 
     art_requests: list[tuple[str, Face]] = []
     for dc in cards:

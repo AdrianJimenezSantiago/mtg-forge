@@ -165,6 +165,10 @@ def fake_scryfall():
                 return v
         return {}
 
+    async def prints_in_lang(set_numbers, lang: str):
+        found = [await by_set_and_number(s, n, lang=lang) for s, n in set_numbers]
+        return [c for c in found if c and c["lang"] == lang]
+
     async def by_id(sfid: str):
         return _by_id.get(sfid, {})
 
@@ -189,6 +193,7 @@ def fake_scryfall():
     fake.collection = collection
     fake.by_set_and_number = by_set_and_number
     fake.by_id = by_id
+    fake.prints_in_lang = prints_in_lang
     fake.named = named
     fake.prints_by_oracle_id = prints_by_oracle_id
     fake.prints_by_oracle_ids = prints_by_oracle_ids

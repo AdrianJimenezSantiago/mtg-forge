@@ -83,6 +83,8 @@ async def validate_and_enrich(
                     art.expansion_code = None
                     art.collector_number = None
                     art.canonical_source = "invalid"
+        # Que el siguiente lote no vaya a la red con la transacción abierta.
+        await db.commit()
     await db.commit()
 
     valid += cache_hits

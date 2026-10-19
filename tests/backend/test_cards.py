@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import sqlite3
 import sys
 import time
 from datetime import UTC, datetime, timedelta
@@ -10,7 +11,9 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 
+from mpc_forge import config as _cfg
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 from mpc_forge.db import session_scope
 from mpc_forge.models import (
@@ -568,7 +571,15 @@ OFFLINE_PRINTS = [
     _print("bolt-arena", "Lightning Bolt", "ha1", "2019-11-14", digital=True),
     _print("bolt-gold", "Lightning Bolt", "wc97", "2012-01-01", border_color="gold"),
     _print("bolt-fr", "Lightning Bolt", "fbb", "2015-01-01", lang="fr"),
-    _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01"),
+    # Preventa sin escaneo: la penaliza la imagen, no la fecha.
+    _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01", image_status="placeholder"),
+    # La impresión normal más reciente: la que Scryfall da por defecto.
+    _print("bolt-plain", "Lightning Bolt", "m10", "2009-07-17"),
+    _print("bolt-list", "Lightning Bolt", "plst", "2024-01-01", set_type="masters"),
+    _print("bolt-sld", "Lightning Bolt", "sld", "2023-01-01", set_type="box"),
+    _print("bolt-borderless", "Lightning Bolt", "2x2", "2022-07-08", border_color="borderless"),
+    _print("bolt-retro", "Lightning Bolt", "2xm", "2020-08-07", frame="1997"),
+    _print("bolt-fullart", "Lightning Bolt", "jmp", "2020-07-17", full_art=True),
     _print("bolt-30a", "Lightning Bolt", "30a", "2022-11-28", set_type="memorabilia"),
     _print("bolt-blurry", "Lightning Bolt", "new", "2025-01-01", image_status="lowres"),
     _print("vial", "Aether Vial", "dst", "2004-02-06"),
@@ -629,7 +640,7 @@ class TestOfflineLookups:
                 ],
             )
         assert [o.get("scryfall_id") for o in out] == [
-            "bolt-new",
+            "bolt-plain",
             "bolt-old",
             "delver",
             "vial",
@@ -658,7 +669,7 @@ class TestOfflineLookups:
 
         r = await client.post(f"/api/decks/{deck['id']}/cards", json={"name": "Lightning Bolt"})
         assert r.status_code == 201, r.text
-        assert r.json()["scryfall_id"] == "bolt-new"
+        assert r.json()["scryfall_id"] == "bolt-plain"
         r = await client.post(
             f"/api/decks/{deck['id']}/cards",
             json={
@@ -1060,3 +1071,174 @@ async def test_collection_goes_through_the_scryfall_client(client, fake_scryfall
     assert cards[0]["scryfall_id"] == "sr-en" and cards[0]["owned"] is False
     assert calls == ["sets", ("set:c21 -is:digital", {"unique": "prints", "order": "set"})]
     collection._SETS_CACHE = None
+
+
+def _db_is_writable() -> bool:
+    """¿Puede otro escritor tomar el bloqueo ahora mismo? Falso si alguna sesión
+    tiene una transacción de escritura abierta."""
+    con = sqlite3.connect(_cfg.PATHS.db_path, timeout=0.05)
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        con.rollback()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        con.close()
+
+
+def _token(sfid: str, name: str) -> dict:
+    return {**_print(sfid, name, "tst", "2020-01-01"), "layout": "token"}
+
+
+class TestConcurrentWrites:
+    async def test_upserts_never_collide_with_the_dump_writing_the_same_rows(self, client):
+        cards = [_print(f"race-{i}", f"Race {i}", "tst", "2020-01-01") for i in range(150)]
+        rows = [r for r in (bulk_data.card_to_row(c) for c in cards) if r]
+
+        async def dump() -> None:
+            for _ in range(15):
+                async with session_scope() as s:
+                    await bulk_data._flush(s, rows)
+
+        async def deck_import() -> None:
+            for _ in range(15):
+                async with session_scope() as s:
+                    stored = await printings.upsert_printings(s, cards)
+                    assert len(stored) == len(cards)
+
+        await asyncio.gather(dump(), deck_import(), deck_import())
+
+    async def test_upsert_returns_fresh_rows_even_if_the_session_had_them(self, client):
+        async with session_scope() as s:
+            first = await printings.upsert_printing(s, _print("x1", "Old Name", "tst", "2020"))
+            await s.commit()
+            again = await printings.upsert_printing(s, _print("x1", "New Name", "tst", "2020"))
+            assert again is first and again.name == "New Name"
+
+    async def test_split_cards_are_asked_by_their_front_face(self, counting):
+        fire_ice = _print("fire-ice", "Fire // Ice", "apc", "2001-06-04", layout="split")
+
+        async def collection(idents):
+            return [fire_ice] if {"name": "Fire"} in idents else []
+
+        counting.inner.collection = collection
+        _, unresolved = await _import(counting, "1 Fire // Ice")
+        assert unresolved == []
+        assert counting.collection_calls == [[{"name": "Fire"}]]
+
+    async def test_meld_results_are_fetched_before_writing(self, counting):
+        meld = _print(
+            "bruna",
+            "Bruna, the Fading Light",
+            "emn",
+            "2016-07-22",
+            layout="meld",
+            all_parts=[{"id": "brisela", "component": "meld_result", "name": "Brisela"}],
+        )
+        writable: list[bool] = []
+
+        async def collection(idents):
+            writable.append(_db_is_writable())
+            if {"id": "brisela"} in idents:
+                return [_print("brisela", "Brisela, Voice of Nightmares", "emn", "2016-07-22")]
+            return [meld]
+
+        counting.inner.collection = collection
+        await _import(counting, "1 Bruna, the Fading Light")
+        assert writable == [True, True]
+        async with session_scope() as s:
+            assert await s.get(PrintingCache, "brisela") is not None
+
+    async def test_tokens_are_fetched_in_one_batch_without_holding_the_lock(
+        self, client, deck, fake_scryfall
+    ):
+        tokens = [_token("tok-1", "Soldier"), _token("tok-2", "Spirit")]
+        async with session_scope() as s:
+            sol = await s.get(PrintingCache, "sr-en")
+            sol.related_parts = json.dumps(
+                [{"id": t["id"], "component": "token", "name": t["name"]} for t in tokens]
+            )
+            await s.commit()
+        calls: list[list] = []
+
+        async def collection(idents):
+            calls.append((idents, _db_is_writable()))
+            return [t for t in tokens if {"id": t["id"]} in idents]
+
+        async def by_id(sfid):
+            raise AssertionError("los tokens se piden en lote")
+
+        fake_scryfall.collection = collection
+        fake_scryfall.by_id = by_id
+        r = await client.get(f"/api/decks/{deck['id']}/tokens-analysis")
+        assert r.status_code == 200, r.text
+        assert sorted(t["name"] for t in r.json()["tokens"]) == ["Soldier", "Spirit"]
+        assert calls == [([{"id": "tok-1"}, {"id": "tok-2"}], True)]
+
+    async def test_a_locked_batch_is_retried_instead_of_failing_the_dump(self, client, monkeypatch):
+        real = printings.upsert_rows
+        attempts: list[int] = []
+
+        async def flaky(db, rows):
+            attempts.append(len(rows))
+            if len(attempts) == 1:
+                raise OperationalError(
+                    "INSERT …", {}, sqlite3.OperationalError("database is locked")
+                )
+            await real(db, rows)
+
+        monkeypatch.setattr(printings, "upsert_rows", flaky)
+        row = bulk_data.card_to_row(_print("retry", "Retry", "tst", "2020-01-01"))
+        async with session_scope() as s:
+            assert await bulk_data._flush(s, [row]) == 1
+            assert await s.get(PrintingCache, "retry") is not None
+        assert attempts == [1, 1]
+
+    def test_dump_errors_are_short(self):
+        orig = sqlite3.OperationalError("database is locked")
+        err = OperationalError("INSERT INTO printings " + "(?, ?) " * 5000, [("x",) * 40], orig)
+        assert bulk_data._short_error(err) == "OperationalError: database is locked"
+
+
+class TestPrintsInLang:
+    async def test_localized_prints_come_in_batched_searches(self):
+        queries: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            q = request.url.params["q"]
+            queries.append(q)
+            data = [{"id": "es-1", "set": "c21", "collector_number": "1", "lang": "es"}]
+            return httpx.Response(
+                200, json={"data": data if 'cn:"1")' in q else [], "has_more": False}
+            )
+
+        http = httpx.AsyncClient(
+            base_url="https://api.scryfall.com", transport=httpx.MockTransport(handler)
+        )
+        sc = ScryfallClient(http, general_interval=0, heavy_interval=0)
+        pairs = [("C21", str(i)) for i in range(1, 31)] + [("c21", "1")]
+        found = await sc.prints_in_lang(pairs, "es")
+        assert [c["id"] for c in found] == ["es-1"]
+        assert len(queries) == 2
+        assert all(q.count("(set:") < 20 for q in queries)
+        assert queries[0].startswith('lang:es ((set:c21 cn:"1") or (set:c21 cn:"2")')
+        await sc.aclose()
+
+    async def test_a_query_scryfall_rejects_falls_back_to_one_card_at_a_time(self):
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(request.url.path)
+            if request.url.path == "/cards/search":
+                return httpx.Response(400, json={"object": "error"})
+            return httpx.Response(200, json={"id": "es-x", "lang": "es"})
+
+        http = httpx.AsyncClient(
+            base_url="https://api.scryfall.com", transport=httpx.MockTransport(handler)
+        )
+        sc = ScryfallClient(http, general_interval=0, heavy_interval=0)
+        found = await sc.prints_in_lang([("abc", "7"), ("abc", "8")], "es")
+        assert [c["id"] for c in found] == ["es-x", "es-x"]
+        assert paths == ["/cards/search", "/cards/abc/7/es", "/cards/abc/8/es"]
+        await sc.aclose()
