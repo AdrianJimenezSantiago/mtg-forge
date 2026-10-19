@@ -112,6 +112,7 @@ def printing_fields(card: dict[str, Any]) -> dict[str, Any]:
 
     related_parts = related_parts_from_card(card)
     prices = card.get("prices") or {}
+    front_face = (card.get("card_faces") or [{}])[0]
     return {
         "oracle_id": card.get("oracle_id") or "",
         "name": card.get("name", ""),
@@ -126,6 +127,11 @@ def printing_fields(card: dict[str, Any]) -> dict[str, Any]:
         "textless": bool(card.get("textless", False)),
         "promo": bool(card.get("promo", False)),
         "digital": bool(card.get("digital", False)),
+        "set_type": card.get("set_type") or "",
+        "frame_effects": ",".join(card.get("frame_effects") or []),
+        "image_status": card.get("image_status") or "",
+        "image_updated_at": card.get("image_updated_at"),
+        "illustration_id": card.get("illustration_id") or front_face.get("illustration_id"),
         "layout": card.get("layout") or "normal",
         "mana_cost": mana_cost,
         "cmc": float(card.get("cmc", 0.0) or 0.0),
@@ -210,11 +216,22 @@ def _sql_lower_variants(key: str) -> set[str]:
     return {key, "".join(c if c.isascii() else c.upper() for c in key)}
 
 
+# Sets que no son la carta «normal» que alguien espera al escribir sólo el nombre.
+_ODDBALL_SET_TYPES = frozenset(
+    {"memorabilia", "funny", "alchemy", "minigame", "treasure_chest", "token", "vanguard"}
+)
+
+# Sin escaneo bueno la carta se imprime borrosa: mejor otra impresión.
+_POOR_IMAGE = frozenset({"lowres", "placeholder", "missing"})
+
+
 def _default_print_rank(row: Any, preferred_set: str | None, today: str) -> tuple[Any, ...]:
     return (
         bool(preferred_set) and row.set_code != preferred_set,
         (row.released_at or "") > today,
         bool(row.digital),
+        row.set_type in _ODDBALL_SET_TYPES,
+        row.image_status in _POOR_IMAGE,
         bool(row.promo),
         row.border_color == "gold",
     )
@@ -241,6 +258,8 @@ async def find_local_by_names(
         PrintingCache.promo,
         PrintingCache.border_color,
         PrintingCache.released_at,
+        PrintingCache.set_type,
+        PrintingCache.image_status,
     )
     candidates: dict[str, list[Any]] = {}
     lowered = func.lower(PrintingCache.name)

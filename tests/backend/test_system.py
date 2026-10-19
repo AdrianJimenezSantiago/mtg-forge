@@ -132,7 +132,11 @@ class TestMigrations:
         )
         assert 15 in (await _migrate(db))["applied"]
         webp = "https://cards.scryfall.io/{}/front/a/b/ab.webp?123"
-        assert _query(db, "SELECT * FROM printings ORDER BY scryfall_id") == [
+        assert _query(
+            db,
+            "SELECT scryfall_id, image_normal, image_large, image_png, back_image_normal, "
+            "back_image_large FROM printings ORDER BY scryfall_id",
+        ) == [
             (
                 "a",
                 webp.format("grid"),

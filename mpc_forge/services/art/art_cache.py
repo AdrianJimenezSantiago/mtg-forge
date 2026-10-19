@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
 
@@ -77,17 +78,20 @@ class ArtCache:
         for sfid, face in unique:
             key = (sfid, face)
             existing = existing_by_key.get(key)
+            printing = printings_by_id.get(sfid)
             if existing:
                 file_path = cfg.PATHS.art_dir / existing.relative_path
-                if file_path.exists():
+                if not file_path.exists():
+                    log.warning(
+                        "Cache miss en disco para %s (face=%s), re-descargando",
+                        sfid,
+                        face,
+                    )
+                elif _scan_updated_since(printing, existing.fetched_at):
+                    log.info("Scryfall actualizó el escaneo de %s (%s), re-descargando", sfid, face)
+                else:
                     results[key] = existing
                     continue
-                log.warning(
-                    "Cache miss en disco para %s (face=%s), re-descargando",
-                    sfid,
-                    face,
-                )
-            printing = printings_by_id.get(sfid)
             if not printing:
                 results[key] = None
                 continue
@@ -140,6 +144,7 @@ class ArtCache:
                 existing.sha256 = digest
                 existing.relative_path = rel
                 existing.bytes_size = len(data)
+                existing.fetched_at = datetime.now(UTC)
                 results[key] = existing
             else:
                 art = LocalArt(
@@ -161,6 +166,27 @@ class ArtCache:
 
     def absolute_path(self, art: LocalArt) -> Path:
         return (cfg.PATHS.art_dir / art.relative_path).resolve()
+
+
+# En julio de 2026 Scryfall regeneró todas las imágenes al estrenar WebP y casi
+# todas las cartas llevan esa fecha: no es un escaneo nuevo y no merece re-descargar.
+_BULK_REGENERATION_END = datetime(2026, 8, 1, tzinfo=UTC)
+
+
+def _scan_updated_since(printing: PrintingCache | None, fetched_at: datetime | None) -> bool:
+    if printing is None or not printing.image_updated_at or fetched_at is None:
+        return False
+    try:
+        updated = datetime.fromisoformat(printing.image_updated_at)
+    except ValueError:
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=UTC)
+    if updated < _BULK_REGENERATION_END:
+        return False
+    if fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=UTC)
+    return updated > fetched_at
 
 
 def _pick_image_url(

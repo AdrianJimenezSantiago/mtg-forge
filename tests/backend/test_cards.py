@@ -14,6 +14,8 @@ from sqlalchemy import update
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 from mpc_forge.db import session_scope
 from mpc_forge.models import DFCPair, PrintingCache
+from mpc_forge.services.art import recommender
+from mpc_forge.services.art.art_cache import ArtCache
 from mpc_forge.services.cards import bulk_data, images, preloader, printings
 from mpc_forge.services.decks import importer
 from mpc_forge.utils import rate_limiter
@@ -441,6 +443,26 @@ class TestBulkData:
         }
         assert (row["price_usd"], row["price_eur"], row["digital"]) == (1.5, None, True)
 
+        dfc = printings.printing_fields(
+            {
+                **DFC_CARD,
+                "set_type": "expansion",
+                "frame_effects": ["showcase", "extendedart"],
+                "image_status": "highres_scan",
+                "image_updated_at": "2026-07-13T02:02:53Z",
+                "card_faces": [{**DFC_CARD["card_faces"][0], "illustration_id": "ill"}, {}],
+            }
+        )
+        assert (dfc["set_type"], dfc["frame_effects"], dfc["illustration_id"]) == (
+            "expansion",
+            "showcase,extendedart",
+            "ill",
+        )
+        assert (dfc["image_status"], dfc["image_updated_at"]) == (
+            "highres_scan",
+            "2026-07-13T02:02:53Z",
+        )
+
         assert bulk_data.card_to_row({"id": "d", "layout": "art_series", "name": "x"}) is None
         assert bulk_data.card_to_row({"name": "Rota"}) is None
         minimal = bulk_data.card_to_row(
@@ -516,13 +538,22 @@ def _print(sfid: str, name: str, set_code: str, released: str, **extra) -> dict:
 
 
 OFFLINE_PRINTS = [
-    _print("bolt-old", "Lightning Bolt", "lea", "1993-08-05"),
-    _print("bolt-new", "Lightning Bolt", "m11", "2010-07-16"),
+    _print("bolt-old", "Lightning Bolt", "lea", "1993-08-05", artist="Christopher Rush"),
+    _print(
+        "bolt-new",
+        "Lightning Bolt",
+        "m11",
+        "2010-07-16",
+        artist="Christopher Moeller",
+        frame_effects=["showcase"],
+    ),
     _print("bolt-promo", "Lightning Bolt", "pm11", "2011-01-01", promo=True),
     _print("bolt-arena", "Lightning Bolt", "ha1", "2019-11-14", digital=True),
     _print("bolt-gold", "Lightning Bolt", "wc97", "2012-01-01", border_color="gold"),
     _print("bolt-fr", "Lightning Bolt", "fbb", "2015-01-01", lang="fr"),
     _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01"),
+    _print("bolt-30a", "Lightning Bolt", "30a", "2022-11-28", set_type="memorabilia"),
+    _print("bolt-blurry", "Lightning Bolt", "new", "2025-01-01", image_status="lowres"),
     _print("vial", "Aether Vial", "dst", "2004-02-06"),
     _print("eowyn", "Éowyn, Lady of Rohan", "ltr", "2023-06-23"),
     _print(
@@ -666,6 +697,66 @@ class TestOfflineLookups:
             await s.commit()
             assert await bulk_data.refresh_if_stale(s) is True
         assert started == ["default_cards"]
+
+
+class TestLocalRecommender:
+    async def test_artist_and_style_come_from_the_dump(self, client, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.prints_by_oracle_id = offline
+        many = ["oracle-lightning bolt"] + [f"oracle-{i}" for i in range(40)]
+        async with session_scope() as s:
+            by_artist = await recommender.recommend_by_artist(
+                fake_scryfall, many, "christopher rush", db=s
+            )
+            by_style = await recommender.recommend_by_style(
+                fake_scryfall, many, showcase=True, db=s
+            )
+        assert [m.scryfall_id for m in by_artist.matched] == ["bolt-old"]
+        assert (len(by_artist.unmatched), by_artist.skipped) == (40, [])
+        assert [(m.scryfall_id, m.matched_criteria) for m in by_style.matched] == [
+            ("bolt-new", ["showcase"])
+        ]
+        thumb = by_style.matched[0].image_small
+        assert thumb is None or "/thumb/" in thumb
+
+
+class TestArtCacheRefresh:
+    async def test_new_scans_are_downloaded_again_but_bulk_regeneration_is_not(self, client):
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(str(request.url))
+            return httpx.Response(200, content=f"png-{len(calls)}".encode())
+
+        cache = ArtCache(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        card = {**SIMPLE_CARD, "image_uris": {"png": "https://cards.scryfall.io/png/x.png"}}
+        async with session_scope() as s:
+            await printings.upsert_printing(s, card)
+            await s.commit()
+
+            async def fetch(updated_at):
+                await s.execute(
+                    update(PrintingCache)
+                    .where(PrintingCache.scryfall_id == card["id"])
+                    .values(image_updated_at=updated_at)
+                )
+                await s.commit()
+                result = await cache.ensure_many(s, [(card["id"], "front")])
+                return result[(card["id"], "front")]
+
+            first = await fetch(None)
+            assert (len(calls), first.bytes_size) == (1, 5)
+            await fetch("2026-07-13T02:02:53Z")
+            assert len(calls) == 1
+            await fetch((datetime.now(UTC) + timedelta(days=1)).isoformat())
+            assert len(calls) == 2
+            await fetch((datetime.now(UTC) - timedelta(minutes=1)).isoformat())
+            assert len(calls) == 2
+        await cache.aclose()
 
 
 async def test_dfc_pair_lookup(client):

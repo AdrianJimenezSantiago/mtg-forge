@@ -29,6 +29,17 @@ def webp_url(url: str | None) -> str | None:
     return f"{base}{WEBP_FOR[version]}/{path}.webp{query or ''}"
 
 
+_VERSION_DIR = re.compile(r"^(https://cards\.scryfall\.io/)[a-z_]+/")
+
+
+def variant(url: str | None, version: str) -> str | None:
+    """La misma imagen WebP en otro tamaño (grid → thumb, display…)."""
+    url = webp_url(url)
+    if not url or not _VERSION_DIR.match(url):
+        return None
+    return _VERSION_DIR.sub(rf"\g<1>{version}/", url, count=1)
+
+
 def pick(uris: dict[str, Any], webp: str, *legacy: str) -> str | None:
     """La versión WebP si la hay; si no, la primera JPEG antigua convertida."""
     if uris.get(webp):

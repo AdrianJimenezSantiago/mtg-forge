@@ -190,6 +190,17 @@ MIGRATIONS: list[Migration] = [
         description="Imágenes de Scryfall en WebP (los JPEG small/large se retiran en 2027)",
         statements=_webp_statements(),
     ),
+    Migration(
+        version=16,
+        description="Tipo de set, efectos de marco, estado de imagen e ilustración en printings",
+        statements=[
+            "ALTER TABLE printings ADD COLUMN set_type VARCHAR(32) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN frame_effects VARCHAR(256) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN image_status VARCHAR(16) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN image_updated_at VARCHAR(32)",
+            "ALTER TABLE printings ADD COLUMN illustration_id VARCHAR(64)",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
