@@ -69,7 +69,9 @@ art are cached.
   regenerated or downloaded again. Your database, custom art and cardbacks are
   never offered for deletion.
 - **Offline card data.** Optionally import Scryfall's bulk data so card
-  resolution, autocomplete and printing lookups are answered locally. See
+  resolution, autocomplete, printing lookups and recommendations are answered
+  locally, and the deck statistics show each card's function (ramp, draw,
+  removal…). See
   [Working with Scryfall](#working-with-scryfall).
 - **Bilingual interface.** English and Spanish.
 
@@ -231,14 +233,26 @@ so that importing and opening many decks in a row never gets the app blocked:
   [bulk data](https://scryfall.com/docs/api/bulk-data) (`default_cards`: an
   ~80 MB `jsonl.gz` download, about 115,000 printings and ~210 MB in the
   database; around a minute and a half). With it, resolving decklist names,
-  adding a card, autocomplete and alternate printings are answered from the
-  local database, and only what is not there goes to the API. Prices and
-  legalities come with it. Once imported it is refreshed in the background at
-  startup when it is more than a week old and Scryfall has published a newer
-  file (*Keep card data up to date*, on by default). The API is also available:
-  `POST /api/bulk/sync`, `GET /api/bulk/progress`, `POST /api/bulk/cancel`.
+  adding a card, autocomplete, alternate printings, artist and style
+  recommendations, "did you mean" suggestions and a set's card list are
+  answered from the local database, and only what is not there goes to the
+  API. Prices, legalities and the card functions shown in the deck statistics
+  (from Scryfall's community tags) come with it. Once imported it is refreshed
+  in the background at startup when it is more than a week old and Scryfall has
+  published a newer file (*Keep card data up to date*, on by default). The API
+  is also available: `POST /api/bulk/sync`, `GET /api/bulk/progress`,
+  `POST /api/bulk/cancel`.
+- **Card migrations.** Once a day the app reads Scryfall's
+  [card migrations](https://scryfall.com/docs/api/migrations) and points decks,
+  art preferences and the collection at the new id when Scryfall merges a card
+  into another.
 
-Images are downloaded from `cards.scryfall.io` and cached on disk.
+Card images are shown as WebP (`grid`, `display`, `thumb`): Scryfall retires
+the old `small`, `large`, `border_crop` and `art_crop` JPEGs on January 1st
+2027, and links stored by older versions are rewritten on upgrade. Printing
+downloads the full `png` once and caches it on disk; a card is downloaded again
+only if Scryfall rescans it. Set icons are downloaded once and served by the app
+instead of being hotlinked.
 
 ## Development
 
