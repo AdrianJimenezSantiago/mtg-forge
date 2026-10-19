@@ -282,9 +282,9 @@ async def find_local_by_names(
     today = datetime.now(UTC).date().isoformat()
     best: dict[tuple[str, str | None], str] = {}
     for name, preferred_set in wanted:
-        rows = candidates.get(name)
-        if rows:
-            newest_first = sorted(rows, key=lambda r: r.released_at or "", reverse=True)
+        found = candidates.get(name)
+        if found:
+            newest_first = sorted(found, key=lambda r: r.released_at or "", reverse=True)
             pick = min(newest_first, key=lambda r: _default_print_rank(r, preferred_set, today))
             best[(name, preferred_set)] = pick.scryfall_id
     return best
