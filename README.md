@@ -103,7 +103,7 @@ python -m mpc_forge
 | Option         | Description                                                    |
 | -------------- | -------------------------------------------------------------- |
 | `--port N`     | Listen on port `N` (default `8765`).                           |
-| `--host H`     | Bind address (default `127.0.0.1`).                            |
+| `--host H`     | Bind address (default `127.0.0.1`). The app has no password: any other address exposes it to the network. |
 | `--no-browser` | Do not open a browser tab on startup.                          |
 | `--window`     | Open in a native window instead (`pip install pywebview`).     |
 | `--no-update`  | Skip the update check on startup.                              |

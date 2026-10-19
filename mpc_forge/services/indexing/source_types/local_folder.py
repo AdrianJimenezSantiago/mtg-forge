@@ -13,7 +13,7 @@ from .base import ArtSourceType, ArtSourceTypeError, SourceFile
 
 log = logging.getLogger(__name__)
 
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 _SCAN_BATCH = 200
 
@@ -101,7 +101,7 @@ class LocalFolderSourceType(ArtSourceType):
                     continue
                 if not entry.is_file():
                     continue
-                if entry.suffix.lower() not in _IMAGE_EXTENSIONS:
+                if entry.suffix.lower() not in IMAGE_EXTENSIONS:
                     continue
 
                 relpath = entry.relative_to(base).as_posix()

@@ -90,6 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Servidor:  {url}")
     print(f"  Datos:     {_data_dir_hint()}")
     print()
+
+    from mpc_forge.middleware import NON_LOOPBACK_WARNING, is_loopback_bind
+
+    if not is_loopback_bind(host):
+        print("  ⚠ " + NON_LOOPBACK_WARNING % host)
+        print()
     if not args.no_browser:
         print("  El navegador se abrirá en unos segundos.")
     print("  Para cerrar la app: cierra esta ventana o pulsa Ctrl+C.")

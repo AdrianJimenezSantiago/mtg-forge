@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from mpc_forge.middleware import _hostname, is_same_origin
+from mpc_forge import config as cfg
+from mpc_forge.middleware import _hostname, is_loopback_bind, is_same_origin
 from mpc_forge.services.system import settings as settings_service
 from mpc_forge.services.system.logging_setup import RedactSecretsFilter, redact
 from mpc_forge.utils import event_loop
@@ -108,6 +109,55 @@ class TestLocalhostGuard:
         read = await client.get(url, headers={"sec-fetch-site": "cross-site"})
         assert (same.status_code, cross.status_code, read.status_code) == (200, 403, 200)
 
+    async def test_other_local_ports_and_foreign_origins_cannot_write(self, client, deck):
+        url = f"/api/decks/{deck['id']}/duplicate"
+        # Otro puerto de 127.0.0.1 es "same-site" para el navegador, pero no es la app.
+        other_port = await client.post(
+            url, headers={"sec-fetch-site": "same-site", "origin": "http://127.0.0.1:3000"}
+        )
+        # Navegador sin Sec-Fetch-*: un <form> de otra web solo deja ver su Origin.
+        form = {"content-type": "application/x-www-form-urlencoded"}
+        legacy = [
+            await client.post(url, content=b"a=1", headers={**form, "origin": origin})
+            for origin in ("https://evil.example", "http://127.0.0.1:3000", "null")
+        ]
+        own = await client.post(url, json={}, headers={"origin": "http://127.0.0.1:8765"})
+        script = await client.post(url, json={})
+        assert other_port.status_code == 403
+        assert [r.status_code for r in legacy] == [403, 403, 403]
+        assert (own.status_code, script.status_code) == (201, 201)
+
+    async def test_local_folders_only_serve_images_without_scripts(self, client, tmp_path):
+        import base64
+
+        pack = tmp_path / "pack"
+        pack.mkdir()
+        (pack / "index.html").write_text("<script src='x.js'></script>")
+        (pack / "x.js").write_text("alert(1)")
+        (pack / "art.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        source = await client.post("/api/art-sources/", json={"name": "pack", "url": str(pack)})
+
+        def fetch(name: str):
+            file_id = base64.urlsafe_b64encode(name.encode()).decode().rstrip("=")
+            return client.get(f"/local-source/{source.json()['id']}/{file_id}")
+
+        html, js, png = await fetch("index.html"), await fetch("x.js"), await fetch("art.png")
+        assert (html.status_code, js.status_code, png.status_code) == (404, 404, 200)
+        assert "sandbox" in png.headers["content-security-policy"]
+        planted = cfg.PATHS.art_dir / "evil.html"
+        planted.write_text("<script>alert(1)</script>")
+        try:
+            art = await client.get("/art/evil.html")
+        finally:
+            planted.unlink()
+        assert "sandbox" in art.headers["content-security-policy"]
+        static = await client.get("/static/js/core/app.js")
+        assert "sandbox" not in static.headers["content-security-policy"]
+
+    def test_binding_outside_loopback_is_detected(self):
+        assert all(is_loopback_bind(h) for h in ("127.0.0.1", "localhost", "::1", "[::1]"))
+        assert not any(is_loopback_bind(h) for h in ("0.0.0.0", "192.168.1.20", "mipc.lan"))  # noqa: S104
+
     async def test_language_switch_never_redirects_off_site(self, client):
         async def switch(referer):
             r = await client.post(
@@ -128,6 +178,7 @@ class TestLocalhostGuard:
         assert is_same_origin(_Req(), "/decks/1") is True
         assert is_same_origin(_Req(), "//evil.com/x") is False
         assert is_same_origin(_Req(), "https://evil.com/x") is False
+        assert is_same_origin(_Req(), "http://127.0.0.1:3000/x") is False
 
 
 class TestSecrets:
