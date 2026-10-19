@@ -18,6 +18,7 @@ from mpc_forge.routes.export.cardbacks import resolve_deck_cardback
 from mpc_forge.services.decks import deck_activity, decklist_export
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 from mpc_forge.services.printing import build_progress
+from mpc_forge.services.printing.calibration import PRINT_SCALE_RANGE_PCT
 from mpc_forge.services.printing.image_export import build_images_zip
 from mpc_forge.services.printing.pdf_generator import PDFOptions, build_pdf
 
@@ -69,6 +70,9 @@ class BuildPDFRequest(BaseModel):
     page_range: str = ""
 
     show_footer: bool = True
+
+    print_scale_x_pct: float = 100.0
+    print_scale_y_pct: float = 100.0
 
     cut_marks: bool | None = None
     gap_mm: float | None = None
@@ -189,6 +193,8 @@ def _pdf_options(payload: BuildPDFRequest) -> PDFOptions:
         backs_compact_fill=payload.backs_compact_fill,
         page_range=payload.page_range[:200],
         show_footer=payload.show_footer,
+        print_scale_x_pct=_clamp(payload.print_scale_x_pct, *PRINT_SCALE_RANGE_PCT),
+        print_scale_y_pct=_clamp(payload.print_scale_y_pct, *PRINT_SCALE_RANGE_PCT),
     )
 
 
@@ -254,6 +260,8 @@ async def build_pdf_endpoint(
             "reg_marks_enabled": options.reg_marks_enabled,
             "gap_x_mm": options.gap_x_mm,
             "gap_y_mm": options.gap_y_mm,
+            "print_scale_x_pct": options.print_scale_x_pct,
+            "print_scale_y_pct": options.print_scale_y_pct,
             "page_range": options.page_range,
             "total_pages": result.total_pages,
             "total_slots": result.total_slots,

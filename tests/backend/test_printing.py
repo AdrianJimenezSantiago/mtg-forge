@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
 import json
+import re
+import zlib
 from pathlib import Path
 
 import pytest
@@ -9,7 +12,7 @@ from sqlalchemy import select
 from mpc_forge.models import DeckCard
 from mpc_forge.routes.export import xml as export_xml
 from mpc_forge.services.printing import calibration, print_needs, print_planner
-from mpc_forge.services.printing.pdf_generator import _ImageReaderCache
+from mpc_forge.services.printing.pdf_generator import PDFOptions, _ImageReaderCache, build_pdf
 from mpc_forge.services.printing.print_planner import DeckContribution, RunPlan
 from mpc_forge.services.printing.print_runs import (
     split_into_runs,
@@ -432,6 +435,96 @@ class TestPrintRuns:
             f"/api/decks/{deck['id']}/build-split-xml", json={"create_runs": True}
         )
         assert r.status_code == 200 and len(r.json()["run_ids"]) == 1
+
+
+def _page_streams(pdf: bytes) -> bytes:
+    """Contenido descomprimido de las páginas (reportlab: ASCII85 + Flate)."""
+    out = b""
+    for match in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.S):
+        try:
+            out += zlib.decompress(base64.a85decode(match.group(1).strip(), adobe=True))
+        except (ValueError, zlib.error):
+            continue
+    return out
+
+
+class TestPrintScale:
+    def test_derive_scale_undoes_fit_to_page(self):
+        # 63 → 61 mm y 88 → 85 mm: el ~96,7 % de "Ajustar al área imprimible".
+        shrunk = calibration.derive_scale(150 * 61 / 63, 200 * 85 / 88)
+        assert shrunk.print_scale_x_pct == pytest.approx(100 * 63 / 61, abs=0.01)
+        assert shrunk.print_scale_y_pct == pytest.approx(100 * 88 / 85, abs=0.01)
+        assert shrunk.warning is None and shrunk.to_dict()["needs_correction"] is True
+
+        exact = calibration.derive_scale(150.1, 199.9)
+        assert (exact.print_scale_x_pct, exact.print_scale_y_pct) == (100.0, 100.0)
+        assert exact.warning == "scale_already_exact"
+
+        # Segunda pasada: la hoja ya salía compensada y sigue quedando corta.
+        again = calibration.derive_scale(149.0, 200.0, current_x_pct=103.0, current_y_pct=103.5)
+        assert again.print_scale_x_pct == pytest.approx(103.0 * 150 / 149, abs=0.01)
+        assert again.print_scale_y_pct == 103.5
+        verified = calibration.derive_scale(150.0, 200.0, current_x_pct=103.0, current_y_pct=103.5)
+        assert (verified.print_scale_x_pct, verified.warning) == (103.0, "scale_already_exact")
+
+        wild = calibration.derive_scale(120.0, 160.0)
+        assert wild.warning == "scale_suspicious" and wild.print_scale_x_pct == 110.0
+        with pytest.raises(ValueError):
+            calibration.derive_scale(0, 200)
+
+    def test_scale_sheet(self, tmp_path):
+        plain = calibration.build_scale_sheet(tmp_path / "s.pdf").read_bytes()
+        assert plain.startswith(b"%PDF") and b"/PrintScaling /None" in plain
+        scaled = calibration.build_scale_sheet(
+            tmp_path / "s2.pdf", page_size="letter", scale_x_pct=103, scale_y_pct=104
+        )
+        assert scaled.read_bytes() != plain
+
+    async def test_endpoints(self, client):
+        body = (
+            await client.post(
+                "/api/calibration/derive-scale",
+                json={"measured_x_mm": 145.0, "measured_y_mm": 193.2},
+            )
+        ).json()
+        assert body["print_scale_x_pct"] == pytest.approx(103.45, abs=0.01)
+        assert (body["nominal_x_mm"], body["nominal_y_mm"]) == (150.0, 200.0)
+        for invalid in (
+            {"measured_x_mm": 0, "measured_y_mm": 200},
+            {"measured_x_mm": 150, "measured_y_mm": 200, "current_x_pct": 150},
+        ):
+            r = await client.post("/api/calibration/derive-scale", json=invalid)
+            assert r.status_code == 422
+        sheet = await client.get("/api/calibration/scale-sheet?scale_x_pct=103.4")
+        assert sheet.headers["content-type"] == "application/pdf"
+        assert (await client.get("/api/calibration/scale-sheet?page_size=a0")).status_code == 400
+
+    def test_pdf_applies_scale_and_asks_for_actual_size(self, tmp_path):
+        pytest.importorskip("PIL")
+        from PIL import Image
+
+        art = tmp_path / "card.png"
+        Image.new("RGB", (63, 88), (20, 40, 80)).save(art)
+        card = DeckCardResolved(
+            name="Sol Ring",
+            quantity=1,
+            scryfall_id="sf",
+            front_path=art,
+            back_path=None,
+            back_name=None,
+            query="sol ring",
+        )
+
+        def content(**kw):
+            opts = PDFOptions(**kw)
+            build_pdf([card], tmp_path / "out.pdf", opts)
+            return (tmp_path / "out.pdf").read_bytes()
+
+        plain = content()
+        assert b"/PrintScaling /None" in plain
+        assert b"50 mm" in _page_streams(plain)
+        scaled = _page_streams(content(print_scale_x_pct=103.28, print_scale_y_pct=103.53))
+        assert b"1.0328 0 0 1.0353" in scaled and b"escala 103.28" in scaled
 
 
 def test_pdf_image_reader_cache_decodes_each_file_once(tmp_path):

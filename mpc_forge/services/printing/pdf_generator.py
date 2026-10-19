@@ -19,6 +19,10 @@ log = logging.getLogger(__name__)
 CARD_WIDTH_MM = 63.0
 CARD_HEIGHT_MM = 88.0
 
+# Barra de referencia del pie: con una regla debe medir exactamente esto. Si mide
+# menos, la impresora está escalando la hoja ("Ajustar al área imprimible").
+SCALE_BAR_MM = 50.0
+
 
 class _ImageReaderCache:
     def __init__(self) -> None:
@@ -110,6 +114,11 @@ class PDFOptions:
     page_range: str = ""
 
     show_footer: bool = True
+
+    # Compensación de la escala que aplica la impresora: 103 % agranda la hoja
+    # un 3 % para que, al encogerla el driver, las cartas salgan a 63×88 mm.
+    print_scale_x_pct: float = 100.0
+    print_scale_y_pct: float = 100.0
 
 
 @dataclass
@@ -325,15 +334,22 @@ def build_pdf(
         f"{len(fronts)} card fronts, {g_front.cols}×{g_front.rows} per page, "
         f"{CARD_WIDTH_MM}×{CARD_HEIGHT_MM} mm"
     )
+    # Pide al visor "Tamaño real" en el diálogo de impresión. Acrobat lo respeta;
+    # otros visores pueden ignorarlo, de ahí la compensación de escala.
+    c.setViewerPreference("PrintScaling", "None")
 
     image_cache = _ImageReaderCache()
 
     total_pages_rendered = 0
     for page_idx, (kind, chunk_idx, chunk) in enumerate(pages_to_render):
         g = g_front if kind == "front" else compute_geometry(opts, page_kind="back")
+        c.saveState()
+        _apply_print_scale(c, g, opts)
         _render_page(c, g, opts, kind, chunk, image_cache)
+        c.restoreState()
         if opts.show_footer:
-            _draw_footer(c, g, page_idx + 1, len(pages_to_render), kind, chunk_idx)
+            _draw_scale_bar(c, opts)
+            _draw_footer(c, g, opts, page_idx + 1, len(pages_to_render), kind, chunk_idx)
         c.showPage()
         total_pages_rendered += 1
 
@@ -351,6 +367,41 @@ def build_pdf(
         cols=g_front.cols,
         rows=g_front.rows,
     )
+
+
+def print_scale_factors(opts: PDFOptions) -> tuple[float, float]:
+    return opts.print_scale_x_pct / 100.0, opts.print_scale_y_pct / 100.0
+
+
+def _apply_print_scale(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> None:
+    # Escala respecto al centro de la página, igual que hace el driver al
+    # "ajustar": así se invierte su reducción sin desplazar la rejilla.
+    sx, sy = print_scale_factors(opts)
+    if sx == 1.0 and sy == 1.0:
+        return
+    cx, cy = g.page_w_mm / 2 * mm, g.page_h_mm / 2 * mm
+    c.translate(cx, cy)
+    c.scale(sx, sy)
+    c.translate(-cx, -cy)
+
+
+def _draw_scale_bar(c: canvas.Canvas, opts: PDFOptions) -> None:
+    # Fuera de la transformación de escala para que no se vaya al borde de la
+    # hoja; solo su longitud lleva la compensación, como las cartas.
+    sx, _ = print_scale_factors(opts)
+    x0, y0 = 6.0, 4.0
+    length = SCALE_BAR_MM * sx
+    c.saveState()
+    c.setStrokeGray(0.55)
+    c.setFillGray(0.55)
+    c.setLineWidth(0.3)
+    c.line(x0 * mm, y0 * mm, (x0 + length) * mm, y0 * mm)
+    for i in range(int(SCALE_BAR_MM // 10) + 1):
+        x = (x0 + i * 10 * sx) * mm
+        c.line(x, y0 * mm, x, (y0 + (1.5 if i % 5 == 0 else 0.8)) * mm)
+    c.setFont("Helvetica", 5.5)
+    c.drawString((x0 + length + 1.5) * mm, (y0 - 0.6) * mm, f"{SCALE_BAR_MM:g} mm")
+    c.restoreState()
 
 
 def _render_page(
@@ -633,6 +684,7 @@ def _draw_registration_marks(c: canvas.Canvas, g: Geometry, opts: PDFOptions) ->
 def _draw_footer(
     c: canvas.Canvas,
     g: Geometry,
+    opts: PDFOptions,
     page_num: int,
     page_total: int,
     kind: str,
@@ -643,5 +695,9 @@ def _draw_footer(
     c.setFont("Helvetica", 6.5)
     label = "Fronts" if kind == "front" else "Backs"
     footer = f"MPC Forge  ·  {label} · hoja {page_num}/{page_total} ·  grid {g.cols}×{g.rows}"
+    sx, sy = print_scale_factors(opts)
+    if sx != 1.0 or sy != 1.0:
+        footer += f"  ·  escala {opts.print_scale_x_pct:g}×{opts.print_scale_y_pct:g} %"
+    footer += "  ·  imprimir a tamaño real (100 %)"
     c.drawRightString((g.page_w_mm - 6) * mm, 4 * mm, footer)
     c.restoreState()

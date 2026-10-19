@@ -1,4 +1,6 @@
 const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
+// La escala depende de la impresora, no del mazo: se guarda una vez para todos.
+const LS_PRINT_SCALE = 'pdfStudio.printScale';
 
 // Hueco del preview resaltado mientras se arrastra una imagen. Vive fuera del
 // estado de Alpine: un nodo DOM dentro de un proxy reactivo rompe setAttribute.
@@ -67,6 +69,8 @@ function pdfStudio(deckId) { return {
     backs_compact_fill: true,
     page_range: '',
     show_footer: true,
+    print_scale_x_pct: 100,
+    print_scale_y_pct: 100,
   },
 
   async init() {
@@ -90,11 +94,19 @@ function pdfStudio(deckId) { return {
   _loadOpts() {
     try {
       const raw = localStorage.getItem(LS_KEY(this.deckId));
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      Object.assign(this.opts, saved.opts || {});
-      if (typeof saved.zoom === 'number') this.zoom = saved.zoom;
-      if (typeof saved.showPageMargins === 'boolean') this.showPageMargins = saved.showPageMargins;
+      if (raw) {
+        const saved = JSON.parse(raw);
+        Object.assign(this.opts, saved.opts || {});
+        if (typeof saved.zoom === 'number') this.zoom = saved.zoom;
+        if (typeof saved.showPageMargins === 'boolean') this.showPageMargins = saved.showPageMargins;
+      }
+    } catch (e) {}
+    try {
+      const scale = JSON.parse(localStorage.getItem(LS_PRINT_SCALE) || 'null');
+      if (scale && typeof scale.x === 'number' && typeof scale.y === 'number') {
+        this.opts.print_scale_x_pct = scale.x;
+        this.opts.print_scale_y_pct = scale.y;
+      }
     } catch (e) {}
   },
 
@@ -103,7 +115,19 @@ function pdfStudio(deckId) { return {
       localStorage.setItem(LS_KEY(this.deckId), JSON.stringify({
         opts: this.opts, zoom: this.zoom, showPageMargins: this.showPageMargins,
       }));
+      localStorage.setItem(LS_PRINT_SCALE, JSON.stringify({
+        x: this.opts.print_scale_x_pct, y: this.opts.print_scale_y_pct,
+      }));
     } catch (e) {}
+  },
+
+  get printScaleActive() {
+    return this.opts.print_scale_x_pct !== 100 || this.opts.print_scale_y_pct !== 100;
+  },
+
+  resetPrintScale() {
+    this.opts.print_scale_x_pct = 100;
+    this.opts.print_scale_y_pct = 100;
   },
   _saveVolatile() { this._saveOpts(); },
 

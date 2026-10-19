@@ -17,6 +17,20 @@ CROSSHAIR_ARM_MM = 25
 
 SUSPICIOUS_OFFSET_MM = 10.0
 
+# Hoja de escala: dos reglas largas para que medio milímetro de error al medir
+# pese poco en el factor (0,5 mm sobre 150 mm ≈ 0,3 %).
+SCALE_RULER_X_MM = 150.0
+SCALE_RULER_Y_MM = 200.0
+
+PRINT_SCALE_RANGE_PCT = (90.0, 110.0)
+
+# Por debajo de esto la diferencia es error de medida, no escala de la impresora.
+SCALE_EXACT_TOLERANCE_PCT = 0.2
+
+# Más de un 5 % casi siempre es "Ajustar a página" o un tamaño de papel distinto
+# del del PDF: conviene arreglar el diálogo de impresión antes que compensar.
+SCALE_LARGE_PCT = 5.0
+
 
 @dataclass
 class CalibrationResult:
@@ -68,6 +82,174 @@ def derive_offsets(
     )
 
 
+@dataclass
+class ScaleResult:
+    print_scale_x_pct: float
+    print_scale_y_pct: float
+    measured_x_mm: float
+    measured_y_mm: float
+    printed_x_pct: float
+    printed_y_pct: float
+    warning: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "print_scale_x_pct": self.print_scale_x_pct,
+            "print_scale_y_pct": self.print_scale_y_pct,
+            "measured_x_mm": self.measured_x_mm,
+            "measured_y_mm": self.measured_y_mm,
+            "printed_x_pct": self.printed_x_pct,
+            "printed_y_pct": self.printed_y_pct,
+            "nominal_x_mm": SCALE_RULER_X_MM,
+            "nominal_y_mm": SCALE_RULER_Y_MM,
+            "warning": self.warning,
+            "needs_correction": self.warning != "scale_already_exact",
+        }
+
+
+def derive_scale(
+    measured_x_mm: float,
+    measured_y_mm: float,
+    *,
+    current_x_pct: float = 100.0,
+    current_y_pct: float = 100.0,
+) -> ScaleResult:
+    """Factor que hay que aplicar al PDF para que la regla impresa mida lo nominal.
+
+    `current_*` es la compensación con la que se imprimió la hoja: así se puede
+    afinar en una segunda pasada sin volver a 100 %.
+    """
+    if measured_x_mm <= 0 or measured_y_mm <= 0:
+        raise ValueError("Las medidas deben ser positivas")
+
+    # Lo que hace la impresora, sin contar nuestra compensación.
+    printed_x = measured_x_mm / (SCALE_RULER_X_MM * current_x_pct / 100)
+    printed_y = measured_y_mm / (SCALE_RULER_Y_MM * current_y_pct / 100)
+
+    low, high = PRINT_SCALE_RANGE_PCT
+    scale_x = min(high, max(low, 100 / printed_x))
+    scale_y = min(high, max(low, 100 / printed_y))
+
+    # Error frente a la medida objetivo: si ya sale exacta, se queda la
+    # compensación con la que se imprimió (100 % en la primera pasada).
+    error_pct = 100 * max(
+        abs(measured_x_mm / SCALE_RULER_X_MM - 1), abs(measured_y_mm / SCALE_RULER_Y_MM - 1)
+    )
+    warning = None
+    if error_pct < SCALE_EXACT_TOLERANCE_PCT:
+        warning = "scale_already_exact"
+        scale_x, scale_y = current_x_pct, current_y_pct
+    elif max(abs(scale_x - 100), abs(scale_y - 100)) > SCALE_LARGE_PCT:
+        warning = "scale_suspicious"
+
+    return ScaleResult(
+        print_scale_x_pct=round(scale_x, 2),
+        print_scale_y_pct=round(scale_y, 2),
+        measured_x_mm=measured_x_mm,
+        measured_y_mm=measured_y_mm,
+        printed_x_pct=round(100 * printed_x, 2),
+        printed_y_pct=round(100 * printed_y, 2),
+        warning=warning,
+    )
+
+
+def build_scale_sheet(
+    output_path: Path | None = None,
+    *,
+    page_size: str = "a4",
+    scale_x_pct: float = 100.0,
+    scale_y_pct: float = 100.0,
+) -> Path:
+    from reportlab.lib.pagesizes import A4, letter
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+
+    sizes = {"a4": A4, "letter": letter}
+    width, height = sizes.get(page_size.lower(), A4)
+    low, high = PRINT_SCALE_RANGE_PCT
+    sx = min(high, max(low, scale_x_pct)) / 100
+    sy = min(high, max(low, scale_y_pct)) / 100
+
+    target = output_path or (cfg.PATHS.exports_dir / "calibracion-escala.pdf")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    c = canvas.Canvas(str(target), pagesize=(width, height))
+    c.setTitle("MPC Forge — Calibración de escala")
+    c.setAuthor("MPC Forge")
+    c.setViewerPreference("PrintScaling", "None")
+
+    cx, cy = width / 2, height / 2
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(cx, height - 15 * mm, "CALIBRACIÓN DE ESCALA")
+    c.setFont("Helvetica", 9)
+    c.drawCentredString(
+        cx, height - 21 * mm, "Imprime a «Tamaño real» / 100 %, sin «Ajustar a página»."
+    )
+    if sx != 1 or sy != 1:
+        c.drawCentredString(
+            cx,
+            height - 26 * mm,
+            f"Hoja de verificación con compensación {sx * 100:g} % × {sy * 100:g} %.",
+        )
+
+    # Lo medible se escala como lo escalaría el PDF de cartas; los textos no.
+    c.saveState()
+    c.translate(cx, cy)
+    c.scale(sx, sy)
+    c.translate(-cx, -cy)
+    _draw_scale_rulers(c, cx, cy, mm)
+    c.restoreState()
+
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(
+        cx,
+        18 * mm,
+        f"Mide de extremo a extremo: la horizontal debería medir {SCALE_RULER_X_MM:g} mm "
+        f"y la vertical {SCALE_RULER_Y_MM:g} mm.",
+    )
+    c.drawCentredString(cx, 13 * mm, "Introduce las dos medidas reales en la app.")
+    c.showPage()
+    c.save()
+
+    log.info("Hoja de calibración de escala generada en %s", target)
+    return target
+
+
+def _draw_scale_rulers(c: Any, cx: float, cy: float, mm: float) -> None:
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(0.3)
+    c.setFont("Helvetica", 6)
+
+    half_x = SCALE_RULER_X_MM / 2
+    y = cy - SCALE_RULER_Y_MM / 2 * mm - 8 * mm
+    c.line((cx - half_x * mm), y, (cx + half_x * mm), y)
+    for i in range(int(SCALE_RULER_X_MM) + 1):
+        x = cx + (i - half_x) * mm
+        tick = 4 if i % 10 == 0 else 2.5 if i % 5 == 0 else 1.2
+        c.line(x, y, x, y + tick * mm)
+        if i % 10 == 0:
+            c.drawCentredString(x, y - 3 * mm, str(i))
+
+    half_y = SCALE_RULER_Y_MM / 2
+    x = cx - SCALE_RULER_X_MM / 2 * mm
+    for i in range(int(SCALE_RULER_Y_MM) + 1):
+        yy = cy + (i - half_y) * mm
+        tick = 4 if i % 10 == 0 else 2.5 if i % 5 == 0 else 1.2
+        c.line(x, yy, x + tick * mm, yy)
+        if i % 10 == 0:
+            c.drawRightString(x - 1.2 * mm, yy - 0.8 * mm, str(i))
+    c.line(x, cy - half_y * mm, x, cy + half_y * mm)
+
+    # Una carta a tamaño real como comprobación rápida.
+    card_w, card_h = 63 * mm, 88 * mm
+    c.setDash(2, 1.5)
+    c.rect(cx - card_w / 2 + 12 * mm, cy - card_h / 2, card_w, card_h, stroke=1, fill=0)
+    c.setDash()
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(cx + 12 * mm, cy, "63 × 88 mm")
+
+
 def build_sheet(
     output_path: Path | None = None,
     *,
@@ -87,6 +269,7 @@ def build_sheet(
     c = canvas.Canvas(str(target), pagesize=(width, height))
     c.setTitle("MPC Forge — Calibración de dúplex")
     c.setAuthor("MPC Forge")
+    c.setViewerPreference("PrintScaling", "None")
 
     cx, cy = width / 2, height / 2
 

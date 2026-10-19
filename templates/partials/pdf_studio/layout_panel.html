@@ -40,6 +40,11 @@
         <span class="text-fg-muted">{{ t.pdf_backs_section_label }}</span>
         <span class="font-mono" x-text="opts.include_backs ? opts.backs_layout : 'off'"></span>
       </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_print_scale_section }}</span>
+        <span class="font-mono" :class="printScaleActive ? 'text-accent' : ''"
+              x-text="printScaleActive ? (opts.print_scale_x_pct + ' × ' + opts.print_scale_y_pct + ' %') : '100 %'"></span>
+      </div>
     </div>
 
     <div class="space-y-2">
@@ -78,6 +83,11 @@
         <input type="checkbox" x-model="autoOpen" class="accent-accent">
         {{ t.common_open_in_editor }}
       </label>
+
+      <p class="flex items-start gap-1.5 text-[10px] text-fg-muted p-2 rounded bg-info-bg border border-info-border">
+        <i data-lucide="printer" class="w-3.5 h-3.5 text-info shrink-0"></i>
+        <span>{{ t.pdf_print_actual_size }}</span>
+      </p>
     </div>
 
     <div>

@@ -21,6 +21,17 @@ class CalibrationRequest(BaseModel):
     flip_edge: Literal["long", "short"] = "long"
 
 
+class ScaleCalibrationRequest(BaseModel):
+    measured_x_mm: float = Field(..., gt=0, le=400)
+    measured_y_mm: float = Field(..., gt=0, le=400)
+    current_x_pct: float = Field(
+        100.0, ge=calibration.PRINT_SCALE_RANGE_PCT[0], le=calibration.PRINT_SCALE_RANGE_PCT[1]
+    )
+    current_y_pct: float = Field(
+        100.0, ge=calibration.PRINT_SCALE_RANGE_PCT[0], le=calibration.PRINT_SCALE_RANGE_PCT[1]
+    )
+
+
 @router.post("/api/calibration/derive")
 async def derive_calibration(payload: CalibrationRequest) -> dict[str, Any]:
     result = calibration.derive_offsets(
@@ -45,5 +56,38 @@ async def calibration_sheet(
         path,
         media_type="application/pdf",
         filename="calibracion-duplex.pdf",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/api/calibration/derive-scale")
+async def derive_scale(payload: ScaleCalibrationRequest) -> dict[str, Any]:
+    return calibration.derive_scale(
+        payload.measured_x_mm,
+        payload.measured_y_mm,
+        current_x_pct=payload.current_x_pct,
+        current_y_pct=payload.current_y_pct,
+    ).to_dict()
+
+
+@router.get("/api/calibration/scale-sheet")
+async def scale_sheet(
+    page_size: str = Query("a4"),
+    scale_x_pct: float = Query(100.0),
+    scale_y_pct: float = Query(100.0),
+) -> FileResponse:
+    if page_size.lower() not in ("a4", "letter"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado")
+    path = await asyncio.to_thread(
+        calibration.build_scale_sheet,
+        None,
+        page_size=page_size,
+        scale_x_pct=scale_x_pct,
+        scale_y_pct=scale_y_pct,
+    )
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename="calibracion-escala.pdf",
         headers={"Cache-Control": "no-store"},
     )
