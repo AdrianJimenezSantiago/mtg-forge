@@ -20,6 +20,7 @@ from mpc_forge.models import (
     DeckCard,
     DFCPair,
     KeyValue,
+    OracleRole,
     PrintingCache,
 )
 from mpc_forge.services.art import recommender
@@ -28,6 +29,7 @@ from mpc_forge.services.cards import (
     bulk_data,
     card_migrations,
     images,
+    oracle_tags,
     preloader,
     printings,
     sets,
@@ -948,6 +950,46 @@ class TestSets:
             await s.commit()
         cards = (await client.get("/api/collection/sets/tst/cards")).json()
         assert [c["collector_number"] for c in cards] == ["SCTLR", "1", "IFIYW-1", "2", "10"]
+
+
+def _tag(slug, oracles=(), children=()):
+    return {
+        "id": f"id-{slug}",
+        "slug": slug,
+        "child_ids": [f"id-{c}" for c in children],
+        "taggings": [{"oracle_id": o, "weight": "median"} for o in oracles],
+    }
+
+
+class TestOracleRoles:
+    def test_roles_gather_descendant_tags_with_exclusions(self):
+        tags = [
+            _tag("removal", children=("spot-removal", "sweeper")),
+            _tag("spot-removal", ("swords",)),
+            _tag("sweeper", ("wrath",)),
+            _tag("tutor", children=("tutor-creature", "tutor-land")),
+            _tag("tutor-creature", ("worldly",)),
+            _tag("tutor-land", ("cultivate", "worldly")),
+            _tag("ramp", ("cultivate",), children=("ramp",)),
+        ]
+        roles = oracle_tags.compute_roles(tags)
+        assert roles["removal"] == {"swords"} and roles["wipe"] == {"wrath"}
+        assert roles["tutor"] == {"worldly"} and roles["ramp"] == {"cultivate"}
+        assert roles["draw"] == set()
+
+    async def test_deck_cards_carry_their_roles_unless_disabled(self, client, deck):
+        sol_ring = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
+        async with session_scope() as s:
+            s.add(OracleRole(oracle_id=sol_ring["oracle_id"], role="ramp"))
+            await s.commit()
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        assert {c["name"]: c["roles"] for c in cards}["Sol Ring"] == ["ramp"]
+        assert all(c["roles"] == [] for c in cards if c["name"] != "Sol Ring")
+
+        r = await client.put("/api/settings/", json={"values": {"show_card_roles": False}})
+        assert r.status_code == 200, r.text
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        assert all(c["roles"] == [] for c in cards)
 
 
 async def test_dfc_pair_lookup(client):

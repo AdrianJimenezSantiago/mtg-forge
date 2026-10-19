@@ -201,6 +201,19 @@ MIGRATIONS: list[Migration] = [
             "ALTER TABLE printings ADD COLUMN illustration_id VARCHAR(64)",
         ],
     ),
+    Migration(
+        version=17,
+        description="Funciones de cada carta (ramp, robo, removal…) según las etiquetas de Scryfall",
+        statements=[
+            """
+            CREATE TABLE IF NOT EXISTS oracle_roles (
+                oracle_id VARCHAR(64) NOT NULL,
+                role VARCHAR(32) NOT NULL,
+                PRIMARY KEY (oracle_id, role)
+            )
+            """,
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

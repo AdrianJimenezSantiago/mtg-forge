@@ -252,6 +252,18 @@ DEFINITIONS: list[SettingDef] = [
         ),
     ),
     SettingDef(
+        key="show_card_roles",
+        label="Mostrar funciones de las cartas",
+        type="bool",
+        group="Datos de cartas",
+        default=True,
+        description=(
+            "En las estadísticas del mazo, cuenta ramp, robo, removal, wipes, counters, "
+            "tutores, protección y recursión según las etiquetas de la comunidad (Tagger) "
+            "que publica Scryfall. Necesita los datos de cartas importados."
+        ),
+    ),
+    SettingDef(
         key="phash.enabled",
         label="Detectar imágenes duplicadas (pHash)",
         type="bool",

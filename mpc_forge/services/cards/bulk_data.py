@@ -23,6 +23,9 @@ from mpc_forge.ssl_config import ssl_insecure
 log = logging.getLogger(__name__)
 
 BULK_KINDS = ("default_cards", "oracle_cards")
+
+# Otros volcados que se leen aparte (no son cartas y no se importan a printings).
+MANIFEST_KINDS = (*BULK_KINDS, "oracle_tags")
 DEFAULT_KIND = "default_cards"
 
 BATCH_SIZE = 2000
@@ -97,8 +100,8 @@ async def cancel() -> bool:
 
 
 async def fetch_manifest(kind: str = DEFAULT_KIND) -> dict[str, Any]:
-    if kind not in BULK_KINDS:
-        raise ValueError(f"Volcado desconocido: {kind}. Válidos: {BULK_KINDS}")
+    if kind not in MANIFEST_KINDS:
+        raise ValueError(f"Volcado desconocido: {kind}. Válidos: {MANIFEST_KINDS}")
     async with httpx.AsyncClient(
         base_url=SCRYFALL_API,
         headers={"User-Agent": SCRYFALL_USER_AGENT, "Accept": "application/json"},
@@ -309,9 +312,17 @@ def start(kind: str = DEFAULT_KIND, *, force: bool = False) -> asyncio.Task[None
         raise RuntimeError("Ya hay una importación del volcado en curso")
 
     async def _run() -> None:
+        # Import diferido: oracle_tags usa fetch_manifest de este módulo.
+        from mpc_forge.services.cards import oracle_tags
+
         async with session_scope() as session:
             await sync(session, kind, force=force)
         await analyze_table("printings")
+        try:
+            async with session_scope() as session:
+                await oracle_tags.sync(session, force=force)
+        except Exception as e:
+            log.warning("No se pudieron importar las funciones de carta: %s", e)
 
     def _done(task: asyncio.Task[None]) -> None:
         if not task.cancelled():

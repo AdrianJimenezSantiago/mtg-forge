@@ -376,6 +376,13 @@ class ArtThemeEntry(Base):
     theme: Mapped[ArtTheme] = relationship(back_populates="entries")
 
 
+class OracleRole(Base):
+    __tablename__ = "oracle_roles"
+
+    oracle_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+
 class BulkSyncState(Base):
     __tablename__ = "bulk_sync_state"
 
