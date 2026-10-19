@@ -668,6 +668,38 @@ class TestOfflineLookups:
         assert (await client.get("/api/decks/_/autocomplete?q=gob")).json() == []
         assert (await client.get("/api/decks/_/autocomplete?q=_%25")).json() == []
 
+    async def test_unresolved_cards_come_back_with_suggestions(self, client, fake_scryfall):
+        await _seed_offline()
+        printings._name_index = None
+        r = await client.post(
+            "/api/decks/import/text",
+            json={"name": "S", "text": "1 Lightnig Bolt\n1 Delver of Secret\n1 zzzzqqq"},
+        )
+        assert r.status_code == 200, r.text
+        suggestions = {u["name"]: u["suggestions"] for u in r.json()["unresolved"]}
+        assert suggestions == {
+            "Lightnig Bolt": ["Lightning Bolt"],
+            "Delver of Secret": ["Delver of Secrets // Insectile Aberration"],
+            "zzzzqqq": [],
+        }
+
+    async def test_without_the_dump_suggestions_ask_scryfall_a_few_times(
+        self, client, fake_scryfall
+    ):
+        asked: list[str] = []
+
+        async def fuzzy_name(name):
+            asked.append(name)
+            return "Sol Ring" if name == "card 0" else None
+
+        fake_scryfall.fuzzy_name = fuzzy_name
+        names = [f"card {i}" for i in range(printings.REMOTE_SUGGESTIONS_CAP + 5)]
+        async with session_scope() as s:
+            found = await printings.suggest_names(s, fake_scryfall, [*names, "card 0"])
+        assert len(asked) == printings.REMOTE_SUGGESTIONS_CAP
+        assert found["card 0"] == ["Sol Ring"] and found["card 1"] == []
+        assert "card 14" not in found
+
     async def test_cancel_stops_a_running_import(self, client, monkeypatch):
         started = asyncio.Event()
 

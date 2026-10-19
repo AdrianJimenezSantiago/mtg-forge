@@ -186,6 +186,7 @@ class UnresolvedEntry(BaseModel):
     number: str | None = None
     role: str = "mainboard"
     reason: str = "not_found_on_scryfall"
+    suggestions: list[str] = []
 
 
 class ImportResult(BaseModel):

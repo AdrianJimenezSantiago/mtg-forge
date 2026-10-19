@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from rapidfuzz import fuzz, process
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -315,6 +316,84 @@ async def find_local_printing(
 
 
 _AUTOCOMPLETE_LIMIT = 20
+
+SUGGESTIONS_PER_NAME = 3
+
+# Sin volcado cada sugerencia es una búsqueda pesada (2/s): sólo las primeras.
+REMOTE_SUGGESTIONS_CAP = 10
+
+# Lo bastante por debajo de la mejor coincidencia ya es ruido.
+_SUGGESTION_SPREAD = 6
+
+_name_index: tuple[str, list[str], list[tuple[str, int, bool]]] | None = None
+
+
+async def _deck_names(db: AsyncSession) -> tuple[list[str], list[tuple[str, int, bool]]]:
+    """Nombres jugables del volcado y sus claves de búsqueda: el nombre entero y cada
+    cara de las cartas «A // B», con el índice del nombre y si es una cara suelta."""
+    global _name_index
+    state = await db.get(BulkSyncState, "default_cards")
+    version = state.updated_at if state else ""
+    if _name_index is None or _name_index[0] != version:
+        names = list(
+            (
+                await db.scalars(
+                    select(PrintingCache.name)
+                    .where(
+                        PrintingCache.digital.is_(False),
+                        PrintingCache.layout.not_in(_NON_DECK_LAYOUTS),
+                    )
+                    .distinct()
+                )
+            ).all()
+        )
+        keys: list[tuple[str, int, bool]] = []
+        for i, name in enumerate(names):
+            keys.append((normalize_card_name(name), i, False))
+            if " // " in name:
+                keys.extend((normalize_card_name(face), i, True) for face in name.split(" // "))
+        _name_index = (version, names, keys)
+    return _name_index[1], _name_index[2]
+
+
+def _closest(query: str, names: list[str], keys: list[tuple[str, int, bool]]) -> list[str]:
+    found = process.extract(
+        normalize_card_name(query),
+        [k for k, _, _ in keys],
+        scorer=fuzz.QRatio,
+        limit=SUGGESTIONS_PER_NAME * 4,
+        score_cutoff=75,
+    )
+    if not found:
+        return []
+    best = found[0][1]
+    ranked = sorted(
+        (-score, keys[i][2], len(names[keys[i][1]]), names[keys[i][1]])
+        for _, score, i in found
+        if score >= best - _SUGGESTION_SPREAD
+    )
+    return list(dict.fromkeys(name for *_, name in ranked))[:SUGGESTIONS_PER_NAME]
+
+
+async def suggest_names(
+    db: AsyncSession, scryfall: ScryfallClient, names: list[str]
+) -> dict[str, list[str]]:
+    wanted = [n for n in dict.fromkeys(names) if n.strip()]
+    if not wanted:
+        return {}
+    if await bulk_synced(db):
+        names, keys = await _deck_names(db)
+        return {name: _closest(name, names, keys) for name in wanted}
+    out: dict[str, list[str]] = {}
+    for name in wanted[:REMOTE_SUGGESTIONS_CAP]:
+        try:
+            found = await scryfall.fuzzy_name(name)
+        except Exception as e:
+            log.debug("Sugerencia para %r falló: %s", name, e)
+            found = None
+        out[name] = [found] if found else []
+    return out
+
 
 _NON_DECK_LAYOUTS = (
     "token",

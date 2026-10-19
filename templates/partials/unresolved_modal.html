@@ -15,8 +15,8 @@
               <p class="text-xs text-fg-muted mt-1">
                 <span class="text-amber-400 font-medium" x-text="unresolvedModal.unresolved.length"></span>
                 <span x-text="unresolvedModal.unresolved.length === 1 ? ' {{ t.home_unresolved_not_resolved }}' : ' {{ t.home_unresolved_not_resolved_pl }}'"></span>
-                contra Scryfall. El mazo <span class="text-fg font-medium" x-text="'“' + unresolvedModal.deckName + '”'"></span>
-                {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> restantes de <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
+                {{ t.home_unresolved_against }} {{ t.home_unresolved_deck }} <span class="text-fg font-medium" x-text="'“' + unresolvedModal.deckName + '”'"></span>
+                {{ t.home_unresolved_deck_created }} <span x-text="unresolvedModal.resolvedCount"></span> {{ t.home_unresolved_of }} <span x-text="unresolvedModal.totalEntries"></span> {{ t.home_unresolved_total }}
               </p>
             </div>
             <button type="button" aria-label="{{ t.common_close }}" @click="unresolvedModal.open = false"
@@ -40,6 +40,18 @@
                       <span x-show="entry.set">Set: <span class="font-mono uppercase" x-text="entry.set"></span></span>
                       <span x-show="entry.number">Nº: <span class="font-mono" x-text="entry.number"></span></span>
                       <span x-show="entry.role && entry.role !== 'mainboard'">Role: <span x-text="entry.role"></span></span>
+                    </div>
+                    <div x-show="entry.suggestions && entry.suggestions.length"
+                         class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                      <span class="text-[11px] text-fg-muted">{{ t.home_unresolved_did_you_mean }}</span>
+                      <template x-for="name in entry.suggestions" :key="name">
+                        <button type="button" @click="acceptSuggestion(i, name)" :disabled="!!entry.adding"
+                                :title="'{{ t.home_unresolved_add_suggestion }}'"
+                                class="text-[11px] px-2 py-0.5 rounded-full border border-accent/40 text-accent
+                                       hover:bg-accent/15 disabled:opacity-50 transition">
+                          + <span x-text="name"></span>
+                        </button>
+                      </template>
                     </div>
                   </div>
                 </div>

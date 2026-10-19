@@ -235,6 +235,11 @@ class ScryfallClient:
             params["set"] = set_code
         return await self._get("/cards/named", params=params)
 
+    async def fuzzy_name(self, name: str) -> str | None:
+        """Nombre de la carta más parecida, o None si no hay ninguna o es ambiguo."""
+        card = await self._get("/cards/named", params={"fuzzy": name})
+        return card.get("name") or None
+
     async def sets(self) -> list[dict[str, Any]]:
         return (await self._get("/sets")).get("data") or []
 

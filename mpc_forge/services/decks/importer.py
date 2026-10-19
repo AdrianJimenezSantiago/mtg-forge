@@ -13,7 +13,7 @@ from mpc_forge.clients.import_sites.base import ImportSiteError
 from mpc_forge.clients.moxfield import MoxfieldClient, normalize_deck
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import ArtPreference, Deck, DeckCard, DFCPair, PrintingCache
-from mpc_forge.services.cards.printings import resolve_cards
+from mpc_forge.services.cards.printings import resolve_cards, suggest_names
 from mpc_forge.services.decks.decklist_parser import parse_plain_decklist
 
 log = logging.getLogger(__name__)
@@ -133,6 +133,16 @@ async def create_deck_from_entries(
     return deck
 
 
+async def _with_suggestions(
+    db: AsyncSession, scryfall: ScryfallClient, unresolved: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if unresolved:
+        found = await suggest_names(db, scryfall, [u["name"] for u in unresolved])
+        for u in unresolved:
+            u["suggestions"] = found.get(u["name"], [])
+    return unresolved
+
+
 def _unresolved_from_entries(resolved: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for e in resolved:
@@ -162,7 +172,7 @@ async def import_from_moxfield(
     payload = await mox.fetch_deck(url_or_id)
     norm = normalize_deck(payload)
     resolved = await resolve_cards(db, scryfall, norm["cards"])
-    unresolved = _unresolved_from_entries(resolved)
+    unresolved = await _with_suggestions(db, scryfall, _unresolved_from_entries(resolved))
     deck = await create_deck_from_entries(
         db,
         name=norm["name"],
@@ -190,7 +200,7 @@ async def import_from_plaintext(
     await _revert_dfc_backs_to_fronts(db, entries)
 
     resolved = await resolve_cards(db, scryfall, entries)
-    unresolved = _unresolved_from_entries(resolved)
+    unresolved = await _with_suggestions(db, scryfall, _unresolved_from_entries(resolved))
     deck = await create_deck_from_entries(
         db,
         name=name,
