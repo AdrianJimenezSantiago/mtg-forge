@@ -16,7 +16,7 @@ from mpc_forge.paths import diagnose as paths_diagnose
 from mpc_forge.paths import is_frozen
 from mpc_forge.services.art import custom_art as custom_art_service
 from mpc_forge.services.art.art_cache import ArtCache
-from mpc_forge.services.cards import bulk_data, dfc_pairs
+from mpc_forge.services.cards import bulk_data, card_migrations, dfc_pairs
 from mpc_forge.services.indexing import art_sources as art_sources_service
 from mpc_forge.services.indexing import gdrive_indexer
 from mpc_forge.services.system import logging_setup
@@ -115,6 +115,14 @@ async def _sync_dfc_pairs(scryfall: ScryfallClient) -> None:
         log.warning("Sync de DFC pairs falló: %s", e)
 
 
+async def _apply_card_migrations(scryfall: ScryfallClient) -> None:
+    try:
+        async with session_scope() as db:
+            await card_migrations.sync_if_stale(db, scryfall)
+    except Exception as e:
+        log.warning("Migraciones de cartas de Scryfall fallaron: %s", e)
+
+
 async def _refresh_bulk_data() -> None:
     try:
         async with session_scope() as db:
@@ -146,6 +154,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.background.spawn(_backfill_normalized_names(), name="normalization-backfill")
     app.state.background.spawn(_sync_dfc_pairs(app.state.scryfall), name="dfc-pairs-sync")
     app.state.background.spawn(_refresh_bulk_data(), name="bulk-data-refresh")
+    app.state.background.spawn(
+        _apply_card_migrations(app.state.scryfall), name="scryfall-card-migrations"
+    )
 
     log.info("MPC Forge listo. Datos en: %s", cfg.PATHS.data_dir)
     log.info("SSL: %s", SSL_MODE)

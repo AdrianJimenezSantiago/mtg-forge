@@ -292,6 +292,23 @@ class ScryfallClient:
             results.extend(resp.json().get("data", []))
         return results
 
+    async def migrations(self, since: str | None = None) -> list[dict[str, Any]]:
+        """Migraciones de cartas, de la más reciente hacia atrás hasta `since` (AAAA-MM-DD)."""
+        out: list[dict[str, Any]] = []
+        page = await self._get_uncached("/migrations", {"page": 1})
+        while page:
+            data = page.get("data") or []
+            out.extend(m for m in data if not since or (m.get("performed_at") or "") >= since)
+            if since and data and (data[-1].get("performed_at") or "") < since:
+                break
+            next_url = page.get("next_page") if page.get("has_more") else None
+            if not next_url:
+                break
+            resp = await self._request_with_retry("GET", next_url)
+            resp.raise_for_status()
+            page = resp.json()
+        return out
+
     async def autocomplete(self, query: str) -> list[str]:
         query = query.strip()
         if len(query) < 2 or self.cooling_down:

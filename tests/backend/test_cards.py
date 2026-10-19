@@ -9,14 +9,21 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 from mpc_forge.db import session_scope
-from mpc_forge.models import DFCPair, PrintingCache
+from mpc_forge.models import (
+    ArtPreference,
+    CollectionEntry,
+    Deck,
+    DeckCard,
+    DFCPair,
+    PrintingCache,
+)
 from mpc_forge.services.art import recommender
 from mpc_forge.services.art.art_cache import ArtCache
-from mpc_forge.services.cards import bulk_data, images, preloader, printings
+from mpc_forge.services.cards import bulk_data, card_migrations, images, preloader, printings
 from mpc_forge.services.decks import importer
 from mpc_forge.utils import rate_limiter
 from mpc_forge.utils.rate_limiter import TieredRateLimiter
@@ -757,6 +764,63 @@ class TestArtCacheRefresh:
             await fetch((datetime.now(UTC) - timedelta(minutes=1)).isoformat())
             assert len(calls) == 2
         await cache.aclose()
+
+
+class TestCardMigrations:
+    async def test_merges_update_live_data_and_deletes_keep_used_printings(
+        self, client, fake_scryfall
+    ):
+        async with session_scope() as s:
+            deck = Deck(name="M", commander_scryfall_id="old-cmd")
+            s.add(deck)
+            await s.flush()
+            s.add_all(
+                [
+                    DeckCard(deck_id=deck.id, oracle_id="o", name="A", scryfall_id="old-a"),
+                    DeckCard(deck_id=deck.id, oracle_id="o", name="G", scryfall_id="gone-used"),
+                    ArtPreference(oracle_id="o", scryfall_id="old-a"),
+                    CollectionEntry(scryfall_id="old-a", oracle_id="o", name="A", set_code="x"),
+                    CollectionEntry(scryfall_id="old-b", oracle_id="o", name="B", set_code="x"),
+                    CollectionEntry(scryfall_id="new-b", oracle_id="o", name="B", set_code="x"),
+                ]
+            )
+            for sfid in ("old-a", "gone-used", "gone-unused"):
+                await printings.upsert_printing(s, {**SIMPLE_CARD, "id": sfid})
+            await s.commit()
+
+        migrations = [
+            {"migration_strategy": "merge", "old_scryfall_id": o, "new_scryfall_id": n}
+            for o, n in (("old-a", "new-a"), ("old-b", "new-b"), ("old-cmd", "new-cmd"))
+        ] + [
+            {"migration_strategy": "delete", "old_scryfall_id": d, "new_scryfall_id": None}
+            for d in ("gone-used", "gone-unused")
+        ]
+        asked: list = []
+
+        async def fake_migrations(since=None):
+            asked.append(since)
+            return [{**m, "performed_at": "2026-09-23"} for m in migrations]
+
+        async def collection(idents):
+            return [{**SIMPLE_CARD, "id": i["id"]} for i in idents]
+
+        fake_scryfall.migrations = fake_migrations
+        fake_scryfall.collection = collection
+        async with session_scope() as s:
+            result = await card_migrations.sync_if_stale(s, fake_scryfall)
+            assert result["synced"] and result["migrations"] == 5
+            assert (await card_migrations.sync_if_stale(s, fake_scryfall))["synced"] is False
+
+            cards = (await s.scalars(select(DeckCard.scryfall_id).order_by(DeckCard.name))).all()
+            assert cards == ["new-a", "gone-used"]
+            assert (await s.get(Deck, deck.id)).commander_scryfall_id == "new-cmd"
+            assert (await s.get(ArtPreference, "o")).scryfall_id == "new-a"
+            owned = (await s.scalars(select(CollectionEntry.scryfall_id))).all()
+            assert sorted(owned) == ["new-a", "new-b"]
+            cached = set((await s.scalars(select(PrintingCache.scryfall_id))).all())
+            assert {"new-a", "new-cmd", "gone-used"} <= cached
+            assert not {"old-a", "gone-unused"} & cached
+        assert asked == [None]
 
 
 async def test_dfc_pair_lookup(client):
