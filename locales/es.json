@@ -820,7 +820,7 @@
   "settings_autofill_download_link": "Descargar releases de chilli-axe/mpc-autofill",
   "settings_autofill_place_hint": "Coloca el ejecutable en la carpeta del proyecto, en el PATH del sistema, o configura la ruta abajo.",
   "settings_recheck": "Volver a comprobar",
-  "settings_backup_desc": "Crea un zip con la BD (mazos, historial, preferencias), los artes descargados de Scryfall y los cardbacks. El zip queda en tu carpeta de datos.",
+  "settings_backup_desc": "Crea un zip con la BD (mazos, colección, historial, preferencias), tu arte propio y los cardbacks. El catálogo y los artes de Scryfall no se incluyen: se vuelven a descargar. Se conservan los 5 backups manuales más recientes. El zip queda en tu carpeta de datos.",
   "settings_backup_created": "Backup creado",
   "settings_backup_size": "Tamaño:",
   "settings_ssl_restart_hint": "Los clientes HTTPX ya instanciados no cambian sin reiniciar. Cierra la app y vuelve a abrirla para aplicar el modo insecure.",

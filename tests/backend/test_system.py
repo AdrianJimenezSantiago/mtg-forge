@@ -344,7 +344,7 @@ class TestStorage:
             for k in ("database", "custom_art", "cardbacks")
         )
         assert snap["backup_estimate"]["full_bytes"] == sum(
-            rows[k]["bytes"] for k in ("database", "art", "custom_art", "cardbacks")
+            rows[k]["bytes"] for k in ("database", "custom_art", "cardbacks")
         )
         assert snap["backup_estimate"]["db_only_bytes"] == rows["database"]["bytes"]
         assert (
@@ -417,3 +417,138 @@ class TestStorage:
         assert body["freed_bytes"] == 150
         thumbs = next(c for c in body["storage"]["categories"] if c["key"] == "thumbs")
         assert thumbs["bytes"] == 0
+
+
+@pytest.fixture
+async def backup_paths(tmp_path, monkeypatch):
+    from mpc_forge.db import EXTRA_INDEXES, _try_setup_fts5
+    from mpc_forge.models import Base
+
+    p = cfg.PATHS.__class__(
+        data_dir=tmp_path,
+        db_path=tmp_path / "mpc_forge.sqlite3",
+        art_dir=tmp_path / "art",
+        custom_art_dir=tmp_path / "custom_art",
+        exports_dir=tmp_path / "exports",
+        backups_dir=tmp_path / "backups",
+        cardbacks_dir=tmp_path / "cardbacks",
+        thumbs_dir=tmp_path / "thumbs",
+    )
+    monkeypatch.setattr(cfg, "PATHS", p)
+    engine = create_async_engine(f"sqlite+aiosqlite:///{p.db_path}")
+    async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
+        await conn.run_sync(Base.metadata.create_all)
+        for stmt in EXTRA_INDEXES:
+            await conn.execute(text(stmt))
+        await _try_setup_fts5(conn)
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from mpc_forge.models import (
+        ArtSource,
+        BulkSyncState,
+        CollectionEntry,
+        DeckCard,
+        IndexedArt,
+        OracleRole,
+    )
+
+    async with AsyncSession(engine) as s:
+        for sfid in ("in-deck", "in-collection", "unused"):
+            s.add(
+                PrintingCache(
+                    scryfall_id=sfid,
+                    oracle_id=f"o-{sfid}",
+                    name=sfid,
+                    set_code="c21",
+                    set_name="C21",
+                    collector_number="1",
+                    rarity="common",
+                )
+            )
+        s.add(Deck(id=1, name="Mazo"))
+        s.add(ArtSource(id=1, name="Drive", url="https://x.test"))
+        await s.flush()
+        s.add(DeckCard(deck_id=1, oracle_id="o-in-deck", name="in-deck", scryfall_id="in-deck"))
+        s.add(
+            CollectionEntry(
+                scryfall_id="in-collection", oracle_id="o", name="in-collection", set_code="c21"
+            )
+        )
+        s.add(BulkSyncState(kind="default_cards", updated_at="2025-01-01"))
+        s.add(OracleRole(oracle_id="o-in-deck", role="ramp"))
+        s.add(
+            IndexedArt(
+                source_id=1, file_id="f1", filename="Sol Ring.png", name_normalized="sol ring"
+            )
+        )
+        await s.commit()
+    await engine.dispose()
+    # Las tablas creadas por migraciones (deck_snapshots, art_themes) usan AUTOINCREMENT.
+    _sqlite(
+        p.db_path,
+        "CREATE TABLE seq_demo (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT);"
+        "INSERT INTO seq_demo (v) VALUES ('a'), ('b'); DELETE FROM seq_demo WHERE v = 'b';",
+    )
+    for folder, name in ((p.art_dir, "scryfall.png"), (p.custom_art_dir, "mio.png")):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_bytes(b"x")
+    return p
+
+
+class TestBackup:
+    def _restored(self, zip_path: Path, tmp_path: Path) -> tuple[Path, list[str]]:
+        import zipfile
+
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+            zf.extractall(tmp_path / "restored")
+        return tmp_path / "restored" / "db" / "mpc_forge.sqlite3", names
+
+    def test_keeps_user_data_and_referenced_printings_only(self, backup_paths, tmp_path):
+        from mpc_forge.services.system import backup
+
+        db, names = self._restored(backup.create_backup(), tmp_path)
+        assert sorted(names) == ["custom_art/mio.png", "db/mpc_forge.sqlite3"]
+        assert _query(db, "SELECT scryfall_id FROM printings ORDER BY 1") == [
+            ("in-collection",),
+            ("in-deck",),
+        ]
+        assert _query(db, "SELECT count(*) FROM bulk_sync_state") == [(0,)]
+        assert _query(db, "SELECT count(*) FROM oracle_roles") == [(0,)]
+        assert _query(db, "SELECT name FROM decks") == [("Mazo",)]
+        assert _query(
+            db, "SELECT rowid FROM indexed_art_fts WHERE indexed_art_fts MATCH 'sol'"
+        ) == [(1,)]
+        assert _query(db, "PRAGMA integrity_check") == [("ok",)]
+        assert _query(db, "SELECT * FROM sqlite_sequence") == [("seq_demo", 2)]
+        indexes = {r[0] for r in _query(db, "SELECT name FROM sqlite_master WHERE type='index'")}
+        assert "ix_printings_locate" in indexes
+
+    def test_pre_migration_skips_art_and_manual_backups_are_pruned(self, backup_paths, tmp_path):
+        from mpc_forge.services.system import backup
+
+        _, names = self._restored(backup.create_backup(tag="pre-migration"), tmp_path)
+        assert names == ["db/mpc_forge.sqlite3"]
+
+        old = backup_paths.backups_dir / "mpc-forge-backup-20200101-000000.zip"
+        old.write_bytes(b"")
+        for day in range(1, 8):
+            f = backup_paths.backups_dir / f"mpc-forge-backup-2025010{day}-000000-manual.zip"
+            f.write_bytes(b"")
+            os.utime(f, (1_735_693_261 + day, 1_735_693_261 + day))
+        backup.create_backup()
+        manual = list(backup_paths.backups_dir.glob("*-manual.zip"))
+        assert len(manual) == backup.MAX_TAGGED_BACKUPS and old.exists()
+
+    def test_failed_backup_leaves_no_zip(self, backup_paths, monkeypatch):
+        from mpc_forge.services.system import backup
+
+        def explode(source, target):
+            raise sqlite3.OperationalError("disk I/O error")
+
+        monkeypatch.setattr(backup, "copy_user_data", explode)
+        with pytest.raises(sqlite3.OperationalError):
+            backup.create_backup()
+        assert not list(backup_paths.backups_dir.glob("*.zip"))

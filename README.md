@@ -213,6 +213,11 @@ Every location except the database can be changed in *Settings → Paths*.
 
 > **Updating never deletes your data.** Schema migrations are incremental, and
 > an automatic backup is written to `backups/` before any of them runs.
+>
+> Backups leave out what can be downloaded again: the Scryfall catalog (except
+> the printings your decks and collection use) and the `art/` cache. After
+> restoring one, import the Scryfall data again from *Settings*. The 5 most
+> recent automatic and manual backups are kept.
 
 ## Working with Scryfall
 

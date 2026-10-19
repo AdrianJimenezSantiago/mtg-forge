@@ -820,7 +820,7 @@
   "settings_autofill_download_link": "Download releases from chilli-axe/mpc-autofill",
   "settings_autofill_place_hint": "Place the executable in the project folder, in the system PATH, or configure the path below.",
   "settings_recheck": "Re-check",
-  "settings_backup_desc": "Creates a zip with the DB (decks, history, preferences), Scryfall art cache and cardbacks. The zip is saved to your data folder.",
+  "settings_backup_desc": "Creates a zip with the DB (decks, collection, history, preferences), your own art and cardbacks. The Scryfall catalog and art are left out: they are downloaded again. The 5 most recent manual backups are kept. The zip is saved to your data folder.",
   "settings_backup_created": "Backup created",
   "settings_backup_size": "Size:",
   "settings_ssl_restart_hint": "Already-instantiated HTTPX clients won't change without a restart. Close and reopen the app to apply insecure mode.",

@@ -248,9 +248,7 @@ def compute() -> dict[str, Any]:
         "volumes": sorted(volumes.values(), key=lambda v: -v["app_bytes"]),
         "backups": _backups_summary(),
         "backup_estimate": {
-            "full_bytes": (
-                sizes["database"] + sizes["art"] + sizes["custom_art"] + sizes["cardbacks"]
-            ),
+            "full_bytes": sizes["database"] + sizes["custom_art"] + sizes["cardbacks"],
             "db_only_bytes": sizes["database"],
         },
     }
