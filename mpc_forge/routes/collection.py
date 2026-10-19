@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any, cast
 
-from fastapi import APIRouter
+import httpx
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import CursorResult, delete, func, select
 
-from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
-from mpc_forge.services.cards import images
+from mpc_forge.services.cards import images, printings, sets
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
 
-
-_SETS_CACHE: list[dict[str, Any]] | None = None
-_SETS_CACHE_AT: float = 0.0
-_SETS_CACHE_TTL: float = 3600.0
 
 WANTED_SET_TYPES = frozenset(
     {
@@ -32,41 +28,6 @@ WANTED_SET_TYPES = frozenset(
         "starter",
     }
 )
-
-
-async def _fetch_sets_cached(scryfall_client: ScryfallClient) -> list[dict[str, Any]]:
-    global _SETS_CACHE, _SETS_CACHE_AT
-
-    now = time.monotonic()
-    if _SETS_CACHE is not None and (now - _SETS_CACHE_AT) < _SETS_CACHE_TTL:
-        return _SETS_CACHE
-
-    log.info("Fetching sets list from Scryfall (cache miss / stale)")
-    sets_raw = await scryfall_client.sets()
-
-    filtered = []
-    for s in sets_raw:
-        if s.get("set_type") not in WANTED_SET_TYPES:
-            continue
-        if s.get("card_count", 0) <= 0:
-            continue
-        filtered.append(
-            {
-                "code": s.get("code", ""),
-                "name": s.get("name", ""),
-                "set_type": s.get("set_type", ""),
-                "released_at": s.get("released_at"),
-                "card_count": s.get("card_count", 0),
-                "icon_svg_uri": s.get("icon_svg_uri"),
-            }
-        )
-
-    filtered.sort(key=lambda x: x.get("released_at") or "", reverse=True)
-
-    _SETS_CACHE = filtered
-    _SETS_CACHE_AT = now
-    log.info("Sets cache updated: %d sets", len(filtered))
-    return filtered
 
 
 class SetInfo(BaseModel):
@@ -84,7 +45,17 @@ async def list_sets(
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[SetInfo]:
-    sets_data = await _fetch_sets_cached(scryfall)
+    every_set = await sets.all_sets(db, scryfall)
+    sets.prefetch_icons(every_set)
+    sets_data = sorted(
+        (
+            {**s, "icon_svg_uri": sets.local_icon_url(s.get("icon_svg_uri"))}
+            for s in every_set
+            if s.get("set_type") in WANTED_SET_TYPES and s.get("card_count", 0) > 0
+        ),
+        key=lambda x: x.get("released_at") or "",
+        reverse=True,
+    )
 
     owned_q = await db.execute(
         select(CollectionEntry.set_code, func.count()).group_by(CollectionEntry.set_code)
@@ -111,15 +82,39 @@ class SetCardInfo(BaseModel):
     owned: bool = False
 
 
+@router.get("/set-icons/{name}.svg")
+async def set_icon(name: str, db: DbDep, scryfall: ScryfallDep) -> FileResponse:
+    try:
+        path = await sets.icon_file(name, await sets.all_sets(db, scryfall))
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, f"No se pudo descargar el icono: {e}"
+        ) from e
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Icono desconocido")
+    return FileResponse(
+        path,
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "public, max-age=604800",
+            # Un SVG puede llevar scripts: abierto directamente, que no ejecute nada.
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/sets/{set_code}/cards")
 async def set_cards(
     set_code: str,
     db: DbDep,
     scryfall: ScryfallDep,
 ) -> list[SetCardInfo]:
-    all_cards = await scryfall.search_all(
-        f"set:{set_code} -is:digital", unique="prints", order="set"
-    )
+    all_cards = await printings.local_set_cards(db, set_code)
+    if all_cards is None:
+        all_cards = await scryfall.search_all(
+            f"set:{set_code} -is:digital", unique="prints", order="set"
+        )
 
     owned_ids = set(
         (

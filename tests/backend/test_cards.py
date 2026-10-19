@@ -19,11 +19,19 @@ from mpc_forge.models import (
     Deck,
     DeckCard,
     DFCPair,
+    KeyValue,
     PrintingCache,
 )
 from mpc_forge.services.art import recommender
 from mpc_forge.services.art.art_cache import ArtCache
-from mpc_forge.services.cards import bulk_data, card_migrations, images, preloader, printings
+from mpc_forge.services.cards import (
+    bulk_data,
+    card_migrations,
+    images,
+    preloader,
+    printings,
+    sets,
+)
 from mpc_forge.services.decks import importer
 from mpc_forge.utils import rate_limiter
 from mpc_forge.utils.rate_limiter import TieredRateLimiter
@@ -853,6 +861,93 @@ class TestCardMigrations:
             assert {"new-a", "new-cmd", "gone-used"} <= cached
             assert not {"old-a", "gone-unused"} & cached
         assert asked == [None]
+
+
+class TestSets:
+    async def test_set_list_is_kept_for_offline_use_and_icons_are_served_locally(
+        self, client, fake_scryfall, monkeypatch
+    ):
+        icon = "https://svgs.scryfall.io/sets/isd.svg?17"
+        calls: list[int] = []
+
+        async def online():
+            calls.append(1)
+            return [
+                {
+                    "code": "isd",
+                    "name": "Innistrad",
+                    "set_type": "expansion",
+                    "card_count": 264,
+                    "released_at": "2011-09-30",
+                    "icon_svg_uri": icon,
+                },
+                {
+                    "code": "tisd",
+                    "name": "Innistrad Tokens",
+                    "set_type": "token",
+                    "card_count": 12,
+                    "released_at": "2011-09-30",
+                    "icon_svg_uri": icon,
+                },
+            ]
+
+        async def offline():
+            raise httpx.ConnectError("sin red")
+
+        downloads: list[str] = []
+
+        def handler(request):
+            downloads.append(str(request.url))
+            return httpx.Response(200, content=b"<svg/>")
+
+        mock = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        monkeypatch.setattr(sets, "_http", lambda: mock)
+
+        fake_scryfall.sets = online
+        sets._memo = None
+        listed = (await client.get("/api/collection/sets")).json()
+        assert [(s["code"], s["icon_svg_uri"]) for s in listed] == [
+            ("isd", "/api/collection/set-icons/isd.svg")
+        ]
+
+        fake_scryfall.sets = offline
+        sets._memo = None
+        async with session_scope() as s:
+            await s.execute(
+                update(KeyValue)
+                .where(KeyValue.key == "scryfall_sets.fetched_at")
+                .values(value="2000-01-01T00:00:00+00:00")
+            )
+            await s.commit()
+        assert [s["code"] for s in (await client.get("/api/collection/sets")).json()] == ["isd"]
+
+        for _ in range(2):
+            r = await client.get("/api/collection/set-icons/isd.svg")
+            assert r.status_code == 200 and r.content == b"<svg/>"
+            assert r.headers["content-type"] == "image/svg+xml"
+            assert "default-src 'none'" in r.headers["content-security-policy"]
+        if sets._prefetch is not None:
+            await sets._prefetch
+        assert downloads == [icon]
+        assert (await client.get("/api/collection/set-icons/evil.svg")).status_code == 404
+        assert (await client.get("/api/collection/set-icons/..%2Fdb.svg")).status_code == 404
+
+    async def test_set_cards_come_from_the_dump_in_collector_order(self, client, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.search_all = offline
+        async with session_scope() as s:
+            for number in ("10", "2", "SCTLR", "IFIYW-1", "1"):
+                await printings.upsert_printing(
+                    s,
+                    {**SIMPLE_CARD, "id": f"t-{number}", "set": "tst", "collector_number": number},
+                )
+            await s.commit()
+        cards = (await client.get("/api/collection/sets/tst/cards")).json()
+        assert [c["collector_number"] for c in cards] == ["SCTLR", "1", "IFIYW-1", "2", "10"]
 
 
 async def test_dfc_pair_lookup(client):

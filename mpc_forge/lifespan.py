@@ -16,7 +16,7 @@ from mpc_forge.paths import diagnose as paths_diagnose
 from mpc_forge.paths import is_frozen
 from mpc_forge.services.art import custom_art as custom_art_service
 from mpc_forge.services.art.art_cache import ArtCache
-from mpc_forge.services.cards import bulk_data, card_migrations, dfc_pairs
+from mpc_forge.services.cards import bulk_data, card_migrations, dfc_pairs, sets
 from mpc_forge.services.indexing import art_sources as art_sources_service
 from mpc_forge.services.indexing import gdrive_indexer
 from mpc_forge.services.system import logging_setup
@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.scryfall.aclose()
         await app.state.moxfield.aclose()
         await app.state.art_cache.aclose()
+        await sets.aclose()
         await optimize_db()
         try:
             logging_setup.teardown_file_logging(delete=True)

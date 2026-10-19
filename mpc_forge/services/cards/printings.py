@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -430,6 +431,42 @@ async def local_autocomplete(db: AsyncSession, query: str) -> list[str] | None:
         more = await db.scalars(base.where(lowered.like(f"%{escaped}%", escape="\\")))
         names.extend(n for n in more if n not in names)
     return names[:_AUTOCOMPLETE_LIMIT]
+
+
+def _collector_sort_key(number: str) -> tuple[int, str]:
+    # Como order=set de Scryfall: por el último número que aparezca («DD1-19» → 19,
+    # «2024-10» → 10) y los que no tienen ninguno, delante.
+    digits = re.findall(r"\d+", number)
+    return (int(digits[-1]) if digits else 0, number)
+
+
+async def local_set_cards(db: AsyncSession, set_code: str) -> list[dict[str, Any]] | None:
+    """Las cartas de un set en orden de coleccionista, como set:X -is:digital en
+    Scryfall; None si el volcado no está importado."""
+    if not await bulk_synced(db):
+        return None
+    rows = (
+        await db.scalars(
+            select(PrintingCache).where(
+                PrintingCache.set_code == set_code.lower(), PrintingCache.digital.is_(False)
+            )
+        )
+    ).all()
+    rows = sorted(rows, key=lambda r: _collector_sort_key(r.collector_number))
+    return [
+        {
+            "id": r.scryfall_id,
+            "oracle_id": r.oracle_id,
+            "name": r.name,
+            "collector_number": r.collector_number,
+            "rarity": r.rarity,
+            "image_uris": {
+                "grid": r.image_normal,
+                "thumb": images.variant(r.image_normal, "thumb"),
+            },
+        }
+        for r in rows
+    ]
 
 
 def _name_set_key(entry: dict[str, Any]) -> tuple[str, str | None]:
