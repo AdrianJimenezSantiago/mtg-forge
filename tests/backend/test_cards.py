@@ -14,7 +14,7 @@ from sqlalchemy import update
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 from mpc_forge.db import session_scope
 from mpc_forge.models import DFCPair, PrintingCache
-from mpc_forge.services.cards import bulk_data, preloader, printings
+from mpc_forge.services.cards import bulk_data, images, preloader, printings
 from mpc_forge.services.decks import importer
 from mpc_forge.utils import rate_limiter
 from mpc_forge.utils.rate_limiter import TieredRateLimiter
@@ -360,6 +360,50 @@ TOKEN_MAKER = {
         {"id": "self", "name": "Krenko, Mob Boss", "component": "combo_piece"},
     ],
 }
+
+
+class TestImages:
+    def test_legacy_jpeg_urls_map_to_their_webp_versions(self):
+        base = "https://cards.scryfall.io/{}/back/6/9/69.{}?17"
+        for old, new in images.WEBP_FOR.items():
+            assert images.webp_url(base.format(old, "jpg")) == base.format(new, "webp")
+        no_query = "https://cards.scryfall.io/large/front/6/9/69.jpg"
+        assert images.webp_url(no_query) == "https://cards.scryfall.io/display/front/6/9/69.webp"
+        for untouched in (
+            None,
+            "",
+            "https://cards.scryfall.io/png/front/6/9/69.png?17",
+            "https://cards.scryfall.io/grid/front/6/9/69.webp?17",
+            "/static/img/logo.png",
+        ):
+            assert images.webp_url(untouched) == untouched
+
+    def test_printings_store_webp_and_keep_png_for_printing(self):
+        new_api = {
+            "grid": "G",
+            "display": "D",
+            "thumb": "T",
+            "jpeg": "https://cards.scryfall.io/normal/front/a/b/x.jpg",
+            "png": "P",
+        }
+        row = printings.printing_fields({**SIMPLE_CARD, "image_uris": new_api})
+        assert (row["image_normal"], row["image_large"], row["image_png"]) == ("G", "D", "P")
+        legacy = printings.printing_fields(
+            {
+                **SIMPLE_CARD,
+                "image_uris": {
+                    "normal": "https://cards.scryfall.io/normal/front/a/b/x.jpg?1",
+                    "large": "https://cards.scryfall.io/large/front/a/b/x.jpg?1",
+                    "png": "https://cards.scryfall.io/png/front/a/b/x.png?1",
+                },
+            }
+        )
+        assert legacy["image_normal"] == "https://cards.scryfall.io/grid/front/a/b/x.webp?1"
+        assert legacy["image_large"] == "https://cards.scryfall.io/display/front/a/b/x.webp?1"
+        assert legacy["image_png"] == "https://cards.scryfall.io/png/front/a/b/x.png?1"
+        only_jpeg = {"jpeg": "https://cards.scryfall.io/normal/front/a/b/x.jpg"}
+        assert images.grid(only_jpeg) == "https://cards.scryfall.io/grid/front/a/b/x.webp"
+        assert (images.display({}), images.thumb({"small": None})) == (None, None)
 
 
 class TestBulkData:

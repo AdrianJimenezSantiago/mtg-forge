@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient, is_double_faced, related_parts_from_card
 from mpc_forge.models import BulkSyncState, PrintingCache
+from mpc_forge.services.cards import images
 from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
@@ -132,11 +133,11 @@ def printing_fields(card: dict[str, Any]) -> dict[str, Any]:
         "colors": ",".join(colors),
         "color_identity": ",".join(card.get("color_identity", []) or []),
         "keywords": ",".join(card.get("keywords", []) or []),
-        "image_normal": front_img.get("normal"),
-        "image_large": front_img.get("large"),
+        "image_normal": images.grid(front_img),
+        "image_large": images.display(front_img),
         "image_png": front_img.get("png"),
-        "back_image_normal": back_img.get("normal") if back_img else None,
-        "back_image_large": back_img.get("large") if back_img else None,
+        "back_image_normal": images.grid(back_img),
+        "back_image_large": images.display(back_img),
         "back_image_png": back_img.get("png") if back_img else None,
         "back_name": back_name,
         "artist": card.get("artist"),

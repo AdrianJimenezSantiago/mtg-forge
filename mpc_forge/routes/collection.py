@@ -11,6 +11,7 @@ from sqlalchemy import CursorResult, delete, func, select
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
+from mpc_forge.services.cards import images
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
@@ -141,8 +142,8 @@ async def set_cards(
                 name=c.get("name", ""),
                 collector_number=c.get("collector_number", ""),
                 rarity=c.get("rarity", "common"),
-                image_small=imgs.get("small"),
-                image_normal=imgs.get("normal"),
+                image_small=images.thumb(imgs),
+                image_normal=images.grid(imgs),
                 owned=sid in owned_ids,
             )
         )

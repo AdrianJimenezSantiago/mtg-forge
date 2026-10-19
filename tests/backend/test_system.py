@@ -110,6 +110,41 @@ class TestMigrations:
         assert _query(db, "SELECT COUNT(*) FROM decks")[0][0] == 1
         assert (await _migrate(db))["applied"] == []
 
+    async def test_stored_scryfall_images_move_to_webp(self, tmp_path):
+        db = tmp_path / "v14.sqlite3"
+        jpg = "https://cards.scryfall.io/{}/front/a/b/ab.jpg?123"
+        _sqlite(
+            db,
+            f"""
+            CREATE TABLE kv_store (key VARCHAR(128) PRIMARY KEY, value TEXT);
+            INSERT INTO kv_store VALUES ('schema_version', '14');
+            CREATE TABLE printings (
+                scryfall_id TEXT PRIMARY KEY, image_normal TEXT, image_large TEXT,
+                image_png TEXT, back_image_normal TEXT, back_image_large TEXT
+            );
+            INSERT INTO printings VALUES
+                ('a', '{jpg.format("normal")}', '{jpg.format("large")}',
+                 'https://cards.scryfall.io/png/front/a/b/ab.png?123', NULL, NULL),
+                ('b', '/static/img/logo.png', NULL, NULL, NULL, NULL);
+            CREATE TABLE collection_entries (scryfall_id TEXT PRIMARY KEY, image_small TEXT);
+            INSERT INTO collection_entries VALUES ('a', '{jpg.format("small")}');
+            """,
+        )
+        assert 15 in (await _migrate(db))["applied"]
+        webp = "https://cards.scryfall.io/{}/front/a/b/ab.webp?123"
+        assert _query(db, "SELECT * FROM printings ORDER BY scryfall_id") == [
+            (
+                "a",
+                webp.format("grid"),
+                webp.format("display"),
+                "https://cards.scryfall.io/png/front/a/b/ab.png?123",
+                None,
+                None,
+            ),
+            ("b", "/static/img/logo.png", None, None, None, None),
+        ]
+        assert _query(db, "SELECT image_small FROM collection_entries") == [(webp.format("thumb"),)]
+
     async def test_newer_database_is_left_alone(self, tmp_path):
         db = tmp_path / "future.sqlite3"
         _sqlite(

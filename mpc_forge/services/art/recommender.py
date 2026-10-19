@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import OracleArtistCache
+from mpc_forge.services.cards import images
 
 log = logging.getLogger(__name__)
 
@@ -89,8 +90,8 @@ def _to_match(oracle_id: str, printing: dict[str, Any]) -> ArtistMatch:
         set_name=printing.get("set_name") or "",
         collector_number=printing.get("collector_number") or "",
         artist=printing.get("artist") or "",
-        image_small=imgs.get("small"),
-        image_normal=imgs.get("normal"),
+        image_small=images.thumb(imgs),
+        image_normal=images.grid(imgs),
         released_at=printing.get("released_at"),
         is_full_art=bool(printing.get("full_art")),
         is_promo=bool(printing.get("promo")),
@@ -379,8 +380,8 @@ async def recommend_by_style(
                     set_name=p.get("set_name") or "",
                     collector_number=p.get("collector_number") or "",
                     artist=p.get("artist") or "",
-                    image_small=imgs.get("small"),
-                    image_normal=imgs.get("normal"),
+                    image_small=images.thumb(imgs),
+                    image_normal=images.grid(imgs),
                     released_at=p.get("released_at"),
                     matched_criteria=labels,
                 )

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from reportlab import rl_config
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A3, A4, LETTER, landscape
 from reportlab.lib.units import mm
@@ -15,6 +16,10 @@ from reportlab.pdfgen import canvas
 from mpc_forge.services.printing.xml_generator import DeckCardResolved, default_cardback_path
 
 log = logging.getLogger(__name__)
+
+# Sin ASCII85 las imágenes van en binario: el codificador de ReportLab es Python puro
+# y se llevaba ~90 % del tiempo de un PDF de mazo, además de inflarlo un 25 %.
+rl_config.useA85 = 0
 
 CARD_WIDTH_MM = 63.0
 CARD_HEIGHT_MM = 88.0

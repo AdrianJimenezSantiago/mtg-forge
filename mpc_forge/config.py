@@ -6,6 +6,7 @@ from typing import Literal
 
 from platformdirs import user_data_dir
 
+from mpc_forge import __version__
 from mpc_forge.paths import install_root
 
 APP_NAME = "MPC-Forge"
@@ -13,7 +14,10 @@ APP_AUTHOR: Literal[False] = False
 
 MOXFIELD_USER_AGENT = "MPC-Forge/0.1 (personal-proxy-tool; contact: local)"
 
-SCRYFALL_USER_AGENT = "MPC-Forge/0.1"
+# Scryfall exige un User-Agent que identifique la aplicación y su versión.
+SCRYFALL_USER_AGENT = (
+    f"MPC-Forge/{__version__} (+https://github.com/AdrianJimenezSantiago/mtg-forge)"
+)
 SCRYFALL_API = "https://api.scryfall.com"
 
 MPC_TIERS: list[dict[str, float]] = [

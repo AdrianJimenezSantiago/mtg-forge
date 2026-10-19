@@ -438,13 +438,19 @@ class TestPrintRuns:
 
 
 def _page_streams(pdf: bytes) -> bytes:
-    """Contenido descomprimido de las páginas (reportlab: ASCII85 + Flate)."""
+    """Contenido descomprimido de las páginas (Flate, en binario o en ASCII85)."""
     out = b""
     for match in re.finditer(rb"stream\r?\n(.*?)endstream", pdf, re.S):
-        try:
-            out += zlib.decompress(base64.a85decode(match.group(1).strip(), adobe=True))
-        except (ValueError, zlib.error):
-            continue
+        raw = match.group(1)
+        for decode in (
+            lambda: zlib.decompress(raw),
+            lambda: zlib.decompress(base64.a85decode(raw.strip(), adobe=True)),
+        ):
+            try:
+                out += decode()
+                break
+            except (ValueError, zlib.error):
+                continue
     return out
 
 
