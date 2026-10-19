@@ -145,6 +145,9 @@ window.fmt = {
 
   function upsizeUrl(url) {
     if (!url) return url;
+    if (url.includes('cards.scryfall.io/thumb/')) {
+      return url.replace('cards.scryfall.io/thumb/', 'cards.scryfall.io/grid/');
+    }
     return url.includes('cards.scryfall.io/small/')
       ? url.replace('cards.scryfall.io/small/', 'cards.scryfall.io/normal/')
       : url;

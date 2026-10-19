@@ -1,19 +1,42 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
+import sqlite3
 import sys
 import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 
+from mpc_forge import config as _cfg
 from mpc_forge.clients.scryfall import HEAVY_PATHS, ScryfallClient
 from mpc_forge.db import session_scope
-from mpc_forge.models import DFCPair, PrintingCache
-from mpc_forge.services.cards import bulk_data, preloader, printings
+from mpc_forge.models import (
+    ArtPreference,
+    CollectionEntry,
+    Deck,
+    DeckCard,
+    DFCPair,
+    KeyValue,
+    OracleRole,
+    PrintingCache,
+)
+from mpc_forge.services.art import recommender
+from mpc_forge.services.art.art_cache import ArtCache
+from mpc_forge.services.cards import (
+    bulk_data,
+    card_migrations,
+    images,
+    oracle_tags,
+    preloader,
+    printings,
+    sets,
+)
 from mpc_forge.services.decks import importer
 from mpc_forge.utils import rate_limiter
 from mpc_forge.utils.rate_limiter import TieredRateLimiter
@@ -361,6 +384,50 @@ TOKEN_MAKER = {
 }
 
 
+class TestImages:
+    def test_legacy_jpeg_urls_map_to_their_webp_versions(self):
+        base = "https://cards.scryfall.io/{}/back/6/9/69.{}?17"
+        for old, new in images.WEBP_FOR.items():
+            assert images.webp_url(base.format(old, "jpg")) == base.format(new, "webp")
+        no_query = "https://cards.scryfall.io/large/front/6/9/69.jpg"
+        assert images.webp_url(no_query) == "https://cards.scryfall.io/display/front/6/9/69.webp"
+        for untouched in (
+            None,
+            "",
+            "https://cards.scryfall.io/png/front/6/9/69.png?17",
+            "https://cards.scryfall.io/grid/front/6/9/69.webp?17",
+            "/static/img/logo.png",
+        ):
+            assert images.webp_url(untouched) == untouched
+
+    def test_printings_store_webp_and_keep_png_for_printing(self):
+        new_api = {
+            "grid": "G",
+            "display": "D",
+            "thumb": "T",
+            "jpeg": "https://cards.scryfall.io/normal/front/a/b/x.jpg",
+            "png": "P",
+        }
+        row = printings.printing_fields({**SIMPLE_CARD, "image_uris": new_api})
+        assert (row["image_normal"], row["image_large"], row["image_png"]) == ("G", "D", "P")
+        legacy = printings.printing_fields(
+            {
+                **SIMPLE_CARD,
+                "image_uris": {
+                    "normal": "https://cards.scryfall.io/normal/front/a/b/x.jpg?1",
+                    "large": "https://cards.scryfall.io/large/front/a/b/x.jpg?1",
+                    "png": "https://cards.scryfall.io/png/front/a/b/x.png?1",
+                },
+            }
+        )
+        assert legacy["image_normal"] == "https://cards.scryfall.io/grid/front/a/b/x.webp?1"
+        assert legacy["image_large"] == "https://cards.scryfall.io/display/front/a/b/x.webp?1"
+        assert legacy["image_png"] == "https://cards.scryfall.io/png/front/a/b/x.png?1"
+        only_jpeg = {"jpeg": "https://cards.scryfall.io/normal/front/a/b/x.jpg"}
+        assert images.grid(only_jpeg) == "https://cards.scryfall.io/grid/front/a/b/x.webp"
+        assert (images.display({}), images.thumb({"small": None})) == (None, None)
+
+
 class TestBulkData:
     def test_cards_are_mapped_to_printing_rows(self):
         row = bulk_data.card_to_row(SIMPLE_CARD)
@@ -386,7 +453,35 @@ class TestBulkData:
         )
 
         parts = json.loads(bulk_data.card_to_row(TOKEN_MAKER)["related_parts"])
-        assert {p["component"] for p in parts} == {"token"}
+        assert {p["component"] for p in parts} == {"token", "combo_piece"}
+
+        priced = {**SIMPLE_CARD, "digital": True, "prices": {"usd": "1.50", "eur": None}}
+        row = bulk_data.card_to_row(priced)
+        expected = printings.printing_fields(priced)
+        assert {k: v for k, v in row.items() if k not in ("scryfall_id", "fetched_at")} == {
+            k: v for k, v in expected.items() if k != "fetched_at"
+        }
+        assert (row["price_usd"], row["price_eur"], row["digital"]) == (1.5, None, True)
+
+        dfc = printings.printing_fields(
+            {
+                **DFC_CARD,
+                "set_type": "expansion",
+                "frame_effects": ["showcase", "extendedart"],
+                "image_status": "highres_scan",
+                "image_updated_at": "2026-07-13T02:02:53Z",
+                "card_faces": [{**DFC_CARD["card_faces"][0], "illustration_id": "ill"}, {}],
+            }
+        )
+        assert (dfc["set_type"], dfc["frame_effects"], dfc["illustration_id"]) == (
+            "expansion",
+            "showcase,extendedart",
+            "ill",
+        )
+        assert (dfc["image_status"], dfc["image_updated_at"]) == (
+            "highres_scan",
+            "2026-07-13T02:02:53Z",
+        )
 
         assert bulk_data.card_to_row({"id": "d", "layout": "art_series", "name": "x"}) is None
         assert bulk_data.card_to_row({"name": "Rota"}) is None
@@ -395,34 +490,26 @@ class TestBulkData:
         )
         assert (minimal["cmc"], minimal["colors"], minimal["image_normal"]) == (0.0, "", None)
 
-    def test_incremental_parser_is_independent_of_chunk_boundaries(self):
-        def parse(text: str, chunk: int) -> list[dict]:
-            parser = bulk_data._IncrementalArrayParser()
-            return [
-                card
-                for i in range(0, len(text), chunk)
-                for card in parser.feed(text[i : i + chunk])
-            ]
+    async def test_jsonl_gz_reader_is_independent_of_chunk_boundaries(self):
+        cards = [SIMPLE_CARD, DFC_CARD, TOKEN_MAKER, {"id": "4", "flavor": 'dijo "corre"\n'}]
+        body = "\n".join(json.dumps(c) for c in cards).encode()
+        payload = gzip.compress(body)
 
-        payload = json.dumps([SIMPLE_CARD, DFC_CARD, TOKEN_MAKER])
-        for chunk in (1, 3, 17, 128, 100000):
-            assert [c["id"] for c in parse(payload, chunk)] == [
-                "aaaa-1111",
-                "bbbb-2222",
-                "cccc-3333",
-            ], chunk
-        tricky = [
-            {"id": "1", "name": "Counterspell", "mana_cost": "{U}{U}"},
-            {"id": "2", "name": "Ach! Hans, Run!", "flavor": 'dijo \\"corre\\"'},
-        ]
-        parsed = parse(json.dumps(tricky), 5)
-        assert len(parsed) == 2 and parsed[0]["mana_cost"] == "{U}{U}"
-        assert parse("[]", 1) == []
+        async def read(data: bytes, size: int) -> list[str]:
+            async def chunks():
+                for i in range(0, len(data), size):
+                    yield data[i : i + size]
 
-        parser = bulk_data._IncrementalArrayParser()
-        big = json.dumps([SIMPLE_CARD] * 50)
-        consumed = sum(len(list(parser.feed(big[i : i + 512]))) for i in range(0, len(big), 512))
-        assert consumed == 50 and len(parser._buf) < 4096
+            return [c["id"] async for c in bulk_data._jsonl_cards(chunks())]
+
+        expected = ["aaaa-1111", "bbbb-2222", "cccc-3333", "4"]
+        for size in (1, 7, 300, 1 << 20):
+            assert await read(payload, size) == expected, size
+        # Un .gz puede traer varios miembros concatenados.
+        two_members = gzip.compress(b"\n".join(json.dumps(c).encode() for c in cards[:2]) + b"\n")
+        two_members += gzip.compress(json.dumps(cards[2]).encode())
+        assert await read(two_members, 5) == expected[:3]
+        assert await read(gzip.compress(b""), 4) == []
 
     def test_progress_reporting(self):
         assert bulk_data.BulkProgress().to_dict()["percent"] == 0.0
@@ -452,6 +539,468 @@ class TestBulkData:
         assert (await client.get("/api/bulk/check?kind=inventado")).status_code == 400
         cancel = await client.post("/api/bulk/cancel")
         assert cancel.status_code == 200 and cancel.json()["cancelled"] is False
+
+
+def _print(sfid: str, name: str, set_code: str, released: str, **extra) -> dict:
+    return {
+        "id": sfid,
+        "oracle_id": f"oracle-{name.split(' // ')[0].lower()}",
+        "name": name,
+        "set": set_code,
+        "collector_number": sfid,
+        "lang": "en",
+        "layout": "normal",
+        "released_at": released,
+        "prices": {"usd": "2.00"},
+        "legalities": {"commander": "legal"},
+        **extra,
+    }
+
+
+OFFLINE_PRINTS = [
+    _print("bolt-old", "Lightning Bolt", "lea", "1993-08-05", artist="Christopher Rush"),
+    _print(
+        "bolt-new",
+        "Lightning Bolt",
+        "m11",
+        "2010-07-16",
+        artist="Christopher Moeller",
+        frame_effects=["showcase"],
+    ),
+    _print("bolt-promo", "Lightning Bolt", "pm11", "2011-01-01", promo=True),
+    _print("bolt-arena", "Lightning Bolt", "ha1", "2019-11-14", digital=True),
+    _print("bolt-gold", "Lightning Bolt", "wc97", "2012-01-01", border_color="gold"),
+    _print("bolt-fr", "Lightning Bolt", "fbb", "2015-01-01", lang="fr"),
+    # Preventa sin escaneo: la penaliza la imagen, no la fecha.
+    _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01", image_status="placeholder"),
+    # La impresión normal más reciente: la que Scryfall da por defecto.
+    _print("bolt-plain", "Lightning Bolt", "m10", "2009-07-17"),
+    _print("bolt-list", "Lightning Bolt", "plst", "2024-01-01", set_type="masters"),
+    _print("bolt-sld", "Lightning Bolt", "sld", "2023-01-01", set_type="box"),
+    _print("bolt-borderless", "Lightning Bolt", "2x2", "2022-07-08", border_color="borderless"),
+    _print("bolt-retro", "Lightning Bolt", "2xm", "2020-08-07", frame="1997"),
+    _print("bolt-fullart", "Lightning Bolt", "jmp", "2020-07-17", full_art=True),
+    _print("bolt-30a", "Lightning Bolt", "30a", "2022-11-28", set_type="memorabilia"),
+    _print("bolt-blurry", "Lightning Bolt", "new", "2025-01-01", image_status="lowres"),
+    _print("vial", "Aether Vial", "dst", "2004-02-06"),
+    _print("eowyn", "Éowyn, Lady of Rohan", "ltr", "2023-06-23"),
+    _print(
+        "delver",
+        "Delver of Secrets // Insectile Aberration",
+        "isd",
+        "2011-09-30",
+        layout="transform",
+    ),
+    _print("goblin", "Goblin", "tm11", "2010-07-16", layout="token"),
+]
+
+
+async def _seed_offline(*, synced: bool = True) -> None:
+    rows = [bulk_data.card_to_row(c) for c in OFFLINE_PRINTS]
+    async with session_scope() as s:
+        await bulk_data._flush(s, [r for r in rows if r])
+        if synced:
+            await bulk_data._record_state(s, "default_cards", "2026-10-01T00:00:00Z", len(rows), 0)
+
+
+class TestOfflineLookups:
+    async def test_bulk_upsert_keeps_every_column_and_uses_executemany(self, client):
+        many = [
+            bulk_data.card_to_row(_print(f"id-{i}", f"Card {i}", "tst", "2020-01-01"))
+            for i in range(bulk_data.BATCH_SIZE)
+        ]
+        async with session_scope() as s:
+            assert await bulk_data._flush(s, [r for r in many if r]) == bulk_data.BATCH_SIZE
+            await bulk_data._flush(s, [bulk_data.card_to_row(_print("id-0", "Card 0", "tst", "x"))])
+            row = await s.get(PrintingCache, "id-0")
+            assert (row.price_usd, json.loads(row.legalities)) == (2.0, {"commander": "legal"})
+            assert row.released_at == "x"
+
+    async def test_names_resolve_locally_to_the_default_paper_printing(self, client, fake_scryfall):
+        await _seed_offline()
+        calls: list = []
+
+        async def collection(idents):
+            calls.append(idents)
+            return []
+
+        fake_scryfall.collection = collection
+        printings._name_memo.clear()
+        async with session_scope() as s:
+            out = await printings.resolve_cards(
+                s,
+                fake_scryfall,
+                [
+                    {"name": "lightning bolt"},
+                    {"name": "Lightning Bolt", "set": "LEA"},
+                    {"name": "Delver of Secrets"},
+                    {"name": "Æther Vial"},
+                    {"name": "éowyn, lady of rohan"},
+                    {"name": "Carta Inexistente"},
+                ],
+            )
+        assert [o.get("scryfall_id") for o in out] == [
+            "bolt-plain",
+            "bolt-old",
+            "delver",
+            "vial",
+            "eowyn",
+            None,
+        ]
+        assert calls == [[{"name": "Carta Inexistente"}]]
+
+    async def test_names_are_not_guessed_from_a_partial_cache(self, client, fake_scryfall):
+        await _seed_offline(synced=False)
+        printings._name_memo.clear()
+        async with session_scope() as s:
+            out = await printings.resolve_cards(s, fake_scryfall, [{"name": "Lightning Bolt"}])
+            assert await printings.find_local_printing(s, name="Lightning Bolt") is None
+            assert await printings.local_autocomplete(s, "light") is None
+        assert out[0]["scryfall_id"] == "lb-en"
+
+    async def test_add_card_and_autocomplete_skip_the_api(self, client, deck, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.named = fake_scryfall.by_set_and_number = offline
+        fake_scryfall.autocomplete = offline
+
+        r = await client.post(f"/api/decks/{deck['id']}/cards", json={"name": "Lightning Bolt"})
+        assert r.status_code == 201, r.text
+        assert r.json()["scryfall_id"] == "bolt-plain"
+        r = await client.post(
+            f"/api/decks/{deck['id']}/cards",
+            json={
+                "name": "Lightning Bolt",
+                "set_code": "LEA",
+                "collector_number": "bolt-old",
+                "role": "sideboard",
+            },
+        )
+        assert r.json()["scryfall_id"] == "bolt-old"
+
+        names = (await client.get("/api/decks/_/autocomplete?q=li")).json()
+        assert names == ["Lightning Bolt"]
+        assert (await client.get("/api/decks/_/autocomplete?q=SECRETS")).json() == [
+            "Delver of Secrets // Insectile Aberration"
+        ]
+        assert (await client.get("/api/decks/_/autocomplete?q=gob")).json() == []
+        assert (await client.get("/api/decks/_/autocomplete?q=_%25")).json() == []
+
+    async def test_unresolved_cards_come_back_with_suggestions(self, client, fake_scryfall):
+        await _seed_offline()
+        printings._name_index = None
+        r = await client.post(
+            "/api/decks/import/text",
+            json={"name": "S", "text": "1 Lightnig Bolt\n1 Delver of Secret\n1 zzzzqqq"},
+        )
+        assert r.status_code == 200, r.text
+        suggestions = {u["name"]: u["suggestions"] for u in r.json()["unresolved"]}
+        assert suggestions == {
+            "Lightnig Bolt": ["Lightning Bolt"],
+            "Delver of Secret": ["Delver of Secrets // Insectile Aberration"],
+            "zzzzqqq": [],
+        }
+
+    async def test_without_the_dump_suggestions_ask_scryfall_a_few_times(
+        self, client, fake_scryfall
+    ):
+        asked: list[str] = []
+
+        async def fuzzy_name(name):
+            asked.append(name)
+            return "Sol Ring" if name == "card 0" else None
+
+        fake_scryfall.fuzzy_name = fuzzy_name
+        names = [f"card {i}" for i in range(printings.REMOTE_SUGGESTIONS_CAP + 5)]
+        async with session_scope() as s:
+            found = await printings.suggest_names(s, fake_scryfall, [*names, "card 0"])
+        assert len(asked) == printings.REMOTE_SUGGESTIONS_CAP
+        assert found["card 0"] == ["Sol Ring"] and found["card 1"] == []
+        assert "card 14" not in found
+
+    async def test_cancel_stops_a_running_import(self, client, monkeypatch):
+        started = asyncio.Event()
+
+        async def slow_sync(db, kind, *, force=False):
+            started.set()
+            bulk_data._progress = bulk_data.BulkProgress(kind=kind, phase="downloading")
+            await asyncio.sleep(30)
+
+        monkeypatch.setattr(bulk_data, "sync", slow_sync)
+        task = bulk_data.start()
+        await started.wait()
+        with pytest.raises(RuntimeError):
+            bulk_data.start()
+        assert (await client.post("/api/bulk/sync")).status_code == 409
+        assert (await client.post("/api/bulk/cancel")).json() == {"cancelled": True}
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not bulk_data.is_running()
+
+    async def test_refresh_only_reimports_an_existing_stale_dump(self, client, monkeypatch):
+        started: list[str] = []
+        monkeypatch.setattr(bulk_data, "start", lambda kind="default_cards": started.append(kind))
+
+        async def needs_sync(db, kind):
+            return True, "nuevo"
+
+        monkeypatch.setattr(bulk_data, "needs_sync", needs_sync)
+        async with session_scope() as s:
+            assert await bulk_data.refresh_if_stale(s) is False
+            await _seed_offline()
+            assert await bulk_data.refresh_if_stale(s) is False
+            state = await bulk_data.get_state(s)
+            state.synced_at = datetime.now(UTC) - bulk_data.REFRESH_AFTER - timedelta(hours=1)
+            await s.commit()
+            assert await bulk_data.refresh_if_stale(s) is True
+        assert started == ["default_cards"]
+
+
+class TestLocalRecommender:
+    async def test_artist_and_style_come_from_the_dump(self, client, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.prints_by_oracle_id = offline
+        many = ["oracle-lightning bolt"] + [f"oracle-{i}" for i in range(40)]
+        async with session_scope() as s:
+            by_artist = await recommender.recommend_by_artist(
+                fake_scryfall, many, "christopher rush", db=s
+            )
+            by_style = await recommender.recommend_by_style(
+                fake_scryfall, many, showcase=True, db=s
+            )
+        assert [m.scryfall_id for m in by_artist.matched] == ["bolt-old"]
+        assert (len(by_artist.unmatched), by_artist.skipped) == (40, [])
+        assert [(m.scryfall_id, m.matched_criteria) for m in by_style.matched] == [
+            ("bolt-new", ["showcase"])
+        ]
+        thumb = by_style.matched[0].image_small
+        assert thumb is None or "/thumb/" in thumb
+
+
+class TestArtCacheRefresh:
+    async def test_new_scans_are_downloaded_again_but_bulk_regeneration_is_not(self, client):
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(str(request.url))
+            return httpx.Response(200, content=f"png-{len(calls)}".encode())
+
+        cache = ArtCache(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        card = {**SIMPLE_CARD, "image_uris": {"png": "https://cards.scryfall.io/png/x.png"}}
+        async with session_scope() as s:
+            await printings.upsert_printing(s, card)
+            await s.commit()
+
+            async def fetch(updated_at):
+                await s.execute(
+                    update(PrintingCache)
+                    .where(PrintingCache.scryfall_id == card["id"])
+                    .values(image_updated_at=updated_at)
+                )
+                await s.commit()
+                result = await cache.ensure_many(s, [(card["id"], "front")])
+                return result[(card["id"], "front")]
+
+            first = await fetch(None)
+            assert (len(calls), first.bytes_size) == (1, 5)
+            await fetch("2026-07-13T02:02:53Z")
+            assert len(calls) == 1
+            await fetch((datetime.now(UTC) + timedelta(days=1)).isoformat())
+            assert len(calls) == 2
+            await fetch((datetime.now(UTC) - timedelta(minutes=1)).isoformat())
+            assert len(calls) == 2
+        await cache.aclose()
+
+
+class TestCardMigrations:
+    async def test_merges_update_live_data_and_deletes_keep_used_printings(
+        self, client, fake_scryfall
+    ):
+        async with session_scope() as s:
+            deck = Deck(name="M", commander_scryfall_id="old-cmd")
+            s.add(deck)
+            await s.flush()
+            s.add_all(
+                [
+                    DeckCard(deck_id=deck.id, oracle_id="o", name="A", scryfall_id="old-a"),
+                    DeckCard(deck_id=deck.id, oracle_id="o", name="G", scryfall_id="gone-used"),
+                    ArtPreference(oracle_id="o", scryfall_id="old-a"),
+                    CollectionEntry(scryfall_id="old-a", oracle_id="o", name="A", set_code="x"),
+                    CollectionEntry(scryfall_id="old-b", oracle_id="o", name="B", set_code="x"),
+                    CollectionEntry(scryfall_id="new-b", oracle_id="o", name="B", set_code="x"),
+                ]
+            )
+            for sfid in ("old-a", "gone-used", "gone-unused"):
+                await printings.upsert_printing(s, {**SIMPLE_CARD, "id": sfid})
+            await s.commit()
+
+        migrations = [
+            {"migration_strategy": "merge", "old_scryfall_id": o, "new_scryfall_id": n}
+            for o, n in (("old-a", "new-a"), ("old-b", "new-b"), ("old-cmd", "new-cmd"))
+        ] + [
+            {"migration_strategy": "delete", "old_scryfall_id": d, "new_scryfall_id": None}
+            for d in ("gone-used", "gone-unused")
+        ]
+        asked: list = []
+
+        async def fake_migrations(since=None):
+            asked.append(since)
+            return [{**m, "performed_at": "2026-09-23"} for m in migrations]
+
+        async def collection(idents):
+            return [{**SIMPLE_CARD, "id": i["id"]} for i in idents]
+
+        fake_scryfall.migrations = fake_migrations
+        fake_scryfall.collection = collection
+        async with session_scope() as s:
+            result = await card_migrations.sync_if_stale(s, fake_scryfall)
+            assert result["synced"] and result["migrations"] == 5
+            assert (await card_migrations.sync_if_stale(s, fake_scryfall))["synced"] is False
+
+            cards = (await s.scalars(select(DeckCard.scryfall_id).order_by(DeckCard.name))).all()
+            assert cards == ["new-a", "gone-used"]
+            assert (await s.get(Deck, deck.id)).commander_scryfall_id == "new-cmd"
+            assert (await s.get(ArtPreference, "o")).scryfall_id == "new-a"
+            owned = (await s.scalars(select(CollectionEntry.scryfall_id))).all()
+            assert sorted(owned) == ["new-a", "new-b"]
+            cached = set((await s.scalars(select(PrintingCache.scryfall_id))).all())
+            assert {"new-a", "new-cmd", "gone-used"} <= cached
+            assert not {"old-a", "gone-unused"} & cached
+        assert asked == [None]
+
+
+class TestSets:
+    async def test_set_list_is_kept_for_offline_use_and_icons_are_served_locally(
+        self, client, fake_scryfall, monkeypatch
+    ):
+        icon = "https://svgs.scryfall.io/sets/isd.svg?17"
+        calls: list[int] = []
+
+        async def online():
+            calls.append(1)
+            return [
+                {
+                    "code": "isd",
+                    "name": "Innistrad",
+                    "set_type": "expansion",
+                    "card_count": 264,
+                    "released_at": "2011-09-30",
+                    "icon_svg_uri": icon,
+                },
+                {
+                    "code": "tisd",
+                    "name": "Innistrad Tokens",
+                    "set_type": "token",
+                    "card_count": 12,
+                    "released_at": "2011-09-30",
+                    "icon_svg_uri": icon,
+                },
+            ]
+
+        async def offline():
+            raise httpx.ConnectError("sin red")
+
+        downloads: list[str] = []
+
+        def handler(request):
+            downloads.append(str(request.url))
+            return httpx.Response(200, content=b"<svg/>")
+
+        mock = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        monkeypatch.setattr(sets, "_http", lambda: mock)
+
+        fake_scryfall.sets = online
+        sets._memo = None
+        listed = (await client.get("/api/collection/sets")).json()
+        assert [(s["code"], s["icon_svg_uri"]) for s in listed] == [
+            ("isd", "/api/collection/set-icons/isd.svg")
+        ]
+
+        fake_scryfall.sets = offline
+        sets._memo = None
+        async with session_scope() as s:
+            await s.execute(
+                update(KeyValue)
+                .where(KeyValue.key == "scryfall_sets.fetched_at")
+                .values(value="2000-01-01T00:00:00+00:00")
+            )
+            await s.commit()
+        assert [s["code"] for s in (await client.get("/api/collection/sets")).json()] == ["isd"]
+
+        for _ in range(2):
+            r = await client.get("/api/collection/set-icons/isd.svg")
+            assert r.status_code == 200 and r.content == b"<svg/>"
+            assert r.headers["content-type"] == "image/svg+xml"
+            assert "default-src 'none'" in r.headers["content-security-policy"]
+        if sets._prefetch is not None:
+            await sets._prefetch
+        assert downloads == [icon]
+        assert (await client.get("/api/collection/set-icons/evil.svg")).status_code == 404
+        assert (await client.get("/api/collection/set-icons/..%2Fdb.svg")).status_code == 404
+
+    async def test_set_cards_come_from_the_dump_in_collector_order(self, client, fake_scryfall):
+        await _seed_offline()
+
+        async def offline(*args, **kwargs):
+            raise AssertionError("no debería llamar a Scryfall")
+
+        fake_scryfall.search_all = offline
+        async with session_scope() as s:
+            for number in ("10", "2", "SCTLR", "IFIYW-1", "1"):
+                await printings.upsert_printing(
+                    s,
+                    {**SIMPLE_CARD, "id": f"t-{number}", "set": "tst", "collector_number": number},
+                )
+            await s.commit()
+        cards = (await client.get("/api/collection/sets/tst/cards")).json()
+        assert [c["collector_number"] for c in cards] == ["SCTLR", "1", "IFIYW-1", "2", "10"]
+
+
+def _tag(slug, oracles=(), children=()):
+    return {
+        "id": f"id-{slug}",
+        "slug": slug,
+        "child_ids": [f"id-{c}" for c in children],
+        "taggings": [{"oracle_id": o, "weight": "median"} for o in oracles],
+    }
+
+
+class TestOracleRoles:
+    def test_roles_gather_descendant_tags_with_exclusions(self):
+        tags = [
+            _tag("removal", children=("spot-removal", "sweeper")),
+            _tag("spot-removal", ("swords",)),
+            _tag("sweeper", ("wrath",)),
+            _tag("tutor", children=("tutor-creature", "tutor-land")),
+            _tag("tutor-creature", ("worldly",)),
+            _tag("tutor-land", ("cultivate", "worldly")),
+            _tag("ramp", ("cultivate",), children=("ramp",)),
+        ]
+        roles = oracle_tags.compute_roles(tags)
+        assert roles["removal"] == {"swords"} and roles["wipe"] == {"wrath"}
+        assert roles["tutor"] == {"worldly"} and roles["ramp"] == {"cultivate"}
+        assert roles["draw"] == set()
+
+    async def test_deck_cards_carry_their_roles_unless_disabled(self, client, deck):
+        sol_ring = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
+        async with session_scope() as s:
+            s.add(OracleRole(oracle_id=sol_ring["oracle_id"], role="ramp"))
+            await s.commit()
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        assert {c["name"]: c["roles"] for c in cards}["Sol Ring"] == ["ramp"]
+        assert all(c["roles"] == [] for c in cards if c["name"] != "Sol Ring")
+
+        r = await client.put("/api/settings/", json={"values": {"show_card_roles": False}})
+        assert r.status_code == 200, r.text
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        assert all(c["roles"] == [] for c in cards)
 
 
 async def test_dfc_pair_lookup(client):
@@ -522,3 +1071,174 @@ async def test_collection_goes_through_the_scryfall_client(client, fake_scryfall
     assert cards[0]["scryfall_id"] == "sr-en" and cards[0]["owned"] is False
     assert calls == ["sets", ("set:c21 -is:digital", {"unique": "prints", "order": "set"})]
     collection._SETS_CACHE = None
+
+
+def _db_is_writable() -> bool:
+    """¿Puede otro escritor tomar el bloqueo ahora mismo? Falso si alguna sesión
+    tiene una transacción de escritura abierta."""
+    con = sqlite3.connect(_cfg.PATHS.db_path, timeout=0.05)
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        con.rollback()
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        con.close()
+
+
+def _token(sfid: str, name: str) -> dict:
+    return {**_print(sfid, name, "tst", "2020-01-01"), "layout": "token"}
+
+
+class TestConcurrentWrites:
+    async def test_upserts_never_collide_with_the_dump_writing_the_same_rows(self, client):
+        cards = [_print(f"race-{i}", f"Race {i}", "tst", "2020-01-01") for i in range(150)]
+        rows = [r for r in (bulk_data.card_to_row(c) for c in cards) if r]
+
+        async def dump() -> None:
+            for _ in range(15):
+                async with session_scope() as s:
+                    await bulk_data._flush(s, rows)
+
+        async def deck_import() -> None:
+            for _ in range(15):
+                async with session_scope() as s:
+                    stored = await printings.upsert_printings(s, cards)
+                    assert len(stored) == len(cards)
+
+        await asyncio.gather(dump(), deck_import(), deck_import())
+
+    async def test_upsert_returns_fresh_rows_even_if_the_session_had_them(self, client):
+        async with session_scope() as s:
+            first = await printings.upsert_printing(s, _print("x1", "Old Name", "tst", "2020"))
+            await s.commit()
+            again = await printings.upsert_printing(s, _print("x1", "New Name", "tst", "2020"))
+            assert again is first and again.name == "New Name"
+
+    async def test_split_cards_are_asked_by_their_front_face(self, counting):
+        fire_ice = _print("fire-ice", "Fire // Ice", "apc", "2001-06-04", layout="split")
+
+        async def collection(idents):
+            return [fire_ice] if {"name": "Fire"} in idents else []
+
+        counting.inner.collection = collection
+        _, unresolved = await _import(counting, "1 Fire // Ice")
+        assert unresolved == []
+        assert counting.collection_calls == [[{"name": "Fire"}]]
+
+    async def test_meld_results_are_fetched_before_writing(self, counting):
+        meld = _print(
+            "bruna",
+            "Bruna, the Fading Light",
+            "emn",
+            "2016-07-22",
+            layout="meld",
+            all_parts=[{"id": "brisela", "component": "meld_result", "name": "Brisela"}],
+        )
+        writable: list[bool] = []
+
+        async def collection(idents):
+            writable.append(_db_is_writable())
+            if {"id": "brisela"} in idents:
+                return [_print("brisela", "Brisela, Voice of Nightmares", "emn", "2016-07-22")]
+            return [meld]
+
+        counting.inner.collection = collection
+        await _import(counting, "1 Bruna, the Fading Light")
+        assert writable == [True, True]
+        async with session_scope() as s:
+            assert await s.get(PrintingCache, "brisela") is not None
+
+    async def test_tokens_are_fetched_in_one_batch_without_holding_the_lock(
+        self, client, deck, fake_scryfall
+    ):
+        tokens = [_token("tok-1", "Soldier"), _token("tok-2", "Spirit")]
+        async with session_scope() as s:
+            sol = await s.get(PrintingCache, "sr-en")
+            sol.related_parts = json.dumps(
+                [{"id": t["id"], "component": "token", "name": t["name"]} for t in tokens]
+            )
+            await s.commit()
+        calls: list[list] = []
+
+        async def collection(idents):
+            calls.append((idents, _db_is_writable()))
+            return [t for t in tokens if {"id": t["id"]} in idents]
+
+        async def by_id(sfid):
+            raise AssertionError("los tokens se piden en lote")
+
+        fake_scryfall.collection = collection
+        fake_scryfall.by_id = by_id
+        r = await client.get(f"/api/decks/{deck['id']}/tokens-analysis")
+        assert r.status_code == 200, r.text
+        assert sorted(t["name"] for t in r.json()["tokens"]) == ["Soldier", "Spirit"]
+        assert calls == [([{"id": "tok-1"}, {"id": "tok-2"}], True)]
+
+    async def test_a_locked_batch_is_retried_instead_of_failing_the_dump(self, client, monkeypatch):
+        real = printings.upsert_rows
+        attempts: list[int] = []
+
+        async def flaky(db, rows):
+            attempts.append(len(rows))
+            if len(attempts) == 1:
+                raise OperationalError(
+                    "INSERT …", {}, sqlite3.OperationalError("database is locked")
+                )
+            await real(db, rows)
+
+        monkeypatch.setattr(printings, "upsert_rows", flaky)
+        row = bulk_data.card_to_row(_print("retry", "Retry", "tst", "2020-01-01"))
+        async with session_scope() as s:
+            assert await bulk_data._flush(s, [row]) == 1
+            assert await s.get(PrintingCache, "retry") is not None
+        assert attempts == [1, 1]
+
+    def test_dump_errors_are_short(self):
+        orig = sqlite3.OperationalError("database is locked")
+        err = OperationalError("INSERT INTO printings " + "(?, ?) " * 5000, [("x",) * 40], orig)
+        assert bulk_data._short_error(err) == "OperationalError: database is locked"
+
+
+class TestPrintsInLang:
+    async def test_localized_prints_come_in_batched_searches(self):
+        queries: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            q = request.url.params["q"]
+            queries.append(q)
+            data = [{"id": "es-1", "set": "c21", "collector_number": "1", "lang": "es"}]
+            return httpx.Response(
+                200, json={"data": data if 'cn:"1")' in q else [], "has_more": False}
+            )
+
+        http = httpx.AsyncClient(
+            base_url="https://api.scryfall.com", transport=httpx.MockTransport(handler)
+        )
+        sc = ScryfallClient(http, general_interval=0, heavy_interval=0)
+        pairs = [("C21", str(i)) for i in range(1, 31)] + [("c21", "1")]
+        found = await sc.prints_in_lang(pairs, "es")
+        assert [c["id"] for c in found] == ["es-1"]
+        assert len(queries) == 2
+        assert all(q.count("(set:") < 20 for q in queries)
+        assert queries[0].startswith('lang:es ((set:c21 cn:"1") or (set:c21 cn:"2")')
+        await sc.aclose()
+
+    async def test_a_query_scryfall_rejects_falls_back_to_one_card_at_a_time(self):
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(request.url.path)
+            if request.url.path == "/cards/search":
+                return httpx.Response(400, json={"object": "error"})
+            return httpx.Response(200, json={"id": "es-x", "lang": "es"})
+
+        http = httpx.AsyncClient(
+            base_url="https://api.scryfall.com", transport=httpx.MockTransport(handler)
+        )
+        sc = ScryfallClient(http, general_interval=0, heavy_interval=0)
+        found = await sc.prints_in_lang([("abc", "7"), ("abc", "8")], "es")
+        assert [c["id"] for c in found] == ["es-x", "es-x"]
+        assert paths == ["/cards/search", "/cards/abc/7/es", "/cards/abc/8/es"]
+        await sc.aclose()

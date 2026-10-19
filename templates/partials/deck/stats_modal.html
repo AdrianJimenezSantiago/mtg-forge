@@ -191,7 +191,25 @@
             </ul>
           </section>
 
-          <section class="st-card" style="--i: 8" x-show="stats.keywords.length > 0">
+          <section class="st-card" style="--i: 8" x-show="stats.roles && stats.roles.length > 0">
+            <header class="st-card__head">
+              <h3><i data-lucide="target"></i>{{ t.stats_roles_title }}</h3>
+              <span class="st-note">{{ t.stats_roles_note }}</span>
+            </header>
+            <ul class="st-types">
+              <template x-for="row in stats.roles" :key="row.key">
+                <li class="st-type" :style="`--i: ${row.i}`">
+                  <span class="st-type__icon"></span>
+                  <span class="st-type__name" x-text="window._t('stats_role_' + row.key)"></span>
+                  <span class="st-type__track"><span class="st-type__fill" :style="`width: ${row.pct}%`"></span></span>
+                  <span class="st-type__count" x-text="row.count"></span>
+                  <span class="st-type__share"></span>
+                </li>
+              </template>
+            </ul>
+          </section>
+
+          <section class="st-card" style="--i: 9" x-show="stats.keywords.length > 0">
             <header class="st-card__head">
               <h3><i data-lucide="sparkles"></i>{{ t.stats_keywords_title }}</h3>
               <span class="st-note">{{ t.stats_keywords_note }}</span>

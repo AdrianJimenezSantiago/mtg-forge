@@ -11,7 +11,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.scryfall import ScryfallClient
-from mpc_forge.models import OracleArtistCache
+from mpc_forge.models import OracleArtistCache, PrintingCache
+from mpc_forge.services.cards import images, printings
+from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
 
@@ -89,8 +91,8 @@ def _to_match(oracle_id: str, printing: dict[str, Any]) -> ArtistMatch:
         set_name=printing.get("set_name") or "",
         collector_number=printing.get("collector_number") or "",
         artist=printing.get("artist") or "",
-        image_small=imgs.get("small"),
-        image_normal=imgs.get("normal"),
+        image_small=images.thumb(imgs),
+        image_normal=images.grid(imgs),
         released_at=printing.get("released_at"),
         is_full_art=bool(printing.get("full_art")),
         is_promo=bool(printing.get("promo")),
@@ -187,6 +189,22 @@ async def recommend_by_artist(
         return RecommendResult(artist_query=artist, matched=[], unmatched=[], skipped=[])
 
     unique_oracles = list(dict.fromkeys(o for o in oracle_ids if o))
+
+    local = await _local_prints(db, unique_oracles)
+    if local is not None:
+        matched_local: list[ArtistMatch] = []
+        unmatched_local: list[str] = []
+        for oid in unique_oracles:
+            best = _pick_best_printing(
+                [p for p in local.get(oid, []) if artist_folded in _fold(p.get("artist") or "")]
+            )
+            if best:
+                matched_local.append(_to_match(oid, best))
+            else:
+                unmatched_local.append(oid)
+        return RecommendResult(
+            artist_query=artist, matched=matched_local, unmatched=unmatched_local, skipped=[]
+        )
 
     cached_with_artist: set[str] = set()
     to_fetch = unique_oracles
@@ -335,13 +353,16 @@ async def recommend_by_style(
         )
 
     unique = list(dict.fromkeys(o for o in oracle_ids if o))
-    to_fetch = unique[:MAX_ORACLES_PER_REQUEST]
-    skipped = unique[MAX_ORACLES_PER_REQUEST:]
+    local = await _local_prints(db, unique)
+    if local is not None:
+        to_fetch, skipped, prints_by_oid = unique, [], local
+    else:
+        to_fetch = unique[:MAX_ORACLES_PER_REQUEST]
+        skipped = unique[MAX_ORACLES_PER_REQUEST:]
+        prints_by_oid = await _fetch_prints_parallel(scryfall, to_fetch)
 
     matched: list[StyleMatch] = []
     unmatched: list[str] = []
-
-    prints_by_oid = await _fetch_prints_parallel(scryfall, to_fetch)
 
     for oid in to_fetch:
         prints = prints_by_oid.get(oid, [])
@@ -379,8 +400,8 @@ async def recommend_by_style(
                     set_name=p.get("set_name") or "",
                     collector_number=p.get("collector_number") or "",
                     artist=p.get("artist") or "",
-                    image_small=imgs.get("small"),
-                    image_normal=imgs.get("normal"),
+                    image_small=images.thumb(imgs),
+                    image_normal=images.grid(imgs),
                     released_at=p.get("released_at"),
                     matched_criteria=labels,
                 )
@@ -400,6 +421,40 @@ async def recommend_by_style(
         unmatched=unmatched,
         skipped=skipped,
     )
+
+
+def _print_from_row(row: PrintingCache) -> dict[str, Any]:
+    return {
+        "id": row.scryfall_id,
+        "name": row.name,
+        "set": row.set_code,
+        "set_name": row.set_name,
+        "collector_number": row.collector_number,
+        "artist": row.artist,
+        "released_at": row.released_at,
+        "full_art": row.full_art,
+        "promo": row.promo,
+        "border_color": row.border_color,
+        "frame_effects": [e for e in (row.frame_effects or "").split(",") if e],
+        "image_uris": {
+            "grid": row.image_normal,
+            "thumb": images.variant(row.image_normal, "thumb"),
+        },
+    }
+
+
+async def _local_prints(
+    db: AsyncSession | None, oracle_ids: list[str]
+) -> dict[str, list[dict[str, Any]]] | None:
+    """Impresiones desde el volcado local, o None si no está importado."""
+    if db is None or not await printings.bulk_synced(db):
+        return None
+    out: dict[str, list[dict[str, Any]]] = {}
+    for chunk in chunked(oracle_ids):
+        rows = await db.scalars(select(PrintingCache).where(PrintingCache.oracle_id.in_(chunk)))
+        for row in rows:
+            out.setdefault(row.oracle_id, []).append(_print_from_row(row))
+    return out
 
 
 async def _fetch_prints_parallel(

@@ -141,6 +141,7 @@ function deckEditor(deckId) {
       rarity: {total: 0, segments: []},
       types: [],
       keywords: [],
+      roles: [],
     },
     statsHover: {chart: null, key: null},
 
@@ -1615,6 +1616,8 @@ function deckEditor(deckId) {
       );
 
       const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
+      // Funciones según las etiquetas de Scryfall (ver services/cards/oracle_tags.py).
+      const ROLE_ORDER = ['ramp', 'draw', 'removal', 'wipe', 'counter', 'tutor', 'protection', 'recursion'];
       const cmcBucket = (cmc) => cmc >= 7 ? '7+' : String(Math.floor(cmc || 0));
 
       const CURVE_COLORS = ['W', 'U', 'B', 'R', 'G', 'M', 'C'];
@@ -1633,6 +1636,7 @@ function deckEditor(deckId) {
       const types = {};
       const rarity = {};
       const keywords = {};
+      const roles = {};
 
       const MAIN_TYPES = [
         'Creature', 'Instant', 'Sorcery', 'Enchantment',
@@ -1684,6 +1688,10 @@ function deckEditor(deckId) {
         for (const kw of (c.keywords || [])) {
           if (!kw) continue;
           keywords[kw] = (keywords[kw] || 0) + 1;
+        }
+
+        for (const role of (c.roles || [])) {
+          roles[role] = (roles[role] || 0) + qty;
         }
       }
 
@@ -1743,6 +1751,11 @@ function deckEditor(deckId) {
         name, count, i, weight: kwMax ? count / kwMax : 0,
       }));
 
+      const roleMax = Math.max(0, ...Object.values(roles));
+      const roleList = ROLE_ORDER.filter(key => roles[key]).map((key, i) => ({
+        key, i, count: roles[key], pct: roleMax ? 100 * roles[key] / roleMax : 0,
+      }));
+
       this.stats = {
         totalCards, uniqueCards: cards.length,
         landCount, basicLandCount, nonBasicLandCount, nonLandCount, landPct, avgCmc,
@@ -1751,6 +1764,7 @@ function deckEditor(deckId) {
         rarity: {total: rarityTotal, segments: raritySegments},
         types: typeList,
         keywords: keywordList,
+        roles: roleList,
       };
     },
 

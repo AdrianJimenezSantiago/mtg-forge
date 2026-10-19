@@ -43,6 +43,11 @@ def main() -> None:
     if exit_code is not None:
         sys.exit(exit_code)
 
+    from mpc_forge.middleware import NON_LOOPBACK_WARNING, is_loopback_bind
+
+    if not is_loopback_bind(args.host):
+        log.warning(NON_LOOPBACK_WARNING, args.host)
+
     url = f"http://{args.host}:{args.port}"
 
     if args.window:

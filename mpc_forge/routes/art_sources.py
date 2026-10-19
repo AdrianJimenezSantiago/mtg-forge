@@ -10,12 +10,16 @@ from pydantic import BaseModel, Field
 
 from mpc_forge import config as cfg
 from mpc_forge.db import session_scope
+from mpc_forge.middleware import USER_CONTENT_SECURITY_POLICY
 from mpc_forge.models import ArtSource
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.indexing import art_sources, gdrive_indexer
 from mpc_forge.services.indexing.source_types import list_registered, resolve
 from mpc_forge.services.indexing.source_types.base import ArtSourceTypeError
-from mpc_forge.services.indexing.source_types.local_folder import LocalFolderSourceType
+from mpc_forge.services.indexing.source_types.local_folder import (
+    IMAGE_EXTENSIONS,
+    LocalFolderSourceType,
+)
 
 log = logging.getLogger(__name__)
 
@@ -292,4 +296,8 @@ async def serve_local_source_file(
         path = LocalFolderSourceType.resolve_path(source, file_id)
     except ArtSourceTypeError as e:
         raise HTTPException(400, str(e)) from e
-    return FileResponse(path)
+    # Solo se indexan imágenes: cualquier otro fichero de la carpeta (un .html,
+    # un .js) no debe poder servirse desde el origen de la app.
+    if path.suffix.lower() not in IMAGE_EXTENSIONS:
+        raise HTTPException(404, "Fichero no encontrado")
+    return FileResponse(path, headers={"Content-Security-Policy": USER_CONTENT_SECURITY_POLICY})

@@ -130,6 +130,27 @@ function importPanel() {
       Alpine.store('ui').success(window._t('js_copied'), `${this.unresolvedModal.unresolved.length} ${window._t('js_entries_clipboard')}`);
     },
 
+    async acceptSuggestion(index, name) {
+      const entry = this.unresolvedModal.unresolved[index];
+      if (!entry || entry.adding) return;
+      entry.adding = true;
+      try {
+        const r = await fetch(`/api/decks/${this.unresolvedModal.deckId}/cards`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, quantity: entry.quantity, role: entry.role || 'mainboard' }),
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'Error');
+        this.unresolvedModal.unresolved.splice(index, 1);
+        this.unresolvedModal.resolvedCount += entry.quantity;
+        Alpine.store('ui').success(window._t('home_unresolved_added'), name);
+        if (!this.unresolvedModal.unresolved.length) this.continueToDeck();
+      } catch (e) {
+        entry.adding = false;
+        Alpine.store('ui').error(window._t('common_error'), e.message);
+      }
+    },
+
     continueToDeck() {
       if (this.unresolvedModal.deckId) {
         window.location.href = `/decks/${this.unresolvedModal.deckId}`;

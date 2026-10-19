@@ -68,8 +68,10 @@ art are cached.
   free space left on each drive and one-click cleanup of everything that can be
   regenerated or downloaded again. Your database, custom art and cardbacks are
   never offered for deletion.
-- **Offline mode (API only for now).** Optionally import Scryfall's bulk data so
-  card resolution and printing lookups never touch the network. See
+- **Offline card data.** Optionally import Scryfall's bulk data so card
+  resolution, autocomplete, printing lookups and recommendations are answered
+  locally, and the deck statistics show each card's function (ramp, draw,
+  removal…). See
   [Working with Scryfall](#working-with-scryfall).
 - **Bilingual interface.** English and Spanish.
 
@@ -101,7 +103,7 @@ python -m mpc_forge
 | Option         | Description                                                    |
 | -------------- | -------------------------------------------------------------- |
 | `--port N`     | Listen on port `N` (default `8765`).                           |
-| `--host H`     | Bind address (default `127.0.0.1`).                            |
+| `--host H`     | Bind address (default `127.0.0.1`). The app has no password: any other address exposes it to the network. |
 | `--no-browser` | Do not open a browser tab on startup.                          |
 | `--window`     | Open in a native window instead (`pip install pywebview`).     |
 | `--no-update`  | Skip the update check on startup.                              |
@@ -211,6 +213,11 @@ Every location except the database can be changed in *Settings → Paths*.
 
 > **Updating never deletes your data.** Schema migrations are incremental, and
 > an automatic backup is written to `backups/` before any of them runs.
+>
+> Backups leave out what can be downloaded again: the Scryfall catalog (except
+> the printings your decks and collection use) and the `art/` cache. After
+> restoring one, import the Scryfall data again from *Settings*. The 5 most
+> recent automatic and manual backups are kept.
 
 ## Working with Scryfall
 
@@ -227,12 +234,30 @@ so that importing and opening many decks in a row never gets the app blocked:
   resolved without the network, identical in-flight requests are shared, and
   alternate printings for a whole deck are fetched with a handful of combined
   searches rather than one search per card.
-- **Offline mode.** Importing Scryfall's bulk data (about 1 GB on disk) turns
-  lookups into local queries. There is no button for it in the interface yet;
-  start it from the interactive API docs at `http://127.0.0.1:8765/docs` with
-  `POST /api/bulk/sync`, and follow progress with `GET /api/bulk/progress`.
+- **Offline mode.** *Settings → Offline mode* imports Scryfall's
+  [bulk data](https://scryfall.com/docs/api/bulk-data) (`default_cards`: an
+  ~80 MB `jsonl.gz` download, about 115,000 printings and ~210 MB in the
+  database; around a minute and a half). With it, resolving decklist names,
+  adding a card, autocomplete, alternate printings, artist and style
+  recommendations, "did you mean" suggestions and a set's card list are
+  answered from the local database, and only what is not there goes to the
+  API. Prices, legalities and the card functions shown in the deck statistics
+  (from Scryfall's community tags) come with it. Once imported it is refreshed
+  in the background at startup when it is more than a week old and Scryfall has
+  published a newer file (*Keep card data up to date*, on by default). The API
+  is also available: `POST /api/bulk/sync`, `GET /api/bulk/progress`,
+  `POST /api/bulk/cancel`.
+- **Card migrations.** Once a day the app reads Scryfall's
+  [card migrations](https://scryfall.com/docs/api/migrations) and points decks,
+  art preferences and the collection at the new id when Scryfall merges a card
+  into another.
 
-Images are downloaded from `cards.scryfall.io` and cached on disk.
+Card images are shown as WebP (`grid`, `display`, `thumb`): Scryfall retires
+the old `small`, `large`, `border_crop` and `art_crop` JPEGs on January 1st
+2027, and links stored by older versions are rewritten on upgrade. Printing
+downloads the full `png` once and caches it on disk; a card is downloaded again
+only if Scryfall rescans it. Set icons are downloaded once and served by the app
+instead of being hotlinked.
 
 ## Development
 

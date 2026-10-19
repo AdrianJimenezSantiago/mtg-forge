@@ -17,6 +17,7 @@ from mpc_forge import config as cfg
 from mpc_forge.lifespan import lifespan, preload_path_overrides
 from mpc_forge.middleware import (
     DEFAULT_ALLOWED_HOSTS,
+    USER_CONTENT_SECURITY_POLICY,
     LocalhostGuardMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -50,14 +51,19 @@ _NON_HTML_PREFIXES = (
 
 
 class CachedStaticFiles(StaticFiles):
-    def __init__(self, *args: Any, max_age: int = ONE_DAY, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, max_age: int = ONE_DAY, user_content: bool = False, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._cache_control = f"public, max-age={max_age}"
+        self._user_content = user_content
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         response = await super().get_response(path, scope)
         versioned = b"v=" in scope.get("query_string", b"")
         response.headers["Cache-Control"] = IMMUTABLE_CACHE if versioned else self._cache_control
+        if self._user_content:
+            response.headers["Content-Security-Policy"] = USER_CONTENT_SECURITY_POLICY
         return response
 
 
@@ -85,13 +91,16 @@ def _allowed_hosts() -> frozenset[str]:
 
 def _mount_static(app: FastAPI) -> None:
     mounts = (
-        ("/static", STATIC_DIR, ONE_DAY, "static"),
-        ("/art", cfg.PATHS.art_dir, THIRTY_DAYS, "art"),
-        ("/custom_art", cfg.PATHS.custom_art_dir, THIRTY_DAYS, "custom_art"),
-        ("/thumbs", cfg.PATHS.thumbs_dir, THIRTY_DAYS, "thumbs"),
+        ("/static", STATIC_DIR, ONE_DAY, "static", False),
+        ("/art", cfg.PATHS.art_dir, THIRTY_DAYS, "art", True),
+        ("/custom_art", cfg.PATHS.custom_art_dir, THIRTY_DAYS, "custom_art", True),
+        ("/thumbs", cfg.PATHS.thumbs_dir, THIRTY_DAYS, "thumbs", True),
     )
-    for path, directory, max_age, name in mounts:
-        app.mount(path, CachedStaticFiles(directory=str(directory), max_age=max_age), name=name)
+    for path, directory, max_age, name, user_content in mounts:
+        static = CachedStaticFiles(
+            directory=str(directory), max_age=max_age, user_content=user_content
+        )
+        app.mount(path, static, name=name)
 
 
 def create_app() -> FastAPI:

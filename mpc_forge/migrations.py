@@ -7,9 +7,37 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mpc_forge.services.cards import images
+
 log = logging.getLogger(__name__)
 
 BASELINE_VERSION = 8
+
+
+def _webp_statements() -> list[str]:
+    columns = {
+        "printings": {
+            "image_normal": "normal",
+            "back_image_normal": "normal",
+            "image_large": "large",
+            "back_image_large": "large",
+        },
+        "collection_entries": {"image_small": "small"},
+    }
+    out = []
+    for table, cols in columns.items():
+        sets, legacy = [], []
+        for col, old in cols.items():
+            prefix = f"https://cards.scryfall.io/{old}/"
+            webp = f"https://cards.scryfall.io/{images.WEBP_FOR[old]}/"
+            match = f"{col} LIKE '{prefix}%.jpg%'"
+            sets.append(
+                f"{col} = CASE WHEN {match} THEN replace(replace({col}, '{prefix}', '{webp}'), "
+                f"'.jpg', '.webp') ELSE {col} END"
+            )
+            legacy.append(match)
+        out.append(f"UPDATE {table} SET {', '.join(sets)} WHERE {' OR '.join(legacy)}")
+    return out
 
 
 @dataclass(frozen=True)
@@ -150,6 +178,42 @@ MIGRATIONS: list[Migration] = [
             "DROP INDEX IF EXISTS ix_deck_activity_deck_id",
         ],
     ),
+    Migration(
+        version=14,
+        description="Marca de impresión solo digital en printings",
+        statements=[
+            "ALTER TABLE printings ADD COLUMN digital BOOLEAN NOT NULL DEFAULT 0",
+        ],
+    ),
+    Migration(
+        version=15,
+        description="Imágenes de Scryfall en WebP (los JPEG small/large se retiran en 2027)",
+        statements=_webp_statements(),
+    ),
+    Migration(
+        version=16,
+        description="Tipo de set, efectos de marco, estado de imagen e ilustración en printings",
+        statements=[
+            "ALTER TABLE printings ADD COLUMN set_type VARCHAR(32) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN frame_effects VARCHAR(256) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN image_status VARCHAR(16) NOT NULL DEFAULT ''",
+            "ALTER TABLE printings ADD COLUMN image_updated_at VARCHAR(32)",
+            "ALTER TABLE printings ADD COLUMN illustration_id VARCHAR(64)",
+        ],
+    ),
+    Migration(
+        version=17,
+        description="Funciones de cada carta (ramp, robo, removal…) según las etiquetas de Scryfall",
+        statements=[
+            """
+            CREATE TABLE IF NOT EXISTS oracle_roles (
+                oracle_id VARCHAR(64) NOT NULL,
+                role VARCHAR(32) NOT NULL,
+                PRIMARY KEY (oracle_id, role)
+            )
+            """,
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
@@ -274,9 +338,7 @@ async def _execute_tolerant(conn: AsyncConnection, stmt: str) -> None:
         if "duplicate column name" in msg or "already exists" in msg:
             return
         head = stmt.strip().lower()
-        if "no such table" in msg and (
-            head.startswith("alter table") or head.startswith("create index")
-        ):
+        if "no such table" in msg and head.startswith(("alter table", "create index", "update ")):
             log.debug("Sentencia omitida (la tabla la crea el modelo): %s", head[:60])
             return
         raise

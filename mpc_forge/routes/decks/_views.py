@@ -17,8 +17,10 @@ from mpc_forge.schemas import (
     IllegalCardView,
 )
 from mpc_forge.services.art import custom_art
+from mpc_forge.services.cards import oracle_tags
 from mpc_forge.services.decks import deck_covers, deck_validation
 from mpc_forge.services.printing import history
+from mpc_forge.services.system import settings as settings_service
 from mpc_forge.utils.iterables import chunked
 
 DFC_LAYOUTS = frozenset({"transform", "modal_dfc", "double_faced_token", "reversible_card"})
@@ -82,6 +84,7 @@ class _CardContext:
     prints_count: dict[str, int]
     custom_count: dict[str, int]
     history_stats: dict[str, history.CardHistoryStat]
+    roles: dict[str, list[str]]
 
 
 async def _load_context(db: AsyncSession, cards: list[DeckCard]) -> _CardContext:
@@ -98,6 +101,11 @@ async def _load_context(db: AsyncSession, cards: list[DeckCard]) -> _CardContext
             db, {custom_art.normalize_card_name(c.name) for c in cards}
         ),
         history_stats=await history.stats_for_oracle_ids(db, list(oracle_ids)),
+        roles=(
+            await oracle_tags.roles_for(db, oracle_ids)
+            if (await settings_service.get_all(db)).get("show_card_roles", True)
+            else {}
+        ),
     )
 
 
@@ -161,6 +169,7 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
         ),
         rarity=printing.rarity if printing else "",
         keywords=[k for k in (printing.keywords or "").split(",") if k] if printing else [],
+        roles=sorted(ctx.roles.get(dc.oracle_id, [])) if dc.oracle_id else [],
         **extra,
     )
 

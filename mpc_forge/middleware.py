@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 
 from starlette.datastructures import URL
@@ -22,7 +23,24 @@ DEFAULT_ALLOWED_HOSTS: frozenset[str] = frozenset(
 
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-_SAFE_FETCH_SITES = frozenset({"same-origin", "same-site", "none"})
+# "same-site" no basta: para 127.0.0.1 cualquier otro puerto local (un servidor de
+# desarrollo, Jupyter, otra app) es el mismo sitio, pero no el mismo origen.
+_SAFE_FETCH_SITES = frozenset({"same-origin", "none"})
+
+
+NON_LOOPBACK_WARNING = (
+    "MPC Forge escucha en %s, fuera de 127.0.0.1: la app no tiene contraseña y "
+    "cualquier equipo de la red podrá leer y borrar tus mazos o cambiar los ajustes."
+)
+
+
+def is_loopback_bind(host: str) -> bool:
+    if host.strip().lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 def _hostname(raw: str) -> str:
@@ -34,6 +52,25 @@ def _hostname(raw: str) -> str:
     if ":" in host:
         return host.rsplit(":", 1)[0]
     return host
+
+
+def _cross_origin_reason(request: Request, host_header: str) -> str | None:
+    site = request.headers.get("sec-fetch-site", "").lower()
+    if site:
+        return None if site in _SAFE_FETCH_SITES else f"Sec-Fetch-Site={site}"
+    # Navegadores sin Sec-Fetch-* (Safari < 16.4, WebViews antiguos) siguen
+    # mandando Origin en los POST; sin ninguna de las dos es un cliente que no es
+    # un navegador (curl, scripts) y no hay sitio ajeno que lo dispare.
+    origin = request.headers.get("origin")
+    if origin is None:
+        return None
+    try:
+        netloc = URL(origin).netloc.lower()
+    except Exception:
+        netloc = ""
+    if not netloc or netloc != host_header.strip().lower():
+        return f"Origin={origin}"
+    return None
 
 
 class LocalhostGuardMiddleware(BaseHTTPMiddleware):
@@ -70,13 +107,13 @@ class LocalhostGuardMiddleware(BaseHTTPMiddleware):
                 )
 
         if self._enforce_csrf and request.method in _UNSAFE_METHODS:
-            site = request.headers.get("sec-fetch-site", "").lower()
-            if site and site not in _SAFE_FETCH_SITES:
+            reason = _cross_origin_reason(request, host_header)
+            if reason:
                 log.warning(
-                    "Petición %s %s rechazada: Sec-Fetch-Site=%s (origen cruzado)",
+                    "Petición %s %s rechazada: %s (origen cruzado)",
                     request.method,
                     request.url.path,
-                    site,
+                    reason,
                 )
                 return JSONResponse(
                     {"detail": "Petición de origen cruzado rechazada."},
@@ -100,6 +137,10 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "frame-ancestors 'none'",
     )
 )
+
+# Arte y carpetas locales vienen de fuera de la app: aunque se cuele un .html o un
+# .js, abierto en el origen de la app no debe poder ejecutar nada.
+USER_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src 'self' data:; sandbox"
 
 SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
     (b"content-security-policy", CONTENT_SECURITY_POLICY.encode()),
@@ -145,4 +186,4 @@ def is_same_origin(request: Request, target: str) -> bool:
         return False
     if not url.hostname:
         return False
-    return _hostname(url.netloc) == _hostname(request.url.netloc)
+    return url.netloc.lower() == request.url.netloc.lower()

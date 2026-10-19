@@ -134,6 +134,7 @@ class DeckCardView(BaseModel):
     color_identity: list[str] = []
     rarity: str = ""
     keywords: list[str] = []
+    roles: list[str] = []
     back_thumbnail_url: str | None = None
     back_name: str | None = None
     related_parts: list[dict[str, str]] = []
@@ -186,6 +187,7 @@ class UnresolvedEntry(BaseModel):
     number: str | None = None
     role: str = "mainboard"
     reason: str = "not_found_on_scryfall"
+    suggestions: list[str] = []
 
 
 class ImportResult(BaseModel):

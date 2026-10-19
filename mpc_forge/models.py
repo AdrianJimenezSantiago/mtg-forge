@@ -59,6 +59,12 @@ class PrintingCache(Base):
     full_art: Mapped[bool] = mapped_column(Boolean, default=False)
     textless: Mapped[bool] = mapped_column(Boolean, default=False)
     promo: Mapped[bool] = mapped_column(Boolean, default=False)
+    digital: Mapped[bool] = mapped_column(Boolean, default=False)
+    set_type: Mapped[str] = mapped_column(String(32), default="")
+    frame_effects: Mapped[str] = mapped_column(String(256), default="")
+    image_status: Mapped[str] = mapped_column(String(16), default="")
+    image_updated_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    illustration_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     layout: Mapped[str] = mapped_column(String(32), default="normal")
     mana_cost: Mapped[str] = mapped_column(String(64), default="")
     cmc: Mapped[float] = mapped_column(default=0.0)
@@ -368,6 +374,13 @@ class ArtThemeEntry(Base):
     custom_art_back_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     theme: Mapped[ArtTheme] = relationship(back_populates="entries")
+
+
+class OracleRole(Base):
+    __tablename__ = "oracle_roles"
+
+    oracle_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(32), primary_key=True)
 
 
 class BulkSyncState(Base):
