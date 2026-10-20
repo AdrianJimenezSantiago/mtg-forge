@@ -69,11 +69,14 @@
     return el
   }
 
+  // keepalive: si el usuario cambia de página justo después, la petición no se
+  // cancela y la guía no vuelve a salir en la siguiente visita.
   async function api(method, path, body) {
     const res = await fetch(path, {
       method,
       headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
+      keepalive: method !== 'GET',
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return res.json()
@@ -137,6 +140,11 @@
       _queue: [],
       _target: null,
       _raf: 0,
+      // Cada start()/_close() invalida los _show() que sigan esperando a un
+      // elemento, para que no avancen sobre los pasos de otra guía.
+      _run: 0,
+      // Si la guía actual ya ha enseñado algún paso (solo entonces cuenta como vista).
+      _shown: false,
 
       get pageTour() { return window.tourForPath?.(location.pathname) || null },
       get step() { return this.steps[this.index] || null },
@@ -180,11 +188,14 @@
       async start(tourId) {
         const def = window.TOURS?.[tourId]
         if (!def) return
+        this._run++
+        this.busy = false
         this.tourId = tourId
         this.steps = def.steps
         this.index = 0
         this.spot = null
         this.placed = false
+        this._shown = false
         this.active = true
         this._listen(true)
         await this._show(0, 1)
@@ -220,6 +231,7 @@
 
       async _show(index, direction) {
         if (this.busy) return
+        const run = this._run
         this.busy = true
         try {
           let i = index
@@ -229,15 +241,19 @@
               this._target = null
               this.index = i
               this.spot = null
+              this._markShown()
               await this._layout()
               return
             }
             const el = await waitFor(step.target, i === index ? WAIT_MS : 300)
+            if (run !== this._run) return
             if (el) {
               this._target = el
               this.index = i
+              this._markShown()
               el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' })
               await sleep(reducedMotion() ? 0 : 320)
+              if (run !== this._run) return
               await this._layout()
               return
             }
@@ -246,8 +262,22 @@
           // No queda ningún paso visible en esa dirección.
           if (direction > 0) this.finish()
         } finally {
-          this.busy = false
+          if (run === this._run) this.busy = false
         }
+      },
+
+      // La guía cuenta como vista en cuanto enseña su primer paso, no al
+      // terminarla: si el usuario recarga o se va a mitad, no se repite.
+      _markShown() {
+        if (this._shown) return
+        this._shown = true
+        this._markSeen(this.tourId)
+      },
+
+      _markSeen(id) {
+        if (!id || this.seen.includes(id)) return
+        this.seen = [...this.seen, id]
+        api('POST', '/api/tour/seen', { tour: id }).catch(() => {})
       },
 
       async _layout() {
@@ -317,23 +347,23 @@
         else if (ev.key === 'ArrowLeft') { ev.preventDefault(); this.prev() }
       },
 
-      // Terminar o saltar cuentan igual: esa guía no vuelve a salir sola.
+      // Terminar o saltar cuentan igual: esa guía no vuelve a salir sola. Una
+      // guía sin ningún paso visible no se marca, y saldrá cuando lo tenga.
       async finish() {
-        const id = this.tourId
+        if (!this.active) return
+        const shown = this._shown
         this._close()
-        if (id) {
-          if (!this.seen.includes(id)) this.seen = [...this.seen, id]
-          try { await api('POST', '/api/tour/seen', { tour: id }) } catch (_) {}
-        }
         const nextTour = this._queue.shift()
         if (nextTour && !this.seen.includes(nextTour)) {
-          await sleep(250)
-          this.start(nextTour)
+          await sleep(shown ? 250 : 0)
+          if (!this.active) this.start(nextTour)
         }
       },
 
+      // Saltar solo cierra la guía actual: si tras la bienvenida toca la de la
+      // pantalla, se muestra igualmente, porque es la primera visita a esa vista.
+      // Para cortar todas está "No volver a mostrar".
       skip() {
-        this._queue = []
         this.finish()
       },
 
@@ -346,6 +376,8 @@
       },
 
       _close() {
+        this._run++
+        this.busy = false
         this.active = false
         this._listen(false)
         this._target = null

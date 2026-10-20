@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from mpc_forge.services.system.i18n import _TRANSLATIONS
-from tests.frontend._support import HTML, JS, TEMPLATES, read
+from tests.frontend._support import HTML, JS, ROOT, TEMPLATES, read
 
 needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
 
@@ -92,6 +92,24 @@ def test_dynamic_targets_come_from_the_settings_navigation(tours):
         if step.get("dynamic"):
             key = step["target"].split("settings-nav-", 1)[1].split('"', 1)[0]
             assert f"key: '{key}'" in settings_js, key
+
+
+@needs_node
+def test_each_tour_shows_once_on_the_first_visit_to_its_view():
+    result = subprocess.run(
+        [
+            shutil.which("node"),
+            str(ROOT / "tests" / "js" / "tour_flow.mjs"),
+            str(JS / "core/tour-steps.js"),
+            str(JS / "core/tour.js"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        timeout=60,
+    )
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert result.returncode == 0 and report["failures"] == [], report["failures"] or result.stderr
 
 
 def test_tour_is_part_of_every_page_and_can_be_replayed():
