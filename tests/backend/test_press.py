@@ -392,8 +392,9 @@ class TestEndpoint:
         assert (body["total_cards"], body["total_pages"], body["cardback_backs"]) == (3, 6, 3)
         assert body["warnings"] == [] and "3 cartas" in body["delivery_message"]
         assert body["zip_filename"].startswith("pinbro-poker-test-deck-")
-        zip_bytes = (await client.get(f"/api/exports/{body['zip_filename']}")).content
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        download = await client.get(f"/api/exports/{body['zip_filename']}")
+        assert download.status_code == 200, download.text
+        with zipfile.ZipFile(io.BytesIO(download.content)) as zf:
             assert zf.namelist() == ["Cartas/Póquer(63x88).pdf"]
         pdf = await client.get(f"/api/exports/{body['pdf_filename']}")
         assert pdf.headers["content-type"] == "application/pdf"
@@ -403,6 +404,21 @@ class TestEndpoint:
         activity = (await client.get(f"/api/decks/{deck['id']}/activity")).json()
         events = activity["events"] if isinstance(activity, dict) else activity
         assert any(e["kind"] == "press_exported" for e in events)
+
+    async def test_downloads_through_a_linked_exports_dir(self, client, tmp_path, monkeypatch):
+        from mpc_forge import config as cfg
+
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "pkg.zip").write_bytes(b"PK")
+        link = tmp_path / "link"
+        try:
+            link.symlink_to(real, target_is_directory=True)
+        except OSError:
+            pytest.skip("este sistema no permite crear enlaces")
+        monkeypatch.setattr(cfg, "PATHS", dataclasses.replace(cfg.PATHS, exports_dir=link))
+        r = await client.get("/api/exports/pkg.zip")
+        assert r.status_code == 200 and r.content == b"PK"
 
     async def test_refuses_an_incomplete_deck(self, client, deck, resolved):
         resolved["drop"] = "Sol Ring"
