@@ -197,3 +197,69 @@ def test_assets_and_templates_are_organised_by_kind():
     assert {p.name for p in JS.iterdir()} == {"core", "pages"}
     assert {p.suffix for p in (STATIC / "css").iterdir()} == {".css"}
     assert [p.name for p in TEMPLATES.glob("*.html")] == ["base.html"]
+
+
+def _call_arguments(text: str, start: int) -> list[str]:
+    """Argumentos de primer nivel de la llamada cuyo "(" está en `start`.
+
+    Entiende cadenas, template literals con ${...} anidados y paréntesis, que
+    es todo lo que aparece en los argumentos de los toasts.
+    """
+    args: list[str] = []
+    current: list[str] = []
+    # Pila de contextos: "code" con su profundidad de paréntesis, o una comilla.
+    stack: list[list] = [["code", 0]]
+    i = start + 1
+    while i < len(text):
+        ch = text[i]
+        ctx = stack[-1]
+        if ctx[0] in "'\"`":
+            if ch == "\\":
+                current.append(text[i : i + 2])
+                i += 2
+                continue
+            if ctx[0] == "`" and text.startswith("${", i):
+                stack.append(["code", 0])
+                current.append("${")
+                i += 2
+                continue
+            if ch == ctx[0]:
+                stack.pop()
+        elif ch in "'\"`":
+            stack.append([ch])
+        elif ch in "([{":
+            ctx[1] += 1
+        elif ch in ")]}":
+            if ctx[1] == 0:
+                if len(stack) == 1:
+                    args.append("".join(current).strip())
+                    return [a for a in args if a]
+                stack.pop()  # cierre de ${...}
+            else:
+                ctx[1] -= 1
+        elif ch == "," and len(stack) == 1 and ctx[1] == 0:
+            args.append("".join(current).strip())
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    raise AssertionError("llamada sin cerrar")
+
+
+def test_every_toast_says_what_kind_it_is():
+    # window.toast(título, mensaje, tipo): con dos argumentos el segundo es el
+    # mensaje, así que toast(texto, 'success') pintaba "success" como texto y
+    # todos los errores salían con el estilo de aviso informativo.
+    kinds = re.compile(r"^(?:'(?:info|success|warning|error)'|.+\?\s*'\w+'\s*:\s*'\w+')$", re.S)
+    offenders = []
+    for path in all_js():
+        text = read(path)
+        for match in re.finditer(r"window\.toast\(", text):
+            if text[: match.start()].endswith("window.toast = "):
+                continue
+            args = _call_arguments(text, match.end() - 1)
+            line = text.count("\n", 0, match.start()) + 1
+            if len(args) != 3 or not kinds.match(args[2]):
+                offenders.append(f"{path.name}:{line} {args}")
+    assert not offenders, "\n".join(offenders)

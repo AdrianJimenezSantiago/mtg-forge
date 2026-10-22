@@ -18,8 +18,10 @@ _MIN_NATIVE_BLEED_MM = 0.5
 _MAX_NATIVE_BLEED_MM = 6.0
 
 # El JPEG se intenta con esta calidad y se baja solo si no cabe en el límite de
-# la imprenta. 4:4:4 para que el texto de reglas no pierda nitidez en el color.
-_JPEG_QUALITIES = (92, 88, 84, 78, 72)
+# la imprenta. 97 queda a ~48 dB del original sin comprimir y una carta de
+# Scryfall pesa ~1,9 MB, con margen frente a los 3 MB. 4:4:4 para que el texto
+# de reglas no pierda nitidez en el color.
+_JPEG_QUALITIES = (97, 95, 92, 88, 84, 78)
 # Desviación típica (0-255) por debajo de la cual el borde se considera liso:
 # el ruido de un escaneo de Scryfall sobre negro ronda 2-6.
 _UNIFORM_BORDER_SPREAD = 12.0

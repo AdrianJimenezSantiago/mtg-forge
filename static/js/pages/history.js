@@ -123,7 +123,7 @@ function buildKindMeta() {
     render: (ev) => {
       const p = ev.payload || {};
       const shop = [p.shop_name, p.product_name].filter(Boolean).join(' · ');
-      return `${esc(shop)}: <b>${p.total_cards || 0}</b> ${_t('history_cards_count')} · <b>${p.total_pages || 0}</b> ${_t('press_pages_unit')} <span class="text-fg-faint text-[11px]">(${esc(p.zip_filename || '')})</span>`;
+      return `${esc(shop)}: <b>${p.total_cards || 0}</b> ${_t('history_cards_count')} · <b>${p.total_pages || 0}</b> ${_t('common_pages')} <span class="text-fg-faint text-[11px]">(${esc(p.zip_filename || '')})</span>`;
     }
   },
   };
@@ -182,7 +182,7 @@ function historyPage() {
         this.runs = runsR.ok ? await runsR.json() : [];
         this.undoableKinds = undoR.ok ? await undoR.json() : [];
       } catch (e) {
-        window.toast && window.toast(window._t('history_error_loading'), e.message);
+        window.toast && window.toast(window._t('history_error_loading'), e.message, 'error');
       } finally {
         this.loading = false;
         this.$nextTick(() => window.icons && window.icons());
@@ -199,7 +199,7 @@ function historyPage() {
         const r = await fetch(`/api/decks/${deck.id}/activity?limit=500`);
         if (r.ok) this.activity = await r.json();
       } catch (e) {
-        window.toast && window.toast(window._t('history_error_timeline'), e.message);
+        window.toast && window.toast(window._t('history_error_timeline'), e.message, 'error');
       } finally {
         this.timelineLoading = false;
         this.filterOptions = FILTER_GROUPS.map(g => ({
@@ -265,11 +265,11 @@ function historyPage() {
         );
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
-          const detail = data.detail || window._t('history_undo_failed');
-          window.toast && window.toast(window._t('history_undo_failed'), detail);
+          const detail = (data.detail && data.detail.message) || data.detail || window._t('history_undo_failed');
+          window.toast && window.toast(window._t('history_undo_failed'), detail, 'warning');
           return;
         }
-        window.toast && window.toast(window._t('history_undone'), data.summary);
+        window.toast && window.toast(window._t('history_undone'), data.summary, 'success');
         if (this.timelineDeck) {
           await this.openTimeline(this.timelineDeck);
         }
@@ -277,7 +277,7 @@ function historyPage() {
           if (r.ok) this.decks = await r.json();
         });
       } catch (e) {
-        window.toast && window.toast(window._t('history_undo_error'), e.message);
+        window.toast && window.toast(window._t('history_undo_error'), e.message, 'error');
       } finally {
         this.undoingEventId = null;
       }

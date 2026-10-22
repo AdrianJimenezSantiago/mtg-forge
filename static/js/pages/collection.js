@@ -66,13 +66,13 @@ function collectionApp() {
       this.loadingSets = true;
       try {
         const r = await fetch('/api/collection/sets');
-        if (!r.ok) throw new Error('Failed to load sets');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.sets = await r.json();
         this.globalOwned = this.sets.reduce((sum, s) => sum + s.owned_count, 0);
         this.setsStarted = this.sets.filter(s => s.owned_count > 0).length;
       } catch (e) {
         console.error('Failed to load sets:', e);
-        window.toast && window.toast('Error', e.message, 'error');
+        window.toast && window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.loadingSets = false;
         this.$nextTick(() => window.icons && window.icons());
@@ -88,12 +88,12 @@ function collectionApp() {
       this.cards = [];
       try {
         const r = await fetch(`/api/collection/sets/${set.code}/cards`);
-        if (!r.ok) throw new Error('Failed to load cards');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.cards = await r.json();
         this.setOwnedCount = this.cards.filter(c => c.owned).length;
       } catch (e) {
         console.error('Failed to load set cards:', e);
-        window.toast && window.toast('Error', e.message, 'error');
+        window.toast && window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.loadingCards = false;
         this.$nextTick(() => window.icons && window.icons());
@@ -121,7 +121,7 @@ function collectionApp() {
             image_small: card.image_small,
           }),
         });
-        if (!r.ok) throw new Error('Toggle failed');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         this.setOwnedCount = data.set_owned_count;
         if (this.selectedSet) {

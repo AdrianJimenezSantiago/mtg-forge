@@ -2,6 +2,15 @@ const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
 // La escala depende de la impresora, no del mazo: se guarda una vez para todos.
 const LS_PRINT_SCALE = 'pdfStudio.printScale';
 
+// Lo mismo que dicen los botones de presets del panel izquierdo.
+const PRESET_LABELS = {
+  mpc_classic: 'MPC classic',
+  mpc_bleed: 'MPC with bleed',
+  duplex_dfc: 'Duplex DFC',
+  duplex_all: 'Duplex all-backs',
+  silhouette: 'Silhouette (reg. marks)',
+};
+
 // Hueco del preview resaltado mientras se arrastra una imagen. Vive fuera del
 // estado de Alpine: un nodo DOM dentro de un proxy reactivo rompe setAttribute.
 let dropTarget = null;
@@ -668,15 +677,14 @@ function pdfStudio(deckId) { return {
         body: JSON.stringify(this.opts),
       });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || `HTTP ${r.status}`);
+        throw new Error(await window.apiErrorDetail(r));
       }
       const data = await r.json();
-      if (showToast && window.toast) window.toast(`PDF generado: ${data.total_pages} páginas`, 'success');
+      if (showToast && window.toast) window.toast(window._t('pdf_done'), `${data.total_pages} ${window._t('common_pages')}`, 'success');
       if (this.autoOpen) window.open(`/api/exports/${data.filename}`, '_blank');
     } catch (e) {
       console.error('buildPdf:', e);
-      if (window.toast) window.toast(`Error generando PDF: ${e.message}`, 'error');
+      if (window.toast) window.toast(window._t('pdf_error_generating'), e.message, 'error');
     } finally {
       this.buildingPdf = false;
       this._stopBuildPolling();
@@ -694,18 +702,19 @@ function pdfStudio(deckId) { return {
         body: JSON.stringify({ decklist_format: 'with_set' }),
       });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || `HTTP ${r.status}`);
+        throw new Error(await window.apiErrorDetail(r));
       }
       const data = await r.json();
-      const msg = `ZIP listo: ${data.total_unique_cards} cartas` +
-                  (data.total_dfc_backs ? ` + ${data.total_dfc_backs} DFC backs` : '') +
-                  (data.missing_images ? ` (⚠️ ${data.missing_images} imágenes no encontradas)` : '');
-      if (window.toast) window.toast(msg, data.missing_images ? 'warning' : 'success');
+      const msg = `${data.total_unique_cards} ${window._t('history_cards_count')}` +
+                  (data.total_dfc_backs ? ` + ${data.total_dfc_backs} DFC` : '') +
+                  (data.missing_images
+                    ? ` · ${window._t('pdf_zip_missing').replace('{n}', data.missing_images)}`
+                    : '');
+      if (window.toast) window.toast(window._t('pdf_zip_done'), msg, data.missing_images ? 'warning' : 'success');
       if (this.autoOpen) window.open(`/api/exports/${data.filename}`, '_blank');
     } catch (e) {
       console.error('exportImages:', e);
-      if (window.toast) window.toast(`Error exportando: ${e.message}`, 'error');
+      if (window.toast) window.toast(window._t('pdf_error_exporting'), e.message, 'error');
     } finally {
       this.exportingImages = false;
       this._stopBuildPolling();
@@ -782,7 +791,7 @@ function pdfStudio(deckId) { return {
       this.pressResult = data;
       if (window.toast) window.toast(
         window._t('press_export_done'),
-        `${data.total_cards} · ${data.total_pages} ${window._t('press_pages_unit')}`,
+        `${data.total_cards} · ${data.total_pages} ${window._t('common_pages')}`,
         data.warnings.length ? 'warning' : 'success',
       );
     } catch (e) {
@@ -847,7 +856,7 @@ function pdfStudio(deckId) { return {
     const p = presets[name];
     if (!p) return;
     Object.assign(this.opts, p);
-    if (window.toast) window.toast(`Preset "${name}" aplicado`, 'info');
+    if (window.toast) window.toast(window._t('pdf_preset_applied'), PRESET_LABELS[name] || name, 'info');
   },
 
   resetOpts() {
@@ -932,15 +941,15 @@ function pdfStudio(deckId) { return {
           face: 'back',
         }),
       });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(await window.apiErrorDetail(r));
       const art = await r.json();
       await this._setCardback(art.id);
       this.cbUrlInput = '';
       await this._loadLocalArts();
-      if (window.toast) window.toast(`Cardback añadido: ${art.filename}`, 'success');
+      if (window.toast) window.toast(window._t('pdf_cardback_added'), art.filename, 'success');
     } catch (e) {
       console.error('addCardbackFromUrl:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     } finally {
       this.cbAddingUrl = false;
     }
@@ -958,14 +967,14 @@ function pdfStudio(deckId) { return {
           variant: hit.source_name,
         }),
       });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(await window.apiErrorDetail(r));
       const art = await r.json();
       await this._setCardback(art.id);
       await this._loadLocalArts();
-      if (window.toast) window.toast(`Cardback desde ${hit.source_name}`, 'success');
+      if (window.toast) window.toast(window._t('pdf_cardback_added'), hit.source_name, 'success');
     } catch (e) {
       console.error('pickDriveHit:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     } finally {
       this.cbPickingId = null;
     }
@@ -975,10 +984,10 @@ function pdfStudio(deckId) { return {
     this.cbPickingId = 'local-' + art.id;
     try {
       await this._setCardback(art.id);
-      if (window.toast) window.toast(`Cardback: ${art.filename}`, 'success');
+      if (window.toast) window.toast(window._t('pdf_cardback_selected'), art.filename, 'success');
     } catch (e) {
       console.error('pickLocalArt:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     } finally {
       this.cbPickingId = null;
     }
@@ -1000,7 +1009,7 @@ function pdfStudio(deckId) { return {
       await this._loadLocalArts();
     } catch (e) {
       console.error('uploadCardback:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     }
   },
 
@@ -1083,7 +1092,7 @@ function pdfStudio(deckId) { return {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ custom_art_id: customArtId }),
     });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error(await window.apiErrorDetail(r));
     this.cardbackSettings = await r.json();
   },
 
@@ -1092,12 +1101,12 @@ function pdfStudio(deckId) { return {
       const r = await fetch(`/api/decks/${this.deckId}/cardback-settings`, {
         method: 'DELETE',
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) throw new Error(await window.apiErrorDetail(r));
       this.cardbackSettings = await r.json();
-      if (window.toast) window.toast(window._t('pdf_cardback_reset'), 'info');
+      if (window.toast) window.toast(window._t('pdf_cardback_reset'), '', 'info');
     } catch (e) {
       console.error('resetCardback:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     }
   },
 
@@ -1132,7 +1141,7 @@ function pdfStudio(deckId) { return {
       this.miniPickerArts = arts.filter(a => (a.face || 'front') === face);
     } catch (e) {
       console.error('openMiniArtPicker:', e);
-      if (window.toast) window.toast(window._t('deck_error_load_arts'), e.message);
+      if (window.toast) window.toast(window._t('deck_error_load_arts'), e.message, 'error');
       this.miniPickerArts = [];
     } finally {
       this.miniPickerLoading = false;
@@ -1166,7 +1175,7 @@ function pdfStudio(deckId) { return {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(await window.apiErrorDetail(r));
       const updated = await r.json();
       const cards = this.deck.cards || [];
       const idx = cards.findIndex(c => c.id === updated.id);
@@ -1177,11 +1186,12 @@ function pdfStudio(deckId) { return {
       }));
       if (window.toast) window.toast(
         rememberGlobally ? window._t('pdf_art_global') : window._t('pdf_art_updated'),
+        card.name,
         'success',
       );
     } catch (e) {
       console.error('pickMiniArt:', e);
-      if (window.toast) window.toast(window._t('common_error'), e.message);
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
     } finally {
       this.miniPickerBusy = false;
       this.miniPickerBusyKey = null;

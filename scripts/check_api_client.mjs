@@ -105,6 +105,33 @@ console.log('\nExtracción de errores')
   }
 }
 
+console.log('apiErrorDetail — texto de un fetch() fallido para los toasts')
+{
+  const dom = new JSDOM('<body></body>', {
+    runScripts: 'outside-only', url: 'http://localhost/',
+  })
+  const w = dom.window
+  w.eval(readFileSync(new URL('../static/js/core/api.js', import.meta.url), 'utf8'))
+  const response = (status, body) => ({
+    ok: false, status, statusText: status === 500 ? 'Internal Server Error' : '',
+    json: async () => {
+      if (body === undefined) throw new SyntaxError('Unexpected token <')
+      return body
+    },
+  })
+  const cases = [
+    ['detalle con código', response(422, { detail: { code: 'missing_cardback', message: 'Sin dorso' } }), 'Sin dorso'],
+    ['detalle de texto', response(404, { detail: 'Mazo no encontrado' }), 'Mazo no encontrado'],
+    ['validación', response(422, { detail: [{ loc: ['body', 'shop'], msg: 'obligatorio' }] }), 'shop: obligatorio'],
+    ['respuesta que no es JSON', response(500), 'Internal Server Error'],
+    ['sin detalle', response(503, {}), 'HTTP 503'],
+  ]
+  for (const [name, res, expected] of cases) {
+    const text = await w.apiErrorDetail(res)
+    check(name, text === expected, text)
+  }
+}
+
 console.log(failures === 0
   ? '\nTodas las comprobaciones del cliente API pasan.'
   : `\n${failures} comprobacion(es) fallan.`)

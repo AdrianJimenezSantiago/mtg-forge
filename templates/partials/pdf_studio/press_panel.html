@@ -84,7 +84,7 @@
       <dt class="text-fg-muted">{{ t.press_summary_cards }}</dt>
       <dd class="font-mono text-right" x-text="pressResult?.total_cards"></dd>
       <dt class="text-fg-muted">{{ t.pdf_summary_total }}</dt>
-      <dd class="font-mono text-right"><span x-text="pressResult?.total_pages"></span> {{ t.press_pages_unit }}</dd>
+      <dd class="font-mono text-right"><span x-text="pressResult?.total_pages"></span> {{ t.common_pages }}</dd>
       <dt class="text-fg-muted">{{ t.press_result_backs }}</dt>
       <dd class="font-mono text-right"
           x-text="pressResult ? `${pressResult.cardback_backs} + ${pressResult.dfc_backs} DFC` : ''"></dd>

@@ -78,7 +78,7 @@ function importPanel() {
             include_extras: this.includeExtrasUrl,
           })
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         await this._handleImportResult(data);
       } catch (e) {
@@ -97,7 +97,7 @@ function importPanel() {
             name: this.deckName, text: this.deckText, include_extras: this.includeExtrasText,
           })
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         await this._handleImportResult(data);
       } catch (e) {
@@ -140,7 +140,7 @@ function importPanel() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, quantity: entry.quantity, role: entry.role || 'mainboard' }),
         });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.unresolvedModal.unresolved.splice(index, 1);
         this.unresolvedModal.resolvedCount += entry.quantity;
         Alpine.store('ui').success(window._t('home_unresolved_added'), name);
@@ -187,11 +187,10 @@ function deckListActions() {
       });
       if (r.ok) {
         const data = await r.json();
-        window.toast(window._t('js_deck_duplicated'), `"${data.name}" — ${data.cards.length} ${window._t('js_deck_created_cards')}`);
+        window.toast(window._t('js_deck_duplicated'), `"${data.name}" — ${data.cards.length} ${window._t('js_deck_created_cards')}`, 'success');
         window.location.href = `/decks/${data.id}`;
       } else {
-        const err = await r.json().catch(() => ({}));
-        Alpine.store('ui').error(window._t('common_error'), err.detail || window._t('js_error_duplicating'));
+        Alpine.store('ui').error(window._t('js_error_duplicating'), await window.apiErrorDetail(r));
       }
     },
     async del(id, name) {
