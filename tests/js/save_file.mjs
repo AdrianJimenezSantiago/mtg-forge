@@ -1,29 +1,43 @@
-import { JSDOM } from 'jsdom'
 import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
 // window.saveFile: "Guardar como" del sistema donde existe, descarga normal donde no.
+// Sin jsdom: el job de tests no instala node_modules, como en los demás tests JS.
 const src = readFileSync(process.argv[2], 'utf8')
 const problems = []
 
 function makeWindow({ picker }) {
-  const dom = new JSDOM('<body></body>', { runScripts: 'outside-only', url: 'http://127.0.0.1/' })
-  const w = dom.window
-  w.eval(src)
   const log = []
+  const noop = () => {}
+  const document = {
+    addEventListener: noop,
+    body: { appendChild: noop },
+    createElement: () => {
+      const a = { remove: noop, click() { log.push(['download', a.href, a.download]) } }
+      return a
+    },
+  }
+  const w = {
+    document, console, Response, WritableStream, URL, setTimeout,
+    addEventListener: noop,
+    MutationObserver: class { observe() {} },
+    DOMException,
+  }
+  w.window = w
+  vm.createContext(w)
+  vm.runInContext(src, w)
   w._t = (k) => k
   w.toast = (title, message, type) => log.push(['toast', type, title, message])
   w.apiErrorDetail = async (r) => `HTTP ${r.status}`
   w.fetch = async (url) => { log.push(['fetch', url]); return new Response(`contenido de ${url}`) }
-  w.HTMLAnchorElement.prototype.click = function () { log.push(['download', this.getAttribute('href'), this.download]) }
   if (picker) {
     w.showSaveFilePicker = async (opts) => {
       log.push(['picker', opts.suggestedName, opts.types?.[0]?.description])
-      if (picker === 'cancel') throw new w.DOMException('cancel', 'AbortError')
+      if (picker === 'cancel') throw new DOMException('cancel', 'AbortError')
       const chunks = []
       w.__written = chunks
       return {
         name: 'elegido.pdf',
         createWritable: async () => new WritableStream({ write: (c) => { chunks.push(Buffer.from(c).toString()) } }),
-        written: chunks,
       }
     }
   }
