@@ -31,6 +31,20 @@
       <dt class="text-fg-muted">{{ t.press_spec_file }}</dt>
       <dd class="font-mono text-right break-all" x-text="pressSpec?.package_entry"></dd>
     </dl>
+    <ul class="space-y-1 text-[10px] text-fg-muted" aria-label="{{ t.press_legend_title }}">
+      <li class="flex items-center gap-2">
+        <svg class="w-6 h-2 shrink-0" viewBox="0 0 24 4" aria-hidden="true"><line x1="0" y1="2" x2="24" y2="2" stroke="#ec4899" stroke-width="1.6" stroke-dasharray="5,3"/></svg>
+        <span>{{ t.press_legend_cut }}</span>
+      </li>
+      <li class="flex items-center gap-2">
+        <svg class="w-6 h-2 shrink-0" viewBox="0 0 24 4" aria-hidden="true"><line x1="0" y1="2" x2="24" y2="2" stroke="#16a34a" stroke-width="1.6" stroke-dasharray="2,2"/></svg>
+        <span>{{ t.press_legend_safe }}</span>
+      </li>
+      <li class="flex items-center gap-2">
+        <span class="w-6 h-2 shrink-0 rounded-sm" style="background: rgba(212,175,55,0.35)" aria-hidden="true"></span>
+        <span>{{ t.press_legend_bleed }}</span>
+      </li>
+    </ul>
     <p class="flex items-start gap-1.5 text-[10px] text-fg-faint">
       <i data-lucide="info" class="w-3 h-3 shrink-0 mt-px"></i>
       <span>{{ t.press_guides_preview_only }}</span>

@@ -502,10 +502,12 @@ function pdfStudio(deckId) { return {
     const b = spec.bleed_mm;
     const r = spec.corner_radius_mm;
     const s = spec.safe_margin_mm;
+    // Rosa, el color de las líneas de corte en preimpresión: se distingue igual
+    // sobre un borde negro que sobre uno blanco.
     parts.push(
       `<rect x="${n(b)}" y="${n(b)}" width="${n(spec.trim_w_mm)}" height="${n(spec.trim_h_mm)}" ` +
-      `rx="${n(r)}" ry="${n(r)}" fill="none" stroke="#111827" stroke-width="0.3" ` +
-      `stroke-dasharray="1.2,0.8" style="pointer-events:none"/>`
+      `rx="${n(r)}" ry="${n(r)}" fill="none" stroke="#ec4899" stroke-width="0.4" ` +
+      `stroke-dasharray="1.4,0.8" data-press-cut="1" style="pointer-events:none"/>`
     );
     parts.push(
       `<rect x="${n(b + s)}" y="${n(b + s)}" width="${n(spec.trim_w_mm - 2 * s)}" ` +

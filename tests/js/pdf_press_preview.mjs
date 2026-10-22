@@ -40,7 +40,7 @@ for (const [idx, page] of pages.entries()) {
   const bleed = images.filter(i => i.includes('data-press-bleed')).map(box);
   if (card.length !== 1 || card[0] !== '3,3,63,88') problems.push({ idx, card });
   if (bleed.length !== 1 || bleed[0] !== '0,0,69,94') problems.push({ idx, bleed });
-  const cut = [...svg.matchAll(/<rect [^>]*stroke="#111827"[^>]*>/g)].map(m => box(m[0]));
+  const cut = [...svg.matchAll(/<rect [^>]*data-press-cut[^>]*>/g)].map(m => box(m[0]));
   if (cut.length !== 1 || cut[0] !== '3,3,63,88') problems.push({ idx, cut });
   const safe = [...svg.matchAll(/<rect [^>]*stroke="#16a34a"[^>]*>/g)].map(m => box(m[0]));
   if (safe.length !== 1 || safe[0] !== '6,6,57,82') problems.push({ idx, safe });

@@ -21,6 +21,11 @@ if _missing:
         "    npm install && npm run vendor && npm run build:css\n"
     )
 
+# El perfil de color con el que se separan las exportaciones para imprenta.
+_ICC = PROJECT_ROOT / "resources" / "icc" / "Coated_Fogra39L_VIGC_300.icc"
+if not _ICC.is_file():
+    raise SystemExit(f"\nFalta el perfil ICC de imprenta: {_ICC}\n")
+
 DATAS = [
     (str(PROJECT_ROOT / "templates"),  "templates"),
     (str(PROJECT_ROOT / "static"),     "static"),
@@ -47,6 +52,9 @@ HIDDEN_IMPORTS = [
     "sqlalchemy.dialects.sqlite.aiosqlite",
     "email.mime.multipart",
     "email.mime.text",
+    # python-slugify 9 lo importa con importlib al transliterar, así que el
+    # análisis de PyInstaller no lo ve; sin él cualquier exportación da 500.
+    "text_unidecode",
 ]
 
 
