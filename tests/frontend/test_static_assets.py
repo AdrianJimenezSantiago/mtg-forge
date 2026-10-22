@@ -263,3 +263,37 @@ def test_every_toast_says_what_kind_it_is():
             if len(args) != 3 or not kinds.match(args[2]):
                 offenders.append(f"{path.name}:{line} {args}")
     assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
+def test_save_file_asks_where_before_generating():
+    result = subprocess.run(
+        [
+            shutil.which("node"),
+            str(ROOT / "tests" / "js" / "save_file.mjs"),
+            str(JS / "core/app.js"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"problems": []}
+
+
+def test_downloads_go_through_save_file():
+    # Toda descarga pasa por window.saveFile para que se pueda elegir dónde
+    # guardarla. Navegar a la URL la manda a la carpeta de descargas sin preguntar.
+    offenders = []
+    for path in all_js():
+        for match in re.finditer(r"window\.location(?:\.href)?\s*=\s*[`'\"]/api/", read(path)):
+            offenders.append(f"{path.name}: {match.group(0)}")
+    for path in all_templates():
+        for tag in re.findall(r"<a\b[^>]*>", read(path), re.S):
+            if "/api/" not in tag or "href" not in tag:
+                continue
+            # target=_blank abre para ver (un PDF, unas estadísticas), no descarga.
+            if "@click.prevent" not in tag and 'target="_blank"' not in tag:
+                offenders.append(f"{path.name}: {' '.join(tag.split())[:120]}")
+    assert not offenders, "\n".join(offenders)

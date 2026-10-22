@@ -671,17 +671,24 @@ function pdfStudio(deckId) { return {
   async buildPdf(showToast = true) {
     if (this.buildingPdf) return;
     this.buildingPdf = true;
-    this._startBuildPolling();
     try {
-      const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(this.opts),
-      });
-      if (!r.ok) {
-        throw new Error(await window.apiErrorDetail(r));
-      }
-      const data = await r.json();
+      let data = null;
+      // saveFile pregunta dónde guardar y después genera: el diálogo tiene que
+      // abrirse con el clic, antes de una espera que puede ser larga.
+      await window.saveFile(async () => {
+        this._startBuildPolling();
+        const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(this.opts),
+        });
+        if (!r.ok) {
+          throw new Error(await window.apiErrorDetail(r));
+        }
+        data = await r.json();
+        return `/api/exports/${data.filename}`;
+      }, window.saveFileName(this.deck?.name, 'pdf'));
+      if (!data) return;
       if (showToast && window.toast) window.toast(window._t('pdf_done'), `${data.total_pages} ${window._t('common_pages')}`, 'success');
       if (this.autoOpen) window.open(`/api/exports/${data.filename}`, '_blank');
     } catch (e) {
@@ -696,24 +703,28 @@ function pdfStudio(deckId) { return {
   async exportImages() {
     if (this.exportingImages) return;
     this.exportingImages = true;
-    this._startBuildPolling();
     try {
-      const r = await fetch(`/api/decks/${this.deckId}/export-images`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ decklist_format: 'with_set' }),
-      });
-      if (!r.ok) {
-        throw new Error(await window.apiErrorDetail(r));
-      }
-      const data = await r.json();
+      let data = null;
+      await window.saveFile(async () => {
+        this._startBuildPolling();
+        const r = await fetch(`/api/decks/${this.deckId}/export-images`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ decklist_format: 'with_set' }),
+        });
+        if (!r.ok) {
+          throw new Error(await window.apiErrorDetail(r));
+        }
+        data = await r.json();
+        return `/api/exports/${data.filename}`;
+      }, window.saveFileName(`${this.deck?.name || 'deck'} - images`, 'zip'));
+      if (!data) return;
       const msg = `${data.total_unique_cards} ${window._t('history_cards_count')}` +
                   (data.total_dfc_backs ? ` + ${data.total_dfc_backs} DFC` : '') +
                   (data.missing_images
                     ? ` · ${window._t('pdf_zip_missing').replace('{n}', data.missing_images)}`
                     : '');
       if (window.toast) window.toast(window._t('pdf_zip_done'), msg, data.missing_images ? 'warning' : 'success');
-      if (this.autoOpen) window.open(`/api/exports/${data.filename}`, '_blank');
     } catch (e) {
       console.error('exportImages:', e);
       if (window.toast) window.toast(window._t('pdf_error_exporting'), e.message, 'error');
@@ -758,6 +769,14 @@ function pdfStudio(deckId) { return {
     if (!bytes && bytes !== 0) return '';
     if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
     return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
+  },
+
+  // El ZIP que se manda a la imprenta, con un nombre que diga qué es.
+  savePressZip() {
+    if (!this.pressResult) return;
+    const name = `${this.deck?.name || 'deck'} - ${this.pressResult.shop.shop_name} ` +
+                 this.pressResult.shop.package_entry.split('/').pop().replace(/\.pdf$/i, '');
+    window.saveFile(`/api/exports/${this.pressResult.zip_filename}`, window.saveFileName(name, 'zip'));
   },
 
   async copyText(text) {

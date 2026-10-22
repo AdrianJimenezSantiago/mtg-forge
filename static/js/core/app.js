@@ -89,6 +89,81 @@ window.toast = (title, message, type = 'info') => {
 };
 window.confirmDialog = (title, message = '', opts = {}) => Alpine.store('ui').confirm(title, message, opts);
 
+// --- Guardar descargas donde elija el usuario ---------------------------------
+//
+// Chrome y Edge abren la ventana "Guardar como" del sistema (File System Access
+// API). Firefox y Safari no la tienen: ahí la descarga va donde diga el
+// navegador, como siempre.
+//
+// `source` es la URL del fichero o una función async que lo genera y devuelve
+// su URL. El navegador solo deja abrir el diálogo justo después del clic, así
+// que se pregunta dónde guardar ANTES de generar: si se esperase a que acabe un
+// PDF de 200 páginas, Chrome lo rechazaría por falta de gesto del usuario.
+const SAVE_TYPES = {
+  pdf: { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } },
+  zip: { description: 'ZIP', accept: { 'application/zip': ['.zip'] } },
+  xml: { description: 'XML', accept: { 'application/xml': ['.xml'] } },
+  txt: { description: 'Text', accept: { 'text/plain': ['.txt'] } },
+  log: { description: 'Log', accept: { 'text/plain': ['.log'] } },
+};
+
+window.canChooseSaveLocation = () => typeof window.showSaveFilePicker === 'function';
+
+// Nombre propuesto en el diálogo: el del mazo, sin caracteres que Windows rechaza.
+window.saveFileName = (base, ext) => {
+  const clean = String(base || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, ' ').trim();
+  return `${(clean || 'mpc-forge').slice(0, 120)}.${ext}`;
+};
+
+function plainDownload(url, name) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name || '';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+window.saveFile = async (source, suggestedName) => {
+  const _t = window._t || ((k) => k);
+  const produce = typeof source === 'function' ? source : async () => source;
+  if (!window.canChooseSaveLocation()) {
+    const url = await produce();
+    if (url) plainDownload(url, suggestedName);
+    return Boolean(url);
+  }
+
+  const ext = (suggestedName || '').split('.').pop().toLowerCase();
+  let handle;
+  try {
+    handle = await window.showSaveFilePicker({
+      suggestedName,
+      ...(SAVE_TYPES[ext] ? { types: [SAVE_TYPES[ext]] } : {}),
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') return false;
+    // Diálogo bloqueado (sin gesto, iframe, política…): descarga de siempre.
+    const url = await produce();
+    if (url) plainDownload(url, suggestedName);
+    return Boolean(url);
+  }
+
+  const url = await produce();
+  if (!url) return false;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+    const writable = await handle.createWritable();
+    await r.body.pipeTo(writable);
+    window.toast(_t('save_done'), handle.name, 'success');
+    return true;
+  } catch (e) {
+    window.toast(_t('save_failed'), e.message, 'error');
+    return false;
+  }
+};
+
 window.icons = () => {
   if (window.lucide && typeof window.lucide.createIcons === 'function') {
     window.lucide.createIcons();
