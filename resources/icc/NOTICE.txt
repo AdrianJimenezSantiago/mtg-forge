@@ -1,0 +1,17 @@
+Coated_Fogra39L_VIGC_300.icc
+============================
+
+CMYK output profile for ISO 12647-2 paper type 1/2 (coated), built by VIGC on
+the FOGRA39 characterization data. Total area coverage 300 %, maximum GCR.
+
+Source: https://registry.color.org/profile-registry/Coated_Fogra39L_VIGC_300
+Copyright X-Rite, Inc. Made available by VIGC with X-Rite's permission.
+
+License, as published by the ICC registry: the profile "may be used, embedded,
+exchanged, and shared without restriction". It "may not be altered or sold
+without written permission of VIGC". This file is distributed unmodified.
+
+SHA-256: 6df43849a84d2632e7900a125f657bd09364ed56775bc4740c1e39a5492d47e3
+
+MPC Forge uses it to separate card images into CMYK for print shops that ask
+for Coated FOGRA39 (see mpc_forge/services/printing/print_shops.py).

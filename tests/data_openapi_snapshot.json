@@ -381,6 +381,7 @@
     ]
   ],
   "GET /api/mpc-autofill/status": [],
+  "GET /api/print-shops": [],
   "GET /api/runs": [],
   "GET /api/settings/": [],
   "GET /api/settings/paths": [],
@@ -573,6 +574,13 @@
     ]
   ],
   "POST /api/decks/{deck_id}/export-images": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/export-press": [
     [
       "deck_id",
       "path",

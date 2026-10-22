@@ -174,6 +174,23 @@ class TestApiClient:
         report = json.loads(result.stdout.strip().splitlines()[-1])
         assert report["cases"] == 48 and report["misaligned"] == [], report["misaligned"][:3]
 
+    @pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
+    def test_press_preview_follows_the_print_shop_template(self):
+        result = subprocess.run(
+            [
+                shutil.which("node"),
+                str(ROOT / "tests" / "js" / "pdf_press_preview.mjs"),
+                str(JS / "pages/pdf-studio.js"),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        report = json.loads(result.stdout.strip().splitlines()[-1])
+        assert report == {"pages": 6, "problems": []}, report
+
 
 def test_assets_and_templates_are_organised_by_kind():
     assert [p for p in STATIC.iterdir() if p.is_file()] == []

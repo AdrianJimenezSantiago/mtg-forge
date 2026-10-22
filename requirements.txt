@@ -14,5 +14,5 @@ python-slugify>=8.0
 truststore>=0.10
 reportlab>=4.2
 rapidfuzz>=3.9
-Pillow>=10.0
+Pillow>=11.0
 imagehash>=4.3

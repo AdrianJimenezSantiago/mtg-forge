@@ -39,6 +39,14 @@ function pdfStudio(deckId) { return {
   guideOpen: false,
   guideSection: null,
 
+  // Modo imprenta: el preview y la exportación siguen la plantilla de una
+  // imprenta (una carta por página, anverso y reverso) en vez de la hoja de casa.
+  pressShops: [],
+  press: null,
+  exportingPress: false,
+  pressResult: null,
+  pressError: null,
+
   opts: {
     page_size: 'a4',
     orientation: 'portrait',
@@ -87,6 +95,11 @@ function pdfStudio(deckId) { return {
       const rs = await fetch(`/api/decks/${this.deckId}/cardback-settings`);
       if (rs.ok) this.cardbackSettings = await rs.json();
     } catch (e) {}
+    try {
+      const rp = await fetch('/api/print-shops');
+      if (rp.ok) this.pressShops = await rp.json();
+    } catch (e) {}
+    if (this.press && !this.pressSpec) this.press = null;
     if (window.lucide) window.lucide.createIcons();
     this.$nextTick(() => window.lucide && window.lucide.createIcons());
   },
@@ -99,6 +112,7 @@ function pdfStudio(deckId) { return {
         Object.assign(this.opts, saved.opts || {});
         if (typeof saved.zoom === 'number') this.zoom = saved.zoom;
         if (typeof saved.showPageMargins === 'boolean') this.showPageMargins = saved.showPageMargins;
+        if (typeof saved.press === 'string') this.press = saved.press;
       }
     } catch (e) {}
     try {
@@ -114,6 +128,7 @@ function pdfStudio(deckId) { return {
     try {
       localStorage.setItem(LS_KEY(this.deckId), JSON.stringify({
         opts: this.opts, zoom: this.zoom, showPageMargins: this.showPageMargins,
+        press: this.press,
       }));
       localStorage.setItem(LS_PRINT_SCALE, JSON.stringify({
         x: this.opts.print_scale_x_pct, y: this.opts.print_scale_y_pct,
@@ -143,7 +158,23 @@ function pdfStudio(deckId) { return {
   },
   get pxPerMm() { return 3.7795 * (this.zoom / 100); },
 
+  get pressSpec() {
+    return this.press ? (this.pressShops.find(s => s.key === this.press) || null) : null;
+  },
+
+  _pressGeom(spec) {
+    return {
+      page_w_mm: spec.page_w_mm, page_h_mm: spec.page_h_mm,
+      cols: 1, rows: 1, slot_w_mm: spec.page_w_mm, slot_h_mm: spec.page_h_mm,
+      gap_x_mm: 0, gap_y_mm: 0,
+      grid_w_mm: spec.page_w_mm, grid_h_mm: spec.page_h_mm,
+      origin_x_mm: 0, origin_y_mm: 0,
+      bleed_mm: spec.bleed_mm,
+    };
+  },
+
   geomForKind(kind) {
+    if (this.pressSpec) return this._pressGeom(this.pressSpec);
     const o = this.opts;
     const sizes = { a4: [210, 297], letter: [215.9, 279.4], a3: [297, 420] };
     let [pw, ph] = sizes[o.page_size] || sizes.a4;
@@ -177,8 +208,8 @@ function pdfStudio(deckId) { return {
 
   get allSlots() {
     if (!this.deck) return { fronts: [], backs: [] };
-    const includeBacks = this.opts.include_backs;
-    const fillAllBacks = this.opts.backs_content === 'all_cards';
+    // La imprenta imprime a doble cara: toda carta lleva reverso.
+    const fillAllBacks = !!this.pressSpec || this.opts.backs_content === 'all_cards';
     const cardback = (this.cardbackSettings && this.cardbackSettings.image_url)
                   || (this.cardbackSettings && this.cardbackSettings.default_image_url)
                   || null;
@@ -214,6 +245,16 @@ function pdfStudio(deckId) { return {
     if (per <= 0 || !this.deck) return [];
     const { fronts, backs } = this.allSlots;
     const pages = [];
+
+    if (this.pressSpec) {
+      for (let i = 0; i < fronts.length; i++) {
+        pages.push({ key: `pf${i}`, kind: 'front', mirror: false, card: i + 1,
+                     chunk: this._chunkWithPositions([fronts[i]], g) });
+        pages.push({ key: `pb${i}`, kind: 'back', mirror: false, card: i + 1,
+                     chunk: this._chunkWithPositions([backs[i]], g) });
+      }
+      return pages;
+    }
 
     const frontChunks = [];
     for (let i = 0; i < fronts.length; i += per) frontChunks.push(fronts.slice(i, i + per));
@@ -307,6 +348,12 @@ function pdfStudio(deckId) { return {
       `style="width:100%;height:100%;display:block;background:#fff;">`
     );
 
+    if (this.pressSpec) {
+      parts.push(this._pressOverlaySvg(page, g, this.pressSpec));
+      parts.push(`</svg>`);
+      return parts.join('');
+    }
+
     if (this.showPageMargins) {
       parts.push(
         `<rect x="${n(g.origin_x_mm)}" y="${n(g.origin_y_mm)}" ` +
@@ -316,44 +363,7 @@ function pdfStudio(deckId) { return {
     }
 
     for (const slot of page.chunk) {
-      if (!slot) continue;
-      const clickAttrs =
-        slot.kind === 'cardback'
-          ? ` data-slot-kind="cardback" style="cursor:pointer"`
-          : slot.card_id != null
-            ? ` data-slot-kind="${esc(slot.kind)}" data-card-id="${slot.card_id}" ` +
-              `data-face="${esc(slot.face)}" style="cursor:pointer"`
-            : '';
-      const imgX = slot.x_mm + g.bleed_mm;
-      const imgY = slot.y_mm + g.bleed_mm;
-      const imgW = g.slot_w_mm - 2 * g.bleed_mm;
-      const imgH = g.slot_h_mm - 2 * g.bleed_mm;
-      if (slot.thumbnail) {
-        parts.push(
-          `<image href="${esc(slot.thumbnail)}" ` +
-          `x="${n(imgX)}" y="${n(imgY)}" ` +
-          `width="${n(imgW)}" height="${n(imgH)}" ` +
-          `preserveAspectRatio="none"${clickAttrs}/>`
-        );
-      } else {
-        parts.push(
-          `<rect x="${n(imgX)}" y="${n(imgY)}" ` +
-          `width="${n(imgW)}" height="${n(imgH)}" ` +
-          `fill="#242a3a" stroke="#3a4358" stroke-width="0.1"${clickAttrs}/>` +
-          `<text x="${n(imgX + imgW / 2)}" ` +
-          `y="${n(imgY + imgH / 2)}" ` +
-          `text-anchor="middle" fill="#a8a8b8" font-size="4" style="pointer-events:none">${esc(slot.name)}</text>`
-        );
-      }
-      if (clickAttrs) {
-        parts.push(
-          `<rect x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
-          `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
-          `fill="transparent"${clickAttrs}>` +
-          `<title>${esc(slot.kind === 'cardback' ? window._t('pdf_change_cardback') : window._t('pdf_mini_picker_title') + ' — ' + slot.name)}</title>` +
-          `</rect>`
-        );
-      }
+      if (slot) parts.push(this._slotSvg(slot, g));
     }
 
     if (o.bleed_enabled && g.bleed_mm > 0) {
@@ -414,6 +424,93 @@ function pdfStudio(deckId) { return {
 
     parts.push(`</svg>`);
     return parts.join('');
+  },
+
+  _slotSvg(slot, g) {
+    const n = this._n.bind(this);
+    const esc = this._esc.bind(this);
+    const parts = [];
+    const clickAttrs =
+      slot.kind === 'cardback'
+        ? ` data-slot-kind="cardback" style="cursor:pointer"`
+        : slot.card_id != null
+          ? ` data-slot-kind="${esc(slot.kind)}" data-card-id="${slot.card_id}" ` +
+            `data-face="${esc(slot.face)}" style="cursor:pointer"`
+          : '';
+    const imgX = slot.x_mm + g.bleed_mm;
+    const imgY = slot.y_mm + g.bleed_mm;
+    const imgW = g.slot_w_mm - 2 * g.bleed_mm;
+    const imgH = g.slot_h_mm - 2 * g.bleed_mm;
+    if (slot.thumbnail) {
+      parts.push(
+        `<image href="${esc(slot.thumbnail)}" ` +
+        `x="${n(imgX)}" y="${n(imgY)}" ` +
+        `width="${n(imgW)}" height="${n(imgH)}" ` +
+        `preserveAspectRatio="none"${clickAttrs}/>`
+      );
+    } else {
+      parts.push(
+        `<rect x="${n(imgX)}" y="${n(imgY)}" ` +
+        `width="${n(imgW)}" height="${n(imgH)}" ` +
+        `fill="#242a3a" stroke="#3a4358" stroke-width="0.1"${clickAttrs}/>` +
+        `<text x="${n(imgX + imgW / 2)}" ` +
+        `y="${n(imgY + imgH / 2)}" ` +
+        `text-anchor="middle" fill="#a8a8b8" font-size="4" style="pointer-events:none">${esc(slot.name)}</text>`
+      );
+    }
+    if (clickAttrs) {
+      parts.push(
+        `<rect x="${n(slot.x_mm)}" y="${n(slot.y_mm)}" ` +
+        `width="${n(g.slot_w_mm)}" height="${n(g.slot_h_mm)}" ` +
+        `fill="transparent"${clickAttrs}>` +
+        `<title>${esc(slot.kind === 'cardback' ? window._t('pdf_change_cardback') : window._t('pdf_mini_picker_title') + ' — ' + slot.name)}</title>` +
+        `</rect>`
+      );
+    }
+    return parts.join('');
+  },
+
+  // Como la plantilla de la imprenta: sangrado sombreado, línea de corte
+  // punteada con sus esquinas y zona segura. Solo existe en el preview: el PDF
+  // de imprenta no lleva marcas.
+  _pressOverlaySvg(page, g, spec) {
+    const n = this._n.bind(this);
+    const parts = [];
+    const slot = page.chunk[0];
+    if (slot) {
+      // El PDF rellena el sangrado prolongando el borde de la carta; estirar la
+      // miniatura a toda la página da la misma impresión sin calcularlo aquí.
+      if (slot.thumbnail) {
+        parts.push(
+          `<image href="${this._esc(slot.thumbnail)}" data-press-bleed="1" x="0" y="0" ` +
+          `width="${n(g.page_w_mm)}" height="${n(g.page_h_mm)}" preserveAspectRatio="none" ` +
+          `style="pointer-events:none"/>`
+        );
+      }
+      parts.push(this._slotSvg(slot, g));
+      parts.push(`<path d="${this._bleedPath(slot, g)}" fill="rgba(212,175,55,0.18)" fill-rule="evenodd" style="pointer-events:none"/>`);
+    }
+    const b = spec.bleed_mm;
+    const r = spec.corner_radius_mm;
+    const s = spec.safe_margin_mm;
+    parts.push(
+      `<rect x="${n(b)}" y="${n(b)}" width="${n(spec.trim_w_mm)}" height="${n(spec.trim_h_mm)}" ` +
+      `rx="${n(r)}" ry="${n(r)}" fill="none" stroke="#111827" stroke-width="0.3" ` +
+      `stroke-dasharray="1.2,0.8" style="pointer-events:none"/>`
+    );
+    parts.push(
+      `<rect x="${n(b + s)}" y="${n(b + s)}" width="${n(spec.trim_w_mm - 2 * s)}" ` +
+      `height="${n(spec.trim_h_mm - 2 * s)}" rx="${n(r)}" ry="${n(r)}" fill="none" ` +
+      `stroke="#16a34a" stroke-width="0.25" stroke-dasharray="0.6,0.6" opacity="0.85" ` +
+      `style="pointer-events:none"/>`
+    );
+    return parts.join('');
+  },
+
+  pageLabel(page, idx) {
+    if (!this.pressSpec) return '';
+    const face = page.kind === 'back' ? window._t('press_page_back') : window._t('press_page_front');
+    return `${window._t('press_page')} ${idx + 1} · ${face} ${page.card}`;
   },
 
   _dashArray(pattern) {
@@ -612,6 +709,90 @@ function pdfStudio(deckId) { return {
     } finally {
       this.exportingImages = false;
       this._stopBuildPolling();
+    }
+  },
+
+  setPress(key) {
+    this.press = key && this.press !== key ? key : null;
+    this.pressResult = null;
+    this.pressError = null;
+    this._saveOpts();
+    this.$nextTick(() => window.lucide && window.lucide.createIcons());
+  },
+
+  get pressCardbackUrl() {
+    const cb = this.cardbackSettings;
+    return (cb && (cb.image_url || cb.default_image_url)) || null;
+  },
+
+  // Cartas que no son de dos caras: sin dorso no hay reverso que imprimir.
+  get pressNeedsCardback() {
+    if (!this.deck || this.pressCardbackUrl) return false;
+    return (this.deck.cards || []).some(c => c.include && !(c.is_dfc && c.back_thumbnail_url));
+  },
+
+  get pressDfcCount() {
+    if (!this.deck) return 0;
+    return (this.deck.cards || [])
+      .filter(c => c.include && c.is_dfc && c.back_thumbnail_url)
+      .reduce((sum, c) => sum + (c.quantity || 1), 0);
+  },
+
+  pressWarningText(w) {
+    const face = w.face === 'back' ? window._t('press_page_back') : window._t('press_page_front');
+    return `${w.card_name} (${face.toLowerCase()}): ${window._t('press_warn_' + w.code)}`;
+  },
+
+  formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return '';
+    if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
+  },
+
+  async copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (window.toast) window.toast(window._t('press_copied'), '', 'success');
+    } catch (e) {
+      if (window.toast) window.toast(window._t('common_error'), e.message, 'error');
+    }
+  },
+
+  async exportPress() {
+    if (this.exportingPress || !this.pressSpec) return;
+    this.exportingPress = true;
+    this.pressResult = null;
+    this.pressError = null;
+    this._startBuildPolling();
+    try {
+      const r = await fetch(`/api/decks/${this.deckId}/export-press`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ shop: this.pressSpec.key }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const d = data.detail;
+        this.pressError = (d && typeof d === 'object')
+          ? { code: d.code || 'error', message: d.message || `HTTP ${r.status}`, cards: d.cards || [] }
+          : { code: 'error', message: d || `HTTP ${r.status}`, cards: [] };
+        if (window.toast) window.toast(window._t('press_export_failed'), this.pressError.message, 'error');
+        return;
+      }
+      this.pressResult = data;
+      if (window.toast) window.toast(
+        window._t('press_export_done'),
+        `${data.total_cards} · ${data.total_pages} ${window._t('press_pages_unit')}`,
+        data.warnings.length ? 'warning' : 'success',
+      );
+    } catch (e) {
+      console.error('exportPress:', e);
+      this.pressError = { code: 'error', message: e.message, cards: [] };
+      if (window.toast) window.toast(window._t('press_export_failed'), e.message, 'error');
+    } finally {
+      this.exportingPress = false;
+      this._stopBuildPolling();
+      this.$nextTick(() => window.lucide && window.lucide.createIcons());
     }
   },
 

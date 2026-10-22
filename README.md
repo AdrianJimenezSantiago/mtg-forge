@@ -147,6 +147,34 @@ have to be updated by hand once.
      to order from MakePlayingCards.
    - *PDF Studio* — a PDF for your own printer or a print shop, or *Export ZIP*
      for one image per card.
+   - *PDF Studio → Print shop* — a package ready to send to a professional
+     print shop (see [Sending a deck to a print shop](#sending-a-deck-to-a-print-shop)).
+
+### Sending a deck to a print shop
+
+*PDF Studio → Print shop* switches the studio from home sheets to the template
+of a print shop. The first one supported is
+[Pinbro Games](https://www.pinbrogames.com/plantillas/), poker size 63×88 mm,
+built from its `MOD20_63x88` template and its file preparation guide:
+
+| Requirement                | What the export does                                              |
+| -------------------------- | ----------------------------------------------------------------- |
+| One card per page          | 69×94 mm pages: the 63×88 mm card plus 3 mm of bleed on each side  |
+| Front followed by its back | Deck order, every copy repeated; DFCs get their other face, every other card the deck's card back |
+| Bleed covering the page    | Kept from MPC images that already have it; generated for the rest by extending a plain border with its colour or mirroring borderless art. Transparent corners are filled |
+| Safe area                  | 57×82 mm; the preview shows it next to the dashed cut line          |
+| CMYK Coated FOGRA39, 300 ppi | Every image is separated with the bundled `Coated_Fogra39L_VIGC_300.icc` profile (relative colorimetric, black point compensation, 300 % total ink) and resampled to 815×1110 px |
+| No marks, fonts embedded   | Pages hold a single image: no cut marks, no text, no fonts         |
+| At most 3 MB per page      | JPEG quality is lowered only if a page would not fit; checked again on the finished file |
+| File and folder names      | `Cartas/Póquer(63x88).pdf` inside one ZIP                           |
+
+The PDF also carries a `TrimBox`/`BleedBox` on every page and a FOGRA39
+`OutputIntent`, so prepress software reads the cut size and the colour
+condition without guessing. The export refuses decks with cards that have no
+image or no back, and lists anything worth a second look (low resolution,
+rotated horizontal cards). When it is done, the studio offers the ZIP, the PDF
+for review and a ready-made message; upload the ZIP to WeTransfer and send it to
+the address shown (the shop does not accept attachments by email).
 
 ### Guided tour
 
@@ -333,16 +361,17 @@ mpc_forge/
 ├── clients/          Scryfall, Moxfield and per-site deck importers
 ├── routes/           REST endpoints and HTML views (routes.ROUTERS)
 │   ├── decks/        deck CRUD, imports, art picker, tokens, activity
-│   └── export/       XML, PDF, images, decklists, cardbacks, files
+│   └── export/       XML, PDF, print shop package, images, decklists, cardbacks, files
 ├── services/         business logic grouped by domain
 │   ├── cards/        Scryfall cache, bulk data, DFC pairs, preloading
 │   ├── decks/        importer, parser, validation, covers, undo, snapshots
 │   ├── art/          art cache, custom art, thumbnails, library, themes
 │   ├── indexing/     art sources, drive indexer and search, source types
-│   ├── printing/     PDF, XML, calibration, planner, print runs
+│   ├── printing/     PDF, print shop export, XML, calibration, planner, print runs
 │   └── system/       settings, storage, backups, logging, i18n
 └── utils/            generic helpers (rate limiter, chunking, tasks)
 locales/              translations (es.json, en.json)
+resources/icc/        colour profiles for print shop exports (with their licence)
 templates/
 ├── base.html         layout
 ├── pages/            one template per view

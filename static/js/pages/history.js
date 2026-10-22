@@ -119,6 +119,13 @@ function buildKindMeta() {
       return `PDF: <b>${p.total_slots || 0}</b> ${_t('history_cards_count')} in <b>${p.total_pages || 0}</b> pages <span class="text-fg-muted">(${esc(opts)})</span> <span class="text-fg-faint text-[11px]">(${esc(p.pdf_filename || '')})</span>`;
     }
   },
+  press_exported:       { icon: 'package-check',   tone: 'accent',  label: _t('history_kind_press'),
+    render: (ev) => {
+      const p = ev.payload || {};
+      const shop = [p.shop_name, p.product_name].filter(Boolean).join(' · ');
+      return `${esc(shop)}: <b>${p.total_cards || 0}</b> ${_t('history_cards_count')} · <b>${p.total_pages || 0}</b> ${_t('press_pages_unit')} <span class="text-fg-faint text-[11px]">(${esc(p.zip_filename || '')})</span>`;
+    }
+  },
   };
 }
 
@@ -129,7 +136,7 @@ function buildFilterGroups() {
     { value: 'cards',   label: _t('history_filter_cards'),   icon: 'square-stack',  kinds: ['card_added','card_removed','card_moved','card_qty_changed','card_include_toggled','related_added','role_cleared'] },
     { value: 'art',     label: _t('history_filter_art'),     icon: 'image',         kinds: ['card_art_changed'] },
     { value: 'lang',    label: _t('history_filter_lang'),    icon: 'languages',     kinds: ['deck_localized'] },
-    { value: 'exports', label: _t('history_filter_exports'), icon: 'printer',       kinds: ['xml_generated','pdf_generated'] },
+    { value: 'exports', label: _t('history_filter_exports'), icon: 'printer',       kinds: ['xml_generated','pdf_generated','press_exported'] },
     { value: 'meta',    label: _t('history_filter_meta'),    icon: 'settings',      kinds: ['deck_created','deck_renamed'] },
   ];
 }

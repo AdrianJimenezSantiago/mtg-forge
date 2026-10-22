@@ -1,0 +1,158 @@
+<div class="p-3 space-y-3 text-xs" x-show="pressSpec">
+
+  <div class="border border-border-subtle rounded p-3 space-y-2">
+    <div class="flex items-center justify-between gap-2">
+      <span class="inline-flex items-center gap-2 font-medium text-fg">
+        <i data-lucide="store" class="w-3.5 h-3.5 text-accent"></i>
+        <span x-text="pressSpec?.shop_name"></span>
+      </span>
+      <a :href="pressSpec?.templates_url" target="_blank" rel="noopener noreferrer"
+         class="text-[10px] text-fg-faint hover:text-accent transition inline-flex items-center gap-1">
+        {{ t.press_templates_link }}
+        <i data-lucide="external-link" class="w-3 h-3"></i>
+      </a>
+    </div>
+    <p class="text-[11px] text-fg-muted">{{ t.press_intro }}</p>
+    <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+      <dt class="text-fg-muted">{{ t.press_spec_page }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? `${pressSpec.page_w_mm} × ${pressSpec.page_h_mm} mm` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_trim }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? `${pressSpec.trim_w_mm} × ${pressSpec.trim_h_mm} mm · r ${pressSpec.corner_radius_mm} mm` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_bleed }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? `${pressSpec.bleed_mm} mm` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_safe }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? `${pressSpec.trim_w_mm - 2 * pressSpec.safe_margin_mm} × ${pressSpec.trim_h_mm - 2 * pressSpec.safe_margin_mm} mm` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_color }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec?.color_profile"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_resolution }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? `${pressSpec.ppi} ppp` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_limit }}</dt>
+      <dd class="font-mono text-right" x-text="pressSpec ? formatBytes(pressSpec.max_bytes_per_page) : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_spec_file }}</dt>
+      <dd class="font-mono text-right break-all" x-text="pressSpec?.package_entry"></dd>
+    </dl>
+    <p class="flex items-start gap-1.5 text-[10px] text-fg-faint">
+      <i data-lucide="info" class="w-3 h-3 shrink-0 mt-px"></i>
+      <span>{{ t.press_guides_preview_only }}</span>
+    </p>
+  </div>
+
+  <div class="border border-border-subtle rounded p-3 space-y-2">
+    <div class="font-medium text-fg inline-flex items-center gap-2">
+      <i data-lucide="layers" class="w-3.5 h-3.5 text-fg-faint"></i>
+      {{ t.press_backs_title }}
+    </div>
+    <div class="flex items-center gap-3">
+      <button type="button" @click="openCardbackPicker()"
+              class="w-12 h-16 rounded-sm overflow-hidden border border-border-subtle hover:border-accent transition shrink-0 bg-bg-subtle"
+              aria-label="{{ t.pdf_change_cardback }}">
+        <img x-show="pressCardbackUrl" :src="pressCardbackUrl" alt="" class="w-full h-full object-cover">
+      </button>
+      <div class="space-y-1 text-[11px] min-w-0">
+        <p class="text-fg-muted">{{ t.press_backs_rule }}</p>
+        <p class="text-fg-faint" x-show="pressDfcCount > 0">
+          <span x-text="pressDfcCount"></span> {{ t.press_backs_dfc }}
+        </p>
+        <button type="button" @click="openCardbackPicker()"
+                class="text-accent hover:text-accent-glow transition inline-flex items-center gap-1">
+          <i data-lucide="image" class="w-3 h-3"></i>
+          {{ t.pdf_change_cardback }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="pressError" class="border border-danger-border bg-danger-bg rounded p-3 space-y-1.5" role="alert">
+    <div class="font-medium text-danger inline-flex items-center gap-2">
+      <i data-lucide="circle-x" class="w-3.5 h-3.5"></i>
+      {{ t.press_export_failed }}
+    </div>
+    <p class="text-[11px] text-fg" x-text="pressError?.message"></p>
+    <ul class="text-[11px] text-fg-muted list-disc pl-4 max-h-32 overflow-y-auto" x-show="pressError?.cards?.length">
+      <template x-for="name in (pressError?.cards || [])" :key="name">
+        <li x-text="name"></li>
+      </template>
+    </ul>
+  </div>
+
+  <div x-show="pressResult" class="border border-success-border bg-success-bg rounded p-3 space-y-3">
+    <div class="font-medium text-success inline-flex items-center gap-2">
+      <i data-lucide="circle-check" class="w-3.5 h-3.5"></i>
+      {{ t.press_export_done }}
+    </div>
+    <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+      <dt class="text-fg-muted">{{ t.press_summary_cards }}</dt>
+      <dd class="font-mono text-right" x-text="pressResult?.total_cards"></dd>
+      <dt class="text-fg-muted">{{ t.pdf_summary_total }}</dt>
+      <dd class="font-mono text-right"><span x-text="pressResult?.total_pages"></span> {{ t.press_pages_unit }}</dd>
+      <dt class="text-fg-muted">{{ t.press_result_backs }}</dt>
+      <dd class="font-mono text-right"
+          x-text="pressResult ? `${pressResult.cardback_backs} + ${pressResult.dfc_backs} DFC` : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_result_pdf_size }}</dt>
+      <dd class="font-mono text-right" x-text="pressResult ? formatBytes(pressResult.pdf_size_bytes) : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_result_largest_page }}</dt>
+      <dd class="font-mono text-right" x-text="pressResult ? formatBytes(pressResult.largest_page_bytes) : ''"></dd>
+      <dt class="text-fg-muted">{{ t.press_result_min_ppi }}</dt>
+      <dd class="font-mono text-right" x-text="pressResult ? `${pressResult.min_source_ppi} ppp` : ''"></dd>
+    </dl>
+
+    <div x-show="pressResult?.warnings?.length" class="space-y-1">
+      <div class="text-[11px] font-medium text-warning inline-flex items-center gap-1.5">
+        <i data-lucide="triangle-alert" class="w-3 h-3"></i>
+        {{ t.press_warnings_title }}
+      </div>
+      <ul class="text-[11px] text-fg-muted list-disc pl-4 max-h-32 overflow-y-auto">
+        <template x-for="(w, i) in (pressResult?.warnings || [])" :key="i">
+          <li x-text="pressWarningText(w)"></li>
+        </template>
+      </ul>
+    </div>
+
+    <div class="grid grid-cols-2 gap-1.5">
+      <a :href="pressResult ? `/api/exports/${pressResult.zip_filename}` : '#'"
+         class="h-8 rounded text-[11px] font-semibold bg-accent hover:bg-accent-hover text-bg-base transition
+                inline-flex items-center justify-center gap-1.5">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        {{ t.press_download_zip }}
+      </a>
+      <a :href="pressResult ? `/api/exports/${pressResult.pdf_filename}` : '#'" target="_blank" rel="noopener"
+         class="h-8 rounded text-[11px] border border-border-subtle hover:bg-bg-subtle hover:border-accent transition
+                inline-flex items-center justify-center gap-1.5 text-fg">
+        <i data-lucide="file-search" class="w-3.5 h-3.5"></i>
+        {{ t.press_review_pdf }}
+      </a>
+    </div>
+
+    <ol class="space-y-1.5 text-[11px] text-fg-muted list-decimal pl-4">
+      <li>{{ t.press_step_review }}</li>
+      <li>{{ t.press_step_upload }}
+        <a :href="pressResult?.shop?.delivery_url" target="_blank" rel="noopener noreferrer"
+           class="text-accent hover:text-accent-glow inline-flex items-center gap-0.5">WeTransfer<i data-lucide="external-link" class="w-3 h-3"></i></a>
+      </li>
+      <li>
+        {{ t.press_step_send }}
+        <button type="button" @click="copyText(pressResult?.shop?.delivery_email || '')"
+                class="font-mono text-accent hover:text-accent-glow inline-flex items-center gap-1"
+                title="{{ t.press_copy }}">
+          <span x-text="pressResult?.shop?.delivery_email"></span>
+          <i data-lucide="copy" class="w-3 h-3"></i>
+        </button>
+      </li>
+    </ol>
+
+    <div class="space-y-1">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] text-fg-muted">{{ t.press_message_label }}</span>
+        <button type="button" @click="copyText(pressResult?.delivery_message || '')"
+                class="text-[11px] text-accent hover:text-accent-glow inline-flex items-center gap-1">
+          <i data-lucide="copy" class="w-3 h-3"></i>
+          {{ t.press_copy }}
+        </button>
+      </div>
+      <textarea readonly rows="7" aria-label="{{ t.press_message_label }}"
+                class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 text-[11px] text-fg resize-none"
+                :value="pressResult?.delivery_message || ''"></textarea>
+    </div>
+  </div>
+
+</div>

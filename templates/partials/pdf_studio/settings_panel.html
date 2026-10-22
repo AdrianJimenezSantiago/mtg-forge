@@ -1,7 +1,9 @@
 <aside data-tour="pdf-settings" aria-label="{{ t.a11y_pdf_options }}" class="border-l border-border-subtle bg-bg-inset overflow-y-auto" x-data="{ open: {
     page: true, scale: false, positioning: false, card_guides: true, page_guides: false,
     duplex_guides: false, bleed: false, regmarks: false, backs: false, range: false } }">
-  <div class="p-3 space-y-2 text-xs">
+  {% include "partials/pdf_studio/press_panel.html" %}
+
+  <div class="p-3 space-y-2 text-xs" x-show="!pressSpec">
 
     <div class="border border-border-subtle rounded">
       <button type="button" @click="open.page = !open.page" :aria-expanded="open.page"
