@@ -418,7 +418,7 @@ function deckEditor(deckId) {
       try {
         this.allArts = await window.api.cards.allPrints(this.deckId, card.id);
       } catch (e) {
-        window.toast(window._t('deck_error_load_arts'), e.message);
+        window.toast(window._t('deck_error_load_arts'), e.message, 'error');
       } finally {
         this.loadingPrints = false;
       }
@@ -474,7 +474,7 @@ function deckEditor(deckId) {
         }
       } catch (e) {
         if (e.name !== 'AbortError') {
-          window.toast(window._t('common_error'), e.detail || e.message);
+          window.toast(window._t('common_error'), e.detail || e.message, 'error');
         }
         this.pickerLoading = false;
       }
@@ -869,7 +869,7 @@ function deckEditor(deckId) {
     async pickArt(art, remember) {
       if (art.__source === 'custom') {
         await this.chooseCustom({custom_art_id: art.custom_art_id, face: art.face});
-        window.toast(window._t('deck_art_updated_toast'), art.filename || 'Custom art');
+        window.toast(window._t('deck_art_updated_toast'), art.filename || 'Custom art', 'success');
         this.closeArtPicker();
       } else if (art.__source === 'drives') {
         try {
@@ -882,19 +882,20 @@ function deckEditor(deckId) {
               variant: art.set_name,
             })
           });
-          if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+          if (!r.ok) throw new Error(await window.apiErrorDetail(r));
           const data = await r.json();
           await this.chooseCustom({custom_art_id: data.id, face: 'front'});
-          window.toast(`${window._T.deck_added_from} ${art.set_name}`, art.filename);
+          window.toast(`${window._T.deck_added_from} ${art.set_name}`, art.filename, 'success');
           this.closeArtPicker();
         } catch (e) {
-          window.toast(window._t('deck_error_adding_art'), e.message);
+          window.toast(window._t('deck_error_adding_art'), e.message, 'error');
         }
       } else {
         await this.chooseArt(art.scryfall_id, remember);
         window.toast(
           remember ? window._t('deck_art_remembered') : window._t('deck_art_updated_toast'),
-          `${art.set_code?.toUpperCase() || ''} #${art.collector_number || ''}`
+          `${art.set_code?.toUpperCase() || ''} #${art.collector_number || ''}`,
+          'success',
         );
         this.closeArtPicker();
       }
@@ -984,13 +985,13 @@ function deckEditor(deckId) {
             face: 'front',
           })
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
-        window.toast(window._t('deck_custom_added'), data.filename || 'Custom art');
+        window.toast(window._t('deck_custom_added'), data.filename || 'Custom art', 'success');
         this.pickerAddUrl = '';
         await this.openArtPicker(this.pickerCard);
       } catch (e) {
-        window.toast(window._t('deck_error_download'), e.message);
+        window.toast(window._t('deck_error_download'), e.message, 'error');
       } finally {
         this.addingUrl = false;
       }
@@ -1022,16 +1023,17 @@ function deckEditor(deckId) {
             variant: hit.source_name,
           })
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         await this.chooseCustom({custom_art_id: data.id, face: face});
         await this.selectCard(this.selectedCard);
         window.toast(
           `${window._T.deck_added_from} ${hit.source_name}`,
-          `${hit.filename} — ${face}`
+          `${hit.filename} — ${face}`,
+          'success',
         );
       } catch (e) {
-        window.toast(window._t('deck_error_adding_art'), e.message);
+        window.toast(window._t('deck_error_adding_art'), e.message, 'error');
       } finally {
         this.addingFromDrive = null;
       }
@@ -1063,18 +1065,18 @@ function deckEditor(deckId) {
         const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}/add-related`, {
           method: 'POST', headers: {'Content-Type': 'application/json'}
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const added = await r.json();
         if (added.length === 0) {
-          window.toast(window._t('deck_no_related'), window._t('deck_related_already'));
+          window.toast(window._t('deck_no_related'), window._t('deck_related_already'), 'info');
         } else {
           const names = added.map(c => c.name).join(', ');
-          window.toast(window._t('deck_related_added').replace('{n}', added.length), names);
+          window.toast(window._t('deck_related_added').replace('{n}', added.length), names, 'success');
           this.expandedGroups.tokens = true;
         }
         await this.load();
       } catch (e) {
-        window.toast(window._t('deck_error_adding'), e.message);
+        window.toast(window._t('deck_error_adding'), e.message, 'error');
       } finally {
         this.addingRelated = null;
       }
@@ -1086,12 +1088,12 @@ function deckEditor(deckId) {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deck_card_id: card.id, scryfall_id, face: 'front', remember_globally: remember})
       });
-      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_art')); return; }
+      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_art'), 'error'); return; }
       const updated = await r.json();
       this._updateCard(updated);
       this.allArts = this.allArts.map(a => ({...a, is_chosen: a.kind === 'scryfall' && a.scryfall_id === scryfall_id}));
       delete this._pickerCache[card.id];
-      if (remember) window.toast(window._t('deck_art_remembered'), card.name);
+      if (remember) window.toast(window._t('deck_art_remembered'), card.name, 'success');
     },
     async chooseCustom(art) {
       const card = this.selectedCard;
@@ -1100,7 +1102,7 @@ function deckEditor(deckId) {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({deck_card_id: card.id, custom_art_id: art.custom_art_id, face: art.face})
       });
-      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_custom_art')); return; }
+      if (!r.ok) { window.toast(window._t('common_error'), window._t('deck_error_custom_art'), 'error'); return; }
       const updated = await r.json();
       this._updateCard(updated);
       this.allArts = this.allArts.map(a => {
@@ -1119,13 +1121,13 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({url: this.urlInput, card_name: card.name, face: this.urlFace, variant: this.urlVariant || null})
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast(window._t('deck_custom_added'), card.name);
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+        window.toast(window._t('deck_custom_added'), card.name, 'success');
         this.urlInput = ''; this.urlVariant = ''; this.showAddUrlForm = false;
         await this.selectCard(card);
         await this.load();
       } catch (e) {
-        window.toast(window._t('deck_error_download'), e.message);
+        window.toast(window._t('deck_error_download'), e.message, 'error');
       } finally {
         this.addingUrl = false;
       }
@@ -1137,7 +1139,7 @@ function deckEditor(deckId) {
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/custom-art/${art.custom_art_id}`, {method: 'DELETE'});
       if (r.ok) {
-        window.toast(window._t('common_delete'), art.filename);
+        window.toast(window._t('deck_custom_deleted'), art.filename, 'success');
         const card = this.selectedCard;
         await this.selectCard(card);
         await this.load();
@@ -1148,11 +1150,11 @@ function deckEditor(deckId) {
       try {
         const r = await fetch('/api/custom-art/rescan', {method: 'POST'});
         const data = await r.json();
-        window.toast(window._t('deck_rescanned'), `${data.total} ${window._T.deck_files_count} (+${data.added} / -${data.removed})`);
+        window.toast(window._t('deck_rescanned'), `${data.total} ${window._T.deck_files_count} (+${data.added} / -${data.removed})`, 'success');
         if (this.selectedCard) await this.selectCard(this.selectedCard);
         await this.load();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.rescanning = false;
       }
@@ -1196,11 +1198,11 @@ function deckEditor(deckId) {
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${this.deckId}/cards/${card.id}`, {method: 'DELETE'});
       if (r.ok) {
-        window.toast(window._t('deck_card_deleted'), card.name);
+        window.toast(window._t('deck_card_deleted'), card.name, 'success');
         if (this.selectedCardId === card.id) { this.selectedCardId = null; this.allArts = []; }
         await this.load();
       } else {
-        window.toast(window._t('common_error'), window._t('deck_error_delete'));
+        window.toast(window._t('common_error'), window._t('deck_error_delete'), 'error');
       }
     },
 
@@ -1215,9 +1217,9 @@ function deckEditor(deckId) {
         const updated = await r.json();
         this._updateCard(updated);
         this._refreshValidation();
-        window.toast(window._t('deck_kind_moved') || card.name, `${card.name} → ${this.roleLabel(newRole)}`);
+        window.toast(window._t('deck_kind_moved'), `${card.name} → ${this.roleLabel(newRole)}`, 'success');
       } else {
-        window.toast(window._t('common_error'), window._t('deck_error_move'));
+        window.toast(window._t('common_error'), window._t('deck_error_move'), 'error');
       }
     },
 
@@ -1236,11 +1238,11 @@ function deckEditor(deckId) {
       const r = await fetch(`/api/decks/${this.deckId}/role/${role}`, {method: 'DELETE'});
       if (r.ok) {
         const data = await r.json();
-        window.toast(`${label} ${window._T.deck_section_cleared}`, `${data.deleted} ${window._T.deck_cards_deleted}`);
+        window.toast(`${label} ${window._T.deck_section_cleared}`, `${data.deleted} ${window._T.deck_cards_deleted}`, 'success');
         if (this.selectedCardId) { this.selectedCardId = null; this.allArts = []; }
         await this.load();
       } else {
-        window.toast(window._t('common_error'), window._t('deck_error_clear'));
+        window.toast(window._t('common_error'), window._t('deck_error_clear'), 'error');
       }
     },
     async addCard() {
@@ -1255,15 +1257,15 @@ function deckEditor(deckId) {
             role: this.newCardRole,
           })
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast(window._t('history_kind_added'), this.newCardName);
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+        window.toast(window._t('history_kind_added'), this.newCardName, 'success');
         this.newCardName = '';
         this.autoResults = [];
         this.autoOpen = false;
         await this.load();
         this.$nextTick(() => this.$refs.newCardInput && this.$refs.newCardInput.focus());
       } catch (e) {
-        window.toast(window._t('deck_error_adding'), e.message);
+        window.toast(window._t('deck_error_adding'), e.message, 'error');
       } finally {
         this.addingCard = false;
       }
@@ -1320,9 +1322,9 @@ function deckEditor(deckId) {
       if (r.ok) {
         this.deck = await r.json();
         document.title = v + ' · MPC Forge';
-        window.toast(window._t('history_kind_renamed'), v);
+        window.toast(window._t('history_kind_renamed'), v, 'success');
       } else {
-        window.toast(window._t('common_error'), window._t('js_error_rename'));
+        window.toast(window._t('common_error'), window._t('js_error_rename'), 'error');
       }
     },
     async deleteDeck() {
@@ -1332,7 +1334,7 @@ function deckEditor(deckId) {
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/decks/${this.deckId}`, {method: 'DELETE'});
       if (r.ok) { window.location.href = '/decks'; }
-      else window.toast(window._t('common_error'), window._t('deck_error_delete'));
+      else window.toast(window._t('common_error'), window._t('deck_error_delete'), 'error');
     },
 
     async openTokens() {
@@ -1341,10 +1343,10 @@ function deckEditor(deckId) {
       this.tokensData = {tokens: [], total_unique: 0, already_in_deck: 0, missing: 0};
       try {
         const r = await fetch(`/api/decks/${this.deckId}/tokens-analysis`);
-        if (!r.ok) throw new Error('Error analizando tokens');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.tokensData = await r.json();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
         this.closeTokens();
       } finally {
         this.tokensLoading = false;
@@ -1375,10 +1377,10 @@ function deckEditor(deckId) {
         const url = `/api/decks/${this.deckId}/print-runs/preview` +
                     (params.toString() ? '?' + params.toString() : '');
         const r = await fetch(url);
-        if (!r.ok) throw new Error('Error obteniendo preview');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.printRunsData = await r.json();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
         this.printRunsData = null;
       } finally {
         this.printRunsLoading = false;
@@ -1402,16 +1404,17 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(payload),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error generando XMLs');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
-        window.toast(`${data.total_runs} XML${data.total_runs > 1 ? 's' : ''} generados`,
-                     `Cartas: ${data.total_cards}. Descargables desde Historial.`);
+        window.toast(window._t('deck_split_xml_done').replace('{n}', data.total_runs),
+                     window._t('deck_split_xml_done_desc').replace('{cards}', data.total_cards),
+                     'success');
         this.closePrintRuns();
         if (typeof this.loadBuildHistory === 'function') {
           this.loadBuildHistory();
         }
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.printRunsBuilding = false;
       }
@@ -1424,7 +1427,7 @@ function deckEditor(deckId) {
 
     async openSimilar(art) {
       if (!art.image_hash) {
-        window.toast('pHash', window._t('common_none'));
+        window.toast(window._t('deck_no_phash'), window._t('deck_no_phash_desc'), 'info');
         return;
       }
       this.similarOpen = true;
@@ -1433,10 +1436,10 @@ function deckEditor(deckId) {
       this.similarData = null;
       try {
         const r = await fetch(`/api/drives/phash/similar/${encodeURIComponent(art.file_id)}?threshold=8&limit=50`);
-        if (!r.ok) throw new Error('Error buscando similares');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.similarData = await r.json();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.similarLoading = false;
         this.$nextTick(() => window.icons?.());
@@ -1449,23 +1452,9 @@ function deckEditor(deckId) {
       this.similarSourceArt = null;
     },
 
-    async pickSimilar(similar) {
-      const art = {
-        kind: 'drive',
-        source_id: similar.source_id,
-        file_id: similar.file_id,
-        image_small: `/api/drives/search`,
-        __source: 'drives',
-        image_hash: similar.image_hash,
-        _drive_hit: similar,
-      };
-      this.closeSimilar();
-      window.toast(window._t('common_ok'), `"${similar.filename}" (source ${similar.source_id})`);
-    },
-
     async openArtistApply(art) {
       if (!art.artist) {
-        window.toast(window._t('common_none'), window._t('picker_sort_artist'));
+        window.toast(window._t('deck_no_artist'), window._t('deck_no_artist_desc'), 'info');
         return;
       }
       this.artistApplyOpen = true;
@@ -1479,13 +1468,13 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({artist: art.artist, role: 'all'}),
         });
-        if (!r.ok) throw new Error('Error consultando el recomendador');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         this.artistApplyData = await r.json();
         for (const m of (this.artistApplyData.matched || [])) {
           this.artistApplyChecked[m.oracle_id] = true;
         }
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.artistApplyLoading = false;
         this.$nextTick(() => window.icons?.());
@@ -1509,7 +1498,7 @@ function deckEditor(deckId) {
       const matched = (this.artistApplyData.matched || [])
         .filter(m => this.artistApplyChecked[m.oracle_id]);
       if (matched.length === 0) {
-        window.toast(window._t('common_none'), window._t('deck_filter_placeholder'));
+        window.toast(window._t('deck_artist_none_selected'), window._t('deck_artist_none_selected_desc'), 'info');
         return;
       }
       this.artistApplyApplying = true;
@@ -1527,8 +1516,9 @@ function deckEditor(deckId) {
             if (r.ok) ok++; else fail++;
           } catch { fail++; }
         }
-        window.toast(`${ok} ${window._T.history_kind_art}`,
-                     fail > 0 ? `${fail} failed` : window._t('deck_art_updated_toast'));
+        window.toast(window._t('deck_artist_applied').replace('{n}', ok),
+                     fail > 0 ? window._t('deck_artist_failed').replace('{n}', fail) : '',
+                     fail > 0 ? 'warning' : 'success');
         this.closeArtistApply();
         if (typeof this.reload === 'function') this.reload();
         else location.reload();
@@ -1545,15 +1535,15 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({scryfall_ids: [token.scryfall_id]})
         });
-        if (!r.ok) throw new Error(window._t('deck_error_adding'));
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const added = await r.json();
         if (added.length > 0) {
-          window.toast(window._t('deck_tokens'), token.name);
+          window.toast(window._t('deck_token_added'), token.name, 'success');
           await this.load();
           await this.openTokens();
         }
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.tokensAdding = false;
       }
@@ -1568,16 +1558,17 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({scryfall_ids: missing})
         });
-        if (!r.ok) throw new Error(window._t('deck_error_adding'));
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const added = await r.json();
         window.toast(
-          `${added.length} ${window._T.deck_tokens}`,
-          added.map(c => c.name).slice(0, 3).join(', ') + (added.length > 3 ? '…' : '')
+          window._t('deck_tokens_added').replace('{n}', added.length),
+          added.map(c => c.name).slice(0, 3).join(', ') + (added.length > 3 ? '…' : ''),
+          added.length ? 'success' : 'info',
         );
         await this.load();
         await this.openTokens();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.tokensAdding = false;
       }
@@ -1852,13 +1843,13 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({create_run: true, cardstock: this.cardstock, foil: this.foil})
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         const filename = data.xml_path.split(/[\\/]/).pop();
         this.lastXmlFilename = filename;
-        window.toast(window._t('deck_xml'), `${data.total_cards} ${window._T.history_cards_count} · ${data.estimated_cost_eur.toFixed(2)} €`);
+        window.toast(window._t('deck_xml_done'), `${data.total_cards} ${window._T.history_cards_count} · ${data.estimated_cost_eur.toFixed(2)} €`, 'success');
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this._stopBuildPolling();
         this.buildProgress = null;
@@ -1880,10 +1871,10 @@ function deckEditor(deckId) {
           body: JSON.stringify({xml_filename: this.lastXmlFilename})
         });
         const data = await r.json();
-        if (!r.ok) throw new Error(data.detail || 'Error');
-        window.toast('MPC Autofill', `PID ${data.pid}`);
+        if (!r.ok) throw new Error((data.detail && data.detail.message) || data.detail || `HTTP ${r.status}`);
+        window.toast(window._t('deck_autofill_launched'), `PID ${data.pid}`, 'success');
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.launchingAutofill = false;
       }
@@ -1903,12 +1894,12 @@ function deckEditor(deckId) {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(opts),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
-        window.toast(window._t('deck_pdf_studio'), `${data.total_slots} ${window._T.history_cards_count} · ${data.total_pages} p.`);
+        window.toast(window._t('pdf_done'), `${data.total_slots} ${window._T.history_cards_count} · ${data.total_pages} ${window._t('common_pages')}`, 'success');
         window.location.href = `/api/exports/${data.filename}`;
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this._stopBuildPolling();
         this.buildProgress = null;
@@ -1925,25 +1916,31 @@ function deckEditor(deckId) {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({lang: this.localizeLang}),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         const langLabel = this.supportedLangs[data.lang] || data.lang;
 
         await this.load();
 
-        let msg = `${data.localized} cambiadas · ${data.unchanged} ya estaban`;
+        let msg = window._t('deck_lang_summary')
+          .replace('{changed}', data.localized)
+          .replace('{unchanged}', data.unchanged);
         if (data.skipped_custom > 0) {
-          msg += ` · ${data.skipped_custom} con arte custom respetadas`;
+          msg += ` · ${window._t('deck_lang_custom_kept').replace('{n}', data.skipped_custom)}`;
         }
         if (data.unavailable && data.unavailable.length > 0) {
           const shown = data.unavailable.slice(0, 4).join(', ');
-          const more = data.unavailable.length > 4 ? ` (+${data.unavailable.length - 4} más)` : '';
-          msg += `\nSin arte en ${langLabel}: ${shown}${more}`;
+          const more = data.unavailable.length > 4
+            ? ' ' + window._t('deck_lang_more').replace('{n}', data.unavailable.length - 4)
+            : '';
+          msg += '\n' + window._t('deck_lang_unavailable')
+            .replace('{lang}', langLabel)
+            .replace('{cards}', shown + more);
           console.log('[localize] Cartas sin arte en', langLabel, ':', data.unavailable);
         }
-        Alpine.store('ui').success(`Idioma → ${langLabel}`, msg);
+        Alpine.store('ui').success(window._t('deck_lang_done').replace('{lang}', langLabel), msg);
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.localizing = false;
       }
@@ -1956,8 +1953,7 @@ function deckEditor(deckId) {
       });
       const r = await fetch(`/api/decks/${this.deckId}/decklist?${params.toString()}`);
       if (!r.ok) {
-        const data = await r.json().catch(() => ({}));
-        throw new Error(data.detail || 'No se pudo generar la decklist');
+        throw new Error(await window.apiErrorDetail(r));
       }
       return await r.json();
     },
@@ -1978,11 +1974,12 @@ function deckEditor(deckId) {
           document.body.removeChild(ta);
         }
         window.toast(
-          window._t('deck_decklist_copy'),
-          `${data.total_cards} ${window._T.history_cards_count} · ${data.format}`
+          window._t('deck_decklist_copied'),
+          `${data.total_cards} ${window._T.history_cards_count} · ${data.format}`,
+          'success',
         );
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.exportingDecklist = false;
       }
@@ -1996,7 +1993,7 @@ function deckEditor(deckId) {
         });
         window.location.href = `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`;
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         setTimeout(() => { this.exportingDecklist = false; }, 500);
       }

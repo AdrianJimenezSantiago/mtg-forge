@@ -9,7 +9,34 @@
       </div>
     </div>
 
-    <div class="bg-bg-subtle rounded p-3 space-y-1.5 text-[11px]">
+    <div class="bg-bg-subtle rounded p-3 space-y-1.5 text-[11px]" x-show="pressSpec">
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.press_summary_shop }}</span>
+        <span class="font-medium text-accent truncate ml-2" x-text="pressSpec?.shop_name"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.press_summary_product }}</span>
+        <span class="font-mono" x-text="pressSpec?.product_name"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_page_section }}</span>
+        <span class="font-mono" x-text="pressSpec ? `${pressSpec.page_w_mm} × ${pressSpec.page_h_mm} mm` : ''"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.press_summary_cards }}</span>
+        <span class="font-mono" x-text="totalSlots"></span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.pdf_summary_total }}</span>
+        <span class="font-mono"><span x-text="totalPages"></span> {{ t.common_pages }}</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="text-fg-muted">{{ t.press_summary_color }}</span>
+        <span class="font-mono">CMYK · FOGRA39</span>
+      </div>
+    </div>
+
+    <div class="bg-bg-subtle rounded p-3 space-y-1.5 text-[11px]" x-show="!pressSpec">
       <div class="flex justify-between">
         <span class="text-fg-muted">{{ t.pdf_summary_layout }}</span>
         <span class="font-mono"><span x-text="opts.cols"></span>×<span x-text="opts.rows"></span> {{ t.pdf_summary_per_page }}</span>
@@ -47,7 +74,29 @@
       </div>
     </div>
 
-    <div class="space-y-2">
+    <div class="space-y-2" x-show="pressSpec">
+      <button @click="exportPress()"
+              :disabled="exportingPress || !deck || totalSlots === 0 || pressNeedsCardback"
+              class="w-full h-10 rounded font-semibold text-sm bg-accent hover:bg-accent-hover
+                     disabled:opacity-40 disabled:cursor-not-allowed transition
+                     text-bg-base flex items-center justify-center gap-2">
+        <span x-show="!exportingPress" class="inline-flex items-center gap-2">
+          <i data-lucide="package-check" class="w-4 h-4"></i>
+          <span x-text="`{{ t.press_export_for }} ${pressSpec?.shop_name || ''}`"></span>
+        </span>
+        <span x-show="exportingPress" class="inline-flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+          {{ t.pdf_generating_dots }}
+        </span>
+      </button>
+      <p x-show="pressNeedsCardback"
+         class="flex items-start gap-1.5 text-[10px] text-fg-muted p-2 rounded bg-warning-bg border border-warning-border">
+        <i data-lucide="triangle-alert" class="w-3.5 h-3.5 text-warning shrink-0"></i>
+        <span>{{ t.press_needs_cardback }}</span>
+      </p>
+    </div>
+
+    <div class="space-y-2" x-show="!pressSpec">
       <button data-tour="pdf-build" @click="buildPdf(true)"
               :disabled="buildingPdf || !deck || totalPages === 0"
               class="w-full h-10 rounded font-semibold text-sm bg-accent hover:bg-accent-hover
@@ -114,6 +163,28 @@
           Silhouette (reg. marks)
         </button>
       </div>
+      <template x-if="pressShops.length">
+        <div class="mt-4">
+          <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.press_presets_label }}</div>
+          <div class="space-y-1.5">
+            <template x-for="shop in pressShops" :key="shop.key">
+              <button @click="setPress(shop.key)" :aria-pressed="press === shop.key"
+                      :class="press === shop.key ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle hover:border-accent'"
+                      class="w-full text-[11px] py-1.5 px-2 rounded border transition text-left flex items-center gap-2">
+                <i data-lucide="store" class="w-3.5 h-3.5 shrink-0"></i>
+                <span class="truncate"><span x-text="shop.shop_name"></span> · <span x-text="shop.product_name"></span></span>
+              </button>
+            </template>
+            <button x-show="press" @click="setPress(null)"
+                    class="w-full text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle transition
+                           inline-flex items-center gap-1.5 justify-center text-fg-muted">
+              <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+              {{ t.press_back_to_home }}
+            </button>
+          </div>
+        </div>
+      </template>
+
       <button @click="resetOpts()"
               class="w-full mt-3 text-[11px] text-fg-faint hover:text-fg-muted transition inline-flex items-center gap-1 justify-center">
         <i data-lucide="rotate-ccw" class="w-3 h-3"></i>

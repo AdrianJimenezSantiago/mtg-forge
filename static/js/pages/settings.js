@@ -121,7 +121,7 @@ function settingsShell() {
         this.secretsSet = data.secrets_set || [];
         this.loadPaths();
       } catch (e) {
-        window.toast(window._t('settings_loading'), e.message);
+        window.toast(window._t('settings_error_loading'), e.message, 'error');
       } finally {
         this.loading = false;
         this.$nextTick(() => window.icons && window.icons());
@@ -210,13 +210,13 @@ function settingsShell() {
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({values: {[key]: value}}),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         this.values = data.values;
         this.secretsSet = data.secrets_set || [];
-        window.toast(window._t('settings_saved'), key);
+        window.toast(window._t('settings_saved'), '', 'success');
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
         this.load();
       }
     },
@@ -240,9 +240,9 @@ function settingsShell() {
         const data = await r.json();
         this.values = data.values;
         this.secretsSet = data.secrets_set || [];
-        window.toast(window._t('settings_saved'), window._t('common_reset'));
+        window.toast(window._t('settings_saved'), window._t('settings_reset_done'), 'success');
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
     },
 
@@ -252,9 +252,9 @@ function settingsShell() {
         const r = await fetch('/api/backup', {method: 'POST'});
         if (!r.ok) throw new Error(window._t('common_error'));
         this.lastBackup = await r.json();
-        window.toast(window._t('settings_backup_created'), this.lastBackup.path);
+        window.toast(window._t('settings_backup_created'), this.lastBackup.path, 'success');
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.backingUp = false;
       }
@@ -295,8 +295,7 @@ function settingsShell() {
           }),
         });
         if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || window._t('common_error'));
+          throw new Error(await window.apiErrorDetail(r));
         }
         const data = await r.json();
         this.storage = data.storage;
@@ -305,9 +304,10 @@ function settingsShell() {
           window._t('storage_cleanup_freed')
             .replace('{size}', this.fmtBytes(data.freed_bytes))
             .replace('{n}', data.removed),
+          'success',
         );
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.storagePurging = '';
         this.$nextTick(() => window.icons && window.icons());
@@ -401,7 +401,7 @@ function settingsShell() {
         }
         this.pathsDirty = false;
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
     },
     markPathDirty(_key) {
@@ -431,16 +431,15 @@ function settingsShell() {
           body: JSON.stringify({values: updates}),
         });
         if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || window._t('common_error'));
+          throw new Error(await window.apiErrorDetail(r));
         }
         const data = await r.json();
         this.values = data.values;
         await this.loadPaths();
         this.pathsDirty = false;
-        window.toast(window._t('settings_paths_saved'), window._t('settings_paths_saved_desc'));
+        window.toast(window._t('settings_paths_saved'), window._t('settings_paths_saved_desc'), 'success');
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.savingPaths = false;
       }
@@ -591,13 +590,12 @@ function bulkData() {
           method: 'POST',
         });
         if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || window._t('common_error'));
+          throw new Error(await window.apiErrorDetail(r));
         }
-        window.toast(window._t('bulk_started'), window._t('bulk_started_desc'));
+        window.toast(window._t('bulk_started'), window._t('bulk_started_desc'), 'info');
         this._startPolling();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.starting = false;
       }
@@ -606,9 +604,9 @@ function bulkData() {
     async cancel() {
       try {
         await fetch('/api/bulk/cancel', { method: 'POST' });
-        window.toast(window._t('bulk_cancelled'), window._t('bulk_cancelled_desc'));
+        window.toast(window._t('bulk_cancelled'), window._t('bulk_cancelled_desc'), 'info');
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
       await this.refresh();
     },
@@ -621,9 +619,9 @@ function bulkData() {
           clearInterval(this._pollTimer);
           this._pollTimer = null;
           if (this.progress.phase === 'done') {
-            window.toast(window._t('bulk_done'), window._t('bulk_done_desc'));
+            window.toast(window._t('bulk_done'), window._t('bulk_done_desc'), 'success');
           } else if (this.progress.error && !this.progress.cancelled) {
-            window.toast(window._t('common_error'), this.progress.error);
+            window.toast(window._t('common_error'), this.progress.error, 'error');
           }
         }
       }, 1500);
@@ -698,28 +696,32 @@ function artSourcesPanel() {
     async indexOne(s) {
       if (this.indexingIds.includes(s.id)) return;
       if (this.batchProgress) {
-        window.toast('Batch en curso', 'Espera a que termine el indexado en lote.');
+        window.toast(window._t('settings_batch_running'), window._t('settings_batch_wait'), 'warning');
         return;
       }
       this.indexingIds.push(s.id);
       try {
         const wait = !this.hasApiKey;
         const r = await fetch(`/api/art-sources/${s.id}/index?wait=${wait}`, {method: 'POST'});
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         if (wait) {
           const data = await r.json();
           if (data.error) {
-            window.toast(window._t('common_error'), data.error.substring(0, 100));
+            window.toast(window._t('common_error'), data.error.substring(0, 100), 'error');
           } else {
             window.toast(window._t('settings_indexed_files') + ' ' + s.name,
-              `+${data.files_added} / ~${data.files_updated} en ${data.folders_visited} carpetas`);
+              window._t('settings_indexed_summary')
+                .replace('{added}', data.files_added)
+                .replace('{updated}', data.files_updated)
+                .replace('{folders}', data.folders_visited),
+              'success');
           }
         } else {
-          window.toast(window._t('settings_indexing_progress'), s.name);
+          window.toast(window._t('settings_indexing_progress'), s.name, 'info');
           this._startPolling();
         }
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         if (!this.hasApiKey) {
           this.indexingIds = this.indexingIds.filter(id => id !== s.id);
@@ -760,7 +762,7 @@ function artSourcesPanel() {
 
     async _startBatch(sourceIds, mode) {
       if (this.batchProgress && !this.batchProgress.all_done && !this.batchProgress.cancelled) {
-        window.toast('Batch en curso', 'Ya hay un indexado corriendo.');
+        window.toast(window._t('settings_batch_running'), window._t('settings_batch_wait'), 'warning');
         return;
       }
       try {
@@ -770,24 +772,23 @@ function artSourcesPanel() {
           body: JSON.stringify({ source_ids: sourceIds, mode }),
         });
         if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || `Error ${r.status}`);
+          throw new Error(await window.apiErrorDetail(r));
         }
         const data = await r.json();
         if (data.queued === 0) {
-          window.toast(window._t('settings_indexed_files'), 'Todos los drives ya están indexados.');
+          window.toast(window._t('settings_all_indexed'), '', 'info');
           return;
         }
         this._startBatchPolling();
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
     },
 
     async indexPinned() {
       const pinned = this.sources.filter(s => s.pinned);
       if (pinned.length === 0) {
-        window.toast(window._t('settings_pinned_col'), window._t('settings_pin_drive') + ' ★');
+        window.toast(window._t('settings_no_pinned'), window._t('settings_no_pinned_desc'), 'info');
         return;
       }
       const pendingCount = pinned.filter(s => !s.indexed_at).length;
@@ -838,7 +839,7 @@ function artSourcesPanel() {
       try {
         await fetch('/api/drives/index-cancel', {method: 'POST'});
       } catch (e) {
-        window.toast(window._t('common_error'), e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
     },
 
@@ -872,16 +873,18 @@ function artSourcesPanel() {
       this.restoring = true;
       try {
         const r = await fetch('/api/art-sources/restore-catalog', {method: 'POST'});
-        if (!r.ok) throw new Error('Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const d = await r.json();
         if (d.added === 0) {
-          window.toast(window._t('settings_restore_catalog'), `${d.total_curated}`);
+          window.toast(window._t('settings_restore_none'),
+            window._t('settings_restore_total').replace('{n}', d.total_curated), 'info');
         } else {
-          window.toast(`${d.added} ${window._t('settings_restore_catalog')}`, `${d.total_curated}`);
+          window.toast(window._t('settings_restore_added').replace('{n}', d.added),
+            window._t('settings_restore_total').replace('{n}', d.total_curated), 'success');
         }
         await this.load();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.restoring = false;
       }
@@ -895,14 +898,14 @@ function artSourcesPanel() {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(this.draft),
         });
-        if (!r.ok) throw new Error((await r.json()).detail || 'Error');
-        window.toast(window._t('settings_add_btn'), this.draft.name);
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+        window.toast(window._t('settings_source_added'), this.draft.name, 'success');
         this.draft = {name: '', url: '', description: '', tags: '', pinned: false, source_type: ''};
         this.validation = {checked: false, valid: false, detected_type: '', canonical_url: '', label: '', error: ''};
         this.showAdd = false;
         await this.load();
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.saving = false;
       }
@@ -959,9 +962,9 @@ function artSourcesPanel() {
           method: 'PATCH', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({pinned: !s.pinned}),
         });
-        if (!r.ok) throw new Error('Error');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         await this.load();
-      } catch (e) { window.toast('Error', e.message); }
+      } catch (e) { window.toast(window._t('common_error'), e.message, 'error'); }
     },
 
     async remove(s) {
@@ -971,10 +974,10 @@ function artSourcesPanel() {
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       try {
         const r = await fetch(`/api/art-sources/${s.id}`, {method: 'DELETE'});
-        if (!r.ok) throw new Error('Error');
-        window.toast(window._t('common_delete'), s.name);
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+        window.toast(window._t('settings_source_removed'), s.name, 'success');
         await this.load();
-      } catch (e) { window.toast('Error', e.message); }
+      } catch (e) { window.toast(window._t('common_error'), e.message, 'error'); }
     }
   };
 }
@@ -999,7 +1002,7 @@ function debugLogPanel() {
         this.showTail = true;
         this.$nextTick(() => window.icons && window.icons());
       } catch (e) {
-        window.toast('Error', e.message);
+        window.toast(window._t('common_error'), e.message, 'error');
       }
     },
     async copyTail() {
@@ -1008,7 +1011,7 @@ function debugLogPanel() {
         this.copied = true;
         setTimeout(() => this.copied = false, 2000);
       } catch (e) {
-        window.toast(window._t('common_error'), '');
+        window.toast(window._t('js_error_clipboard'), e.message, 'error');
       }
     }
   };

@@ -24,6 +24,7 @@ if _missing:
 DATAS = [
     (str(PROJECT_ROOT / "templates"),  "templates"),
     (str(PROJECT_ROOT / "static"),     "static"),
+    (str(PROJECT_ROOT / "resources"),  "resources"),
 ]
 
 _LOCALES = PROJECT_ROOT / "locales"

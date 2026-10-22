@@ -29,6 +29,10 @@ async function extractDetail(res) {
 
   const detail = body?.detail
   if (typeof detail === 'string') return detail
+  // Errores con código ({code, message}): el mensaje ya viene redactado.
+  if (detail && typeof detail === 'object' && !Array.isArray(detail) && detail.message) {
+    return detail.message
+  }
   if (Array.isArray(detail)) {
     return detail
       .map((d) => {
@@ -303,7 +307,7 @@ async function poll(fetcher, isDone, opts = {}) {
     onTick?.(state)
     if (isDone(state)) return state
     if (timeoutMs && Date.now() - startedAt > timeoutMs) {
-      throw new Error('Se agotó el tiempo de espera')
+      throw new Error((window._t || ((k) => k))('js_error_timeout'))
     }
     await new Promise((r) => setTimeout(r, intervalMs))
   }
@@ -313,5 +317,7 @@ window.api = api
 window.ApiError = ApiError
 window.apiRequest = request
 window.withToast = withToast
+// Texto legible del error de una respuesta fetch() fallida, para los toasts.
+window.apiErrorDetail = extractDetail
 window.apiPoll = poll
 })()

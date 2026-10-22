@@ -18,7 +18,7 @@
 
     <div class="h-4 w-px bg-border-subtle"></div>
 
-    <label class="flex items-center gap-1.5 text-fg-muted cursor-pointer">
+    <label class="flex items-center gap-1.5 text-fg-muted cursor-pointer" x-show="!pressSpec">
       <input type="checkbox" x-model="showPageMargins" class="accent-accent">
       {{ t.pdf_page_margins }}
     </label>
@@ -39,9 +39,11 @@
       {{ t.pdf_guide }}
     </button>
 
-    <span class="font-mono text-fg-faint text-[11px]" x-show="deck">
+    <span class="font-mono text-fg-faint text-[11px]" x-show="deck && !pressSpec">
       <span x-text="opts.backs_layout === 'duplex' && opts.include_backs ? '{{ t.pdf_duplex_intercalado }}' : '{{ t.pdf_solo_fronts }}'"></span>
     </span>
+    <span class="font-mono text-accent text-[11px] whitespace-nowrap" x-show="deck && pressSpec"
+          x-text="pressSpec?.shop_name"></span>
   </div>
 
   <div class="p-6 flex flex-col items-center gap-6">
@@ -56,7 +58,9 @@
 
     <template x-for="(page, idx) in allPages" :key="page.key">
       <div class="flex flex-col items-center gap-1.5">
-        <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono">
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono" x-show="pressSpec"
+             x-text="pageLabel(page, idx)"></div>
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono" x-show="!pressSpec">
           Hoja <span x-text="idx + 1"></span>
           <span class="text-fg-faint/70">·</span>
           <span x-text="page.kind === 'back' ? '{{ t.pdf_page_backs }}' + (page.mirror ? ' {{ t.pdf_page_backs_mirrored | replace(t.pdf_page_backs + " ", "") }}' : '') : '{{ t.pdf_page_fronts }}'"></span>

@@ -39,7 +39,7 @@ function globalCardSearch() {
       this.loading = true;
       try {
         const r = await fetch(`/api/decks/_/search-cards?q=${encodeURIComponent(q)}`);
-        if (!r.ok) throw new Error('Error del servidor');
+        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
         if (q !== this._lastQuery) return;
         this.results = data.groups || [];
@@ -54,7 +54,7 @@ function globalCardSearch() {
         this.open = true;
         this.$nextTick(() => window.icons && window.icons());
       } catch (e) {
-        window.toast && window.toast('Error buscando', e.message);
+        window.toast && window.toast(window._t('js_error_searching'), e.message, 'error');
       } finally {
         this.loading = false;
       }

@@ -82,7 +82,11 @@ window.addEventListener('unhandledrejection', (e) => {
   } catch (_) {}
 });
 
-window.toast = (title, message, type = 'info') => Alpine.store('ui').toast(title, message || '', type);
+// Los errores duran más en pantalla (store.error) que el resto de avisos.
+window.toast = (title, message, type = 'info') => {
+  const ui = Alpine.store('ui');
+  return type === 'error' ? ui.error(title, message || '') : ui.toast(title, message || '', type);
+};
 window.confirmDialog = (title, message = '', opts = {}) => Alpine.store('ui').confirm(title, message, opts);
 
 window.icons = () => {

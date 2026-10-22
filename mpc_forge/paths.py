@@ -31,6 +31,10 @@ def static_dir() -> Path:
     return resource_root() / "static"
 
 
+def resources_dir() -> Path:
+    return resource_root() / "resources"
+
+
 def diagnose() -> str:
     lines = [
         f"paths.is_frozen     = {is_frozen()}",
@@ -38,6 +42,7 @@ def diagnose() -> str:
         f"paths.resource_root = {resource_root()}",
         f"paths.template_dir  = {template_dir()}",
         f"paths.static_dir    = {static_dir()}",
+        f"paths.resources_dir = {resources_dir()}",
         f"sys.executable      = {sys.executable}",
         f"sys._MEIPASS        = {getattr(sys, '_MEIPASS', '(not set)')}",
     ]

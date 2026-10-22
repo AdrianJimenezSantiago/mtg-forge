@@ -30,6 +30,7 @@ class DeckActivityKind:
     XML_GENERATED = "xml_generated"
     PDF_GENERATED = "pdf_generated"
     IMAGES_EXPORTED = "images_exported"
+    PRESS_EXPORTED = "press_exported"
 
 
 _DEFAULT_SUMMARY: dict[str, str] = {
@@ -47,6 +48,7 @@ _DEFAULT_SUMMARY: dict[str, str] = {
     DeckActivityKind.XML_GENERATED: "XML generado",
     DeckActivityKind.PDF_GENERATED: "PDF generado",
     DeckActivityKind.IMAGES_EXPORTED: "Imágenes exportadas",
+    DeckActivityKind.PRESS_EXPORTED: "Paquete de imprenta exportado",
 }
 
 
