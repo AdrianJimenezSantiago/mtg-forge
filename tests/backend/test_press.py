@@ -220,9 +220,14 @@ def _pdf_pages(pdf: bytes) -> list[tuple[bytes, bytes]]:
         page = objects[int(ref)]
         content_ref = re.search(rb"/Contents (\d+) 0 R", page)
         assert content_ref is not None
-        stream = re.search(rb"stream\r?\n(.*)endstream", objects[int(content_ref.group(1))], re.S)
-        assert stream is not None
-        pages.append((page, zlib.decompress(stream.group(1).rstrip(b"\r\n"))))
+        content_obj = objects[int(content_ref.group(1))]
+        length = re.search(rb"/Length (\d+)", content_obj)
+        stream = re.search(rb"stream\r?\n", content_obj)
+        assert length is not None and stream is not None
+        # Exactamente /Length bytes: el comprimido puede acabar en \r o \n, y
+        # recortarlos con rstrip lo truncaba según el contenido.
+        data = content_obj[stream.end() : stream.end() + int(length.group(1))]
+        pages.append((page, zlib.decompress(data)))
     return pages
 
 
