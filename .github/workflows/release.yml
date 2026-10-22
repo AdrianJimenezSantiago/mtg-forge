@@ -203,6 +203,22 @@ jobs:
           tar -czf "packaging/dist/${ASSET}" -C packaging/dist MPC-Forge
           echo "ASSET_NAME=$ASSET" >> "$GITHUB_ENV"
 
+      - name: Contenido del binario
+        shell: bash
+        run: |
+          set -u
+          # Lo que PyInstaller no ve por sí solo: text_unidecode lo importa
+          # python-slugify al vuelo (sin él toda exportación da 500) y el perfil
+          # ICC es un fichero de datos de las exportaciones para imprenta.
+          MISSING=0
+          for wanted in "text_unidecode/data.bin" "resources/icc/Coated_Fogra39L_VIGC_300.icc"; do
+            if ! find packaging/dist -path "*/${wanted}" -print -quit | grep -q .; then
+              echo "::error::Falta en el binario: ${wanted}"
+              MISSING=1
+            fi
+          done
+          exit "$MISSING"
+
       - name: Smoke test del binario
         shell: bash
         env:
@@ -245,6 +261,10 @@ jobs:
             done
             if ! curl -sf "http://127.0.0.1:8791/api/drives/phash/stats" | grep -q '"available":true'; then
               echo "::error::pHash no está disponible en el binario"
+              OK=0
+            fi
+            if ! curl -sf "http://127.0.0.1:8791/api/print-shops" | grep -q '"pinbro_poker"'; then
+              echo "::error::El binario no ofrece las imprentas"
               OK=0
             fi
           fi
