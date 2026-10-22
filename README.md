@@ -150,6 +150,12 @@ have to be updated by hand once.
    - *PDF Studio → Print shop* — a package ready to send to a professional
      print shop (see [Sending a deck to a print shop](#sending-a-deck-to-a-print-shop)).
 
+   Every download (PDFs, ZIPs, XML, decklists, calibration sheets, the log)
+   opens the system *Save as* dialog in Chrome and Edge, so you choose the
+   folder and the name. Firefox and Safari have no such API and save to their
+   download folder as usual. A copy of each export also stays in the app's
+   `exports/` folder.
+
 ### Sending a deck to a print shop
 
 *PDF Studio → Print shop* switches the studio from home sheets to the template

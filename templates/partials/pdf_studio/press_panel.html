@@ -124,6 +124,7 @@
 
     <div class="grid grid-cols-2 gap-1.5">
       <a :href="pressResult ? `/api/exports/${pressResult.zip_filename}` : '#'"
+         @click.prevent="savePressZip()"
          class="h-8 rounded text-[11px] font-semibold bg-accent hover:bg-accent-hover text-bg-base transition
                 inline-flex items-center justify-center gap-1.5">
         <i data-lucide="download" class="w-3.5 h-3.5"></i>

@@ -45,7 +45,7 @@
           </select>
         </div>
         <div class="flex items-end">
-          <a :href="sheetUrl" target="_blank" rel="noopener"
+          <a :href="sheetUrl" @click.prevent="saveSheet()"
              class="w-full px-4 py-2 rounded bg-accent text-bg-base text-sm font-medium hover:opacity-90 transition flex items-center justify-center gap-2">
             <i data-lucide="printer" class="w-4 h-4"></i>
             {{ t.calibration_scale_download }}
@@ -127,7 +127,7 @@
               <i :data-lucide="saved ? 'check' : 'save'" class="w-4 h-4"></i>
               <span x-text="saved ? '{{ t.calibration_scale_saved }}' : '{{ t.calibration_scale_save }}'"></span>
             </button>
-            <a :href="sheetUrl" target="_blank" rel="noopener"
+            <a :href="sheetUrl" @click.prevent="saveSheet()"
                class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
               {{ t.calibration_verify_again }}
             </a>
@@ -193,7 +193,7 @@
         </ol>
 
         <div class="flex gap-3 pt-1">
-          <a :href="sheetUrl" target="_blank" rel="noopener"
+          <a :href="sheetUrl" @click.prevent="saveSheet()"
              class="px-4 py-2 rounded bg-accent text-bg-base text-sm font-medium hover:opacity-90 transition flex items-center gap-2">
             <i data-lucide="printer" class="w-4 h-4"></i>
             {{ t.calibration_download_sheet }}
@@ -298,7 +298,7 @@
             <i :data-lucide="copied ? 'check' : 'clipboard'" class="w-4 h-4"></i>
             <span x-text="copied ? '{{ t.calibration_copied }}' : '{{ t.calibration_copy }}'"></span>
           </button>
-          <a :href="sheetUrl" target="_blank" rel="noopener"
+          <a :href="sheetUrl" @click.prevent="saveSheet()"
              class="px-4 py-2 rounded bg-bg-subtle hover:bg-border text-sm transition">
             {{ t.calibration_verify_again }}
           </a>

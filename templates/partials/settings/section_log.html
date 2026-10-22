@@ -33,6 +33,7 @@
 
     <div class="flex flex-wrap items-center gap-2 pt-1">
       <a :href="info.exists ? '/api/debug/log/download' : '#'"
+         @click.prevent="info.exists && window.saveFile('/api/debug/log/download', 'mpc-forge.log')"
          :class="info.exists ? '' : 'opacity-40 pointer-events-none'"
          class="bg-warning-bg hover:bg-warning-bg border border-warning-border text-warning
                 text-sm font-medium px-3 py-2 rounded-md transition flex items-center gap-1.5">

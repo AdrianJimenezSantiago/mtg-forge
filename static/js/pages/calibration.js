@@ -20,6 +20,10 @@ function calibrationWizard() {
       return `/api/calibration/sheet?${params}`
     },
 
+    saveSheet() {
+      window.saveFile(this.sheetUrl, `mpc-forge-duplex-calibration-${this.pageSize}.pdf`)
+    },
+
     goTo(step) {
       this.step = step
       this.$nextTick(() => window.icons?.())
@@ -117,6 +121,10 @@ function scaleCalibration() {
         scale_y_pct: this.currentY,
       })
       return `/api/calibration/scale-sheet?${params}`
+    },
+
+    saveSheet() {
+      window.saveFile(this.sheetUrl, `mpc-forge-scale-calibration-${this.pageSize}.pdf`)
     },
 
     async calculate() {

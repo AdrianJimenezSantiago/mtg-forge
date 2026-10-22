@@ -1859,7 +1859,7 @@ function deckEditor(deckId) {
 
     downloadXml() {
       if (!this.lastXmlFilename) return;
-      window.location.href = `/api/exports/${this.lastXmlFilename}`;
+      window.saveFile(`/api/exports/${this.lastXmlFilename}`, window.saveFileName(this.deck?.name, 'xml'));
     },
 
     async launchAutofill() {
@@ -1883,21 +1883,27 @@ function deckEditor(deckId) {
     async buildPdf() {
       this.buildingPdf = true;
       this.buildProgress = null;
-      this._startBuildPolling();
+      // Los últimos ajustes de PDF Studio, con la misma clave y forma que guarda él.
       let opts = {};
       try {
-        const raw = localStorage.getItem(`pdfStudio.opts.${this.deckId}`);
-        if (raw) opts = JSON.parse(raw);
+        const raw = localStorage.getItem(`pdfStudio.opts.v2.${this.deckId}`);
+        if (raw) opts = JSON.parse(raw).opts || {};
       } catch (e) {}
       try {
-        const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(opts),
-        });
-        if (!r.ok) throw new Error(await window.apiErrorDetail(r));
-        const data = await r.json();
-        window.toast(window._t('pdf_done'), `${data.total_slots} ${window._T.history_cards_count} · ${data.total_pages} ${window._t('common_pages')}`, 'success');
-        window.location.href = `/api/exports/${data.filename}`;
+        let data = null;
+        await window.saveFile(async () => {
+          this._startBuildPolling();
+          const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(opts),
+          });
+          if (!r.ok) throw new Error(await window.apiErrorDetail(r));
+          data = await r.json();
+          return `/api/exports/${data.filename}`;
+        }, window.saveFileName(this.deck?.name, 'pdf'));
+        if (data) {
+          window.toast(window._t('pdf_done'), `${data.total_slots} ${window._T.history_cards_count} · ${data.total_pages} ${window._t('common_pages')}`, 'success');
+        }
       } catch (e) {
         window.toast(window._t('common_error'), e.message, 'error');
       } finally {
@@ -1991,11 +1997,14 @@ function deckEditor(deckId) {
           format: this.decklistFormat,
           include_headers: this.decklistHeaders ? 'true' : 'false',
         });
-        window.location.href = `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`;
+        await window.saveFile(
+          `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`,
+          window.saveFileName(`${this.deck?.name || 'deck'} - ${this.decklistFormat}`, 'txt'),
+        );
       } catch (e) {
         window.toast(window._t('common_error'), e.message, 'error');
       } finally {
-        setTimeout(() => { this.exportingDecklist = false; }, 500);
+        this.exportingDecklist = false;
       }
     }
   }
