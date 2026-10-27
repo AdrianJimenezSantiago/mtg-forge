@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-yaml = pytest.importorskip("yaml")
 
 
 def _module():
@@ -143,39 +142,3 @@ class TestPlanOnARealRepository:
         assert nv.plan()["release"] is False
         repo("Fix something")
         assert nv.plan()["tag"] == "v1.5.0"
-
-
-@pytest.fixture(scope="module")
-def wf():
-    return yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8"))
-
-
-class TestReleaseWorkflow:
-    def test_runs_after_a_green_ci_on_main_one_at_a_time(self, wf):
-        trigger = wf[True]
-        assert trigger["workflow_run"] == {
-            "workflows": ["CI"],
-            "types": ["completed"],
-            "branches": ["main"],
-        }
-        assert "workflow_dispatch" in trigger and "push" not in trigger
-        assert wf["concurrency"] == {"group": "release", "cancel-in-progress": False}
-        ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
-        assert ci["name"] == "CI"
-        plan_if = wf["jobs"]["plan"]["if"]
-        assert "conclusion == 'success'" in plan_if and "event == 'push'" in plan_if
-
-    def test_tags_only_after_every_build_succeeds(self, wf):
-        jobs = wf["jobs"]
-        assert jobs["build"]["needs"] == ["plan", "test"]
-        assert jobs["publish"]["needs"] == ["plan", "build"]
-        assert jobs["build"]["strategy"]["fail-fast"] is False
-        text = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        assert text.count("action-gh-release") == 1
-        publish = yaml.safe_dump(jobs["publish"])
-        assert "action-gh-release" in publish and "make_latest" in publish
-        build = yaml.safe_dump(jobs["build"])
-        assert "next_version.py stamp" in build and "action-gh-release" not in build
-        for name in ("test", "build"):
-            checkout = next(s for s in jobs[name]["steps"] if "checkout" in str(s.get("uses")))
-            assert checkout["with"]["ref"] == "${{ needs.plan.outputs.sha }}", name

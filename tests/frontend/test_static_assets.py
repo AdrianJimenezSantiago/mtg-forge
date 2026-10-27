@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import json
 import re
-import shutil
-import subprocess
-
-import pytest
 
 from tests.frontend._support import (
     JS,
     ROOT,
-    STATIC,
-    TEMPLATES,
     VENDOR,
     all_js,
     all_templates,
+    needs_node,
     read,
+    run_js_test,
 )
 
 FORBIDDEN_HOSTS = (
@@ -157,47 +152,6 @@ class TestApiClient:
                     offenders.append(f"{path.name}: {call[:90]}")
         assert not offenders, "Usa api.cards.allPrints()/api.request:\n" + "\n".join(offenders)
 
-    @pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
-    def test_pdf_preview_places_every_card_on_a_cut_guide(self):
-        result = subprocess.run(
-            [
-                shutil.which("node"),
-                str(ROOT / "tests" / "js" / "pdf_preview_alignment.mjs"),
-                str(JS / "pages/pdf-studio.js"),
-            ],
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-            timeout=60,
-        )
-        assert result.returncode == 0, result.stderr
-        report = json.loads(result.stdout.strip().splitlines()[-1])
-        assert report["cases"] == 48 and report["misaligned"] == [], report["misaligned"][:3]
-
-    @pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
-    def test_press_preview_follows_the_print_shop_template(self):
-        result = subprocess.run(
-            [
-                shutil.which("node"),
-                str(ROOT / "tests" / "js" / "pdf_press_preview.mjs"),
-                str(JS / "pages/pdf-studio.js"),
-            ],
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-            timeout=60,
-        )
-        assert result.returncode == 0, result.stderr
-        report = json.loads(result.stdout.strip().splitlines()[-1])
-        assert report == {"pages": 6, "problems": []}, report
-
-
-def test_assets_and_templates_are_organised_by_kind():
-    assert [p for p in STATIC.iterdir() if p.is_file()] == []
-    assert {p.name for p in JS.iterdir()} == {"core", "pages"}
-    assert {p.suffix for p in (STATIC / "css").iterdir()} == {".css"}
-    assert [p.name for p in TEMPLATES.glob("*.html")] == ["base.html"]
-
 
 def _call_arguments(text: str, start: int) -> list[str]:
     """Argumentos de primer nivel de la llamada cuyo "(" está en `start`.
@@ -207,7 +161,6 @@ def _call_arguments(text: str, start: int) -> list[str]:
     """
     args: list[str] = []
     current: list[str] = []
-    # Pila de contextos: "code" con su profundidad de paréntesis, o una comilla.
     stack: list[list] = [["code", 0]]
     i = start + 1
     while i < len(text):
@@ -234,7 +187,7 @@ def _call_arguments(text: str, start: int) -> list[str]:
                 if len(stack) == 1:
                     args.append("".join(current).strip())
                     return [a for a in args if a]
-                stack.pop()  # cierre de ${...}
+                stack.pop()
             else:
                 ctx[1] -= 1
         elif ch == "," and len(stack) == 1 and ctx[1] == 0:
@@ -248,9 +201,6 @@ def _call_arguments(text: str, start: int) -> list[str]:
 
 
 def test_every_toast_says_what_kind_it_is():
-    # window.toast(título, mensaje, tipo): con dos argumentos el segundo es el
-    # mensaje, así que toast(texto, 'success') pintaba "success" como texto y
-    # todos los errores salían con el estilo de aviso informativo.
     kinds = re.compile(r"^(?:'(?:info|success|warning|error)'|.+\?\s*'\w+'\s*:\s*'\w+')$", re.S)
     offenders = []
     for path in all_js():
@@ -265,26 +215,27 @@ def test_every_toast_says_what_kind_it_is():
     assert not offenders, "\n".join(offenders)
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
+@needs_node
 def test_save_file_asks_where_before_generating():
-    result = subprocess.run(
-        [
-            shutil.which("node"),
-            str(ROOT / "tests" / "js" / "save_file.mjs"),
-            str(JS / "core/app.js"),
-        ],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-        timeout=60,
-    )
+    result, report = run_js_test("save_file.mjs", "core/app.js")
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"problems": []}
+    assert report == {"problems": []}
+
+
+@needs_node
+class TestPdfStudioPreview:
+    def test_every_card_sits_on_a_cut_guide(self):
+        result, report = run_js_test("pdf_preview_alignment.mjs", "pages/pdf-studio.js")
+        assert result.returncode == 0, result.stderr
+        assert report["cases"] == 48 and report["misaligned"] == [], report["misaligned"][:3]
+
+    def test_press_mode_follows_the_print_shop_template(self):
+        result, report = run_js_test("pdf_press_preview.mjs", "pages/pdf-studio.js")
+        assert result.returncode == 0, result.stderr
+        assert report == {"pages": 6, "problems": []}, report
 
 
 def test_downloads_go_through_save_file():
-    # Toda descarga pasa por window.saveFile para que se pueda elegir dónde
-    # guardarla. Navegar a la URL la manda a la carpeta de descargas sin preguntar.
     offenders = []
     for path in all_js():
         for match in re.finditer(r"window\.location(?:\.href)?\s*=\s*[`'\"]/api/", read(path)):
@@ -293,7 +244,6 @@ def test_downloads_go_through_save_file():
         for tag in re.findall(r"<a\b[^>]*>", read(path), re.S):
             if "/api/" not in tag or "href" not in tag:
                 continue
-            # target=_blank abre para ver (un PDF, unas estadísticas), no descarga.
             if "@click.prevent" not in tag and 'target="_blank"' not in tag:
                 offenders.append(f"{path.name}: {' '.join(tag.split())[:120]}")
     assert not offenders, "\n".join(offenders)

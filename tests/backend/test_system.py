@@ -485,7 +485,6 @@ async def backup_paths(tmp_path, monkeypatch):
         )
         await s.commit()
     await engine.dispose()
-    # Las tablas creadas por migraciones (deck_snapshots, art_themes) usan AUTOINCREMENT.
     _sqlite(
         p.db_path,
         "CREATE TABLE seq_demo (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT);"

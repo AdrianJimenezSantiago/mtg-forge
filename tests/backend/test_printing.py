@@ -456,7 +456,6 @@ def _page_streams(pdf: bytes) -> bytes:
 
 class TestPrintScale:
     def test_derive_scale_undoes_fit_to_page(self):
-        # 63 → 61 mm y 88 → 85 mm: el ~96,7 % de "Ajustar al área imprimible".
         shrunk = calibration.derive_scale(150 * 61 / 63, 200 * 85 / 88)
         assert shrunk.print_scale_x_pct == pytest.approx(100 * 63 / 61, abs=0.01)
         assert shrunk.print_scale_y_pct == pytest.approx(100 * 88 / 85, abs=0.01)
@@ -466,7 +465,6 @@ class TestPrintScale:
         assert (exact.print_scale_x_pct, exact.print_scale_y_pct) == (100.0, 100.0)
         assert exact.warning == "scale_already_exact"
 
-        # Segunda pasada: la hoja ya salía compensada y sigue quedando corta.
         again = calibration.derive_scale(149.0, 200.0, current_x_pct=103.0, current_y_pct=103.5)
         assert again.print_scale_x_pct == pytest.approx(103.0 * 150 / 149, abs=0.01)
         assert again.print_scale_y_pct == 103.5

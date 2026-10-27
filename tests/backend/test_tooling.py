@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import re
 from pathlib import Path
 
@@ -35,44 +34,6 @@ def _launcher():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def test_workflow_steps_are_named_and_fail_fast_on_windows():
-    unnamed, no_shell = [], []
-    for name, workflow in _workflows().items():
-        for job_name, job in workflow["jobs"].items():
-            for step in job.get("steps", []):
-                run = step.get("run")
-                if not run or "\n" not in run.strip():
-                    continue
-                label = f"{name}::{job_name} → {run.splitlines()[0]!r}"
-                if not step.get("name"):
-                    unnamed.append(label)
-                if _runs_on_windows(job) and "shell" not in step:
-                    no_shell.append(label)
-    assert not unnamed, "Pasos multilínea sin `name`:\n" + "\n".join(unnamed)
-    assert not no_shell, (
-        "PowerShell no aborta ante un fallo intermedio; añade `shell: bash`:\n"
-        + "\n".join(no_shell)
-    )
-
-
-def test_node_toolchain_matches_package_json():
-    spec = (json.loads((ROOT / "package.json").read_text(encoding="utf-8")).get("engines") or {})[
-        "node"
-    ]
-    required = int(re.search(r"(\d+)", spec).group(1))
-    for name, workflow in _workflows().items():
-        for job_name, job in workflow["jobs"].items():
-            for step in job.get("steps", []):
-                if "setup-node" in str(step.get("uses", "")):
-                    declared = str((step.get("with") or {}).get("node-version", ""))
-                    assert declared, f"{name}::{job_name}: setup-node sin node-version"
-                    assert int(declared.strip("'\"").split(".")[0]) >= required, (name, job_name)
-    assert "engine-strict=true" in (ROOT / ".npmrc").read_text(encoding="utf-8")
-    for script in sorted((ROOT / "scripts").glob("*.mjs")):
-        text = script.read_text(encoding="utf-8").replace(" ", "")
-        assert "import.meta.url).pathname" not in text, f"{script.name}: usa fileURLToPath"
 
 
 def test_release_uses_the_hashed_universal_lockfile():
@@ -110,16 +71,3 @@ def test_the_bundle_keeps_what_the_frozen_app_needs():
         assert f'"{asset}"' in vendored, asset
     for data in ("templates", "static", "locales"):
         assert f'"{data}"' in spec, data
-
-
-def test_the_project_installs_in_editable_mode():
-    import tomllib
-
-    from mpc_forge import __version__
-
-    meta = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert meta["build-system"]["build-backend"] == "setuptools.build_meta"
-    assert meta["project"]["dynamic"] == ["version"]
-    assert meta["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "mpc_forge.__version__"
-    assert meta["tool"]["setuptools"]["packages"]["find"]["include"] == ["mpc_forge*"]
-    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)

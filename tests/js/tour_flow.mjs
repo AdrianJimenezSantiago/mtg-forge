@@ -1,6 +1,3 @@
-// Simula visitas a las pantallas con el motor del tutorial (core/tour.js) y un
-// backend falso de /api/tour/, para comprobar que cada guía sale una sola vez:
-// la primera vez que se entra en su vista.
 import fs from 'fs'; import vm from 'vm';
 const [stepsSrc, tourSrc] = process.argv.slice(2).map((p) => fs.readFileSync(p, 'utf8'));
 
@@ -22,8 +19,6 @@ function backend() {
   }
 }
 
-// Una visita: carga los scripts en un contexto nuevo (como al navegar) con los
-// elementos data-tour indicados presentes y visibles.
 async function visit(server, path, present, script) {
   let now = 0
   const timers = []
@@ -57,11 +52,9 @@ async function visit(server, path, present, script) {
   vm.runInContext(stepsSrc, ctx)
   vm.runInContext(tourSrc, ctx)
   for (const fn of document.listeners['alpine:init']) fn()
-  // Los getters del store se leen sobre el objeto (como hace Alpine).
   const tour = store.tour
   for (const fn of document.listeners['alpine:initialized']) fn()
 
-  // Avanza el reloj falso hasta que no queden temporizadores.
   const flush = async () => {
     for (let guard = 0; guard < 10000; guard++) {
       await new Promise((r) => setImmediate(r))
@@ -116,7 +109,6 @@ const HISTORY = [...NAV, 'history-decks', 'history-runs']
 
 {
   const s = backend()
-  // Se va de la página en el primer paso de la bienvenida.
   check('abandono a mitad', (await visit(s, '/decks', DECKS, async () => {})).shown, ['welcome'])
   check('la bienvenida no se repite; la de la vista sí sale', (await visit(s, '/decks', DECKS)).shown, ['decks'])
 }
@@ -145,13 +137,12 @@ const HISTORY = [...NAV, 'history-decks', 'history-runs']
 }
 
 {
-  // Saltar mientras un paso aún espera a su elemento no debe mezclar guías.
   const s = backend()
   s.state.seen = ['welcome']
   const r = await visit(s, '/decks', [...NAV, 'decks-import-url', 'decks-import-text'], async (v) => {
     await v.next(); await v.next()
-    v.tour.next() // "list" no existe: espera a su elemento…
-    v.tour.skip() // …y el usuario pulsa Escape a la vez.
+    v.tour.next()
+    v.tour.skip()
     await v.flush()
   })
   check('saltar durante la espera cierra la guía', [r.tour.active, r.tour.busy], [false, false])

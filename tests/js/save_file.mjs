@@ -1,7 +1,5 @@
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
-// window.saveFile: "Guardar como" del sistema donde existe, descarga normal donde no.
-// Sin jsdom: el job de tests no instala node_modules, como en los demás tests JS.
 const src = readFileSync(process.argv[2], 'utf8')
 const problems = []
 

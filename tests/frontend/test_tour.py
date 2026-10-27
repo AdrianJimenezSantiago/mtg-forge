@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 
 import pytest
 
 from mpc_forge.services.system.i18n import _TRANSLATIONS
-from tests.frontend._support import HTML, JS, ROOT, TEMPLATES, read
-
-needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
+from tests.frontend._support import HTML, JS, TEMPLATES, needs_node, read, run_js_test
 
 PAGE_URLS = {
     "home": "/",
@@ -96,19 +93,7 @@ def test_dynamic_targets_come_from_the_settings_navigation(tours):
 
 @needs_node
 def test_each_tour_shows_once_on_the_first_visit_to_its_view():
-    result = subprocess.run(
-        [
-            shutil.which("node"),
-            str(ROOT / "tests" / "js" / "tour_flow.mjs"),
-            str(JS / "core/tour-steps.js"),
-            str(JS / "core/tour.js"),
-        ],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-        timeout=60,
-    )
-    report = json.loads(result.stdout.strip().splitlines()[-1])
+    result, report = run_js_test("tour_flow.mjs", "core/tour-steps.js", "core/tour.js")
     assert result.returncode == 0 and report["failures"] == [], report["failures"] or result.stderr
 
 

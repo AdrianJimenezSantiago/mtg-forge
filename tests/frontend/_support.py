@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 import warnings
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "templates"
 STATIC = ROOT / "static"
 JS = STATIC / "js"
 VENDOR = STATIC / "vendor"
+
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="necesita node")
 
 HTML = {"accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
 
@@ -88,3 +96,16 @@ def scripts_in_execution_order(html: str) -> list[str]:
 
 def position(order: list[str], suffix: str) -> int:
     return next((i for i, src in enumerate(order) if src.endswith(suffix)), -1)
+
+
+def run_js_test(script: str, *targets: str) -> tuple[subprocess.CompletedProcess[str], Any]:
+    result = subprocess.run(
+        [shutil.which("node") or "node", str(ROOT / "tests" / "js" / script)]
+        + [str(JS / t) for t in targets],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        timeout=60,
+    )
+    lines = result.stdout.strip().splitlines()
+    return result, json.loads(lines[-1]) if lines else None

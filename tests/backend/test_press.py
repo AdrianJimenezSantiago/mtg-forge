@@ -137,8 +137,6 @@ class TestPrepareImage:
         assert img.size == SPEC.page_px and prepared.generated_bleed
         assert prepared.source_ppi == 300 and prepared.warnings == []
         border = img.getpixel((400, 40))
-        # Esquina (antes transparente) y filo exterior del sangrado: el borde
-        # sigue liso, sin el blanco del fondo ni el rojo del arte reflejado.
         for xy in ((2, 2), (812, 1107), (400, 1), (1, 555), (60, 60)):
             assert all(abs(a - b) <= 6 for a, b in zip(img.getpixel(xy), border, strict=True)), xy
         assert border[3] > 240
@@ -224,8 +222,6 @@ def _pdf_pages(pdf: bytes) -> list[tuple[bytes, bytes]]:
         length = re.search(rb"/Length (\d+)", content_obj)
         stream = re.search(rb"stream\r?\n", content_obj)
         assert length is not None and stream is not None
-        # Exactamente /Length bytes: el comprimido puede acabar en \r o \n, y
-        # recortarlos con rstrip lo truncaba según el contenido.
         data = content_obj[stream.end() : stream.end() + int(length.group(1))]
         pages.append((page, zlib.decompress(data)))
     return pages
@@ -271,8 +267,6 @@ class TestPressPdf:
             assert b"/MediaBox [ 0 0 195.5906 266.4567 ]" in page
             assert b"/BleedBox [ 0 0 195.5906 266.4567 ]" in page
             assert b"/TrimBox [ 8.503937 8.503937 187.0866 257.9528 ]" in page
-            # Una sola imagen que cubre la página entera y nada más: ni texto
-            # ni trazos (marcas de corte).
             (draw,) = re.findall(rb"/(FormXob\.\w+) Do", content)
             assert b"195.5906 0 0 266.4567 0 0 cm" in content
             assert not re.search(rb"\b(BT|Tf|re|l|S)\b", content), content

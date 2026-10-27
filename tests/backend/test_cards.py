@@ -505,7 +505,6 @@ class TestBulkData:
         expected = ["aaaa-1111", "bbbb-2222", "cccc-3333", "4"]
         for size in (1, 7, 300, 1 << 20):
             assert await read(payload, size) == expected, size
-        # Un .gz puede traer varios miembros concatenados.
         two_members = gzip.compress(b"\n".join(json.dumps(c).encode() for c in cards[:2]) + b"\n")
         two_members += gzip.compress(json.dumps(cards[2]).encode())
         assert await read(two_members, 5) == expected[:3]
@@ -571,9 +570,7 @@ OFFLINE_PRINTS = [
     _print("bolt-arena", "Lightning Bolt", "ha1", "2019-11-14", digital=True),
     _print("bolt-gold", "Lightning Bolt", "wc97", "2012-01-01", border_color="gold"),
     _print("bolt-fr", "Lightning Bolt", "fbb", "2015-01-01", lang="fr"),
-    # Preventa sin escaneo: la penaliza la imagen, no la fecha.
     _print("bolt-preview", "Lightning Bolt", "fut", "2999-01-01", image_status="placeholder"),
-    # La impresión normal más reciente: la que Scryfall da por defecto.
     _print("bolt-plain", "Lightning Bolt", "m10", "2009-07-17"),
     _print("bolt-list", "Lightning Bolt", "plst", "2024-01-01", set_type="masters"),
     _print("bolt-sld", "Lightning Bolt", "sld", "2023-01-01", set_type="box"),

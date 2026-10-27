@@ -116,7 +116,6 @@ def test_setting_is_exposed_in_general():
 
 
 def test_extract_and_find_root_for_each_package_layout(tmp_path):
-    # Windows: el zip trae el contenido de la carpeta directamente.
     zpath = tmp_path / "w.zip"
     with zipfile.ZipFile(zpath, "w") as zf:
         zf.writestr("MPC-Forge.exe", "exe")
@@ -124,7 +123,6 @@ def test_extract_and_find_root_for_each_package_layout(tmp_path):
     updater.extract(zpath, tmp_path / "w")
     assert updater.find_new_root(tmp_path / "w", Path("MPC-Forge.exe")) == tmp_path / "w"
 
-    # Linux: el tar trae la carpeta MPC-Forge/.
     tpath = tmp_path / "l.tar.gz"
     with tarfile.open(tpath, "w:gz") as tar:
         data = b"elf"
@@ -135,7 +133,7 @@ def test_extract_and_find_root_for_each_package_layout(tmp_path):
     updater.extract(tpath, tmp_path / "l")
     root = updater.find_new_root(tmp_path / "l", Path("MPC-Forge"))
     assert root == tmp_path / "l" / "MPC-Forge"
-    if sys.platform != "win32":  # Windows no tiene bit de ejecución
+    if sys.platform != "win32":
         assert (root / "MPC-Forge").stat().st_mode & 0o100
 
 
@@ -251,8 +249,6 @@ def test_dev_builds_never_update(monkeypatch):
     monkeypatch.setattr(updater, "asset_suffix", lambda: "-windows.zip")
     assert updater.run_frozen_update([], "0.0.0", None) is None
 
-
-# --- Desde un clon de git ---------------------------------------------------
 
 git = shutil.which("git")
 

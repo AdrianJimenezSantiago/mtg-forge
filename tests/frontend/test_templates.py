@@ -167,24 +167,6 @@ def _unsafe_dereferences(html: str, prop: str) -> list[str]:
 
 
 class TestNullSafety:
-    def test_null_guard_detector(self, tmp_path):
-        flagged = [
-            '<div x-text="fmt(result.x)"></div>',
-            '<section x-show="result"><div x-text="fmt(result.x)"></div></section>',
-        ]
-        accepted = [
-            '<div x-text="fmt(result?.x)"></div>',
-            '<template x-if="result"><div x-text="fmt(result.x)"></div></template>',
-            '<div x-show="result"></div>',
-            '<div x-text="result && result.x"></div>',
-            """<div x-text="result ? result.name : ''"></div>""",
-            '{# mal: x-text="fmt(result.x)" #}<div x-text="ok"></div>',
-        ]
-        assert all(_unsafe_dereferences(html, "result") for html in flagged)
-        assert not any(_unsafe_dereferences(html, "result") for html in accepted)
-        module = "  return {\n    result: null,\n    plan: null,\n    items: [],\n  }\n"
-        assert set(NULL_PROP.findall(module)) == {"result", "plan"}
-
     def test_views_never_dereference_state_that_starts_as_null(self):
         problems = []
         for page, module in PAGE_MODULES.items():

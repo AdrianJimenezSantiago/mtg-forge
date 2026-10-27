@@ -15,7 +15,7 @@ from mpc_forge.services.system import settings as settings_service
 from mpc_forge.services.system.logging_setup import RedactSecretsFilter, redact
 from mpc_forge.utils import event_loop
 
-SNAPSHOT = Path(__file__).resolve().parents[1] / "data_openapi_snapshot.json"
+SNAPSHOT = Path(__file__).with_name("openapi_snapshot.json")
 FAKE_KEY = "AIzaSyD-ExampleKeyForTestsOnly-0123456789"
 LITERAL_DECK_ROUTES = {
     "/api/decks/_/search-cards": "/api/decks/_/search-cards?q=sol",
@@ -111,11 +111,9 @@ class TestLocalhostGuard:
 
     async def test_other_local_ports_and_foreign_origins_cannot_write(self, client, deck):
         url = f"/api/decks/{deck['id']}/duplicate"
-        # Otro puerto de 127.0.0.1 es "same-site" para el navegador, pero no es la app.
         other_port = await client.post(
             url, headers={"sec-fetch-site": "same-site", "origin": "http://127.0.0.1:3000"}
         )
-        # Navegador sin Sec-Fetch-*: un <form> de otra web solo deja ver su Origin.
         form = {"content-type": "application/x-www-form-urlencoded"}
         legacy = [
             await client.post(url, content=b"a=1", headers={**form, "origin": origin})

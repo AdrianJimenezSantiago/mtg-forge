@@ -345,7 +345,6 @@ class TestCustomArtUpload:
         )
         assert r.status_code == 200 and r.json()["custom_art_front_id"] == art["id"]
 
-        # El rescan relee el nombre del fichero y no duplica ni pierde la fila.
         rescan = (await client.post("/api/custom-art/rescan")).json()
         assert rescan["removed"] == 0 and rescan["added"] == 0
         assert custom_art.parse_filename(Path(art["relative_path"])) == (
@@ -427,7 +426,6 @@ class TestCustomArtUpload:
         assert (contained["width"], contained["height"]) == (1000, 1397)
         assert contained["warnings"] == []
 
-        # Una imagen ya con proporción de carta (con sangrado MPC) no se toca.
         mpc = (await _upload(client, _png_bytes(size=(822, 1122)), fit="crop")).json()
         assert mpc["adjusted"] is False and mpc["warnings"] == []
 

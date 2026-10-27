@@ -1,6 +1,4 @@
 import fs from 'fs'; import vm from 'vm';
-// Modo imprenta del preview: una carta por página, anverso y luego reverso, con
-// la carta en el corte (sangrado alrededor) y la línea de corte de la plantilla.
 const src = fs.readFileSync(process.argv[2], 'utf8');
 const ctx = { window: { _t: k => k }, console, localStorage: { getItem(){return null}, setItem(){} } };
 vm.createContext(ctx); vm.runInContext(src + '\n;globalThis.__f = pdfStudio;', ctx);
@@ -22,7 +20,6 @@ s.deck = { cards: [
     is_dfc: true, back_name: 'C', back_thumbnail_url: '/c.png' },
   { id: 3, name: 'Fuera', include: false, quantity: 1, thumbnail_url: '/x.png' },
 ]};
-// Las opciones de casa no deben colarse en el modo imprenta.
 Object.assign(s.opts, { cols: 3, rows: 3, gap_x_mm: 5, include_backs: false,
   backs_content: 'dfc_only', card_guides_enabled: true, reg_marks_enabled: true });
 
