@@ -1,11 +1,3 @@
-// Guías del tutorial. Cada paso toma su texto de las claves
-// tour_<guía>_<id>_title / tour_<guía>_<id>_body de locales/*.json.
-//
-// target: selector (o lista de alternativas) del elemento a destacar; sin target
-//         el paso se muestra centrado. Si el elemento no existe o no se ve, el
-//         paso se salta solo.
-// dynamic: el elemento lo crea Alpine en tiempo de ejecución (no está en el HTML
-//          del servidor); los tests no lo buscan en la plantilla.
 (function () {
   'use strict'
 
@@ -131,7 +123,6 @@
     },
   }
 
-  // Qué guía corresponde a cada URL.
   const PAGES = [
     [/^\/$/, 'home'],
     [/^\/decks\/?$/, 'decks'],

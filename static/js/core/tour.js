@@ -1,9 +1,6 @@
 (function () {
   'use strict'
 
-  // Motor del tutorial guiado. Las guías están en core/tour-steps.js y el
-  // estado (qué guías se han visto) lo guarda el servidor en /api/tour/.
-
   const PAD = 8
   const GAP = 16
   const MARGIN = 12
@@ -17,8 +14,6 @@
     return String(name).replace(/(^|[-_])(\w)/g, (_, __, c) => c.toUpperCase())
   }
 
-  // Lucide reemplaza los <i data-lucide> por <svg>, lo que rompe los bindings de
-  // Alpine; para un icono que cambia en cada paso se genera el SVG directamente.
   function iconSvg(name) {
     const node = window.lucide?.icons?.[pascal(name || 'sparkles')]
     if (!node) return ''
@@ -39,8 +34,6 @@
     return null
   }
 
-  // Parte del elemento que se ve de verdad: recorta por los contenedores con
-  // scroll u overflow oculto (p. ej. la hoja del PDF dentro de su columna).
   function visibleRect(el) {
     const r = el.getBoundingClientRect()
     let left = r.left
@@ -69,8 +62,6 @@
     return el
   }
 
-  // keepalive: si el usuario cambia de página justo después, la petición no se
-  // cancela y la guía no vuelve a salir en la siguiente visita.
   async function api(method, path, body) {
     const res = await fetch(path, {
       method,
@@ -82,8 +73,6 @@
     return res.json()
   }
 
-  // Coloca la tarjeta junto al elemento, en el lado con más sitio, sin salirse
-  // de la ventana. Devuelve la posición y el lado elegido (para la flecha).
   function place(rect, card, preferred) {
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -112,7 +101,6 @@
       y = clamp(rect.top + rect.height / 2 - card.h / 2, MARGIN, vh - card.h - MARGIN)
       x = side === 'right' ? rect.right + GAP : rect.left - card.w - GAP
     } else {
-      // El elemento ocupa casi toda la ventana: la tarjeta va dentro, abajo.
       x = clamp(rect.left + rect.width / 2 - card.w / 2, MARGIN, vw - card.w - MARGIN)
       y = clamp(rect.bottom - card.h - GAP, MARGIN, vh - card.h - MARGIN)
     }
@@ -134,16 +122,11 @@
       busy: false,
       spot: null,
       pos: { x: 0, y: 0, side: 'center', arrow: 0 },
-      // La tarjeta no se ve hasta tener su posición calculada: si se pintara en
-      // (0,0) y luego se moviera, el navegador lo contaría como layout shift.
       placed: false,
       _queue: [],
       _target: null,
       _raf: 0,
-      // Cada start()/_close() invalida los _show() que sigan esperando a un
-      // elemento, para que no avancen sobre los pasos de otra guía.
       _run: 0,
-      // Si la guía actual ya ha enseñado algún paso (solo entonces cuenta como vista).
       _shown: false,
 
       get pageTour() { return window.tourForPath?.(location.pathname) || null },
@@ -172,7 +155,6 @@
         const page = this.pageTour
         if (page && !this.seen.includes(page)) queue.push(page)
         if (!queue.length) return
-        // Deja que la página pinte su contenido (listas cargadas con fetch) antes.
         await sleep(900)
         if (this.active || this._modalOpen()) return
         this._queue = queue.slice(1)
@@ -201,13 +183,11 @@
         await this._show(0, 1)
       },
 
-      // Repite la guía de la pantalla actual (o la de bienvenida si no tiene).
       replayPage() {
         this._queue = []
         this.start(this.pageTour || 'welcome')
       },
 
-      // Vuelve a empezar: olvida todo lo visto y arranca la bienvenida.
       async restartAll() {
         try {
           const state = await api('DELETE', '/api/tour/')
@@ -259,15 +239,12 @@
             }
             i += direction
           }
-          // No queda ningún paso visible en esa dirección.
           if (direction > 0) this.finish()
         } finally {
           if (run === this._run) this.busy = false
         }
       },
 
-      // La guía cuenta como vista en cuanto enseña su primer paso, no al
-      // terminarla: si el usuario recarga o se va a mitad, no se repite.
       _markShown() {
         if (this._shown) return
         this._shown = true
@@ -309,8 +286,6 @@
         await this._reveal()
       },
 
-      // Primera colocación: se aplica la posición sin transición y se muestra en
-      // el fotograma siguiente, para que no se deslice desde la posición anterior.
       async _reveal() {
         if (this.placed) return
         await new Promise((r) => requestAnimationFrame(r))
@@ -347,8 +322,6 @@
         else if (ev.key === 'ArrowLeft') { ev.preventDefault(); this.prev() }
       },
 
-      // Terminar o saltar cuentan igual: esa guía no vuelve a salir sola. Una
-      // guía sin ningún paso visible no se marca, y saldrá cuando lo tenga.
       async finish() {
         if (!this.active) return
         const shown = this._shown
@@ -360,14 +333,10 @@
         }
       },
 
-      // Saltar solo cierra la guía actual: si tras la bienvenida toca la de la
-      // pantalla, se muestra igualmente, porque es la primera visita a esa vista.
-      // Para cortar todas está "No volver a mostrar".
       skip() {
         this.finish()
       },
 
-      // "No volver a mostrar": se apagan las guías automáticas.
       async dismissAll() {
         this._queue = []
         await this.finish()

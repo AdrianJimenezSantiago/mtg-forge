@@ -1,8 +1,6 @@
 const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
-// La escala depende de la impresora, no del mazo: se guarda una vez para todos.
 const LS_PRINT_SCALE = 'pdfStudio.printScale';
 
-// Lo mismo que dicen los botones de presets del panel izquierdo.
 const PRESET_LABELS = {
   mpc_classic: 'MPC classic',
   mpc_bleed: 'MPC with bleed',
@@ -11,8 +9,6 @@ const PRESET_LABELS = {
   silhouette: 'Silhouette (reg. marks)',
 };
 
-// Hueco del preview resaltado mientras se arrastra una imagen. Vive fuera del
-// estado de Alpine: un nodo DOM dentro de un proxy reactivo rompe setAttribute.
 let dropTarget = null;
 
 function pdfStudio(deckId) { return {
@@ -48,8 +44,6 @@ function pdfStudio(deckId) { return {
   guideOpen: false,
   guideSection: null,
 
-  // Modo imprenta: el preview y la exportación siguen la plantilla de una
-  // imprenta (una carta por página, anverso y reverso) en vez de la hoja de casa.
   pressShops: [],
   press: null,
   exportingPress: false,
@@ -217,7 +211,6 @@ function pdfStudio(deckId) { return {
 
   get allSlots() {
     if (!this.deck) return { fronts: [], backs: [] };
-    // La imprenta imprime a doble cara: toda carta lleva reverso.
     const fillAllBacks = !!this.pressSpec || this.opts.backs_content === 'all_cards';
     const cardback = (this.cardbackSettings && this.cardbackSettings.image_url)
                   || (this.cardbackSettings && this.cardbackSettings.default_image_url)
@@ -479,16 +472,11 @@ function pdfStudio(deckId) { return {
     return parts.join('');
   },
 
-  // Como la plantilla de la imprenta: sangrado sombreado, línea de corte
-  // punteada con sus esquinas y zona segura. Solo existe en el preview: el PDF
-  // de imprenta no lleva marcas.
   _pressOverlaySvg(page, g, spec) {
     const n = this._n.bind(this);
     const parts = [];
     const slot = page.chunk[0];
     if (slot) {
-      // El PDF rellena el sangrado prolongando el borde de la carta; estirar la
-      // miniatura a toda la página da la misma impresión sin calcularlo aquí.
       if (slot.thumbnail) {
         parts.push(
           `<image href="${this._esc(slot.thumbnail)}" data-press-bleed="1" x="0" y="0" ` +
@@ -502,8 +490,6 @@ function pdfStudio(deckId) { return {
     const b = spec.bleed_mm;
     const r = spec.corner_radius_mm;
     const s = spec.safe_margin_mm;
-    // Rosa, el color de las líneas de corte en preimpresión: se distingue igual
-    // sobre un borde negro que sobre uno blanco.
     parts.push(
       `<rect x="${n(b)}" y="${n(b)}" width="${n(spec.trim_w_mm)}" height="${n(spec.trim_h_mm)}" ` +
       `rx="${n(r)}" ry="${n(r)}" fill="none" stroke="#ec4899" stroke-width="0.4" ` +
@@ -673,8 +659,6 @@ function pdfStudio(deckId) { return {
     this.buildingPdf = true;
     try {
       let data = null;
-      // saveFile pregunta dónde guardar y después genera: el diálogo tiene que
-      // abrirse con el clic, antes de una espera que puede ser larga.
       await window.saveFile(async () => {
         this._startBuildPolling();
         const r = await fetch(`/api/decks/${this.deckId}/build-pdf`, {
@@ -747,7 +731,6 @@ function pdfStudio(deckId) { return {
     return (cb && (cb.image_url || cb.default_image_url)) || null;
   },
 
-  // Cartas que no son de dos caras: sin dorso no hay reverso que imprimir.
   get pressNeedsCardback() {
     if (!this.deck || this.pressCardbackUrl) return false;
     return (this.deck.cards || []).some(c => c.include && !(c.is_dfc && c.back_thumbnail_url));
@@ -771,7 +754,6 @@ function pdfStudio(deckId) { return {
     return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
   },
 
-  // El ZIP que se manda a la imprenta, con un nombre que diga qué es.
   savePressZip() {
     if (!this.pressResult) return;
     const name = `${this.deck?.name || 'deck'} - ${this.pressResult.shop.shop_name} ` +

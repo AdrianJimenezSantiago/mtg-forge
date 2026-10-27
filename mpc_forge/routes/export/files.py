@@ -26,8 +26,6 @@ _EXPORT_MEDIA_TYPES = {
 
 @router.get("/exports/{filename}")
 async def download_export(filename: str) -> FileResponse:
-    # Las dos rutas resueltas: si exports_dir llega por un enlace o, en Windows,
-    # con nombres cortos 8.3 (RUNNER~1), el fichero no parecería estar dentro.
     exports_dir = cfg.PATHS.exports_dir.resolve()
     target = (exports_dir / filename).resolve()
     if not target.exists() or exports_dir not in target.parents:

@@ -81,7 +81,6 @@ def next_version(current: Version, bump: str) -> Version:
 
 
 def _git(*args: str) -> str:
-    # Solo se llama con argumentos fijos de este script.
     return subprocess.run(  # noqa: S603
         ["git", *args],  # noqa: S607
         cwd=ROOT,
@@ -102,9 +101,6 @@ def _versions(tags: str) -> list[tuple[Version, str]]:
 
 def plan(ref: str = "HEAD", forced: str = "auto") -> dict[str, object]:
     sha = _git("rev-parse", ref).strip()
-    # Un commit ya incluido en una release (la suya o una posterior, si su CI
-    # terminó más tarde que el de un push más nuevo) no genera otra: así los
-    # números nunca salen desordenados.
     containing = _versions(_git("tag", "--list", "v*", "--contains", sha))
     if containing:
         return {"release": False, "reason": f"{sha[:7]} ya está en {containing[0][1]}", "sha": sha}

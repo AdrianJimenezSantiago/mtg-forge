@@ -29,15 +29,12 @@ class Role:
     minus_roles: tuple[str, ...] = ()
 
 
-# Las etiquetas de Tagger forman un árbol y las raíces («removal», «tutor»…) no
-# tienen cartas propias: cada función reúne las cartas de todos sus descendientes.
 ROLES: dict[str, Role] = {
     "ramp": Role(("ramp",)),
     "draw": Role(("draw", "card-advantage")),
     "removal": Role(("removal",), minus_roles=("wipe",)),
     "wipe": Role(("sweeper",)),
     "counter": Role(("counterspell",)),
-    # Buscar tierras (Cultivate) es ramp, no un tutor.
     "tutor": Role(("tutor",), exclude_tags=("tutor-land",)),
     "protection": Role(("protection",)),
     "recursion": Role(("recursion",)),

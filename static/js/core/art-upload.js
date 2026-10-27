@@ -1,8 +1,6 @@
 (function () {
   'use strict'
 
-  // Debe coincidir con mpc_forge/services/art/custom_art.py: el servidor vuelve a
-  // validar todo, esto solo adelanta el diagnóstico para enseñarlo en la vista previa.
   const LIMITS = {
     maxBytes: 30 * 1024 * 1024,
     maxPixels: 60_000_000,
@@ -108,13 +106,6 @@
       _resolve: null,
       _readSeq: 0,
 
-      /**
-       * Abre el diálogo de subida para una carta concreta.
-       * opts: { cardName, displayName, face, faces: [{value, label}], currentImage,
-       *         currentImages: {front, back}, deckId, deckCardId, file, title }
-       * Si se pasan deckId y deckCardId, el arte queda asignado a esa carta.
-       * Resuelve con { art, card } o con null si el usuario cancela.
-       */
       start(opts = {}) {
         if (this._resolve) this._resolve(null)
         this._revoke()
@@ -208,7 +199,6 @@
         this.blocking = checks.some(c => c.level === 'error')
         this._baseChecks = checks
         if (!this.blocking && !this.ratioOk) this.fit = 'crop'
-        // Solo se reemplaza la sugerencia automática, nunca lo que escribió el usuario.
         if (!this.variant || this.variant === this._suggested) {
           this._suggested = suggestVariant(file)
           this.variant = this._suggested
@@ -227,7 +217,6 @@
         return !!r && r >= LIMITS.ratioMin && r <= LIMITS.ratioMax
       },
 
-      // Tamaño final tras aplicar el ajuste elegido (igual que el servidor).
       get finalSize() {
         if (!this.info || !this.info.width) return null
         const { width: w, height: h } = this.info

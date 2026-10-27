@@ -1,9 +1,5 @@
 name: Release
 
-# Cada push a main publica una release en cuanto el CI de ese commit termina en
-# verde. La versión la calcula scripts/next_version.py a partir del último tag
-# (semver: major solo si se pide, minor si se añade algo, patch en lo demás y
-# nunca más allá de x.y.9). El tag se crea solo si los tres binarios compilan.
 on:
   workflow_run:
     workflows: [CI]
@@ -20,7 +16,6 @@ on:
 permissions:
   contents: write
 
-# Las releases se calculan una detrás de otra para que los números no choquen.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -207,9 +202,6 @@ jobs:
         shell: bash
         run: |
           set -u
-          # Lo que PyInstaller no ve por sí solo: text_unidecode lo importa
-          # python-slugify al vuelo (sin él toda exportación da 500) y el perfil
-          # ICC es un fichero de datos de las exportaciones para imprenta.
           MISSING=0
           for wanted in "text_unidecode/data.bin" "resources/icc/Coated_Fogra39L_VIGC_300.icc"; do
             if ! find packaging/dist -path "*/${wanted}" -print -quit | grep -q .; then

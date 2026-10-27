@@ -14,7 +14,6 @@ APP_AUTHOR: Literal[False] = False
 
 MOXFIELD_USER_AGENT = "MPC-Forge/0.1 (personal-proxy-tool; contact: local)"
 
-# Scryfall exige un User-Agent que identifique la aplicación y su versión.
 SCRYFALL_USER_AGENT = (
     f"MPC-Forge/{__version__} (+https://github.com/AdrianJimenezSantiago/mtg-forge)"
 )

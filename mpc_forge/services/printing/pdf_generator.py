@@ -17,15 +17,11 @@ from mpc_forge.services.printing.xml_generator import DeckCardResolved, default_
 
 log = logging.getLogger(__name__)
 
-# Sin ASCII85 las imágenes van en binario: el codificador de ReportLab es Python puro
-# y se llevaba ~90 % del tiempo de un PDF de mazo, además de inflarlo un 25 %.
 rl_config.useA85 = 0
 
 CARD_WIDTH_MM = 63.0
 CARD_HEIGHT_MM = 88.0
 
-# Barra de referencia del pie: con una regla debe medir exactamente esto. Si mide
-# menos, la impresora está escalando la hoja ("Ajustar al área imprimible").
 SCALE_BAR_MM = 50.0
 
 
@@ -120,8 +116,6 @@ class PDFOptions:
 
     show_footer: bool = True
 
-    # Compensación de la escala que aplica la impresora: 103 % agranda la hoja
-    # un 3 % para que, al encogerla el driver, las cartas salgan a 63×88 mm.
     print_scale_x_pct: float = 100.0
     print_scale_y_pct: float = 100.0
 
@@ -339,8 +333,6 @@ def build_pdf(
         f"{len(fronts)} card fronts, {g_front.cols}×{g_front.rows} per page, "
         f"{CARD_WIDTH_MM}×{CARD_HEIGHT_MM} mm"
     )
-    # Pide al visor "Tamaño real" en el diálogo de impresión. Acrobat lo respeta;
-    # otros visores pueden ignorarlo, de ahí la compensación de escala.
     c.setViewerPreference("PrintScaling", "None")
 
     image_cache = _ImageReaderCache()
@@ -379,8 +371,6 @@ def print_scale_factors(opts: PDFOptions) -> tuple[float, float]:
 
 
 def _apply_print_scale(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> None:
-    # Escala respecto al centro de la página, igual que hace el driver al
-    # "ajustar": así se invierte su reducción sin desplazar la rejilla.
     sx, sy = print_scale_factors(opts)
     if sx == 1.0 and sy == 1.0:
         return
@@ -391,8 +381,6 @@ def _apply_print_scale(c: canvas.Canvas, g: Geometry, opts: PDFOptions) -> None:
 
 
 def _draw_scale_bar(c: canvas.Canvas, opts: PDFOptions) -> None:
-    # Fuera de la transformación de escala para que no se vaya al borde de la
-    # hoja; solo su longitud lleva la compensación, como las cartas.
     sx, _ = print_scale_factors(opts)
     x0, y0 = 6.0, 4.0
     length = SCALE_BAR_MM * sx

@@ -13,8 +13,6 @@ MAX_TAGGED_BACKUPS = 5
 
 MANUAL_TAG = "manual"
 
-# Se regeneran con el volcado de Scryfall (o su API): no se copian al backup.
-# De printings se guardan solo las impresiones a las que apunta algo del usuario.
 REGENERABLE_TABLES = frozenset({"printings", "oracle_roles", "oracle_artists", "bulk_sync_state"})
 PRINTINGS_TABLE = "printings"
 
@@ -42,7 +40,6 @@ def create_backup(
                     copy_user_data(cfg.PATHS.db_path, copy)
                     zf.write(copy, arcname=f"db/{cfg.PATHS.db_path.name}")
 
-            # Los artes de Scryfall (art_dir) se vuelven a descargar solos.
             if include_art:
                 dirs = [
                     ("custom_art", cfg.PATHS.custom_art_dir),

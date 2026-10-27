@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 
 BULK_KINDS = ("default_cards", "oracle_cards")
 
-# Otros volcados que se leen aparte (no son cartas y no se importan a printings).
 MANIFEST_KINDS = (*BULK_KINDS, "oracle_tags")
 DEFAULT_KIND = "default_cards"
 
@@ -154,7 +153,6 @@ async def _jsonl_cards(chunks: AsyncIterator[bytes]) -> AsyncIterator[dict[str, 
         while chunk:
             for card in lines(inflater.decompress(chunk)):
                 yield card
-            # Un .gz puede traer varios miembros concatenados.
             chunk = inflater.unused_data if inflater.eof else b""
             if inflater.eof:
                 inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
@@ -184,8 +182,6 @@ async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
             return len(rows)
         except OperationalError as e:
             await db.rollback()
-            # busy_timeout ya esperó 30 s; si otro escritor sigue, se reintenta el lote
-            # en vez de perder la importación entera.
             if "locked" not in str(e.orig) or attempt == _LOCKED_RETRIES:
                 raise
             log.warning("BD ocupada al importar el volcado; reintentando el lote")
@@ -193,7 +189,6 @@ async def _flush(db: AsyncSession, rows: list[dict[str, Any]]) -> int:
 
 
 def _short_error(e: BaseException) -> str:
-    # Los errores de SQLAlchemy incluyen la sentencia y miles de parámetros.
     if isinstance(e, DBAPIError) and e.orig is not None:
         return f"{type(e.orig).__name__}: {e.orig}"
     return str(e)[:300]
@@ -280,7 +275,6 @@ async def _stream_import(db: AsyncSession, url: str, kind: str) -> int:
         response.raise_for_status()
 
         async def raw_chunks() -> AsyncIterator[bytes]:
-            # aiter_raw: el .gz tal cual, lo sirva o no el CDN con Content-Encoding.
             async for chunk in response.aiter_raw(chunk_size=1 << 20):
                 _progress.bytes_downloaded += len(chunk)
                 yield chunk
@@ -322,7 +316,6 @@ def start(kind: str = DEFAULT_KIND, *, force: bool = False) -> asyncio.Task[None
         raise RuntimeError("Ya hay una importación del volcado en curso")
 
     async def _run() -> None:
-        # Import diferido: oracle_tags usa fetch_manifest de este módulo.
         from mpc_forge.services.cards import oracle_tags
 
         async with session_scope() as session:

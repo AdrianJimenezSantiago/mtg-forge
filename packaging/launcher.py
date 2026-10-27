@@ -47,7 +47,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="No buscar una versión nueva al arrancar",
     )
-    # Lo usa el binario nuevo de una actualización para sustituir al antiguo.
     parser.add_argument("--apply-update", metavar="PLAN", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 

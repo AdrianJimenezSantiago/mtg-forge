@@ -234,13 +234,6 @@ def _guess_extension(url: str, content_type: str) -> str:
     return ".jpg"
 
 
-# --- Subida desde el navegador -------------------------------------------------
-#
-# El PDF pinta cada imagen estirada a 63x88 mm (preserveAspectRatio=False), así
-# que lo que más importa validar es que la imagen sea de verdad una imagen, que
-# tenga resolución suficiente y que su proporción sea la de una carta. Las
-# imágenes con sangrado de MPC (p. ej. 822x1122) también se consideran válidas.
-
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 MAX_UPLOAD_PIXELS = 60_000_000
 MIN_UPLOAD_SIDE_PX = 200

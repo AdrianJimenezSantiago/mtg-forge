@@ -184,8 +184,6 @@ async def _deckcards_to_views(
 
 
 async def _deckcard_to_view(db: AsyncSession, dc: DeckCard) -> DeckCardView:
-    # Una sola carta: incluye las caras para que quien la sustituya en su lista
-    # (p. ej. tras cambiar el arte) no pierda el reverso de una DFC.
     return (await _deckcards_to_views(db, [dc], with_faces=True))[0]
 
 

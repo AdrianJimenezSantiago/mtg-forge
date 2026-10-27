@@ -1607,7 +1607,6 @@ function deckEditor(deckId) {
       );
 
       const CMC_BUCKETS = ['0', '1', '2', '3', '4', '5', '6', '7+'];
-      // Funciones según las etiquetas de Scryfall (ver services/cards/oracle_tags.py).
       const ROLE_ORDER = ['ramp', 'draw', 'removal', 'wipe', 'counter', 'tutor', 'protection', 'recursion'];
       const cmcBucket = (cmc) => cmc >= 7 ? '7+' : String(Math.floor(cmc || 0));
 
@@ -1883,7 +1882,6 @@ function deckEditor(deckId) {
     async buildPdf() {
       this.buildingPdf = true;
       this.buildProgress = null;
-      // Los últimos ajustes de PDF Studio, con la misma clave y forma que guarda él.
       let opts = {};
       try {
         const raw = localStorage.getItem(`pdfStudio.opts.v2.${this.deckId}`);

@@ -73,9 +73,6 @@ async def localize_deck(
     pending = [p for p in current_by_sfid.values() if p.lang != lang and _localizable(p)]
     candidates = await _localized_candidates(db, pending, lang)
 
-    # Primero la red y después todas las escrituras: con la transacción abierta
-    # durante las llamadas, el resto de escritores (y el volcado) esperarían
-    # hasta el busy_timeout y fallarían con «database is locked».
     missing = list({_key(p): p for p in pending if _key(p) not in candidates}.values())
     fetched = await _fetch_localized(scryfall, missing, lang)
     for row in (await upsert_printings(db, fetched)).values():

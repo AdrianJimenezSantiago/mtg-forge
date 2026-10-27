@@ -43,7 +43,6 @@ PRINTS_BATCH_SIZE = 15
 
 
 def normalize_card_name(name: str) -> str:
-    # Scryfall ya no usa la ligadura: «Æther Vial» es hoy «Aether Vial».
     return (name or "").strip().lower().replace("’", "'").replace("`", "'").replace("æ", "ae")
 
 
@@ -176,8 +175,6 @@ async def upsert_rows(db: AsyncSession, rows: list[dict[str, Any]]) -> None:
         for c in PrintingCache.__table__.columns
         if c.name != "scryfall_id"
     }
-    # executemany: una sentencia por fila. Con .values(rows) serían ~80k
-    # parámetros por lote, por encima del límite de SQLite en Windows (32766).
     await db.execute(
         stmt.on_conflict_do_update(index_elements=["scryfall_id"], set_=update_cols), rows
     )
@@ -236,20 +233,15 @@ _NAME_CHUNK = 50
 
 
 def _sql_lower_variants(key: str) -> set[str]:
-    # lower() de SQLite sólo baja ASCII: «Éowyn» queda como «Éowyn», no «éowyn».
     return {key, "".join(c if c.isascii() else c.upper() for c in key)}
 
 
-# Sets que no son la carta «normal» que alguien espera al escribir sólo el nombre.
 _ODDBALL_SET_TYPES = frozenset(
     {"memorabilia", "funny", "alchemy", "minigame", "treasure_chest", "token", "vanguard"}
 )
 
-# Sin escaneo bueno la carta se imprime borrosa: mejor otra impresión.
 _POOR_IMAGE = frozenset({"lowres", "placeholder", "missing"})
 
-# Versiones especiales que Scryfall no da por defecto: The List, Secret Lair,
-# Masterpieces, borderless, showcase, marcos retro…
 _SPECIAL_SETS = frozenset({"plst"})
 _SPECIAL_SET_TYPES = frozenset(
     {"box", "masterpiece", "promo", "from_the_vault", "spellbook", "premium_deck", "arsenal"}
@@ -262,8 +254,6 @@ _RETRO_FRAMES = frozenset({"1993", "1997"})
 
 
 def _default_print_rank(row: Any, preferred_set: str | None) -> tuple[Any, ...]:
-    # Sin penalizar fechas futuras: Scryfall sí da por defecto los sets en preventa,
-    # y una preventa sin escaneo ya cae por _POOR_IMAGE.
     effects = set((row.frame_effects or "").split(","))
     return (
         bool(preferred_set) and row.set_code != preferred_set,
@@ -315,7 +305,6 @@ async def find_local_by_names(
         for row in rows:
             candidates.setdefault(normalize_card_name(row.name), []).append(row)
 
-    # Cartas de dos caras/partidas: el decklist suele traer sólo la cara frontal.
     missing = names - candidates.keys()
     variants = {v for n in missing for v in _sql_lower_variants(n)}
     for chunk in chunked(variants, _NAME_CHUNK):
@@ -364,10 +353,8 @@ _AUTOCOMPLETE_LIMIT = 20
 
 SUGGESTIONS_PER_NAME = 3
 
-# Sin volcado cada sugerencia es una búsqueda pesada (2/s): sólo las primeras.
 REMOTE_SUGGESTIONS_CAP = 10
 
-# Lo bastante por debajo de la mejor coincidencia ya es ruido.
 _SUGGESTION_SPREAD = 6
 
 _name_index: tuple[str, list[str], list[tuple[str, int, bool]]] | None = None
@@ -478,8 +465,6 @@ async def local_autocomplete(db: AsyncSession, query: str) -> list[str] | None:
 
 
 def _collector_sort_key(number: str) -> tuple[int, str]:
-    # Como order=set de Scryfall: por el último número que aparezca («DD1-19» → 19,
-    # «2024-10» → 10) y los que no tienen ninguno, delante.
     digits = re.findall(r"\d+", number)
     return (int(digits[-1]) if digits else 0, number)
 
@@ -628,8 +613,6 @@ async def resolve_cards(
         elif e.get("set") and e.get("number"):
             to_lookup.append({"set": e["set"], "collector_number": e["number"]})
         else:
-            # /cards/collection no encuentra «Fire // Ice» por el nombre completo,
-            # pero sí por la cara frontal.
             to_lookup.append({"name": e["name"].split(" // ", 1)[0].strip() or e["name"]})
 
     resolved_map: dict[str, dict[str, Any]] = {}
@@ -647,8 +630,6 @@ async def resolve_cards(
     for c in cached_cards.values():
         meld_result_ids.update(_meld_result_ids(c))
 
-    # Toda la red antes de escribir: una transacción abierta durante las llamadas
-    # bloquearía al resto de escritores (y al volcado) hasta el busy_timeout.
     fetched: list[dict[str, Any]] = []
     if to_lookup:
         fetched = await scryfall.collection(to_lookup)

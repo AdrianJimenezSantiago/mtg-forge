@@ -11,21 +11,11 @@ from mpc_forge.services.art.custom_art import LOW_DPI
 from mpc_forge.services.printing.press_color import CmykConverter
 from mpc_forge.services.printing.print_shops import MTG_CARD_H_MM, MTG_CARD_W_MM, PrintShopSpec
 
-# Por debajo de esto la diferencia de proporción es ruido del escaneo (las PNG
-# de Scryfall miden 745×1040, un pelo más anchas que 63,5×88,9) y no sangrado.
 _MIN_NATIVE_BLEED_MM = 0.5
-# Más allá no es una carta con sangrado sino una imagen con otra proporción.
 _MAX_NATIVE_BLEED_MM = 6.0
 
-# El JPEG se intenta con esta calidad y se baja solo si no cabe en el límite de
-# la imprenta. 97 queda a ~48 dB del original sin comprimir y una carta de
-# Scryfall pesa ~1,9 MB, con margen frente a los 3 MB. 4:4:4 para que el texto
-# de reglas no pierda nitidez en el color.
 _JPEG_QUALITIES = (97, 95, 92, 88, 84, 78)
-# Desviación típica (0-255) por debajo de la cual el borde se considera liso:
-# el ruido de un escaneo de Scryfall sobre negro ronda 2-6.
 _UNIFORM_BORDER_SPREAD = 12.0
-# Reserva para la página, el contenido y la parte del PDF que se reparte.
 _PAGE_OVERHEAD_BYTES = 64_000
 
 WARN_LOW_RESOLUTION = "low_resolution"
@@ -85,8 +75,6 @@ def prepare_press_image(path: Path, spec: PrintShopSpec, converter: CmykConverte
     except PressImageError:
         raise
     except (ValueError, OSError) as e:
-        # Modos o perfiles raros que Pillow no sabe convertir: mejor un error con
-        # el nombre del fichero que un 500.
         raise PressImageError(f"No se pudo preparar la imagen {path.name}: {e}") from e
 
 
@@ -98,8 +86,6 @@ def _prepare(
 
     rotated = img.width > img.height
     if rotated:
-        # Cartas horizontales (batallas, planos): se giran 90° en sentido horario
-        # para que la página siga siendo vertical como la plantilla.
         img = img.transpose(Image.Transpose.ROTATE_270)
         warnings.append(WARN_ROTATED)
 
@@ -121,8 +107,6 @@ def _prepare(
     if source_ppi < LOW_DPI:
         warnings.append(WARN_LOW_RESOLUTION)
 
-    # La carta de la imagen (63,5×88,9) ocupa el corte de la imprenta (63×88),
-    # igual que en el PDF de casa; el sangrado pedido se mide en esa escala.
     need_x = spec.bleed_mm * card_w_px / spec.trim_w_mm
     need_y = spec.bleed_mm * card_h_px / spec.trim_h_mm
     have_x = bleed * px_per_mm_x
@@ -210,9 +194,6 @@ def _flatten(img: Image.Image) -> Image.Image:
         return rgb
     color, _ = edge_band(rgb, alpha)
     flat = Image.new("RGB", rgb.size, color)
-    # Máscara binaria y encogida 2 px: el antialias de la esquina y el halo claro
-    # que el recorte deja junto a él dibujarían un arco tenue justo donde corta
-    # la imprenta. Solo afecta a las esquinas, que es donde hay transparencia.
     opaque = alpha.point(lambda v: 255 if v == 255 else 0).filter(ImageFilter.MinFilter(5))
     flat.paste(rgb, mask=opaque)
     return flat

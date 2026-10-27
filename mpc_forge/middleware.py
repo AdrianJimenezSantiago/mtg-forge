@@ -23,8 +23,6 @@ DEFAULT_ALLOWED_HOSTS: frozenset[str] = frozenset(
 
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-# "same-site" no basta: para 127.0.0.1 cualquier otro puerto local (un servidor de
-# desarrollo, Jupyter, otra app) es el mismo sitio, pero no el mismo origen.
 _SAFE_FETCH_SITES = frozenset({"same-origin", "none"})
 
 
@@ -58,9 +56,6 @@ def _cross_origin_reason(request: Request, host_header: str) -> str | None:
     site = request.headers.get("sec-fetch-site", "").lower()
     if site:
         return None if site in _SAFE_FETCH_SITES else f"Sec-Fetch-Site={site}"
-    # Navegadores sin Sec-Fetch-* (Safari < 16.4, WebViews antiguos) siguen
-    # mandando Origin en los POST; sin ninguna de las dos es un cliente que no es
-    # un navegador (curl, scripts) y no hay sitio ajeno que lo dispare.
     origin = request.headers.get("origin")
     if origin is None:
         return None
@@ -138,8 +133,6 @@ CONTENT_SECURITY_POLICY = "; ".join(
     )
 )
 
-# Arte y carpetas locales vienen de fuera de la app: aunque se cuele un .html o un
-# .js, abierto en el origen de la app no debe poder ejecutar nada.
 USER_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src 'self' data:; sandbox"
 
 SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (

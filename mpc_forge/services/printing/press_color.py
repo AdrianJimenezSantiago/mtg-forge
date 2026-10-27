@@ -10,10 +10,6 @@ from PIL import Image, ImageCms
 
 log = logging.getLogger(__name__)
 
-# Colorimétrico relativo con compensación de punto negro: lo que hacen Photoshop
-# e InDesign por defecto al "Convertir en perfil" para imprenta. NOCACHE porque
-# LittleCMS guarda el último píxel en la transformación y aquí se comparte entre
-# hilos.
 _INTENT = ImageCms.Intent.RELATIVE_COLORIMETRIC
 _FLAGS = ImageCms.Flags.BLACKPOINTCOMPENSATION | ImageCms.Flags.NOCACHE
 
@@ -48,12 +44,11 @@ class CmykConverter:
             raise ValueError(f"Modo no soportado para separar: {img.mode}")
         source = self._source_profile(img.mode, icc_profile)
         if source is None:
-            # CMYK sin perfil: se asume ya separado para imprenta y se respeta.
             return img
         key, profile = source
         transform = self._transform(key, profile, img.mode)
         converted = ImageCms.applyTransform(img, transform)
-        if converted is None:  # solo ocurre con inPlace=True
+        if converted is None:
             raise PressColorError("La conversión a CMYK no devolvió imagen")
         return converted
 

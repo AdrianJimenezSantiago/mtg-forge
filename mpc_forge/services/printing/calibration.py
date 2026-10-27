@@ -17,18 +17,13 @@ CROSSHAIR_ARM_MM = 25
 
 SUSPICIOUS_OFFSET_MM = 10.0
 
-# Hoja de escala: dos reglas largas para que medio milímetro de error al medir
-# pese poco en el factor (0,5 mm sobre 150 mm ≈ 0,3 %).
 SCALE_RULER_X_MM = 150.0
 SCALE_RULER_Y_MM = 200.0
 
 PRINT_SCALE_RANGE_PCT = (90.0, 110.0)
 
-# Por debajo de esto la diferencia es error de medida, no escala de la impresora.
 SCALE_EXACT_TOLERANCE_PCT = 0.2
 
-# Más de un 5 % casi siempre es "Ajustar a página" o un tamaño de papel distinto
-# del del PDF: conviene arreglar el diálogo de impresión antes que compensar.
 SCALE_LARGE_PCT = 5.0
 
 
@@ -122,7 +117,6 @@ def derive_scale(
     if measured_x_mm <= 0 or measured_y_mm <= 0:
         raise ValueError("Las medidas deben ser positivas")
 
-    # Lo que hace la impresora, sin contar nuestra compensación.
     printed_x = measured_x_mm / (SCALE_RULER_X_MM * current_x_pct / 100)
     printed_y = measured_y_mm / (SCALE_RULER_Y_MM * current_y_pct / 100)
 
@@ -130,8 +124,6 @@ def derive_scale(
     scale_x = min(high, max(low, 100 / printed_x))
     scale_y = min(high, max(low, 100 / printed_y))
 
-    # Error frente a la medida objetivo: si ya sale exacta, se queda la
-    # compensación con la que se imprimió (100 % en la primera pasada).
     error_pct = 100 * max(
         abs(measured_x_mm / SCALE_RULER_X_MM - 1), abs(measured_y_mm / SCALE_RULER_Y_MM - 1)
     )
@@ -193,7 +185,6 @@ def build_scale_sheet(
             f"Hoja de verificación con compensación {sx * 100:g} % × {sy * 100:g} %.",
         )
 
-    # Lo medible se escala como lo escalaría el PDF de cartas; los textos no.
     c.saveState()
     c.translate(cx, cy)
     c.scale(sx, sy)
@@ -241,7 +232,6 @@ def _draw_scale_rulers(c: Any, cx: float, cy: float, mm: float) -> None:
             c.drawRightString(x - 1.2 * mm, yy - 0.8 * mm, str(i))
     c.line(x, cy - half_y * mm, x, cy + half_y * mm)
 
-    # Una carta a tamaño real como comprobación rápida.
     card_w, card_h = 63 * mm, 88 * mm
     c.setDash(2, 1.5)
     c.rect(cx - card_w / 2 + 12 * mm, cy - card_h / 2, card_w, card_h, stroke=1, fill=0)

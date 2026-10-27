@@ -70,9 +70,6 @@ def is_newer(latest: str | None, current: str | None) -> bool:
     return new is not None and cur is not None and new > cur
 
 
-# --- ¿Está activada? -------------------------------------------------------
-
-
 def _read_settings(db_path: Path, *keys: str) -> dict[str, str]:
     if not db_path.exists():
         return {}
@@ -118,9 +115,6 @@ def _ssl_verify(db_path: Path | None) -> bool:
         if stored is not None and _truthy(stored):
             return False
     return True
-
-
-# --- Binario: releases de GitHub ------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -220,7 +214,6 @@ def extract(archive: Path, dest: Path) -> None:
                 tar.extractall(dest)  # noqa: S202
         return
     if sys.platform == "darwin":
-        # ditto conserva los symlinks y permisos del bundle .app; zipfile no.
         subprocess.run(  # noqa: S603
             ["/usr/bin/ditto", "-x", "-k", str(archive), str(dest)],
             check=True,
@@ -279,7 +272,7 @@ def run_frozen_update(argv: list[str], current: str, db_path: Path | None) -> in
             resp.raise_for_status()
             release = pick_asset(resp.json(), suffix)
     except Exception:
-        return None  # sin conexión o GitHub no responde: se sigue con esta versión
+        return None
     if release is None or not is_newer(release.tag, current):
         return None
 
@@ -326,7 +319,7 @@ def _wait_for_exit(pid: int, timeout: float = 60.0) -> None:
         import ctypes
 
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        handle = kernel32.OpenProcess(0x00100000, False, pid)
         if handle:
             try:
                 kernel32.WaitForSingleObject(handle, int(timeout * 1000))
@@ -342,7 +335,6 @@ def _wait_for_exit(pid: int, timeout: float = 60.0) -> None:
 
 
 def _retry(fn: Any, *args: Any, attempts: int = 50, delay: float = 0.2) -> Any:
-    # Windows puede tardar un instante en soltar el .exe tras cerrarse el proceso.
     for i in range(attempts):
         try:
             return fn(*args)
@@ -379,7 +371,6 @@ def swap_install(target: Path, new_root: Path, preserve: list[str]) -> None:
                 new.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(old, new)
     except Exception:
-        # Primero los datos del usuario, antes de borrar lo que se movió dentro.
         for rel in preserve:
             old, restored = backup / rel, target / rel
             if not old.exists() and restored.exists():
@@ -406,7 +397,7 @@ def apply_update(plan_path: Path) -> int:
     target = Path(plan["target"])
     exe = target / plan["exe_rel"]
     env = dict(os.environ)
-    env[NO_UPDATE_ENV] = "1"  # nunca encadenar otra actualización en este arranque
+    env[NO_UPDATE_ENV] = "1"
     env[CLEANUP_ENV] = plan["staging"]
 
     _wait_for_exit(int(plan["pid"]))
@@ -426,7 +417,6 @@ def cleanup_after_update() -> None:
         return
 
     def _cleanup() -> None:
-        # El proceso que instaló la actualización puede seguir vivo un instante.
         for _ in range(30):
             shutil.rmtree(staging, ignore_errors=True)
             if not Path(staging).exists():
@@ -434,9 +424,6 @@ def cleanup_after_update() -> None:
             time.sleep(1)
 
     threading.Thread(target=_cleanup, daemon=True).start()
-
-
-# --- Código fuente: git ----------------------------------------------------
 
 
 def _git(root: Path, *args: str, timeout: float = GIT_TIMEOUT) -> subprocess.CompletedProcess[str]:
@@ -471,9 +458,9 @@ def run_source_update(argv: list[str], root: Path) -> int | None:
         if branch != "main":
             return None
         if _git(root, "status", "--porcelain", "--untracked-files=no").stdout.strip():
-            return None  # cambios locales: no se tocan
+            return None
         if _git(root, "fetch", "--quiet", "origin", "main").returncode != 0:
-            return None  # sin conexión
+            return None
         behind = _git(root, "rev-list", "--count", "HEAD..origin/main").stdout.strip()
         if not behind.isdigit() or int(behind) == 0:
             return None
@@ -497,9 +484,6 @@ def run_source_update(argv: list[str], root: Path) -> int | None:
         if result.returncode != 0:
             _say("pip falló; revisa las dependencias con: pip install -r requirements.txt")
     return _relaunch_source(argv)
-
-
-# --- Punto de entrada ------------------------------------------------------
 
 
 def check_on_startup(argv: list[str], *, no_update: bool = False) -> int | None:

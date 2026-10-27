@@ -19,14 +19,12 @@ from mpc_forge.ssl_config import ssl_insecure
 
 log = logging.getLogger(__name__)
 
-# La lista de sets se guarda en la BD para que la colección funcione sin red.
 _SETS_KEY = "scryfall_sets.data"
 _FETCHED_KEY = "scryfall_sets.fetched_at"
 REFRESH_AFTER = timedelta(days=1)
 
 _memo: tuple[datetime, list[dict[str, Any]]] | None = None
 
-# Scryfall pide descargar los iconos y servirlos uno mismo en vez de enlazarlos.
 _ICON_URI = re.compile(r"^https://svgs\.scryfall\.io/sets/([a-z0-9_-]+)\.svg(\?.*)?$")
 _icon_locks: dict[str, asyncio.Lock] = {}
 _client: httpx.AsyncClient | None = None

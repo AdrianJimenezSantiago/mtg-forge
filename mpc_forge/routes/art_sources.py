@@ -296,8 +296,6 @@ async def serve_local_source_file(
         path = LocalFolderSourceType.resolve_path(source, file_id)
     except ArtSourceTypeError as e:
         raise HTTPException(400, str(e)) from e
-    # Solo se indexan imágenes: cualquier otro fichero de la carpeta (un .html,
-    # un .js) no debe poder servirse desde el origen de la app.
     if path.suffix.lower() not in IMAGE_EXTENSIONS:
         raise HTTPException(404, "Fichero no encontrado")
     return FileResponse(path, headers={"Content-Security-Policy": USER_CONTENT_SECURITY_POLICY})

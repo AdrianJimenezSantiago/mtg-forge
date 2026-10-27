@@ -168,8 +168,6 @@ class ArtCache:
         return (cfg.PATHS.art_dir / art.relative_path).resolve()
 
 
-# En julio de 2026 Scryfall regeneró todas las imágenes al estrenar WebP y casi
-# todas las cartas llevan esa fecha: no es un escaneo nuevo y no merece re-descargar.
 _BULK_REGENERATION_END = datetime(2026, 8, 1, tzinfo=UTC)
 
 

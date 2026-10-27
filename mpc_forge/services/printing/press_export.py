@@ -23,7 +23,6 @@ from mpc_forge.services.printing.xml_generator import DeckCardResolved
 
 log = logging.getLogger(__name__)
 
-# Igual que en pdf_generator: las imágenes van en binario, sin ASCII85.
 rl_config.useA85 = 0
 
 Face = Literal["front", "back"]
@@ -152,9 +151,6 @@ def build_press_pdf(
         unique.setdefault(back.path, back)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    # Cada JPEG ya separado va a un fichero temporal y ReportLab lo incrusta tal
-    # cual desde ahí. Con un ImageReader lo descomprimiría entero en cada página
-    # para calcular su huella: con un mazo de 100 cartas, más de 1 GB de RAM.
     with tempfile.TemporaryDirectory(prefix=".press-", dir=output_path.parent) as workdir:
         prepared = _prepare_all(unique, spec, converter, on_image, Path(workdir))
         _write_pdf(pairs, prepared, output_path, spec, title)
@@ -212,11 +208,8 @@ def _write_pdf(
 
     for front, back in pairs:
         for slot in (front, back):
-            # Sangrado = página entera; corte = página menos el sangrado. Así lo
-            # lee cualquier RIP o preflight sin tener que adivinar la plantilla.
             c.setBleedBox((0, 0, page_w, page_h))
             c.setTrimBox((bleed, bleed, page_w - bleed, page_h - bleed))
-            # Misma ruta, mismo XObject: el dorso se guarda una vez en el PDF.
             c.drawImage(str(prepared[slot.path].file), 0, 0, width=page_w, height=page_h)
             c.showPage()
     c.save()
@@ -244,7 +237,6 @@ def build_press_package(pdf_path: Path, zip_path: Path, spec: PrintShopSpec) -> 
     """ZIP listo para WeTransfer: una carpeta por componente y el PDF con la
     medida en el nombre, como pide la guía."""
     zip_path.parent.mkdir(parents=True, exist_ok=True)
-    # Sin comprimir: el PDF ya lleva JPEG y deflate solo añadiría tiempo.
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
         zf.write(pdf_path, arcname=spec.package_entry)
     return zip_path.stat().st_size
@@ -274,9 +266,6 @@ def _prepare_all(
 
 
 def _add_output_intent(c: canvas.Canvas, spec: PrintShopSpec) -> None:
-    # OutputIntent GTS_PDFX con la condición registrada: el RIP sabe que los
-    # CMYK son FOGRA39 sin que el PDF cargue los 8 MB del perfil. ReportLab no
-    # lo expone, así que se añade la clave al catálogo de esta instancia.
     intent = PDFDictionary(
         {
             "Type": PDFName("OutputIntent"),

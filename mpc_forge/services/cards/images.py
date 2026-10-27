@@ -3,9 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Scryfall retira el 1-1-2027 los JPEG small/large/border_crop/art_crop y pide
-# usar WebP en el navegador; normal sigue existiendo (renombrado a «jpeg»).
-# Las URLs nuevas son las mismas con otra carpeta y extensión.
 WEBP_FOR = {
     "small": "thumb",
     "normal": "grid",

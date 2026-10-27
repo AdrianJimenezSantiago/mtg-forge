@@ -6,8 +6,6 @@ from typing import Any
 
 from mpc_forge.paths import resources_dir
 
-# Medidas de una carta de Magic real. Las imágenes de Scryfall y de los drives de
-# MPC Autofill parten de este tamaño (con o sin 1/8" de sangrado alrededor).
 MTG_CARD_W_MM = 63.5
 MTG_CARD_H_MM = 88.9
 
@@ -31,8 +29,6 @@ class PrintShopSpec:
     ppi: int
     max_bytes_per_page: int
     icc_filename: str
-    # Condición de impresión registrada en el ICC (https://www.color.org): con
-    # ella el OutputIntent identifica FOGRA39 sin incrustar 8 MB de perfil.
     output_condition_identifier: str
     output_condition: str
     output_registry: str
@@ -41,7 +37,6 @@ class PrintShopSpec:
     delivery_email: str
     delivery_url: str
     templates_url: str
-    # Va a la imprenta, así que está en su idioma y no en el de la interfaz.
     delivery_message_template: str
 
     @property
@@ -100,10 +95,6 @@ class PrintShopSpec:
         }
 
 
-# Pinbro Games (https://www.pinbrogames.com/plantillas/), plantilla MOD20_63x88:
-# página 69×94 mm, corte 63×88 mm con esquinas de 3 mm y zona segura 57×82 mm.
-# La guía pide CMYK Coated FOGRA39 a 300 ppp, un PDF por tamaño con la medida en
-# el nombre, cada anverso seguido de su reverso y como mucho 3 MB por página.
 PINBRO_POKER = PrintShopSpec(
     key="pinbro_poker",
     shop_name="Pinbro Games",
@@ -114,7 +105,6 @@ PINBRO_POKER = PrintShopSpec(
     safe_margin_mm=3.0,
     corner_radius_mm=3.0,
     ppi=300,
-    # "3Mb" en la guía: se toma el megabyte decimal, el más estricto de los dos.
     max_bytes_per_page=3_000_000,
     icc_filename="Coated_Fogra39L_VIGC_300.icc",
     output_condition_identifier="FOGRA39",

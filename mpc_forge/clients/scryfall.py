@@ -39,7 +39,6 @@ _RETRYABLE_5XX = {500, 502, 503, 504}
 
 _COLLECTION_CHUNK = 75
 
-# Scryfall rechaza (400) una búsqueda con 20 o más condiciones anidadas.
 _LANG_BATCH = 18
 
 
@@ -294,7 +293,6 @@ class ScryfallClient:
             except httpx.HTTPStatusError as e:
                 if not (400 <= e.response.status_code < 500) or e.response.status_code == 429:
                     raise
-                # Una consulta que Scryfall no entiende: carta a carta.
                 for s, n in chunk:
                     if card := await self.by_set_and_number(s, n, lang=lang):
                         out.append(card)

@@ -14,9 +14,6 @@ from mpc_forge.utils.iterables import chunked
 
 log = logging.getLogger(__name__)
 
-# Scryfall publica en /migrations las cartas que fusiona con otra o elimina
-# (sobre todo versiones de Arena retiradas). Se aplican a los datos vivos del
-# usuario; el historial (tiradas, actividad, snapshots) se deja como se hizo.
 _MERGE_TARGETS = (
     ("deck_cards", "scryfall_id"),
     ("decks", "commander_scryfall_id"),
@@ -98,8 +95,6 @@ async def apply(db: AsyncSession, migrations: list[dict[str, Any]]) -> dict[str,
                     await db.delete(entry)
                 stats["collection"] += 1
 
-    # Una impresión fusionada ya no la usa nadie; una eliminada se conserva
-    # mientras algún mazo la tenga para que siga mostrándose.
     stale = list(merges) + sorted(deletes - await _referenced(db, list(deletes)))
     for chunk in chunked(stale):
         result = await db.execute(delete(PrintingCache).where(PrintingCache.scryfall_id.in_(chunk)))

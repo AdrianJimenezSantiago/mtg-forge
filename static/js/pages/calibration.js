@@ -84,7 +84,6 @@ function calibrationWizard() {
   }
 }
 
-// Misma clave que usa PDF Studio: la escala es de la impresora, no del mazo.
 const LS_PRINT_SCALE = 'pdfStudio.printScale'
 
 function readPrintScale() {
@@ -113,7 +112,6 @@ function scaleCalibration() {
       return this.currentX !== 100 || this.currentY !== 100
     },
 
-    // La hoja sale con la compensación vigente, para verificar o afinar.
     get sheetUrl() {
       const params = new URLSearchParams({
         page_size: this.pageSize,

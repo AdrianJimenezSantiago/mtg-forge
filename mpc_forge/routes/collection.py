@@ -97,7 +97,6 @@ async def set_icon(name: str, db: DbDep, scryfall: ScryfallDep) -> FileResponse:
         media_type="image/svg+xml",
         headers={
             "Cache-Control": "public, max-age=604800",
-            # Un SVG puede llevar scripts: abierto directamente, que no ejecute nada.
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
             "X-Content-Type-Options": "nosniff",
         },

@@ -128,8 +128,6 @@ async def export_press_endpoint(
 
     resolved = await resolve_with_progress(db, scryfall, art_cache, deck, kind="pdf")
     try:
-        # Una carta sin imagen no puede quedarse fuera en silencio: el mazo que
-        # llegaría a casa estaría incompleto.
         missing = _missing_cards(expected, resolved)
         if missing:
             raise PressExportError(
