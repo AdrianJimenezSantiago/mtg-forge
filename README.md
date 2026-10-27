@@ -1,24 +1,36 @@
 <div align="center">
 
-<img src="static/img/logo.png" alt="MPC Forge" width="120">
+<img src="static/img/logo.png" alt="MPC Forge" width="110">
 
 # MPC Forge
 
-**A local-first workflow for printing Magic: The Gathering proxies.**
+**From decklist to printed sheet — a local-first workshop for Magic: The Gathering proxies.**
 
-Paste a decklist, pick the art for every card, and export a print-ready PDF or
-an MPC Autofill XML — without leaving your computer.
+Paste a decklist, pick the art for every card, and export a print-ready PDF, a
+print-shop package or an MPC Autofill XML — without leaving your computer.
 
 [![CI](https://github.com/AdrianJimenezSantiago/mtg-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianJimenezSantiago/mtg-forge/actions/workflows/ci.yml)
 [![Release](https://github.com/AdrianJimenezSantiago/mtg-forge/actions/workflows/release.yml/badge.svg)](https://github.com/AdrianJimenezSantiago/mtg-forge/releases)
+[![Latest release](https://img.shields.io/github/v/release/AdrianJimenezSantiago/mtg-forge?label=download)](https://github.com/AdrianJimenezSantiago/mtg-forge/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555)
+
+[**Download**](https://github.com/AdrianJimenezSantiago/mtg-forge/releases/latest) ·
+[Features](#features) ·
+[Getting started](#getting-started) ·
+[Print shops](#sending-a-deck-to-a-print-shop) ·
+[Development](docs/DEVELOPMENT.md)
+
+<br>
+
+<img src="docs/media/demo.gif" alt="Choosing art for a card, opening the deck statistics and switching PDF Studio to print shop mode" width="900">
 
 </div>
 
 ---
 
-## Overview
+## Why MPC Forge
 
 ```
 Moxfield · Archidekt · Deckstats · TappedOut · MTGGoldfish · CubeCobra · Scryfall · plain text
@@ -27,53 +39,54 @@ Moxfield · Archidekt · Deckstats · TappedOut · MTGGoldfish · CubeCobra · S
                                         │
           art picker  ◄──  official printings · community Google Drives · your own images
                                         │
-            MPC Autofill XML  ·  printable PDF  ·  image ZIP  ·  decklist.txt
+     printable PDF  ·  print shop package  ·  MPC Autofill XML  ·  image ZIP  ·  decklist.txt
 ```
 
-Everything lives on your machine: no account, no server, no telemetry. The
-interface is served by the app itself and works offline once your card data and
-art are cached.
+- 🏠 **Everything lives on your machine.** No account, no server, no telemetry.
+  The interface is served by the app itself and works offline once your card
+  data and art are cached.
+- 🎨 **Every printing, every community scan, your own art.** One picker for all of it.
+- 🖨️ **Prints that come out right.** Cut guides, bleed, duplex calibration and a
+  CMYK package for professional print shops.
+- 🌍 **English and Spanish**, with a guided tour on every screen.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/landing.webp" alt="Home screen with one-field URL import and recent decks"><br><sub><b>Home</b> — import a deck from a URL in one field.</sub></td>
+    <td width="50%"><img src="docs/media/deck-editor.webp" alt="Deck editor with cost, stock and card list"><br><sub><b>Deck editor</b> — cost per order, validation and every card at a glance.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/art-picker.webp" alt="Art picker with every printing of Atraxa and filters"><br><sub><b>Art picker</b> — official printings, community drives and your uploads, with filters.</sub></td>
+    <td><img src="docs/media/deck-stats.webp" alt="Deck statistics with mana curve, colours and rarity"><br><sub><b>Statistics</b> — animated mana curve, colours, rarity and card functions.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/pdf-studio.webp" alt="PDF Studio with a 3x3 sheet preview and layout options"><br><sub><b>PDF Studio</b> — margins, bleed, cut guides and duplex for home printing.</sub></td>
+    <td><img src="docs/media/print-shop.webp" alt="PDF Studio in print shop mode with bleed and cut line"><br><sub><b>Print shop mode</b> — one card per page, bleed, safe area, FOGRA39.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/print-planner.webp" alt="Print planner comparing order sizes for two decks"><br><sub><b>Print planner</b> — group decks into MakePlayingCards orders and compare prices.</sub></td>
+    <td><img src="docs/media/proof.webp" alt="Proof view with the full grid of cards"><br><sub><b>Proof</b> — the whole deck at near real size before you order.</sub></td>
+  </tr>
+</table>
 
 ## Features
 
-- **Home.** A landing page (`/`) with one-field URL import, your latest decks
-  and the state of your workshop (offline card data, art index, collection).
-  The deck library lives at `/decks`.
-- **A workshop that feels alive.** Animated deck statistics (mana curve, colors,
-  rarity, types, keywords) and a subtle animated background you can switch off
-  from the sparkles button in the sidebar footer.
-- **Import from anywhere.** Paste a URL from any of the supported deck sites, or
-  a plain-text list in the usual formats (`1 Sol Ring`, `1 Sol Ring (C21) 263`,
-  section headers for commander, sideboard and maybeboard). Cards that cannot be
-  resolved are reported back with the original line so you can fix them.
-- **Art picker over community drives.** Indexes the public MPC Autofill Google
-  Drives with SQLite FTS5 and makes them searchable instantly, with filters for
-  full art, borderless, extended, showcase, retro frame, artist and set.
-  Perceptual hashing removes duplicates across drives.
-- **Art library.** Browse the whole index without starting from a card: an
-  artist's work, every full-art print of a set, and so on.
-- **PDF Studio.** Fine control over home printing: margins, bleed, per-card and
-  per-page cut guides, square or rounded corners, duplex with drift
-  compensation, and card backs for DFCs or the whole deck.
-- **Duplex calibration.** A two-page test sheet turns "the back comes out
-  misaligned" into two offsets you can apply in PDF Studio.
-- **Print planner.** Combine several decks into MakePlayingCards orders and see
-  which bracket each order lands in before you buy.
-- **Collection.** Track the cards you actually own, by set, and cross-reference
-  them with your decks to print only what is missing.
-- **History and undo.** Every change to a deck is recorded on a timeline and can
-  be reverted individually.
-- **Storage breakdown.** *Settings → Storage* shows what the app is actually
-  using on disk — database, art cache, thumbnails, exports, backups — with the
-  free space left on each drive and one-click cleanup of everything that can be
-  regenerated or downloaded again. Your database, custom art and cardbacks are
-  never offered for deletion.
-- **Offline card data.** Optionally import Scryfall's bulk data so card
-  resolution, autocomplete, printing lookups and recommendations are answered
-  locally, and the deck statistics show each card's function (ramp, draw,
-  removal…). See
-  [Working with Scryfall](#working-with-scryfall).
-- **Bilingual interface.** English and Spanish.
+| | |
+| --- | --- |
+| 📥 **Import from anywhere** | Paste a URL from any supported deck site, or a plain-text list in the usual formats (`1 Sol Ring`, `1 Sol Ring (C21) 263`, section headers for commander, sideboard and maybeboard). Cards that cannot be resolved come back with the original line and "did you mean" suggestions. |
+| 🖼️ **Art picker over community drives** | Indexes the public MPC Autofill Google Drives with SQLite FTS5 and makes them searchable instantly, with filters for full art, borderless, extended, showcase, retro frame, artist and set. Perceptual hashing removes duplicates across drives. |
+| 📚 **Art library** | Browse the whole index without starting from a card: an artist's work, every full-art print of a set, and so on. |
+| 📄 **PDF Studio** | Fine control over home printing: margins, bleed, per-card and per-page cut guides, square or rounded corners, duplex with drift compensation, and card backs for DFCs or the whole deck. |
+| 🏭 **Print shop export** | A CMYK, one-card-per-page package ready to send to a professional print shop. [More below](#sending-a-deck-to-a-print-shop). |
+| 🎯 **Duplex and scale calibration** | A test sheet turns "the back comes out misaligned" into two offsets, and a ruler sheet undoes the printer's "fit to page" scaling. |
+| 🧮 **Print planner** | Combine several decks into MakePlayingCards orders and see which bracket each order lands in before you buy. |
+| 🗃️ **Collection** | Track the cards you actually own, by set, and cross-reference them with your decks to print only what is missing. |
+| 📊 **Deck statistics** | Animated mana curve, colours, rarity, types, keywords and — with offline card data — each card's function (ramp, draw, removal…). |
+| ⏪ **History and undo** | Every change to a deck is recorded on a timeline and can be reverted individually. Snapshots let you compare and restore whole versions. |
+| 💾 **Storage breakdown** | *Settings → Storage* shows what the app uses on disk, the free space left, and one-click cleanup of everything that can be regenerated. Your database, custom art and card backs are never offered for deletion. |
+| ✈️ **Offline card data** | Import Scryfall's bulk data so resolution, autocomplete, printings and recommendations are answered locally. See [Working with Scryfall](#working-with-scryfall). |
 
 ## Installation
 
@@ -127,9 +140,9 @@ connection, and installs it before opening:
   `main` that has diverged are never touched.
 
 Offline, or if anything goes wrong, the app simply starts with the version you
-have. Turn it off in *Settings → General → Actualizar al arrancar*, with
-`--no-update`, or with `MPC_FORGE_NO_UPDATE=1`. Versions before this feature
-have to be updated by hand once.
+have. Turn it off in *Settings → General → Actualizar al arrancar* (update on
+startup), with `--no-update`, or with `MPC_FORGE_NO_UPDATE=1`. Versions before
+this feature have to be updated by hand once.
 
 ## Getting started
 
@@ -148,13 +161,14 @@ have to be updated by hand once.
    - *PDF Studio* — a PDF for your own printer or a print shop, or *Export ZIP*
      for one image per card.
    - *PDF Studio → Print shop* — a package ready to send to a professional
-     print shop (see [Sending a deck to a print shop](#sending-a-deck-to-a-print-shop)).
+     print shop (see [below](#sending-a-deck-to-a-print-shop)).
 
-   Every download (PDFs, ZIPs, XML, decklists, calibration sheets, the log)
-   opens the system *Save as* dialog in Chrome and Edge, so you choose the
-   folder and the name. Firefox and Safari have no such API and save to their
-   download folder as usual. A copy of each export also stays in the app's
-   `exports/` folder.
+> [!TIP]
+> Every download (PDFs, ZIPs, XML, decklists, calibration sheets, the log)
+> opens the system *Save as* dialog in Chrome and Edge, so you choose the
+> folder and the name. Firefox and Safari have no such API and save to their
+> download folder as usual. A copy of each export also stays in the app's
+> `exports/` folder.
 
 ### Sending a deck to a print shop
 
@@ -162,6 +176,9 @@ have to be updated by hand once.
 of a print shop. The first one supported is
 [Pinbro Games](https://www.pinbrogames.com/plantillas/), poker size 63×88 mm,
 built from its `MOD20_63x88` template and its file preparation guide:
+
+<details>
+<summary><b>What the export takes care of</b></summary>
 
 | Requirement                | What the export does                                              |
 | -------------------------- | ----------------------------------------------------------------- |
@@ -173,6 +190,8 @@ built from its `MOD20_63x88` template and its file preparation guide:
 | No marks, fonts embedded   | Pages hold a single image: no cut marks, no text, no fonts         |
 | At most 3 MB per page      | JPEG quality is lowered only if a page would not fit; checked again on the finished file |
 | File and folder names      | `Cartas/Póquer(63x88).pdf` inside one ZIP                           |
+
+</details>
 
 The PDF also carries a `TrimBox`/`BleedBox` on every page and a FOGRA39
 `OutputIntent`, so prepress software reads the cut size and the colour
@@ -293,153 +312,11 @@ downloads the full `png` once and caches it on disk; a card is downloaded again
 only if Scryfall rescans it. Set icons are downloaded once and served by the app
 instead of being hotlinked.
 
-## Development
+## Contributing
 
-```bash
-pip install -r requirements.txt
-pip install -e ".[dev]"
-
-pytest -q                                     # test suite
-pytest -q --cov=mpc_forge --cov-report=html   # with coverage
-ruff check mpc_forge tests                    # lint
-mypy mpc_forge --ignore-missing-imports       # type check
-
-uvicorn mpc_forge.app:create_app --factory --reload --port 8765   # dev server
-```
-
-### Tests
-
-The suite uses `pytest` with `pytest-asyncio` in `auto` mode, so async tests
-need no decorator. Shared fixtures live in `tests/conftest.py`:
-
-- `client` — an `httpx.AsyncClient` bound to the FastAPI app in memory, with a
-  fresh temporary database per test.
-- `deck` — a pre-imported three-card deck.
-- `fake_scryfall` — a mocked Scryfall client; no test touches the network.
-  Extend `SAMPLE_CARDS` when a test needs a new card.
-
-Data directories are redirected to a temporary folder before the app is
-imported, so running the tests never writes to your real `user-settings/`.
-
-### Frontend assets
-
-The UI uses Tailwind CSS, Alpine.js, Lucide, Chart.js and mana-font, all served
-locally from `static/vendor/`. That folder is committed so a clone runs without
-Node. You only need Node when changing `tailwind.config.js` or adding new
-classes:
-
-```bash
-npm install
-npm run vendor      # copy third-party assets into static/vendor/
-npm run build:css   # compile Tailwind
-npm run watch:css   # rebuild on change while developing
-```
-
-CI checks that `static/vendor/` is up to date on every push.
-
-### Database migrations
-
-To add or change a column:
-
-1. Update the model in `models.py` so new installs get it.
-2. Append a `Migration` to `MIGRATIONS` in `migrations.py`, with `version` equal
-   to the previous one plus one.
-3. Run `pytest tests/backend/test_system.py`.
-
-Never edit or renumber a released migration, and never use `DROP TABLE`,
-`DROP COLUMN` or an unqualified `DELETE` — the test suite rejects them.
-
-### Type checking
-
-`mypy` runs in permissive mode and is being tightened module by module. When
-you touch a module in `services/`, leave its signatures annotated.
-
-### Project layout
-
-```
-mpc_forge/
-├── app.py            FastAPI factory: middleware, static mounts, routers
-├── lifespan.py       startup and shutdown tasks
-├── config.py         paths, MPC price tiers, defaults
-├── db.py             engine, SQLite pragmas, indexes, FTS5
-├── migrations.py     incremental migration ladder
-├── models.py         ORM models
-├── clients/          Scryfall, Moxfield and per-site deck importers
-├── routes/           REST endpoints and HTML views (routes.ROUTERS)
-│   ├── decks/        deck CRUD, imports, art picker, tokens, activity
-│   └── export/       XML, PDF, print shop package, images, decklists, cardbacks, files
-├── services/         business logic grouped by domain
-│   ├── cards/        Scryfall cache, bulk data, DFC pairs, preloading
-│   ├── decks/        importer, parser, validation, covers, undo, snapshots
-│   ├── art/          art cache, custom art, thumbnails, library, themes
-│   ├── indexing/     art sources, drive indexer and search, source types
-│   ├── printing/     PDF, print shop export, XML, calibration, planner, print runs
-│   └── system/       settings, storage, backups, logging, i18n
-└── utils/            generic helpers (rate limiter, chunking, tasks)
-locales/              translations (es.json, en.json)
-resources/icc/        colour profiles for print shop exports (with their licence)
-templates/
-├── base.html         layout
-├── pages/            one template per view
-└── partials/         sections included by the pages
-static/
-├── css/              app stylesheets
-├── img/              logo and favicon
-├── js/core/          shared scripts (API client, shell, toasts, motion)
-├── js/pages/         one module per view
-├── src/              Tailwind entry point
-└── vendor/           third-party assets (generated, committed)
-scripts/              asset build and CI helper scripts
-tests/
-├── backend/          API and service tests by domain
-└── frontend/         templates, pages, static assets, translations
-packaging/            PyInstaller spec, launcher and build scripts
-```
-
-## Building the Windows executable
-
-The executable is built with PyInstaller in `--onedir` mode: it starts
-instantly, triggers fewer antivirus false positives, and updating is just
-replacing the folder.
-
-```powershell
-pip install -e ".[build]"
-.\packaging\build.ps1          # or double-click packaging\build.bat
-```
-
-The output is `packaging\dist\MPC-Forge\`; zip that folder to distribute it.
-
-### Releases
-
-Every push to `main` is released automatically once its CI run is green:
-`.github/workflows/release.yml` works out the next version, runs the tests on
-Windows, builds Windows, macOS and Linux binaries with that version stamped in,
-and only then creates the tag and the GitHub release (marked as latest, with
-generated notes). The version follows semver from the latest `vX.Y.Z` tag and
-the commits since it:
-
-| Commits since the last release contain…                                     | Bump                    |
-| --------------------------------------------------------------------------- | ----------------------- |
-| `[major]`, `BREAKING CHANGE` or `type!:`                                    | major (`2.7.3 → 3.0.0`) |
-| `[minor]`, `feat:` or a subject starting with Add, Implement, Introduce…    | minor (`2.7.3 → 2.8.0`) |
-| anything else                                                               | patch (`2.7.3 → 2.7.4`) |
-| only `[skip release]` commits                                               | no release              |
-
-A patch never goes past `.9` (`2.7.9 → 2.8.0`), so versions stay short. Releases
-run one at a time, and a commit that is already part of a release is never
-released again, so numbers always go up in commit order. To release by hand or
-force a bump, run the *Release* workflow from the Actions tab. Check what the
-next version would be with `python scripts/next_version.py plan`.
-
-`mpc_forge/__init__.py` holds the development marker `0.0.0` (shown as *dev* in
-the sidebar); never edit it by hand — the release stamps the real version into
-the build.
-
-To regenerate the icon after editing `packaging/make_icon.py`:
-
-```bash
-python packaging/make_icon.py   # writes packaging/icon.ico, static/img/logo.png, static/img/favicon.png
-```
+Bug reports and pull requests are welcome. The [development guide](docs/DEVELOPMENT.md)
+covers the project layout, the test suite, frontend assets, database
+migrations, building the executable and how releases are cut.
 
 ## Credits and disclaimer
 
