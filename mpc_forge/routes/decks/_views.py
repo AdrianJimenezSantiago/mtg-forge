@@ -17,6 +17,7 @@ from mpc_forge.schemas import (
     IllegalCardView,
 )
 from mpc_forge.services.art import custom_art
+from mpc_forge.services.art.name_matching import card_keys
 from mpc_forge.services.cards import oracle_tags
 from mpc_forge.services.decks import deck_covers, deck_validation
 from mpc_forge.services.printing import history
@@ -98,7 +99,7 @@ async def _load_context(db: AsyncSession, cards: list[DeckCard]) -> _CardContext
         ),
         prints_count=await _prints_count_by_oracle(db, oracle_ids),
         custom_count=await _custom_count_by_name(
-            db, {custom_art.normalize_card_name(c.name) for c in cards}
+            db, {key for c in cards for key in card_keys(c.name).front}
         ),
         history_stats=await history.stats_for_oracle_ids(db, list(oracle_ids)),
         roles=(
@@ -157,7 +158,7 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
         is_dfc=is_dfc,
         thumbnail_url=thumb,
         printings_available=ctx.prints_count.get(dc.oracle_id, 0) if dc.oracle_id else 0,
-        custom_arts_available=ctx.custom_count.get(custom_art.normalize_card_name(dc.name), 0),
+        custom_arts_available=sum(ctx.custom_count.get(k, 0) for k in card_keys(dc.name).front),
         history_copies=stat.total_copies if stat else 0,
         history_decks=stat.decks if stat else [],
         mana_cost=printing.mana_cost if printing else "",

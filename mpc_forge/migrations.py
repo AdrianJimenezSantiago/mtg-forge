@@ -214,6 +214,22 @@ MIGRATIONS: list[Migration] = [
             """,
         ],
     ),
+    Migration(
+        version=18,
+        description="Carpetas de arte custom vinculadas fuera de la carpeta de la app",
+        statements=[
+            """
+            CREATE TABLE IF NOT EXISTS custom_art_folders (
+                id INTEGER NOT NULL PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                label VARCHAR(256) NOT NULL DEFAULT '',
+                file_count INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL,
+                last_scanned_at DATETIME
+            )
+            """,
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

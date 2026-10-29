@@ -378,7 +378,7 @@ class TestCustomArtUpload:
         )
         art = r.json()
         assert r.status_code == 200 and art["face"] == "back"
-        assert art["card_name_normalized"] == "fire // ice"
+        assert art["card_name_normalized"] == "fire ice"
         assert "[BACK]" in art["filename"] and "/" not in art["filename"]
         assert "(" not in art["variant_label"] and "[" not in art["variant_label"]
 

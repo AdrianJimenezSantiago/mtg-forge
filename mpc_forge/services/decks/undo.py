@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mpc_forge.models import Deck, DeckActivity, DeckCard, PrintingCache
+from mpc_forge.models import CustomArt, Deck, DeckActivity, DeckCard, PrintingCache
 from mpc_forge.services.decks import deck_activity
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
@@ -20,6 +20,7 @@ UNDOABLE_KINDS: set[str] = {
     K.CARD_QTY_CHANGED,
     K.CARD_INCLUDE_TOGGLED,
     K.CARD_ART_CHANGED,
+    K.CUSTOM_ART_APPLIED,
     K.DECK_RENAMED,
     K.CARD_ADDED,
     K.CARD_REMOVED,
@@ -44,6 +45,8 @@ async def can_undo(event: DeckActivity) -> tuple[bool, str]:
             return False, "Cambios a arte custom no se pueden deshacer automáticamente"
         if not payload.get("old_scryfall_id"):
             return False, "Falta el arte anterior en el snapshot"
+    if event.kind == K.CUSTOM_ART_APPLIED and not payload.get("changes"):
+        return False, "El evento no guarda los cambios"
 
     return True, ""
 
@@ -220,6 +223,46 @@ async def _undo_card_art_changed(
     }
 
 
+async def _undo_custom_art_applied(
+    db: AsyncSession,
+    event: DeckActivity,
+    payload: dict[str, Any],
+    deck: Deck,
+) -> dict[str, Any]:
+    changes: list[dict[str, Any]] = payload.get("changes") or []
+    cards = {
+        c.id: c for c in (await db.scalars(select(DeckCard).where(DeckCard.deck_id == deck.id)))
+    }
+    old_ids = {c["old"] for c in changes if c.get("old") is not None}
+    alive = set(
+        (await db.scalars(select(CustomArt.id).where(CustomArt.id.in_(old_ids)))).all()
+        if old_ids
+        else ()
+    )
+
+    reverted: list[dict[str, Any]] = []
+    for change in changes:
+        card = cards.get(int(change.get("deck_card_id") or 0))
+        if card is None:
+            continue
+        attr = "custom_art_back_id" if change.get("face") == "back" else "custom_art_front_id"
+        if getattr(card, attr) != change.get("new"):
+            continue
+        old = change.get("old")
+        restored = old if old in alive else None
+        setattr(card, attr, restored)
+        reverted.append({**change, "old": change.get("new"), "new": restored})
+
+    if not reverted:
+        raise UndoNotSupported("Las cartas han cambiado de arte desde entonces")
+    skipped = len(changes) - len(reverted)
+    note = f" ({skipped} ya cambiadas, sin tocar)" if skipped else ""
+    return {
+        "summary": f"Deshecho: arte custom de {len(reverted)} cartas{note}",
+        "payload_extras": {"count": len(reverted), "changes": reverted},
+    }
+
+
 async def _undo_deck_renamed(
     db: AsyncSession,
     event: DeckActivity,
@@ -339,6 +382,7 @@ _HANDLERS: dict[str, _UndoHandler] = {
     K.CARD_QTY_CHANGED: _undo_card_qty_changed,
     K.CARD_INCLUDE_TOGGLED: _undo_card_include_toggled,
     K.CARD_ART_CHANGED: _undo_card_art_changed,
+    K.CUSTOM_ART_APPLIED: _undo_custom_art_applied,
     K.DECK_RENAMED: _undo_deck_renamed,
     K.CARD_ADDED: _undo_card_added,
     K.CARD_REMOVED: _undo_card_removed,
@@ -352,5 +396,6 @@ _INVERSE_KIND: dict[str, str] = {
     K.CARD_QTY_CHANGED: K.CARD_QTY_CHANGED,
     K.CARD_INCLUDE_TOGGLED: K.CARD_INCLUDE_TOGGLED,
     K.CARD_ART_CHANGED: K.CARD_ART_CHANGED,
+    K.CUSTOM_ART_APPLIED: K.CUSTOM_ART_APPLIED,
     K.DECK_RENAMED: K.DECK_RENAMED,
 }

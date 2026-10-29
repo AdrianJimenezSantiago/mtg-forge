@@ -3,14 +3,15 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from mpc_forge.models import CustomArt
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.schemas import AddCustomArtFromUrlRequest, RescanResult
 from mpc_forge.services.art import custom_art as custom_art_service
-from mpc_forge.services.art import thumbnails
+from mpc_forge.services.art import custom_art_folders, thumbnails
+from mpc_forge.services.art.name_matching import card_keys
 
 router = APIRouter(prefix="/api/custom-art", tags=["custom-art"])
 
@@ -123,9 +124,7 @@ class CustomArtListItem(BaseModel):
 async def list_custom_arts(db: DbDep, card_name: str | None = None) -> list[CustomArtListItem]:
     stmt = select(CustomArt).order_by(CustomArt.card_name_normalized, CustomArt.filename)
     if card_name:
-        stmt = stmt.where(
-            CustomArt.card_name_normalized == custom_art_service.normalize_card_name(card_name)
-        )
+        stmt = stmt.where(CustomArt.card_name_normalized.in_(card_keys(card_name).all))
     rows = (await db.scalars(stmt)).all()
     return [
         CustomArtListItem(
@@ -147,6 +146,78 @@ async def delete_custom_art(custom_art_id: int, db: DbDep) -> None:
     ca = await db.get(CustomArt, custom_art_id)
     if not ca:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if custom_art_service.is_linked(ca):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "linked_file",
+                "message": "Este arte está en una carpeta vinculada: bórralo de esa carpeta.",
+            },
+        )
     custom_art_service.remove_file(ca)
-    await db.delete(ca)
+    await custom_art_service.delete_arts(db, [ca.id])
     await db.commit()
+
+
+class ZipImportSkipped(BaseModel):
+    name: str
+    code: str
+
+
+class ZipImportResultView(BaseModel):
+    art_ids: list[int]
+    added: int
+    duplicates: int
+    skipped: list[ZipImportSkipped]
+
+
+@router.post("/import-zip", response_model=ZipImportResultView)
+async def import_zip(db: DbDep, file: Annotated[UploadFile, File()]) -> ZipImportResultView:
+    try:
+        result = await custom_art_service.import_zip(db, file.file, file.filename or "zip")
+    except custom_art_service.UploadRejected as e:
+        raise HTTPException(e.status_code, {"code": e.code, "message": str(e)}) from e
+    finally:
+        await file.close()
+    return ZipImportResultView.model_validate(result.to_dict())
+
+
+class LinkedFolderView(BaseModel):
+    id: int
+    path: str
+    label: str
+    file_count: int
+    online: bool
+    in_use: int
+    last_scanned_at: str | None
+
+
+class LinkFolderRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
+    label: str | None = Field(default=None, max_length=256)
+
+
+class UnlinkFolderResult(BaseModel):
+    removed_images: int
+
+
+@router.get("/folders", response_model=list[LinkedFolderView])
+async def list_linked_folders(db: DbDep) -> list[LinkedFolderView]:
+    return [LinkedFolderView(**f.to_dict()) for f in await custom_art_folders.list_folders(db)]
+
+
+@router.post("/folders", response_model=LinkedFolderView, status_code=status.HTTP_201_CREATED)
+async def link_folder(payload: LinkFolderRequest, db: DbDep) -> LinkedFolderView:
+    try:
+        folder = await custom_art_folders.add_folder(db, payload.path, payload.label)
+    except custom_art_folders.FolderRejected as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, {"code": e.code, "message": str(e)}) from e
+    return LinkedFolderView(**folder.to_dict())
+
+
+@router.delete("/folders/{folder_id}", response_model=UnlinkFolderResult)
+async def unlink_folder(folder_id: int, db: DbDep) -> UnlinkFolderResult:
+    removed = await custom_art_folders.remove_folder(db, folder_id)
+    if removed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carpeta no encontrada")
+    return UnlinkFolderResult(removed_images=removed)

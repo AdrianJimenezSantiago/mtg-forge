@@ -23,6 +23,7 @@ class DeckActivityKind:
     CARD_QTY_CHANGED = "card_qty_changed"
     CARD_INCLUDE_TOGGLED = "card_include_toggled"
     CARD_ART_CHANGED = "card_art_changed"
+    CUSTOM_ART_APPLIED = "custom_art_applied"
 
     ROLE_CLEARED = "role_cleared"
     RELATED_ADDED = "related_added"
@@ -43,6 +44,7 @@ _DEFAULT_SUMMARY: dict[str, str] = {
     DeckActivityKind.CARD_QTY_CHANGED: "Cantidad cambiada",
     DeckActivityKind.CARD_INCLUDE_TOGGLED: "Inclusión alternada",
     DeckActivityKind.CARD_ART_CHANGED: "Arte cambiado",
+    DeckActivityKind.CUSTOM_ART_APPLIED: "Arte custom aplicado en lote",
     DeckActivityKind.ROLE_CLEARED: "Sección vaciada",
     DeckActivityKind.RELATED_ADDED: "Cartas relacionadas añadidas",
     DeckActivityKind.XML_GENERATED: "XML generado",

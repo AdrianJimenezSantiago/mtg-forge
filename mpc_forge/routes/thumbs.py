@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 from mpc_forge import config as cfg
-from mpc_forge.services.art import thumbnails
+from mpc_forge.services.art import custom_art, thumbnails
 from mpc_forge.services.system import storage as storage_service
 
 router = APIRouter(tags=["thumbnails"])
@@ -31,9 +31,10 @@ async def get_thumbnail(art_path: str) -> Response:
 
     source = _resolve_within(cfg.PATHS.art_dir, art_path)
     if not source.exists():
-        source = _resolve_within(cfg.PATHS.custom_art_dir, art_path)
-        if not source.exists():
+        custom = custom_art.resolve_relative(art_path)
+        if custom is None or not custom.exists():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Arte no encontrado")
+        source = custom
 
     thumb = await thumbnails.ensure_thumb(source)
     if thumb is None:

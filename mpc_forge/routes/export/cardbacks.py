@@ -7,7 +7,6 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mpc_forge import config as cfg
 from mpc_forge.models import CustomArt, Deck
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.routes.export._shared import get_deck_or_404, make_router
@@ -23,8 +22,8 @@ async def resolve_deck_cardback(db: AsyncSession, deck: Deck) -> Path | None:
     if deck.custom_cardback_art_id is not None:
         art = await db.get(CustomArt, deck.custom_cardback_art_id)
         if art is not None:
-            candidate = cfg.PATHS.custom_art_dir / art.relative_path
-            if candidate.exists():
+            candidate = custom_art_service.absolute_path(art)
+            if candidate is not None and candidate.exists():
                 return candidate
     return default_cardback_path()
 

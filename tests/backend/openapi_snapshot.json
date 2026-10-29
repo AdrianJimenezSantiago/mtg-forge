@@ -13,6 +13,13 @@
       true
     ]
   ],
+  "DELETE /api/custom-art/folders/{folder_id}": [
+    [
+      "folder_id",
+      "path",
+      true
+    ]
+  ],
   "DELETE /api/custom-art/{custom_art_id}": [
     [
       "custom_art_id",
@@ -97,6 +104,7 @@
       false
     ]
   ],
+  "GET /api/custom-art/folders": [],
   "GET /api/debug/log/download": [],
   "GET /api/debug/log/info": [],
   "GET /api/debug/log/tail": [
@@ -489,7 +497,9 @@
   ],
   "POST /api/collection/batch-toggle": [],
   "POST /api/collection/toggle-owned": [],
+  "POST /api/custom-art/folders": [],
   "POST /api/custom-art/from-url": [],
+  "POST /api/custom-art/import-zip": [],
   "POST /api/custom-art/rescan": [],
   "POST /api/custom-art/upload": [],
   "POST /api/decks/import/moxfield": [],
@@ -560,6 +570,27 @@
       "path",
       true
     ],
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/custom-art/apply": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/custom-art/plan": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/custom-art/plan-files": [
     [
       "deck_id",
       "path",

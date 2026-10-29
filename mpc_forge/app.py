@@ -23,6 +23,7 @@ from mpc_forge.middleware import (
 )
 from mpc_forge.paths import static_dir
 from mpc_forge.routes import ROUTERS, ui
+from mpc_forge.services.art import custom_art
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +68,19 @@ class CachedStaticFiles(StaticFiles):
         return response
 
 
+class LinkedCustomArtFiles(CachedStaticFiles):
+    """Sirve `/custom_art/_linked/<id>/…` desde la carpeta vinculada `<id>`."""
+
+    def lookup_path(self, path: str) -> tuple[str, os.stat_result | None]:
+        resolved = custom_art.resolve_relative(f"{custom_art.LINKED_PREFIX}/{path}")
+        if resolved is None:
+            return "", None
+        try:
+            return str(resolved), os.stat(resolved)
+        except (FileNotFoundError, NotADirectoryError):
+            return "", None
+
+
 def _wants_html_page(request: Request) -> bool:
     if request.method not in ("GET", "HEAD"):
         return False
@@ -95,6 +109,11 @@ def _mount_static(app: FastAPI) -> None:
         ("/art", cfg.PATHS.art_dir, THIRTY_DAYS, "art", True),
         ("/custom_art", cfg.PATHS.custom_art_dir, THIRTY_DAYS, "custom_art", True),
         ("/thumbs", cfg.PATHS.thumbs_dir, THIRTY_DAYS, "thumbs", True),
+    )
+    app.mount(
+        f"/custom_art/{custom_art.LINKED_PREFIX}",
+        LinkedCustomArtFiles(check_dir=False, max_age=THIRTY_DAYS, user_content=True),
+        name="custom_art_linked",
     )
     for path, directory, max_age, name, user_content in mounts:
         static = CachedStaticFiles(

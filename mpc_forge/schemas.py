@@ -108,6 +108,7 @@ class RescanResult(BaseModel):
     added: int
     removed: int
     kept: int
+    offline_folders: int = 0
 
 
 class DeckCardView(BaseModel):

@@ -126,6 +126,17 @@ class CustomArt(Base):
     indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 
+class CustomArtFolder(Base):
+    __tablename__ = "custom_art_folders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    path: Mapped[str] = mapped_column(Text, unique=True)
+    label: Mapped[str] = mapped_column(String(256), default="")
+    file_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
+    last_scanned_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
+
+
 class Deck(Base):
     __tablename__ = "decks"
 

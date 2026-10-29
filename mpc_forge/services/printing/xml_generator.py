@@ -137,7 +137,7 @@ async def resolve_deck_for_xml(
             ca_front = customs_by_id.get(dc.custom_art_front_id)
             if ca_front:
                 abs_p = custom_art_service.absolute_path(ca_front)
-                if abs_p.exists():
+                if abs_p is not None and abs_p.exists():
                     front_path = abs_p
                 else:
                     log.warning(
@@ -149,7 +149,7 @@ async def resolve_deck_for_xml(
             ca_back = customs_by_id.get(dc.custom_art_back_id)
             if ca_back:
                 abs_p = custom_art_service.absolute_path(ca_back)
-                if abs_p.exists():
+                if abs_p is not None and abs_p.exists():
                     back_path = abs_p
                     back_name = ca_back.filename
 
