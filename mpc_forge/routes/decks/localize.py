@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import (
-    HTTPException,
     Response,
     status,
 )
 from pydantic import BaseModel
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import Deck
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
@@ -64,12 +64,14 @@ async def localize_deck_endpoint(
 ) -> LocalizeDeckResponse:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     if payload.lang not in SUPPORTED_LANGS:
-        raise HTTPException(
+        raise ApiError(
             status.HTTP_400_BAD_REQUEST,
-            f"Idioma no soportado: {payload.lang!r}. Válidos: {sorted(SUPPORTED_LANGS)}",
+            "unsupported_language",
+            lang=payload.lang,
+            valid=", ".join(sorted(SUPPORTED_LANGS)),
         )
 
     result = await localization.localize_deck(db, scryfall, deck_id, payload.lang)

@@ -4,11 +4,12 @@ import logging
 from typing import Any, cast
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import CursorResult, delete, func, select
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.services.cards import images, printings, sets
@@ -87,11 +88,9 @@ async def set_icon(name: str, db: DbDep, scryfall: ScryfallDep) -> FileResponse:
     try:
         path = await sets.icon_file(name, await sets.all_sets(db, scryfall))
     except httpx.HTTPError as e:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, f"No se pudo descargar el icono: {e}"
-        ) from e
+        raise ApiError(status.HTTP_502_BAD_GATEWAY, "icon_download_failed", reason=str(e)) from e
     if path is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Icono desconocido")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "unknown_icon")
     return FileResponse(
         path,
         media_type="image/svg+xml",

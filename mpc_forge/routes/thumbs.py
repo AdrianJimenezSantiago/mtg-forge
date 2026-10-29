@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 from mpc_forge import config as cfg
+from mpc_forge.errors import ApiError
 from mpc_forge.services.art import custom_art, thumbnails
 from mpc_forge.services.system import storage as storage_service
 
@@ -20,20 +21,20 @@ def _resolve_within(base: Path, relative: str) -> Path:
     base_resolved = base.resolve()
     candidate = (base_resolved / relative).resolve()
     if not candidate.is_relative_to(base_resolved):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ruta no permitida")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "path_not_allowed")
     return candidate
 
 
 @router.get("/api/thumb/{art_path:path}")
 async def get_thumbnail(art_path: str) -> Response:
     if not art_path:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ruta vacía")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "empty_path")
 
     source = _resolve_within(cfg.PATHS.art_dir, art_path)
     if not source.exists():
         custom = custom_art.resolve_relative(art_path)
         if custom is None or not custom.exists():
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Arte no encontrado")
+            raise ApiError(status.HTTP_404_NOT_FOUND, "art_not_found")
         source = custom
 
     thumb = await thumbnails.ensure_thumb(source)

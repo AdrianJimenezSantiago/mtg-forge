@@ -5,12 +5,12 @@ import logging
 from typing import Any
 
 from fastapi import (
-    HTTPException,
     status,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import (
     DeckCard,
     PrintingCache,
@@ -208,7 +208,7 @@ async def add_related_cards(
 ) -> list[DeckCardView]:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
 
     printing = await db.get(PrintingCache, dc.scryfall_id)
     if not printing or not printing.related_parts:

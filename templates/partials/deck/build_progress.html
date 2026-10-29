@@ -5,7 +5,7 @@
     <div class="flex items-center gap-2 mb-2">
       <div class="spinner-ring spinner-ring--sm"></div>
       <span class="text-sm font-medium text-accent-glow">
-        Generando <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span><span class="loading-dots"><span></span><span></span><span></span></span>
+        {{ t.build_generating }} <span x-text="buildProgress.kind === 'pdf' ? 'PDF' : 'XML'"></span><span class="loading-dots"><span></span><span></span><span></span></span>
       </span>
       <span class="ml-auto text-[11px] font-mono text-fg-faint">
         <span x-text="buildProgress.current"></span>/<span x-text="buildProgress.total"></span>

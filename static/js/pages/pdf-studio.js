@@ -1,12 +1,12 @@
 const LS_KEY = (id) => `pdfStudio.opts.v2.${id}`;
 const LS_PRINT_SCALE = 'pdfStudio.printScale';
 
-const PRESET_LABELS = {
-  mpc_classic: 'MPC classic',
-  mpc_bleed: 'MPC with bleed',
-  duplex_dfc: 'Duplex DFC',
-  duplex_all: 'Duplex all-backs',
-  silhouette: 'Silhouette (reg. marks)',
+const PRESET_LABEL_KEYS = {
+  mpc_classic: 'pdfg_preset_classic_title',
+  mpc_bleed: 'pdfg_preset_bleed_title',
+  duplex_dfc: 'pdfg_preset_duplex_title',
+  duplex_all: 'pdfg_preset_allbacks_title',
+  silhouette: 'pdf_preset_silhouette',
 };
 
 let dropTarget = null;
@@ -859,7 +859,7 @@ function pdfStudio(deckId) { return {
     const p = presets[name];
     if (!p) return;
     Object.assign(this.opts, p);
-    if (window.toast) window.toast(window._t('pdf_preset_applied'), PRESET_LABELS[name] || name, 'info');
+    if (window.toast) window.toast(window._t('pdf_preset_applied'), PRESET_LABEL_KEYS[name] ? window._t(PRESET_LABEL_KEYS[name]) : name, 'info');
   },
 
   resetOpts() {

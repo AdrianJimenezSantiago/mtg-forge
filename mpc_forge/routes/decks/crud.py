@@ -4,13 +4,13 @@ import logging
 from datetime import datetime
 
 from fastapi import (
-    HTTPException,
     status,
 )
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import (
     ArtPreference,
     Deck,
@@ -86,7 +86,7 @@ async def list_decks(db: DbDep) -> list[DeckSummaryView]:
 async def get_deck(deck_id: int, db: DbDep) -> DeckView:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     return await _deck_to_view(db, deck)
 
 
@@ -94,7 +94,7 @@ async def get_deck(deck_id: int, db: DbDep) -> DeckView:
 async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     rows = (
         await db.execute(
             select(DeckCard.role, DeckCard.quantity, DeckCard.include).where(
@@ -138,7 +138,7 @@ async def get_deck_validation(deck_id: int, db: DbDep) -> DeckValidation:
 async def delete_deck(deck_id: int, db: DbDep) -> None:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     await db.delete(deck)
     await db.commit()
 
@@ -155,11 +155,11 @@ async def duplicate_deck(
 ) -> DeckView:
     src = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not src:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     new_name = (payload.name or f"{src.name} (copia)").strip()
     if not new_name:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nombre no puede ser vacío")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "empty_name")
 
     new_deck = Deck(
         name=new_name,
@@ -209,7 +209,7 @@ async def duplicate_deck(
 async def update_deck(deck_id: int, payload: UpdateDeckRequest, db: DbDep) -> DeckView:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     old_name = deck.name
     if payload.name is not None:
         deck.name = payload.name
@@ -238,7 +238,7 @@ async def add_card(
 ) -> DeckCardView:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     printing = await printings.find_local_printing(
         db,
@@ -252,9 +252,7 @@ async def add_card(
         else:
             raw = await scryfall.named(payload.name, set_code=payload.set_code)
         if not raw:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, f"Carta «{payload.name}» no encontrada en Scryfall"
-            )
+            raise ApiError(status.HTTP_400_BAD_REQUEST, "card_not_on_scryfall", name=payload.name)
         printing = await printings.upsert_printing(db, raw)
 
     existing = None
@@ -309,7 +307,7 @@ async def update_card(
 ) -> DeckCardView:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
     old_qty = dc.quantity
     old_role = dc.role
 
@@ -343,7 +341,7 @@ async def update_card(
 async def delete_card(deck_id: int, card_id: int, db: DbDep) -> None:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
     await deck_activity.log_event(
         db,
         deck_id,
@@ -366,7 +364,7 @@ class ClearRoleResponse(BaseModel):
 async def clear_role(deck_id: int, role: str, db: DbDep) -> ClearRoleResponse:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     cards = (
         await db.scalars(

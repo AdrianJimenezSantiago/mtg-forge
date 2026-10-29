@@ -19,13 +19,24 @@ def get_registry() -> list[type[ImportSite]]:
 
 
 class ImportSiteError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str | None = None, **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
 
 class InvalidURLError(ImportSiteError):
     def __init__(self, url: str) -> None:
-        super().__init__(f"URL no válida para este sitio: {url}")
+        super().__init__(f"URL no válida para este sitio: {url}", code="invalid_url", url=url)
         self.url = url
+
+
+class UnsupportedURLError(ValueError):
+    code = "unsupported_url"
+
+    def __init__(self, url: str) -> None:
+        super().__init__(f"URL no soportada. Hostname no reconocido: {url!r}")
+        self.params = {"url": url}
 
 
 class PayloadCache:

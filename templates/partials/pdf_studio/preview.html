@@ -52,7 +52,7 @@
     <div x-show="deck && totalPages === 0" class="text-center py-16 text-fg-faint">
       <p class="text-sm">{{ t.pdf_no_active_cards }}</p>
       <a :href="`/decks/${deckId}`" class="text-accent hover:text-accent-glow text-xs mt-2 inline-block">
-        ← Volver al editor
+        ← {{ t.pdf_back_to_editor }}
       </a>
     </div>
 
@@ -61,7 +61,7 @@
         <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono" x-show="pressSpec"
              x-text="pageLabel(page, idx)"></div>
         <div class="text-[10px] uppercase tracking-wider text-fg-faint font-mono" x-show="!pressSpec">
-          Hoja <span x-text="idx + 1"></span>
+          {{ t.pdf_sheet }} <span x-text="idx + 1"></span>
           <span class="text-fg-faint/70">·</span>
           <span x-text="page.kind === 'back' ? '{{ t.pdf_page_backs }}' + (page.mirror ? ' {{ t.pdf_page_backs_mirrored | replace(t.pdf_page_backs + " ", "") }}' : '') : '{{ t.pdf_page_fronts }}'"></span>
         </div>

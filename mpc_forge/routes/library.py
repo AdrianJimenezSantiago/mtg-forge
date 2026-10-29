@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 
+from mpc_forge.errors import ApiError
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.art import art_library
 
@@ -67,16 +68,17 @@ async def library_browse(
     sort: str = Query(art_library.DEFAULT_SORT),
 ) -> dict[str, Any]:
     if sort not in art_library.SORT_OPTIONS:
-        raise HTTPException(
+        raise ApiError(
             status.HTTP_400_BAD_REQUEST,
-            f"Orden invalido: {sort}. Validos: {', '.join(sorted(art_library.SORT_OPTIONS))}",
+            "invalid_sort",
+            sort=sort,
+            valid=", ".join(sorted(art_library.SORT_OPTIONS)),
         )
 
     unknown = set(_csv(variants) + _csv(exclude)) - art_library.VARIANT_FLAGS.keys()
     if unknown:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"Variantes desconocidas: {', '.join(sorted(unknown))}",
+        raise ApiError(
+            status.HTTP_400_BAD_REQUEST, "unknown_variants", variants=", ".join(sorted(unknown))
         )
 
     filters = _filters_from_query(q, sources, variants, exclude, expansion, card_type, tags)

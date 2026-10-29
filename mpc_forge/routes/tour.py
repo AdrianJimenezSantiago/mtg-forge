@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import from_exception
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.system import tour as tour_service
 
@@ -32,7 +33,7 @@ async def mark_tour_seen(payload: TourSeenRequest, db: DbDep) -> TourState:
     try:
         return TourState(**await tour_service.mark_seen(db, payload.tour))
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "invalid_tour") from e
 
 
 @router.put("/auto", response_model=TourState)

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge.clients.import_sites import resolve_site
-from mpc_forge.clients.import_sites.base import ImportSiteError
+from mpc_forge.clients.import_sites.base import ImportSiteError, UnsupportedURLError
 from mpc_forge.clients.moxfield import MoxfieldClient, normalize_deck
 from mpc_forge.clients.scryfall import ScryfallClient
 from mpc_forge.models import ArtPreference, Deck, DeckCard, DFCPair, PrintingCache
@@ -259,14 +259,13 @@ async def import_from_url(
 ) -> tuple[Deck, list[dict[str, Any]]]:
     site_cls = resolve_site(url)
     if site_cls is None:
-        raise ValueError(
-            f"URL no soportada. Hostname no reconocido: {url!r}. "
-            f"Sitios soportados: ver /api/decks/import/supported-sites"
-        )
+        raise UnsupportedURLError(url)
 
     text = await site_cls.retrieve_card_list(url)
     if not text.strip():
-        raise ImportSiteError(f"{site_cls.name} devolvió una lista vacía")
+        raise ImportSiteError(
+            f"{site_cls.name} devolvió una lista vacía", code="import_empty", site=site_cls.name
+        )
 
     if not name:
         try:

@@ -103,14 +103,14 @@
                     <button @click="cancelBatch()"
                             class="text-[10px] bg-bg-subtle hover:bg-danger-bg border border-border-subtle
                                    text-fg-muted hover:text-danger px-2 py-1 rounded transition">
-                      Cancelar
+                      {{ t.common_cancel }}
                     </button>
                   </template>
                   <template x-if="batchProgress.all_done || batchProgress.cancelled">
                     <button @click="closeBatchProgress()"
                             class="text-[10px] bg-bg-subtle hover:bg-info-bg border border-border-subtle
                                    text-fg-muted hover:text-info px-2 py-1 rounded transition">
-                      Cerrar
+                      {{ t.common_close }}
                     </button>
                   </template>
                 </div>
@@ -129,8 +129,8 @@
                   <span x-show="batchProgress.eta_seconds && !batchProgress.all_done && !batchProgress.cancelled"
                         x-text="'~' + formatEta(batchProgress.eta_seconds) + ' restante'"></span>
                   <span x-show="batchProgress.all_done"
-                        x-text="formatEta(batchProgress.batch_elapsed_seconds) + ' total'"></span>
-                  <span x-show="batchProgress.cancelled" class="text-warning">Cancelado</span>
+                        x-text="formatEta(batchProgress.batch_elapsed_seconds) + ' ' + window._T.drives_total_lower"></span>
+                  <span x-show="batchProgress.cancelled" class="text-warning">{{ t.drives_cancelled }}</span>
                 </div>
               </div>
 
@@ -141,8 +141,8 @@
                     <span class="text-[11px] font-medium text-fg truncate" x-text="batchProgress.active.source_name"></span>
                   </div>
                   <div class="text-[10px] text-fg-faint font-mono">
-                    +<span x-text="batchProgress.active.files_added"></span> archivos
-                    · <span x-text="batchProgress.active.folders_visited"></span> carpetas
+                    +<span x-text="batchProgress.active.files_added"></span> {{ t.drives_files_lower }}
+                    · <span x-text="batchProgress.active.folders_visited"></span> {{ t.drives_folders_lower }}
                     · <span x-text="batchProgress.active.elapsed_seconds.toFixed(0)"></span>s
                   </div>
                 </div>
@@ -157,7 +157,7 @@
                 </template>
                 <template x-if="batchProgress.queued.length > 5">
                   <div class="text-[10px] text-fg-faint px-1 py-0.5 italic">
-                    … y <span x-text="batchProgress.queued.length - 5"></span> más en cola
+                    … <span x-text="window._T.drives_more_queued.replace('{n}', batchProgress.queued.length - 5)"></span>
                   </div>
                 </template>
                 <template x-for="item in batchProgress.completed.slice(-5).reverse()" :key="item.source_id">
@@ -190,10 +190,10 @@
         <div x-show="showAdd" x-transition
              class="bg-bg-subtle/30 border border-border-subtle rounded-lg p-4 space-y-2">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            <input type="text" x-model="draft.name" placeholder="Name (e.g. Cardstock Con)"
+            <input type="text" x-model="draft.name" placeholder="{{ t.drives_name_placeholder }}"
                    class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                           focus:outline-none focus:border-accent">
-            <input type="text" x-model="draft.tags" placeholder="Tags separated by comma"
+            <input type="text" x-model="draft.tags" placeholder="{{ t.drives_tags_placeholder }}"
                    class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                           focus:outline-none focus:border-accent">
           </div>
@@ -203,11 +203,11 @@
                     class="bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                            focus:outline-none focus:border-accent">
               <option value="">{{ t.settings_type_auto }}</option>
-              <option value="gdrive">Google Drive (folder)</option>
-              <option value="gdrive-file">Google Drive (file)</option>
-              <option value="local-folder">Local folder</option>
-              <option value="http-listing">HTTP manifest (JSON)</option>
-              <option value="s3">S3 / Cloudflare R2 (public)</option>
+              <option value="gdrive">{{ t.drives_type_gdrive }}</option>
+              <option value="gdrive-file">{{ t.drives_type_gdrive_file }}</option>
+              <option value="local-folder">{{ t.drives_type_local }}</option>
+              <option value="http-listing">{{ t.drives_type_http }}</option>
+              <option value="s3">{{ t.drives_type_s3 }}</option>
             </select>
             <button type="button" @click="validateSource()"
                     :disabled="!draft.url || validating"
@@ -237,7 +237,7 @@
             </span>
           </div>
           <textarea x-model="draft.description" rows="2"
-                    placeholder="Description (optional)"
+                    placeholder="{{ t.drives_description_placeholder }}"
                     class="w-full bg-bg-subtle border border-border-subtle rounded-md px-3 py-1.5 text-sm
                            focus:outline-none focus:border-accent"></textarea>
           <div class="flex items-center justify-between">

@@ -57,12 +57,6 @@ function deckEditor(deckId) {
     addingUrl: false,
 
     activeArtFilters: {full: false, textless: false, borderless: false, promo: false},
-    artFilters: [
-      {key: 'full', label: 'Full art'},
-      {key: 'textless', label: 'Sin texto'},
-      {key: 'borderless', label: 'Sin borde'},
-      {key: 'promo', label: 'Promo'},
-    ],
 
     expandedGroups: {commander: true, mainboard: true},
 
@@ -200,12 +194,12 @@ function deckEditor(deckId) {
     },
     get cardGroups() {
       const config = [
-        {role: 'commander', label: 'Comandante', dotClass: 'bg-accent'},
-        {role: 'mainboard', label: 'Mazo', dotClass: 'bg-blue-400'},
-        {role: 'companion', label: 'Compañero', dotClass: 'bg-purple-400'},
-        {role: 'sideboard', label: 'Sideboard', dotClass: 'bg-fg-muted'},
-        {role: 'tokens', label: 'Tokens', dotClass: 'bg-emerald-400'},
-        {role: 'maybeboard', label: 'Maybeboard', dotClass: 'bg-fg-faint'},
+        {role: 'commander', label: window._t('deck_role_commander'), dotClass: 'bg-accent'},
+        {role: 'mainboard', label: window._t('deck_role_mainboard'), dotClass: 'bg-blue-400'},
+        {role: 'companion', label: window._t('deck_role_companion'), dotClass: 'bg-purple-400'},
+        {role: 'sideboard', label: window._t('deck_role_sideboard'), dotClass: 'bg-fg-muted'},
+        {role: 'tokens', label: window._t('deck_role_tokens'), dotClass: 'bg-emerald-400'},
+        {role: 'maybeboard', label: window._t('deck_role_maybeboard'), dotClass: 'bg-fg-faint'},
       ];
       const source = this.filteredCards;
       const out = [];
@@ -239,14 +233,14 @@ function deckEditor(deckId) {
     get cardGroupsByType() {
       const source = this.filteredCards;
       const typeConfig = [
-        {type: 'Creature',     label: 'Criaturas',     dotClass: 'bg-emerald-400'},
-        {type: 'Planeswalker', label: 'Planeswalkers', dotClass: 'bg-purple-400'},
-        {type: 'Sorcery',      label: 'Conjuros',      dotClass: 'bg-rose-400'},
-        {type: 'Instant',      label: 'Instantáneos',  dotClass: 'bg-sky-400'},
-        {type: 'Enchantment',  label: 'Encantamientos',dotClass: 'bg-amber-300'},
-        {type: 'Artifact',     label: 'Artefactos',    dotClass: 'bg-slate-300'},
-        {type: 'Battle',       label: 'Batallas',      dotClass: 'bg-red-500'},
-        {type: 'Land',         label: 'Tierras',       dotClass: 'bg-lime-500'},
+        {type: 'Creature',     label: window._t('stats_type_Creature'), dotClass: 'bg-emerald-400'},
+        {type: 'Planeswalker', label: window._t('stats_type_Planeswalker'), dotClass: 'bg-purple-400'},
+        {type: 'Sorcery',      label: window._t('stats_type_Sorcery'), dotClass: 'bg-rose-400'},
+        {type: 'Instant',      label: window._t('stats_type_Instant'), dotClass: 'bg-sky-400'},
+        {type: 'Enchantment',  label: window._t('stats_type_Enchantment'), dotClass: 'bg-amber-300'},
+        {type: 'Artifact',     label: window._t('stats_type_Artifact'), dotClass: 'bg-slate-300'},
+        {type: 'Battle',       label: window._t('stats_type_Battle'), dotClass: 'bg-red-500'},
+        {type: 'Land',         label: window._t('stats_type_Land'), dotClass: 'bg-lime-500'},
       ];
 
       const mainboardCards = source.filter(c => c.role === 'mainboard');
@@ -258,7 +252,7 @@ function deckEditor(deckId) {
       if (commanders.length > 0) {
         out.push({
           role: 'commander',
-          label: 'Comandante',
+          label: window._t('deck_role_commander'),
           dotClass: 'bg-accent',
           cards: this._sortCards(commanders),
           total: commanders.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
@@ -293,7 +287,7 @@ function deckEditor(deckId) {
       if (uncategorized.length > 0) {
         out.push({
           role: 'type:Other',
-          label: 'Otros',
+          label: window._t('stats_type_Other'),
           dotClass: 'bg-fg-faint',
           cards: this._sortCards(uncategorized),
           total: uncategorized.reduce((n, c) => n + (c.include ? c.quantity : 0), 0),
@@ -301,10 +295,10 @@ function deckEditor(deckId) {
       }
 
       const restConfig = [
-        {role: 'companion',  label: 'Compañero',  dotClass: 'bg-purple-400'},
-        {role: 'sideboard',  label: 'Sideboard',  dotClass: 'bg-fg-muted'},
-        {role: 'tokens',     label: 'Tokens',     dotClass: 'bg-emerald-400'},
-        {role: 'maybeboard', label: 'Maybeboard', dotClass: 'bg-fg-faint'},
+        {role: 'companion',  label: window._t('deck_role_companion'),  dotClass: 'bg-purple-400'},
+        {role: 'sideboard',  label: window._t('deck_role_sideboard'),  dotClass: 'bg-fg-muted'},
+        {role: 'tokens',     label: window._t('deck_role_tokens'),     dotClass: 'bg-emerald-400'},
+        {role: 'maybeboard', label: window._t('deck_role_maybeboard'), dotClass: 'bg-fg-faint'},
       ];
       for (const cfg of restConfig) {
         const inGroup = otherRoles.filter(c => c.role === cfg.role);
@@ -681,7 +675,7 @@ function deckEditor(deckId) {
       if (source === 'custom') {
         label = art.variant_label || 'custom';
         sublabel = art.filename || '';
-        tooltip = art.filename || 'Arte custom';
+        tooltip = art.filename || window._t('deck_badge_custom');
       } else if (source === 'drives') {
         if (art.canonical_set) {
           label = art.canonical_set.toUpperCase()
@@ -698,7 +692,7 @@ function deckEditor(deckId) {
         label = (art.set_code || '?').toUpperCase() + ' · ' + (art.collector_number || '?');
         const year = art.released_at ? art.released_at.slice(0, 4) : '';
         sublabel = art.artist ? `${art.artist}${year ? ' · ' + year : ''}` : year;
-        tooltip = `${art.set_name || art.set_code} #${art.collector_number} · ${art.artist || 'artist unknown'}${year ? ' (' + year + ')' : ''}`;
+        tooltip = `${art.set_name || art.set_code} #${art.collector_number} · ${art.artist || window._t('js_artist_unknown')}${year ? ' (' + year + ')' : ''}`;
       }
 
       const badges = [];

@@ -33,40 +33,40 @@ function settingsShell() {
         {
           key: 'paths.art_dir',
           storageKey: 'art',
-          label: 'Art cache (Scryfall)',
-          description: 'Downloaded thumbnails. Can grow several GB — moving to another disk frees space on the main one.',
+          label: window._t('setting_paths_art_dir_label'),
+          description: window._t('setting_paths_art_dir_desc'),
           effectiveKey: 'art_dir',
-          hint: 'ej: D:\\mtg\\art',
+          hint: 'D:\\mtg\\art',
         },
         {
           key: 'paths.custom_art_dir',
           storageKey: 'custom_art',
-          label: 'User custom art',
-          description: 'Local images that replace official art.',
+          label: window._t('setting_paths_custom_art_dir_label'),
+          description: window._t('setting_paths_custom_art_dir_desc'),
           effectiveKey: 'custom_art_dir',
           hint: '',
         },
         {
           key: 'paths.exports_dir',
           storageKey: 'exports',
-          label: 'Generated XMLs and PDFs',
-          description: 'Final pipeline output. Useful to point to a cloud-synced folder.',
+          label: window._t('setting_paths_exports_dir_label'),
+          description: window._t('setting_paths_exports_dir_desc'),
           effectiveKey: 'exports_dir',
           hint: '',
         },
         {
           key: 'paths.backups_dir',
           storageKey: 'backups',
-          label: 'Backups (.zip)',
-          description: 'Recommended to point to a different disk or cloud folder.',
+          label: window._t('setting_paths_backups_dir_label'),
+          description: window._t('setting_paths_backups_dir_desc'),
           effectiveKey: 'backups_dir',
           hint: '',
         },
         {
           key: 'paths.cardbacks_dir',
           storageKey: 'cardbacks',
-          label: 'Cardbacks (back faces)',
-          description: 'Back face images available in the picker.',
+          label: window._t('setting_paths_cardbacks_dir_label'),
+          description: window._t('setting_paths_cardbacks_dir_desc'),
           effectiveKey: 'cardbacks_dir',
           hint: '',
         },
@@ -158,15 +158,8 @@ function settingsShell() {
       return this.definitions.filter(d => d.group === groupName);
     },
 
-    sectionKeyForGroup(groupName) {
-      if (groupName === 'Ubicación de datos') return 'backup';
-      const s = this.sections.find(x => x.group === groupName);
-      return s ? s.key : 'general';
-    },
-
-    iconForGroup(groupName) {
-      if (groupName === 'Ubicación de datos') return 'archive';
-      const s = this.sections.find(x => x.group === groupName);
+    iconForSection(sectionKey) {
+      const s = this.sections.find(x => x.key === sectionKey);
       return s ? s.icon : 'settings';
     },
 
@@ -534,7 +527,7 @@ function settingsShell() {
             ? `<div class="text-[11px] text-accent/80 mt-1">${window._t('settings_secret_stored')}</div>`
             : '')
         : (!isDefault
-            ? `<div class="text-[11px] text-accent/80 mt-1">≠ default (${String(def.default)})</div>`
+            ? `<div class="text-[11px] text-accent/80 mt-1">≠ ${window._t('settings_default_value')} (${String(def.default)})</div>`
             : '');
       return `
         <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 md:gap-4 items-center">
@@ -806,10 +799,10 @@ function artSourcesPanel() {
       const pendingCount = this.sources.filter(s => !s.indexed_at).length;
       const total = this.sources.length;
       const msg = pendingCount < total
-        ? `Indexar ${pendingCount} drives pendientes? (${total - pendingCount} ya indexados se saltan)\n\nSe procesan de uno en uno — sin saturar la API.`
-        : `Indexar los ${total} drives?\n\nSe procesan de uno en uno — sin saturar la API.`;
+        ? window._t('settings_index_pending_confirm').replace('{n}', pendingCount).replace('{skipped}', total - pendingCount)
+        : window._t('settings_index_all_confirm').replace('{n}', total);
       if (!await window.confirmDialog(window._t('settings_index_all_btn'), msg,
-        { icon: 'refresh-cw', confirmLabel: 'Indexar todos' })) return;
+        { icon: 'refresh-cw', confirmLabel: window._t('settings_index_all_btn') })) return;
       await this._startBatch(allIds, 'pending');
     },
 
@@ -856,9 +849,9 @@ function artSourcesPanel() {
     batchProgressTitle() {
       if (!this.batchProgress) return '';
       const p = this.batchProgress;
-      if (p.cancelled) return `Indexado cancelado — ${p.done_count} de ${p.total} completados`;
-      if (p.all_done) return `Indexado completo — ${p.done_count} drives`;
-      return `Indexando ${p.done_count + 1} de ${p.total}…`;
+      if (p.cancelled) return window._t('settings_index_cancelled').replace('{done}', p.done_count).replace('{total}', p.total);
+      if (p.all_done) return window._t('settings_index_done').replace('{n}', p.done_count);
+      return window._t('settings_index_running').replace('{current}', p.done_count + 1).replace('{total}', p.total);
     },
 
     formatEta(seconds) {
@@ -915,10 +908,10 @@ function artSourcesPanel() {
       switch (this.draft.source_type) {
         case 'gdrive':       return 'https://drive.google.com/drive/folders/…';
         case 'gdrive-file':  return 'https://drive.google.com/file/d/…';
-        case 'local-folder': return 'C:/mtg-art/  o  /home/user/mtg-art  o  file://…';
+        case 'local-folder': return 'C:/mtg-art/  ·  /home/user/mtg-art  ·  file://…';
         case 'http-listing': return 'https://example.com/manifest.json';
-        case 's3':           return 's3://bucket/prefix  o  https://bucket.s3.amazonaws.com/';
-        default:             return 'URL o ruta (se auto-detectará el tipo)';
+        case 's3':           return 's3://bucket/prefix  ·  https://bucket.s3.amazonaws.com/';
+        default:             return window._t('settings_source_placeholder_auto');
       }
     },
 
@@ -947,7 +940,7 @@ function artSourcesPanel() {
             this.draft.source_type = d.detected_type;
           }
         } else {
-          this.validation = {checked: true, valid: false, detected_type: '', canonical_url: '', label: '', error: 'Error del servidor'};
+          this.validation = {checked: true, valid: false, detected_type: '', canonical_url: '', label: '', error: window._t('js_error_server')};
         }
       } catch (e) {
         this.validation = {checked: true, valid: false, detected_type: '', canonical_url: '', label: '', error: e.message};

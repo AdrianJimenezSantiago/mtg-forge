@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.art import art_themes
 from mpc_forge.services.decks import snapshots
@@ -42,7 +43,7 @@ async def list_art_themes(db: DbDep) -> dict[str, Any]:
 async def get_art_theme(theme_id: int, db: DbDep) -> dict[str, Any]:
     theme = await art_themes.get_theme(db, theme_id)
     if theme is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "theme_not_found")
     return theme
 
 
@@ -56,7 +57,7 @@ async def create_art_theme(payload: CreateThemeRequest, db: DbDep) -> dict[str, 
         only_customized=payload.only_customized,
     )
     if theme is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     return theme
 
 
@@ -64,21 +65,21 @@ async def create_art_theme(payload: CreateThemeRequest, db: DbDep) -> dict[str, 
 async def rename_art_theme(theme_id: int, payload: RenameThemeRequest, db: DbDep) -> dict[str, Any]:
     theme = await art_themes.rename_theme(db, theme_id, payload.name, payload.description)
     if theme is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "theme_not_found")
     return theme
 
 
 @router.delete("/api/art-themes/{theme_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_art_theme(theme_id: int, db: DbDep) -> None:
     if not await art_themes.delete_theme(db, theme_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "theme_not_found")
 
 
 @router.get("/api/art-themes/{theme_id}/preview/{deck_id}")
 async def preview_art_theme(theme_id: int, deck_id: int, db: DbDep) -> dict[str, Any]:
     preview = await art_themes.preview_apply(db, theme_id, deck_id)
     if preview is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema o mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "theme_or_deck_not_found")
     return preview
 
 
@@ -97,5 +98,5 @@ async def apply_art_theme(theme_id: int, payload: ApplyThemeRequest, db: DbDep) 
         overwrite_custom=payload.overwrite_custom,
     )
     if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tema o mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "theme_or_deck_not_found")
     return {**result.to_dict(), "snapshot": snapshot}

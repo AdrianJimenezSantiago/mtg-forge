@@ -12,9 +12,9 @@
             <i data-lucide="link-2" class="w-5 h-5"></i>
           </div>
           <div class="min-w-0">
-            <h2 id="similar-arts-title" class="text-lg font-semibold text-fg">Artes similares</h2>
+            <h2 id="similar-arts-title" class="text-lg font-semibold text-fg">{{ t.similar_title }}</h2>
             <p class="text-xs text-fg-faint truncate">
-              Match perceptual (pHash) del arte <span x-text="similarSourceArt?.__label || ''"></span>
+              {{ t.similar_subtitle }} <span x-text="similarSourceArt?.__label || ''"></span>
             </p>
           </div>
         </div>
@@ -26,21 +26,20 @@
         <template x-if="similarLoading">
           <div class="text-center py-12 text-fg-faint text-sm">
             <div class="spinner-ring mb-3"></div>
-            <p>Buscando…</p>
+            <p>{{ t.common_searching }}</p>
           </div>
         </template>
         <template x-if="!similarLoading && similarData">
           <div>
             <template x-if="similarData.similar.length === 0">
               <p class="text-center py-8 text-sm text-fg-faint">
-                No hay otros drives con imágenes perceptualmente idénticas.
+                {{ t.similar_none }}
               </p>
             </template>
             <template x-if="similarData.similar.length > 0">
               <div>
                 <p class="text-xs text-fg-faint mb-3">
-                  <span x-text="similarData.similar.length"></span> resultado(s) —
-                  ordenados por proximidad de hash.
+                  <span x-text="window._T.similar_count.replace('{n}', similarData.similar.length)"></span>
                 </p>
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   <template x-for="sim in similarData.similar" :key="sim.file_id">
@@ -53,8 +52,8 @@
                       <div class="p-2">
                         <div class="text-xs text-fg truncate" x-text="sim.filename"></div>
                         <div class="text-[10px] text-fg-faint">
-                          Source #<span x-text="sim.source_id"></span> ·
-                          hamming <span x-text="sim.hamming"></span>
+                          {{ t.similar_source }} #<span x-text="sim.source_id"></span> ·
+                          {{ t.similar_distance }} <span x-text="sim.hamming"></span>
                         </div>
                       </div>
                     </div>

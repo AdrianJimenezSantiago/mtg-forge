@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mpc_forge.errors import CodedError
 from mpc_forge.models import CustomArt, Deck, DeckActivity, DeckCard, PrintingCache
 from mpc_forge.services.decks import deck_activity
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
@@ -27,26 +28,26 @@ UNDOABLE_KINDS: set[str] = {
 }
 
 
-class UndoNotSupported(Exception):
-    pass
+class UndoNotSupported(CodedError):
+    code = "undo_conflict"
 
 
 async def can_undo(event: DeckActivity) -> tuple[bool, str]:
     if event.kind not in UNDOABLE_KINDS:
-        return False, "Tipo de evento no reversible"
+        return False, "undo_kind_not_reversible"
 
     try:
         payload = json.loads(event.payload_json or "{}")
     except (ValueError, TypeError):
-        return False, "Payload corrupto"
+        return False, "undo_payload_corrupt"
 
     if event.kind == K.CARD_ART_CHANGED:
         if payload.get("kind") == "custom":
-            return False, "Cambios a arte custom no se pueden deshacer automáticamente"
+            return False, "undo_custom_art"
         if not payload.get("old_scryfall_id"):
-            return False, "Falta el arte anterior en el snapshot"
+            return False, "undo_missing_previous_art"
     if event.kind == K.CUSTOM_ART_APPLIED and not payload.get("changes"):
-        return False, "El evento no guarda los cambios"
+        return False, "undo_no_changes_saved"
 
     return True, ""
 
@@ -54,21 +55,21 @@ async def can_undo(event: DeckActivity) -> tuple[bool, str]:
 async def undo_event(db: AsyncSession, event: DeckActivity) -> dict[str, Any]:
     ok, reason = await can_undo(event)
     if not ok:
-        raise UndoNotSupported(reason)
+        raise UndoNotSupported(code=reason)
 
     payload = json.loads(event.payload_json or "{}")
     deck_id = event.deck_id
     if deck_id is None:
-        raise UndoNotSupported("Evento sin mazo asociado")
+        raise UndoNotSupported(code="undo_no_deck")
 
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise UndoNotSupported("El mazo ya no existe")
+        raise UndoNotSupported(code="undo_deck_gone")
 
     kind = event.kind
     handler = _HANDLERS.get(kind)
     if handler is None:
-        raise UndoNotSupported(f"Sin handler para {kind}")
+        raise UndoNotSupported(code="undo_kind_not_reversible", kind=kind)
 
     summary = await handler(db, event, payload, deck)
 
@@ -101,7 +102,7 @@ async def _undo_card_moved(
     from_role = payload.get("from_role")
     to_role = payload.get("to_role")
     if not from_role or not to_role:
-        raise UndoNotSupported("Snapshot incompleto de roles")
+        raise UndoNotSupported(code="undo_incomplete_snapshot")
 
     dc = (
         await db.scalars(
@@ -113,9 +114,7 @@ async def _undo_card_moved(
         )
     ).first()
     if not dc:
-        raise UndoNotSupported(
-            f"La carta ya no está en '{to_role}' — se ha movido de nuevo desde entonces"
-        )
+        raise UndoNotSupported(code="undo_card_moved_again", role=to_role)
     dc.role = from_role
     return {
         "summary": f"Deshecho: {event.card_name} vuelve a {from_role}",
@@ -132,7 +131,7 @@ async def _undo_card_qty_changed(
     old_qty = payload.get("old_qty")
     new_qty = payload.get("new_qty")
     if old_qty is None or new_qty is None:
-        raise UndoNotSupported("Snapshot incompleto de cantidad")
+        raise UndoNotSupported(code="undo_incomplete_snapshot")
 
     dc = (
         await db.scalars(
@@ -143,11 +142,9 @@ async def _undo_card_qty_changed(
         )
     ).first()
     if not dc:
-        raise UndoNotSupported("La carta ya no existe en el mazo")
+        raise UndoNotSupported(code="undo_card_gone")
     if dc.quantity != new_qty:
-        raise UndoNotSupported(
-            f"La cantidad ha cambiado desde entonces ({new_qty} → {dc.quantity})"
-        )
+        raise UndoNotSupported(code="undo_quantity_changed", expected=new_qty, current=dc.quantity)
     dc.quantity = old_qty
     return {
         "summary": f"Deshecho: {event.card_name} vuelve a {old_qty}×",
@@ -171,7 +168,7 @@ async def _undo_card_include_toggled(
         )
     ).first()
     if not dc:
-        raise UndoNotSupported("La carta ya no existe")
+        raise UndoNotSupported(code="undo_card_gone")
     dc.include = prev_include
     label = "reactivada" if prev_include else "excluida"
     return {
@@ -189,7 +186,7 @@ async def _undo_card_art_changed(
     old_sfid = payload.get("old_scryfall_id")
     new_sfid = payload.get("new_scryfall_id")
     if not old_sfid or not new_sfid:
-        raise UndoNotSupported("Snapshot incompleto del arte")
+        raise UndoNotSupported(code="undo_incomplete_snapshot")
 
     dc = (
         await db.scalars(
@@ -200,11 +197,11 @@ async def _undo_card_art_changed(
         )
     ).first()
     if not dc:
-        raise UndoNotSupported("El arte ha cambiado desde entonces — ya no coincide")
+        raise UndoNotSupported(code="undo_art_changed")
 
     old_printing = await db.get(PrintingCache, old_sfid)
     if not old_printing:
-        raise UndoNotSupported("La impresión anterior ya no está en caché")
+        raise UndoNotSupported(code="undo_printing_not_cached")
 
     dc.scryfall_id = old_sfid
     old_set = payload.get("old_set", "?")
@@ -254,7 +251,7 @@ async def _undo_custom_art_applied(
         reverted.append({**change, "old": change.get("new"), "new": restored})
 
     if not reverted:
-        raise UndoNotSupported("Las cartas han cambiado de arte desde entonces")
+        raise UndoNotSupported(code="undo_art_changed")
     skipped = len(changes) - len(reverted)
     note = f" ({skipped} ya cambiadas, sin tocar)" if skipped else ""
     return {
@@ -272,9 +269,9 @@ async def _undo_deck_renamed(
     old_name = payload.get("old_name")
     new_name = payload.get("new_name")
     if not old_name:
-        raise UndoNotSupported("Sin nombre anterior en el snapshot")
+        raise UndoNotSupported(code="undo_incomplete_snapshot")
     if deck.name != new_name:
-        raise UndoNotSupported(f"El mazo ya no se llama '{new_name}' — se ha renombrado de nuevo")
+        raise UndoNotSupported(code="undo_renamed_again", name=new_name)
     deck.name = old_name
     return {
         "summary": f"Deshecho: mazo vuelve a llamarse '{old_name}'",
@@ -302,7 +299,7 @@ async def _undo_card_added(
         )
     ).first()
     if not dc:
-        raise UndoNotSupported("La carta ya no está en el mazo")
+        raise UndoNotSupported(code="undo_card_gone")
 
     if stacked:
         new_qty = dc.quantity - added_qty
@@ -320,7 +317,7 @@ async def _undo_card_added(
 
     if dc.quantity != added_qty:
         raise UndoNotSupported(
-            f"La cantidad ha cambiado desde entonces ({added_qty} → {dc.quantity})"
+            code="undo_quantity_changed", expected=added_qty, current=dc.quantity
         )
     await db.delete(dc)
     return {
@@ -339,7 +336,7 @@ async def _undo_card_removed(
     role = payload.get("role", "mainboard")
 
     if not event.card_scryfall_id or not event.card_name:
-        raise UndoNotSupported("Snapshot incompleto de la carta")
+        raise UndoNotSupported(code="undo_incomplete_snapshot")
 
     existing = (
         await db.scalars(
@@ -351,11 +348,11 @@ async def _undo_card_removed(
         )
     ).first()
     if existing:
-        raise UndoNotSupported(f"'{event.card_name}' ya está en {role} — no se puede duplicar")
+        raise UndoNotSupported(code="undo_card_already_in", card=event.card_name, role=role)
 
     printing = await db.get(PrintingCache, event.card_scryfall_id)
     if not printing:
-        raise UndoNotSupported("La impresión ya no está en caché")
+        raise UndoNotSupported(code="undo_printing_not_cached")
 
     dc = DeckCard(
         deck_id=deck.id,

@@ -27,7 +27,7 @@ function printPlanner() {
         this.decks = Array.isArray(deckList) ? deckList : (deckList.decks || [])
         this.tiers = tierInfo.tiers || []
       } catch (e) {
-        this.error = e.detail || e.message || 'No se pudieron cargar los mazos'
+        this.error = e.detail || e.message || window._t('js_error_load_decks')
       } finally {
         this.loading = false
         this.$nextTick(() => window.icons?.())
@@ -86,7 +86,7 @@ function printPlanner() {
           },
         })
       } catch (e) {
-        this.error = e.detail || e.message || 'No se pudo calcular el plan'
+        this.error = e.detail || e.message || window._t('js_error_plan')
         this.plan = null
       } finally {
         this.planning = false

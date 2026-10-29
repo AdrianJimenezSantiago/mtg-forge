@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.printing import print_needs, print_planner
 
@@ -26,7 +27,7 @@ class PlanRequest(BaseModel):
 @router.post("/api/planner/plan")
 async def build_plan(payload: PlanRequest, db: DbDep) -> dict[str, Any]:
     if not payload.deck_ids:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "no_decks_selected")
 
     if not payload.subtract_collection:
         plan = await print_planner.build_plan(
@@ -99,7 +100,7 @@ async def deck_print_needs(
         db, deck_id, match_mode=match_mode, include_basics=include_basics
     )
     if needs is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     return needs.to_dict()
 
 
@@ -113,7 +114,7 @@ class MultiNeedsRequest(BaseModel):
 @router.post("/api/planner/print-needs")
 async def multi_deck_needs(payload: MultiNeedsRequest, db: DbDep) -> dict[str, Any]:
     if not payload.deck_ids:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Selecciona al menos un mazo")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "no_decks_selected")
     needs = await print_needs.compute_for_decks(
         db,
         payload.deck_ids,

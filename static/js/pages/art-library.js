@@ -93,7 +93,7 @@ function artLibrary() {
         this.facets = facets
       } catch (e) {
         if (e.name !== 'AbortError') {
-          this.error = e.detail || e.message || 'No se pudo cargar la biblioteca'
+          this.error = e.detail || e.message || window._t('js_error_load_library')
         }
       } finally {
         this.loading = false

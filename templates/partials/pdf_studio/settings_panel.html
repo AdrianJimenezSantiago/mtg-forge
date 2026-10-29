@@ -47,7 +47,7 @@
           </label>
         </div>
         <p class="text-[10px] text-fg-faint">
-          El default 3×3 es el layout MPC clásico. Bájalo si quieres más margen.
+          {{ t.pdf_grid_hint }}
         </p>
       </div>
     </div>
@@ -132,8 +132,7 @@
         <div class="border-t border-border-subtle pt-3">
           <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-1">{{ t.pdf_back_offset }}</div>
           <p class="text-[10px] text-fg-faint mb-2">
-            Delta que solo se aplica a las páginas de reversos, para compensar la deriva
-            de la impresora al voltear el papel.
+            {{ t.pdf_back_offset_hint }}
           </p>
           <div class="grid grid-cols-2 gap-2">
             <label class="block text-[11px]">
@@ -251,7 +250,7 @@
       </button>
       <div x-show="open.page_guides" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
         <p class="text-[10px] text-fg-faint">
-          Full-page lines (for guillotine or rotary trimmer). Same color and weight as per-card guides.
+          {{ t.pdf_page_guides_hint }}
         </p>
         <label class="block text-[11px]">
           <span class="text-fg-muted mb-1 block">{{ t.pdf_mode_label }}</span>
@@ -273,7 +272,7 @@
       </button>
       <div x-show="open.duplex_guides" x-collapse class="p-3 pt-1 space-y-2 border-t border-border-subtle">
         <p class="text-[10px] text-fg-faint mb-2">
-          Selectively hide guides on fronts or backs — useful if cutting one side only.
+          {{ t.pdf_duplex_guides_hint }}
         </p>
         <label class="flex items-center gap-2 cursor-pointer text-[11px]">
           <input type="checkbox" x-model="opts.hide_card_guides_front" class="accent-accent">
@@ -313,7 +312,7 @@
                  class="w-full accent-accent">
         </label>
         <p class="text-[10px] text-fg-faint">
-          MPC nativo: 1.875 mm. Home printers: 1 mm suele bastar.
+          {{ t.pdf_bleed_hint }}
         </p>
       </div>
     </div>
@@ -328,15 +327,15 @@
       </div>
       <div x-show="open.regmarks" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle"
            :class="!opts.reg_marks_enabled ? 'opacity-50 pointer-events-none' : ''">
-        <p class="text-[10px] text-fg-faint">Cuadrados negros en 3 esquinas para Silhouette Cameo / Cricut.</p>
+        <p class="text-[10px] text-fg-faint">{{ t.pdf_reg_marks_hint }}</p>
         <div class="grid grid-cols-2 gap-2">
           <label class="block text-[11px]">
-            <span class="text-fg-muted mb-1 block">Inset (mm)</span>
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_reg_marks_inset }}</span>
             <input type="number" step="0.5" min="0" max="50" x-model.number="opts.reg_marks_inset_mm"
                    class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
           </label>
           <label class="block text-[11px]">
-            <span class="text-fg-muted mb-1 block">Size (mm)</span>
+            <span class="text-fg-muted mb-1 block">{{ t.pdf_reg_marks_size }}</span>
             <input type="number" step="0.5" min="1" max="20" x-model.number="opts.reg_marks_size_mm"
                    class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent">
           </label>
@@ -362,7 +361,7 @@
                     :class="opts.backs_content === 'all_cards' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
                     class="py-1.5 rounded border text-[11px] transition text-left px-2">
               <span class="font-medium">{{ t.pdf_backs_all }}</span>
-              <div class="text-[10px] text-fg-faint mt-0.5">DFC → cara B · resto → cardback estándar</div>
+              <div class="text-[10px] text-fg-faint mt-0.5">{{ t.pdf_backs_all_hint }}</div>
             </button>
             <button @click="opts.backs_content = 'dfc_only'"
                     :class="opts.backs_content === 'dfc_only' ? 'bg-accent/20 border-accent text-accent' : 'border-border-subtle hover:bg-bg-subtle'"
@@ -385,10 +384,10 @@
           </div>
           <p class="text-[10px] text-fg-faint mt-1.5">
             <span x-show="opts.backs_layout === 'duplex'">
-              Front/back interleaved with horizontal mirror — print duplex "flip on long edge".
+              {{ t.pdf_backs_duplex_hint }}
             </span>
             <span x-show="opts.backs_layout === 'append'">
-              All back pages appended at end of PDF.
+              {{ t.pdf_backs_append_hint }}
             </span>
           </p>
         </label>
@@ -401,7 +400,7 @@
           <span>
             <span class="font-medium">{{ t.pdf_backs_fill_last }}</span>
             <span class="block text-[10px] text-fg-faint mt-0.5 leading-snug">
-              Fills free slots on the last front page with the first backs before starting a new sheet. Saves paper when cutting each card individually.
+              {{ t.pdf_backs_fill_hint }}
             </span>
           </span>
         </label>
@@ -415,10 +414,10 @@
             <div class="w-14 h-20 rounded border border-border-subtle bg-bg-subtle
                         overflow-hidden flex items-center justify-center flex-shrink-0">
               <template x-if="cardbackSettings && cardbackSettings.image_url">
-                <img :src="cardbackSettings.image_url" class="w-full h-full object-cover" alt="Cardback">
+                <img :src="cardbackSettings.image_url" class="w-full h-full object-cover" alt="{{ t.pdf_cardback_alt }}">
               </template>
               <template x-if="cardbackSettings && !cardbackSettings.image_url && cardbackSettings.default_image_url">
-                <img :src="cardbackSettings.default_image_url" class="w-full h-full object-cover" alt="Default cardback">
+                <img :src="cardbackSettings.default_image_url" class="w-full h-full object-cover" alt="{{ t.pdf_default_cardback_alt }}">
               </template>
               <template x-if="!cardbackSettings || (!cardbackSettings.image_url && !cardbackSettings.default_image_url)">
                 <i data-lucide="image-off" class="w-6 h-6 text-fg-faint"></i>
@@ -450,7 +449,7 @@
             {{ t.pdf_cardback_reset }}
           </button>
           <p class="text-[10px] text-fg-faint mt-2">
-            Applied to all cards except DFC / MDFC / meld (those use their own back face).
+            {{ t.pdf_deck_cardback_hint }}
           </p>
         </div>
       </div>
@@ -465,7 +464,7 @@
       <div x-show="open.range" x-collapse class="p-3 pt-1 space-y-3 border-t border-border-subtle">
         <label class="block text-[11px]">
           <span class="text-fg-muted mb-1 block">{{ t.pdf_range_label }}</span>
-          <input type="text" placeholder="e.g. 1-3,5 (empty = all)"
+          <input type="text" placeholder="{{ t.pdf_range_placeholder }}"
                  x-model="opts.page_range"
                  class="w-full bg-bg-subtle border border-border-subtle rounded px-2 py-1.5 focus:outline-none focus:border-accent font-mono">
         </label>

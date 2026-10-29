@@ -68,7 +68,7 @@
         <div class="flex gap-2">
           <input type="url" x-model="cbUrlInput"
                  @keydown.enter="addCardbackFromUrl()"
-                 placeholder="https://drive.google.com/... o cualquier URL de imagen"
+                 placeholder="{{ t.cardback_url_placeholder }}"
                  class="flex-1 bg-bg-subtle border border-border-subtle rounded
                         px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <button @click="addCardbackFromUrl()"
@@ -82,34 +82,33 @@
           </button>
         </div>
         <p class="text-[10px] text-fg-faint mt-1">
-          Pega un enlace de Google Drive o cualquier imagen web. Se descarga a
-          tu librería local de artes y queda asignada.
+          {{ t.cardback_url_hint }}
         </p>
       </div>
 
       <div>
         <div class="flex items-center justify-between mb-2">
           <div class="text-[10px] uppercase tracking-wider text-fg-faint">
-            Google Drives indexados
+            {{ t.cardback_indexed_drives }}
           </div>
           <button @click="cbDefaultHits = []; _loadDefaultCardbacks()"
                   x-show="!cbDriveQuery.trim()"
                   class="text-[10px] text-accent hover:text-accent-glow">
-            Recargar
+            {{ t.common_reload }}
           </button>
           <button @click="searchDrives(cbDriveQuery)" x-show="cbDriveQuery.trim()"
                   class="text-[10px] text-accent hover:text-accent-glow">
-            Actualizar
+            {{ t.common_refresh }}
           </button>
         </div>
         <input type="text" x-model="cbDriveQuery"
                @input.debounce.400ms="searchDrives(cbDriveQuery)"
-               placeholder="Buscar por nombre… (vacío = todos los cardbacks)"
+               placeholder="{{ t.cardback_search_placeholder }}"
                class="w-full bg-bg-subtle border border-border-subtle rounded
                       px-3 py-2 text-sm focus:outline-none focus:border-accent">
 
         <div x-show="cbDriveSearching || cbDefaultLoading" class="text-center py-4 text-fg-faint text-xs">
-          Cargando cardbacks…
+          {{ t.cardback_loading }}
         </div>
 
         <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length > 0"
@@ -139,7 +138,7 @@
         <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length > 0"
              class="mt-3">
           <div class="text-[10px] text-fg-muted mb-2">
-            <span x-text="cbDefaultHits.length"></span> cardbacks encontrados en los drives indexados
+            <span x-text="window._T.cardback_found.replace('{n}', cbDefaultHits.length)"></span>
           </div>
           <div class="grid grid-cols-4 gap-2">
             <template x-for="hit in cbDefaultHits" :key="hit.file_id">
@@ -167,16 +166,14 @@
 
         <div x-show="!cbDriveSearching && cbDriveQuery.trim() && cbDriveHits.length === 0"
              class="text-center py-4 text-fg-faint text-xs">
-          No results. Try another keyword, or check in
+          {{ t.cardback_no_results }}
           <a href="/settings" class="text-accent underline">{{ t.pdf_settings_link }}</a>
-          that drives are indexed.
         </div>
 
         <div x-show="!cbDefaultLoading && !cbDriveQuery.trim() && cbDefaultHits.length === 0"
              class="text-center py-4 text-fg-faint text-xs">
-          No se encontraron cardbacks en los drives indexados. Verifica en
+          {{ t.cardback_none_in_drives | safe }}
           <a href="/settings" class="text-accent underline">{{ t.pdf_settings_link }}</a>
-          que haya drives indexados con carpetas <code>Cardbacks/</code>.
         </div>
       </div>
 
@@ -212,8 +209,7 @@
         </div>
         <div x-show="cbLocalArts.length === 0"
              class="text-center py-6 text-fg-faint text-xs">
-          No custom local art. Add one with the form above or drop a file in
-          <code class="text-fg-muted">%APPDATA%\MPC-Forge\custom_art\</code>.
+          {{ t.cardback_no_local | safe }}
         </div>
       </div>
 

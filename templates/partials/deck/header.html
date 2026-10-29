@@ -38,7 +38,7 @@
                 }">
             <i data-lucide="check-circle-2" class="w-3.5 h-3.5" x-show="deck.validation.level === 'ok'"></i>
             <i data-lucide="alert-triangle" class="w-3.5 h-3.5" x-show="deck.validation.level !== 'ok'"></i>
-            <span x-text="deck.validation.message"></span>
+            <span x-text="window.deckValidationMessage(deck.validation)"></span>
           </span>
         </template>
       </div>
@@ -47,7 +47,7 @@
     <div class="text-xs text-fg-muted mt-1 flex items-center gap-2 flex-wrap">
       <span>{{ deck.format }}</span>
       {% if deck.source_url %}
-        · <a href="{{ deck.source_url }}" target="_blank" class="hover:text-accent">Moxfield ↗</a>
+        · <a href="{{ deck.source_url }}" target="_blank" rel="noopener noreferrer" class="hover:text-accent">{{ (deck.source_url.split('/')[2] if '://' in deck.source_url else deck.source_url) | replace('www.', '') }} ↗</a>
       {% endif %}
       <span>·</span>
       <a href="/decks/{{ deck.id }}/proof" class="hover:text-accent">{{ t.deck_proof_link }}</a>

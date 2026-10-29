@@ -4,12 +4,13 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from mpc_forge import config as cfg
 from mpc_forge.db import session_scope
+from mpc_forge.errors import ApiError
 from mpc_forge.models import ArtSource, IndexedArt
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.art import phash
@@ -32,7 +33,7 @@ def _http_client() -> httpx.AsyncClient:
 
 def _require_phash() -> None:
     if not phash.is_available():
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, PHASH_UNAVAILABLE)
+        raise ApiError(status.HTTP_501_NOT_IMPLEMENTED, "phash_unavailable")
 
 
 class PHashStatsResponse(BaseModel):

@@ -12,7 +12,7 @@
             <i data-lucide="users" class="w-5 h-5"></i>
           </div>
           <div class="min-w-0">
-            <h2 id="artist-apply-title" class="text-lg font-semibold text-fg">Aplicar arte de este artista</h2>
+            <h2 id="artist-apply-title" class="text-lg font-semibold text-fg">{{ t.artist_apply_title }}</h2>
             <p class="text-xs text-fg-faint truncate">
               <span x-text="artistApplyArtist"></span>
             </p>
@@ -26,22 +26,22 @@
         <template x-if="artistApplyLoading">
           <div class="text-center py-12 text-fg-faint text-sm">
             <div class="spinner-ring mb-3"></div>
-            <p>Consultando Scryfall (puede tardar 10-30s)…</p>
+            <p>{{ t.artist_apply_loading }}</p>
           </div>
         </template>
         <template x-if="!artistApplyLoading && artistApplyData">
           <div>
             <div class="grid grid-cols-3 gap-3 mb-4">
               <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
-                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Encontradas</div>
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.artist_apply_found }}</div>
                 <div class="text-2xl font-semibold text-emerald-400 mt-1" x-text="artistApplyData.matched.length"></div>
               </div>
               <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
-                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Sin arte de X</div>
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.artist_apply_unmatched }}</div>
                 <div class="text-2xl font-semibold text-fg-faint mt-1" x-text="artistApplyData.unmatched_count"></div>
               </div>
               <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
-                <div class="text-[10px] uppercase tracking-wider text-fg-faint">Skipped</div>
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.artist_apply_skipped }}</div>
                 <div class="text-2xl font-semibold mt-1"
                      :class="artistApplyData.skipped_count > 0 ? 'text-amber-400' : 'text-fg'"
                      x-text="artistApplyData.skipped_count"></div>
@@ -49,28 +49,27 @@
             </div>
             <template x-if="artistApplyData.skipped_count > 0">
               <p class="text-xs text-amber-400 mb-3">
-                ⚠ Se han saltado <span x-text="artistApplyData.skipped_count"></span> cartas por límite
-                del recomendador. Vuelve a abrir este modal más tarde para completarlas.
+                ⚠ <span x-text="window._T.artist_apply_skipped_note.replace('{n}', artistApplyData.skipped_count)"></span>
               </p>
             </template>
 
             <template x-if="artistApplyData.matched.length === 0">
               <p class="text-center py-8 text-sm text-fg-faint">
-                Ninguna carta del mazo tiene una impresión de <strong x-text="artistApplyArtist"></strong>.
+                {{ t.artist_apply_none }} <strong x-text="artistApplyArtist"></strong>.
               </p>
             </template>
             <template x-if="artistApplyData.matched.length > 0">
               <div>
                 <div class="flex items-center justify-between mb-2">
-                  <p class="text-xs text-fg-faint">Selecciona qué cartas quieres cambiar:</p>
+                  <p class="text-xs text-fg-faint">{{ t.artist_apply_select }}</p>
                   <div class="flex gap-2">
                     <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = true)"
                             class="text-xs text-accent hover:underline">
-                      Todas
+                      {{ t.artist_apply_all }}
                     </button>
                     <button @click="artistApplyData.matched.forEach(m => artistApplyChecked[m.oracle_id] = false)"
                             class="text-xs text-fg-faint hover:underline">
-                      Ninguna
+                      {{ t.artist_apply_none_btn }}
                     </button>
                   </div>
                 </div>
@@ -105,15 +104,15 @@
       </div>
       <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between shrink-0">
         <div class="text-xs text-fg-faint">
-          <span x-text="artistApplySelectedCount()"></span> carta(s) seleccionada(s)
+          <span x-text="window._T.artist_apply_selected.replace('{n}', artistApplySelectedCount())"></span>
         </div>
         <button @click="applyArtistToSelected()"
                 :disabled="artistApplyApplying || artistApplySelectedCount() === 0"
                 class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
                        disabled:opacity-50 transition flex items-center gap-2">
           <i x-show="!artistApplyApplying" data-lucide="check" class="w-4 h-4"></i>
-          <span x-show="!artistApplyApplying" x-text="`Aplicar a ${artistApplySelectedCount()} carta(s)`"></span>
-          <span x-show="artistApplyApplying">Aplicando…</span>
+          <span x-show="!artistApplyApplying" x-text="window._T.artist_apply_apply.replace('{n}', artistApplySelectedCount())"></span>
+          <span x-show="artistApplyApplying">{{ t.common_applying }}</span>
         </button>
       </div>
     </div>

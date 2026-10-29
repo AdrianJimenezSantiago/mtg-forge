@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from mpc_forge import config as cfg
+from mpc_forge.errors import ApiError
 from mpc_forge.models import PrintRun, PrintRunItem
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.routes.export._shared import make_router
@@ -29,7 +30,7 @@ async def download_export(filename: str) -> FileResponse:
     exports_dir = cfg.PATHS.exports_dir.resolve()
     target = (exports_dir / filename).resolve()
     if not target.exists() or exports_dir not in target.parents:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Archivo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "file_not_found")
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     media = _EXPORT_MEDIA_TYPES.get(ext, "application/octet-stream")
     return FileResponse(target, media_type=media, filename=filename)
@@ -81,7 +82,7 @@ async def list_runs(db: DbDep) -> list[PrintRunView]:
 async def delete_run(run_id: int, db: DbDep) -> None:
     run = await db.get(PrintRun, run_id)
     if not run:
-        raise HTTPException(status.HTTP_404_NOT_FOUND)
+        raise ApiError(status.HTTP_404_NOT_FOUND, "print_run_not_found")
     await db.delete(run)
     await db.commit()
 

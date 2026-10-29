@@ -33,8 +33,8 @@ document.addEventListener('alpine:init', () => {
       open: false,
       title: '',
       message: '',
-      confirmLabel: 'Confirmar',
-      cancelLabel: 'Cancelar',
+      confirmLabel: '',
+      cancelLabel: '',
       danger: false,
       icon: 'help-circle',
       _resolve: null,
@@ -94,6 +94,30 @@ const SAVE_TYPES = {
   xml: { description: 'XML', accept: { 'application/xml': ['.xml'] } },
   txt: { description: 'Text', accept: { 'text/plain': ['.txt'] } },
   log: { description: 'Log', accept: { 'text/plain': ['.log'] } },
+};
+
+window.deckValidationMessage = (v) => {
+  if (!v) return '';
+  const t = window._t || ((k) => k);
+  const fill = (key, params) => Object.entries(params).reduce(
+    (text, [k, val]) => text.split(`{${k}}`).join(String(val)), t(key));
+  let base;
+  if (!v.expected) base = fill('validation_no_rule', { format: v.format || '' });
+  else if (v.counted === v.expected) base = fill('validation_ok', { counted: v.counted, expected: v.expected });
+  else if (v.counted < v.expected) {
+    base = fill('validation_missing', { n: v.expected - v.counted, counted: v.counted, expected: v.expected });
+  } else {
+    base = fill('validation_extra', { n: v.counted - v.expected, counted: v.counted, expected: v.expected });
+  }
+  const illegal = v.illegal || [];
+  const blocking = illegal.filter((c) => c.status === 'banned' || c.status === 'not_legal');
+  if (blocking.length) {
+    return `${base} · ${fill(blocking.length === 1 ? 'validation_illegal_one' : 'validation_illegal_many', { n: blocking.length })}`;
+  }
+  if (illegal.length) {
+    return `${base} · ${fill(illegal.length === 1 ? 'validation_restricted_one' : 'validation_restricted_many', { n: illegal.length })}`;
+  }
+  return base;
 };
 
 window.canChooseSaveLocation = () => typeof window.showSaveFilePicker === 'function';

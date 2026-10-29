@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import CustomArt, Deck
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.routes.export._shared import get_deck_or_404, make_router
@@ -32,7 +33,7 @@ async def resolve_deck_cardback(db: AsyncSession, deck: Deck) -> Path | None:
 async def get_default_cardback() -> FileResponse:
     path = default_cardback_path()
     if path is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sin cardback configurado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "no_cardback")
     ext = path.suffix.lower().lstrip(".")
     return FileResponse(path, media_type=_IMAGE_MEDIA_TYPES.get(ext, "image/png"))
 
@@ -92,7 +93,7 @@ async def set_deck_cardback(
     if payload.custom_art_id is not None:
         art = await db.get(CustomArt, payload.custom_art_id)
         if art is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "CustomArt no encontrado")
+            raise ApiError(status.HTTP_404_NOT_FOUND, "custom_art_not_found")
         deck.custom_cardback_art_id = art.id
     else:
         deck.custom_cardback_art_id = None

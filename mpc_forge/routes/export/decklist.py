@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
+from fastapi import status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
+from mpc_forge.errors import ApiError
 from mpc_forge.models import Deck
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.routes.export._shared import (
@@ -31,7 +32,7 @@ async def _build_text(
 ) -> tuple[Deck, str, DecklistFormat]:
     parsed = parse_decklist_format(fmt)
     if parsed is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Formato desconocido: {fmt!r}")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unknown_format", format=fmt)
     deck = await get_deck_or_404(db, deck_id)
     text = await decklist_export.build_decklist_text(
         db,
@@ -40,7 +41,7 @@ async def _build_text(
         include_headers=include_headers,
     )
     if not text.strip():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mazo no tiene cartas activas")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "deck_no_active_cards")
     return deck, text, parsed
 
 

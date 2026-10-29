@@ -38,19 +38,19 @@
          class="bg-warning-bg hover:bg-warning-bg border border-warning-border text-warning
                 text-sm font-medium px-3 py-2 rounded-md transition flex items-center gap-1.5">
         <i data-lucide="download" class="w-3.5 h-3.5"></i>
-        Descargar log
+        {{ t.log_download }}
       </a>
       <button @click="viewTail()" :disabled="!info.exists"
               class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
                      text-fg-muted hover:text-fg px-3 py-2 rounded-md transition disabled:opacity-40 flex items-center gap-1.5">
         <i data-lucide="eye" class="w-3.5 h-3.5"></i>
-        Ver últimas líneas
+        {{ t.log_view_tail }}
       </button>
       <button @click="load()"
               class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-subtle
                      text-fg-muted hover:text-fg px-3 py-2 rounded-md transition flex items-center gap-1.5">
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-        Recargar
+        {{ t.common_reload }}
       </button>
     </div>
 

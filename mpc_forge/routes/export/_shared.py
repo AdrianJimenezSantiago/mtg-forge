@@ -4,13 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import get_args
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from slugify import slugify
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import config as cfg
 from mpc_forge.clients.scryfall import ScryfallClient
+from mpc_forge.errors import ApiError
 from mpc_forge.models import Deck, DeckCard
 from mpc_forge.services.art.art_cache import ArtCache
 from mpc_forge.services.decks.decklist_export import Format as DecklistFormat
@@ -33,7 +34,7 @@ def make_router() -> APIRouter:
 async def get_deck_or_404(db: AsyncSession, deck_id: int) -> Deck:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     return deck
 
 
@@ -70,5 +71,5 @@ async def resolve_with_progress(
         raise
     if not resolved:
         build_progress.finish(deck.id, error="Mazo sin cartas resueltas")
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "deck_without_resolved_cards")
     return resolved

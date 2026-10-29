@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.services.system import storage as storage_service
 
 router = APIRouter(prefix="/api/storage", tags=["storage"])
@@ -90,7 +91,7 @@ async def get_storage(
 @router.post("/purge", response_model=PurgeResponse)
 async def purge_storage(payload: PurgeRequest) -> Any:
     if not payload.targets:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No se ha indicado qué liberar")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "nothing_to_purge")
     try:
         result = await asyncio.to_thread(
             storage_service.purge,
@@ -99,5 +100,5 @@ async def purge_storage(payload: PurgeRequest) -> Any:
             keep_backups=payload.keep_backups,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "purge_failed") from e
     return {**result, "storage": await storage_service.snapshot(refresh=True)}

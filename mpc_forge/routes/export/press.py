@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import DeckCard
 from mpc_forge.routes.dependencies import ArtCacheDep, DbDep, ScryfallDep
 from mpc_forge.routes.export._shared import (
@@ -86,10 +87,7 @@ class PressExportResponse(BaseModel):
 def _shop_or_400(key: str) -> PrintShopSpec:
     spec = get_print_shop(key)
     if spec is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            {"code": "unknown_shop", "message": f"Imprenta desconocida: {key}"},
-        )
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unknown_shop", key=key)
     return spec
 
 

@@ -19,21 +19,21 @@
 
     <div class="flex-1 overflow-hidden grid grid-cols-[200px_1fr] min-h-0">
       <nav aria-label="{{ t.a11y_guide_index }}" class="border-r border-border-subtle bg-bg-subtle/40 overflow-y-auto p-3">
-        <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2 px-2">Secciones</div>
+        <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2 px-2">{{ t.pdfg_sections }}</div>
         <ul class="space-y-0.5 text-[11px]">
           {% set _toc = [
-            ('flujo',   'workflow',      'Typical workflow'),
-            ('page',    'layout-grid',   'Page & grid'),
-            ('pos',     'move',          'Positioning'),
-            ('bleed',   'square-dashed', 'Bleed'),
-            ('cguides', 'scissors',      'Per-card guides'),
-            ('pguides', 'grid-3x3',      'Page guides'),
-            ('duplex',  'eye-off',       'Hide in duplex'),
-            ('regmarks','crosshair',     'Registration marks'),
-            ('backs',   'rotate-3d',     'Reversos'),
-            ('range',   'list-ordered',  'Range & footer'),
-            ('click',   'mouse-pointer-click', 'Click on preview'),
-            ('presets', 'sparkles',      'Presets'),
+            ('flujo',   'workflow',      t.pdfg_toc_flow),
+            ('page',    'layout-grid',   t.pdfg_toc_page),
+            ('pos',     'move',          t.pdfg_toc_pos),
+            ('bleed',   'square-dashed', t.pdfg_toc_bleed),
+            ('cguides', 'scissors',      t.pdfg_toc_cguides),
+            ('pguides', 'grid-3x3',      t.pdfg_toc_pguides),
+            ('duplex',  'eye-off',       t.pdfg_toc_duplex),
+            ('regmarks','crosshair',     t.pdfg_toc_regmarks),
+            ('backs',   'rotate-3d',     t.pdfg_toc_backs),
+            ('range',   'list-ordered',  t.pdfg_toc_range),
+            ('click',   'mouse-pointer-click', t.pdfg_toc_click),
+            ('presets', 'sparkles',      t.pdfg_toc_presets),
           ] %}
           {% for sid, icon, label in _toc %}
             <li>
@@ -52,267 +52,203 @@
 
         <section id="guide-section-flujo">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="workflow" class="w-4 h-4 text-accent"></i>Typical workflow
+            <i data-lucide="workflow" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_flow }}
           </h3>
           <ol class="list-decimal list-inside space-y-1.5 text-fg-muted text-[13px]">
-            <li>Elige un <b class="text-fg">preset</b> parecido a lo que quieres imprimir
-                (MPC clásico, con bleed, duplex…). Ajusta encima si hace falta.</li>
-            <li>Revisa el <b class="text-fg">preview</b> con scroll — cada hoja se pinta
-                como saldrá impresa. Los márgenes azules se pueden activar en la barra superior.</li>
-            <li>Si algo se sale de la hoja, retoca <b class="text-fg">Posicionamiento avanzado</b>
-                (offset X/Y) hasta cuadrar con tu impresora.</li>
-            <li>Pulsa <b class="text-fg">Generar PDF</b>. El fichero queda listo para descargar
-                y para enviar a la imprenta (MPC / MakePlayingCards, Silhouette, etc.) o a tu propia impresora.</li>
-            <li>Si quieres las imágenes sueltas (para MPC-Autofill p.ej.), usa <b class="text-fg">Export ZIP</b>.</li>
+            <li>{{ t.pdfg_flow_1 | safe }}</li>
+            <li>{{ t.pdfg_flow_2 | safe }}</li>
+            <li>{{ t.pdfg_flow_3 | safe }}</li>
+            <li>{{ t.pdfg_flow_4 | safe }}</li>
+            <li>{{ t.pdfg_flow_5 | safe }}</li>
           </ol>
         </section>
 
         <section id="guide-section-page">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="layout-grid" class="w-4 h-4 text-accent"></i>Página & grid
+            <i data-lucide="layout-grid" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_page }}
           </h3>
           <dl class="space-y-2 text-[13px]">
             <div>
               <dt class="font-medium text-fg">{{ t.pdf_size_label }}</dt>
-              <dd class="text-fg-muted">A4 (210×297 mm) es el estándar europeo. Letter (216×279 mm) para EE. UU. A3 permite 4×3 = 12 cartas por hoja.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_page_size | safe }}</dd>
             </div>
             <div>
               <dt class="font-medium text-fg">{{ t.pdf_orientation_label }}</dt>
-              <dd class="text-fg-muted">Portrait cabe 3×3 cartas MTG en A4 (default MPC). Landscape solo interesa en A3 o para layouts irregulares.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_page_orientation | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Columnas / Filas</dt>
-              <dd class="text-fg-muted">Cartas por hoja. Pon <code>0</code> para que se autocalcule según el tamaño de la página. El default 3×3 es el layout clásico MPC.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_page_grid_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_page_grid | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-pos">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="move" class="w-4 h-4 text-accent"></i>Posicionamiento avanzado
+            <i data-lucide="move" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_pos }}
           </h3>
           <dl class="space-y-2 text-[13px]">
             <div>
               <dt class="font-medium text-fg">Gap X / Gap Y (mm)</dt>
-              <dd class="text-fg-muted">Separación entre cartas. Útil para <b>Silhouette / Cricut</b> (necesita hueco para el sensor de corte) o para dejar mordida a la guillotina.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_pos_gap | safe }}</dd>
             </div>
             <div>
               <dt class="font-medium text-fg">Offset X / Y (mm)</dt>
-              <dd class="text-fg-muted">Mueve TODA la rejilla. Positivo Y = arriba, positivo X = derecha. Sirve para compensar impresoras que sesgan el papel.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_pos_offset | safe }}</dd>
             </div>
             <div>
               <dt class="font-medium text-fg">Back offset X / Y</dt>
-              <dd class="text-fg-muted">Delta EXTRA que se suma solo a las hojas de reversos. En duplex, muchas impresoras desvían 1–2 mm al voltear el papel — se corrige aquí.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_pos_back | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-bleed">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="square-dashed" class="w-4 h-4 text-accent"></i>Bleed
+            <i data-lucide="square-dashed" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_bleed }}
           </h3>
-          <p class="text-fg-muted text-[13px]">
-            Amplía la imagen fuera del área visible para que la guillotina no deje
-            margen blanco si se desvía. <b>MPC pide 1.875 mm</b>. Para impresión
-            casera con corte manual normalmente <b>no</b> hace falta activarlo.
-          </p>
+          <p class="text-fg-muted text-[13px]">{{ t.pdfg_bleed | safe }}</p>
         </section>
 
         <section id="guide-section-cguides">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="scissors" class="w-4 h-4 text-accent"></i>Guías por carta
+            <i data-lucide="scissors" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_cguides }}
           </h3>
-          <p class="text-fg-muted text-[13px] mb-2">
-            Marcas que aparecen alrededor de <b>cada</b> carta para saber dónde cortar.
-          </p>
+          <p class="text-fg-muted text-[13px] mb-2">{{ t.pdfg_cguides_intro | safe }}</p>
           <dl class="space-y-2 text-[13px]">
             <div>
-              <dt class="font-medium text-fg">Estilo: corners / full</dt>
-              <dd class="text-fg-muted"><b>Corners</b> = 4 marquitas en cada esquina (menos tinta, más limpio). <b>Full</b> = rectángulo completo alrededor de la carta.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_cguides_style_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_cguides_style | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Shape: square / round</dt>
-              <dd class="text-fg-muted"><b>Square</b> = líneas rectas. <b>Round</b> = arcos siguiendo el redondeo natural de una carta MTG (~3 mm de radio).</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_cguides_shape_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_cguides_shape | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Pattern: solid / dashed / dotted</dt>
-              <dd class="text-fg-muted">Estilo del trazo. Dashed y dotted gastan menos tinta y a veces cortan más fino con guillotina.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_cguides_pattern_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_cguides_pattern | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Placement: outside / middle / inside</dt>
-              <dd class="text-fg-muted">
-                <b>Outside</b>: mark is OUTSIDE the visible area — does not bleed onto the art.
-                <b>Middle</b>: centered on the edge.
-                <b>Inside</b>: inside the area — visible on the cut card, only useful for ink tests.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_cguides_place_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_cguides_place | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Largo / color / grosor</dt>
-              <dd class="text-fg-muted">Ajustes visuales. Gris #606060 y 0.4 pt es lo estándar — invisible tras cortar, visible mientras cortas.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_cguides_look_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_cguides_look | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-pguides">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="grid-3x3" class="w-4 h-4 text-accent"></i>Guías de página
+            <i data-lucide="grid-3x3" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_pguides }}
           </h3>
-          <p class="text-fg-muted text-[13px]">
-            Líneas que <b>atraviesan toda la hoja</b> (no solo alrededor de cada carta). Útiles para guillotina larga.
-          </p>
+          <p class="text-fg-muted text-[13px]">{{ t.pdfg_pguides_intro | safe }}</p>
           <dl class="space-y-2 mt-2 text-[13px]">
             <div>
-              <dt class="font-medium text-fg">None</dt>
-              <dd class="text-fg-muted">Ninguna línea de página (default).</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_pguides_none_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_pguides_none | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Full lines</dt>
-              <dd class="text-fg-muted">Líneas continuas de borde a borde. Máxima ayuda para alinear la guillotina, pero atraviesan las cartas.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_pguides_full_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_pguides_full | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Corners only</dt>
-              <dd class="text-fg-muted">Solo tramos cortos en los márgenes de la página (fuera de la rejilla). Guía para la guillotina sin ensuciar el interior.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_pguides_corners_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_pguides_corners | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-duplex">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="eye-off" class="w-4 h-4 text-accent"></i>Ocultar en duplex
+            <i data-lucide="eye-off" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_duplex }}
           </h3>
-          <p class="text-fg-muted text-[13px]">
-            Para impresión a doble cara, a veces conviene que las guías salgan solo
-            en el frente (para cortar) y NO en el reverso (para no verlas si el
-            papel es fino). Los toggles ocultan cada tipo de guía por cara.
-          </p>
+          <p class="text-fg-muted text-[13px]">{{ t.pdfg_duplex | safe }}</p>
         </section>
 
         <section id="guide-section-regmarks">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="crosshair" class="w-4 h-4 text-accent"></i>Marcas de registro
+            <i data-lucide="crosshair" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_regmarks }}
           </h3>
-          <p class="text-fg-muted text-[13px]">
-            Cuadrados negros en 3 esquinas (TL, TR, BL) que las cortadoras
-            <b>Silhouette Cameo</b>, <b>Cricut</b> y similares leen con su sensor
-            óptico para hacer corte por contorno. <b>Inset</b> = distancia al borde
-            de la hoja; <b>size</b> = tamaño del cuadrado. Solo activar si tienes
-            una cortadora automática — para guillotina no sirve de nada.
-          </p>
+          <p class="text-fg-muted text-[13px]">{{ t.pdfg_regmarks | safe }}</p>
         </section>
 
         <section id="guide-section-backs">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="rotate-3d" class="w-4 h-4 text-accent"></i>Reversos
+            <i data-lucide="rotate-3d" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_backs }}
           </h3>
           <dl class="space-y-2 text-[13px]">
             <div>
-              <dt class="font-medium text-fg">Contenido: Todas las cartas / Solo DFC</dt>
-              <dd class="text-fg-muted">
-                <b>Todas</b>: cada slot lleva reverso — las DFC/MDFC usan su cara B,
-                el resto usan el cardback estándar (o el que hayas puesto en este mazo).
-                <b>Solo DFC</b>: solo lleva reverso las transform / MDFC / meld; el
-                resto se queda con hueco.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_backs_content_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_backs_content | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Layout: Al final (append) / Duplex</dt>
-              <dd class="text-fg-muted">
-                <b>Al final</b>: todas las hojas de fronts primero, luego las de reversos.
-                Ideal para impresión a UNA cara + guillotina.
-                <b>Duplex</b>: intercalado front/back con espejo horizontal para imprimir a doble cara con flip por lado largo.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_backs_layout_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_backs_layout | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Rellenar huecos de la última hoja</dt>
-              <dd class="text-fg-muted">
-                Solo en modo <i>Al final</i>. Si la última hoja de fronts tiene slots
-                libres (p.ej. 60 cartas ÷ 9 por hoja = 6 sobra 6, y la última hoja
-                tendría 6 cartas y 3 huecos), los rellena con los 3 primeros reversos
-                before starting a new sheet. <b>Saves paper</b> — enable if you are
-                cortar carta a carta.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_backs_fill_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_backs_fill | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Cardback global del mazo</dt>
-              <dd class="text-fg-muted">
-                Puedes asignar un cardback personalizado a este mazo (independiente
-                del cardback global del sistema). Se aplica a todas las cartas no-DFC.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_backs_deck_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_backs_deck | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-range">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="list-ordered" class="w-4 h-4 text-accent"></i>Rango & pie
+            <i data-lucide="list-ordered" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_range }}
           </h3>
           <dl class="space-y-2 text-[13px]">
             <div>
-              <dt class="font-medium text-fg">Rango de páginas</dt>
-              <dd class="text-fg-muted">
-                Sintaxis <code>1-3,5,7-9</code>. Vacío = todas.
-                Útil para reimprimir solo la hoja que se estropeó, sin regenerar todo.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_range_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_range | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Pie con nº de página</dt>
-              <dd class="text-fg-muted">
-                Añade una línea gris chiquitita al pie con "MPC Forge · Fronts · hoja 1/6 · grid 3×3".
-                Solo se ve en el margen — no invade las cartas.
-              </dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_footer_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_footer | safe }}</dd>
             </div>
           </dl>
         </section>
 
         <section id="guide-section-click">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="mouse-pointer-click" class="w-4 h-4 text-accent"></i>Click en el preview
+            <i data-lucide="mouse-pointer-click" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_click }}
           </h3>
-          <p class="text-fg-muted text-[13px]">
-            Cada carta del preview es <b>clickable</b>: al pulsar sobre una
-            se abre un mini selector con todas sus impresiones para poder
-            cambiar el arte sin salir del Studio. Doble click sobre un arte
-            oficial de Scryfall lo <b>recuerda globalmente</b> (esa carta
-            usará esa impresión en todos tus mazos).
-          </p>
-          <p class="text-fg-muted text-[13px] mt-2">
-            Click sobre un cardback abre el picker del cardback del mazo.
-            Si necesitas búsqueda avanzada (Google Drives, URLs, filtros por
-            artist/rarity), use the <b>Full editor</b> button in the mini
-            picker — abre el editor de mazos en una pestaña nueva.
-          </p>
+          <p class="text-fg-muted text-[13px]">{{ t.pdfg_click_1 | safe }}</p>
+          <p class="text-fg-muted text-[13px] mt-2">{{ t.pdfg_click_2 | safe }}</p>
         </section>
 
         <section id="guide-section-presets">
           <h3 class="font-semibold text-fg mb-2 flex items-center gap-2">
-            <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i>Presets
+            <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i>{{ t.pdfg_toc_presets }}
           </h3>
           <dl class="space-y-2 text-[13px]">
             <div>
-              <dt class="font-medium text-fg">MPC clásico</dt>
-              <dd class="text-fg-muted">3×3 sin bleed, guías por carta en esquinas. Impresión casera o pre-MPC.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_preset_classic_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_preset_classic | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Con bleed MPC</dt>
-              <dd class="text-fg-muted">Mismo layout con 1.875 mm de bleed — es lo que pide MakePlayingCards.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_preset_bleed_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_preset_bleed | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Duplex DFC</dt>
-              <dd class="text-fg-muted">Cada hoja de fronts + su hoja espejo de reversos SOLO para DFC. El resto se imprime sin reverso.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_preset_duplex_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_preset_duplex | safe }}</dd>
             </div>
             <div>
-              <dt class="font-medium text-fg">Duplex all-backs</dt>
-              <dd class="text-fg-muted">Igual pero con cardback estándar en las cartas no-DFC. Todo listo para plegar.</dd>
+              <dt class="font-medium text-fg">{{ t.pdfg_preset_allbacks_title }}</dt>
+              <dd class="text-fg-muted">{{ t.pdfg_preset_allbacks | safe }}</dd>
             </div>
             <div>
               <dt class="font-medium text-fg">Silhouette</dt>
-              <dd class="text-fg-muted">Añade gap de 3 mm entre cartas + marcas de registro para corte automático con Silhouette / Cricut.</dd>
+              <dd class="text-fg-muted">{{ t.pdfg_preset_silhouette | safe }}</dd>
             </div>
           </dl>
-          <p class="text-fg-faint text-[11px] mt-3">
-            Cambiar un preset <b>sobreescribe</b> tus ajustes actuales de esas opciones.
-            Los que no toca el preset se conservan.
-          </p>
+          <p class="text-fg-faint text-[11px] mt-3">{{ t.pdfg_presets_note | safe }}</p>
         </section>
 
       </div>
@@ -323,7 +259,7 @@
       <button @click="closeGuide()"
               class="px-4 py-1.5 rounded text-sm border border-border-subtle
                      hover:bg-bg-subtle transition">
-        Cerrar
+        {{ t.common_close }}
       </button>
     </div>
   </div>

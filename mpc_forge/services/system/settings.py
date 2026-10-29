@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mpc_forge import config as cfg
 from mpc_forge import ssl_config
 from mpc_forge.models import KeyValue
+from mpc_forge.services.system import i18n
 
 log = logging.getLogger(__name__)
 
@@ -432,17 +433,34 @@ def apply_to_config(values: dict[str, Any]) -> None:
         )
 
 
-def definitions_dump() -> list[dict[str, Any]]:
+GROUP_SECTIONS: dict[str, str] = {
+    "General": "general",
+    "Precios y envío": "prices",
+    "Red y conexión": "network",
+    "MPC Autofill": "autofill",
+    "Datos de cartas": "offline",
+    "Ubicación de datos": "backup",
+    "Búsqueda avanzada": "general",
+}
+
+
+def _translation_key(sd: SettingDef, field: str) -> str:
+    return f"setting_{sd.key.replace('.', '_')}_{field}"
+
+
+def definitions_dump(lang: str = i18n.BASE_LANG) -> list[dict[str, Any]]:
+    t = i18n.get_translations(lang)
     out = []
     for sd in DEFINITIONS:
         out.append(
             {
                 "key": sd.key,
-                "label": sd.label,
+                "label": t.get(_translation_key(sd, "label"), sd.label),
                 "type": sd.type,
                 "group": sd.group,
+                "section": GROUP_SECTIONS.get(sd.group, "general"),
                 "default": sd.default,
-                "description": sd.description,
+                "description": t.get(_translation_key(sd, "desc"), sd.description),
                 "min_value": sd.min_value,
                 "max_value": sd.max_value,
                 "choices": sd.choices,

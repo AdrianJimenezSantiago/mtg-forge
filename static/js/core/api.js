@@ -95,7 +95,7 @@ async function request(method, path, options = {}) {
 
         lastError = err instanceof ApiError
           ? err
-          : new ApiError(0, err.message || 'Error de red', url)
+          : new ApiError(0, err.message || (window._t || ((k) => k))('js_error_network'), url)
 
         if (attempt < retries && lastError.isRetryable) {
           const delay = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)]

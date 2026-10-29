@@ -192,10 +192,10 @@
                       <span class="text-accent/80">· <span x-text="inst.printing_lang"></span></span>
                     </template>
                     <template x-if="inst.has_custom_art">
-                      <span class="text-accent">· custom</span>
+                      <span class="text-accent">· {{ t.deck_custom_short }}</span>
                     </template>
                     <template x-if="!inst.include">
-                      <span class="text-warning">· excluida</span>
+                      <span class="text-warning">· {{ t.sidebar_excluded }}</span>
                     </template>
                   </div>
                 </div>

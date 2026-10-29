@@ -39,7 +39,7 @@
         <span class="text-fg font-medium" x-text="totalSlots"></span> {{ t.proof_slots }}
       </span>
       <template x-if="deck && deck.validation">
-        <span x-text="deck.validation.message"
+        <span x-text="window.deckValidationMessage(deck.validation)"
               :class="{
                 'text-green-400': deck.validation.level === 'ok',
                 'text-amber-400': deck.validation.level === 'warn',

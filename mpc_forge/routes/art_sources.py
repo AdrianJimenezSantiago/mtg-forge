@@ -4,12 +4,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from mpc_forge import config as cfg
 from mpc_forge.db import session_scope
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.middleware import USER_CONTENT_SECURITY_POLICY
 from mpc_forge.models import ArtSource
 from mpc_forge.routes.dependencies import DbDep
@@ -89,7 +90,7 @@ async def create_art_source(payload: CreateArtSourceRequest, db: DbDep) -> ArtSo
             pinned=payload.pinned,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "invalid_source") from e
     return ArtSourceView.from_model(src)
 
 
@@ -109,7 +110,7 @@ async def update_art_source(
         pinned=payload.pinned,
     )
     if not src:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Source no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "source_not_found")
     return ArtSourceView.from_model(src)
 
 
@@ -117,7 +118,7 @@ async def update_art_source(
 async def delete_art_source(source_id: int, db: DbDep) -> None:
     ok = await art_sources.delete_source(db, source_id)
     if not ok:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Source no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "source_not_found")
 
 
 class RestoreCatalogResponse(BaseModel):
@@ -290,12 +291,12 @@ async def serve_local_source_file(
 ) -> FileResponse:
     source = await db.get(ArtSource, source_id)
     if not source or source.source_type != "local-folder":
-        raise HTTPException(404, "Source no encontrado o no es de tipo local-folder")
+        raise ApiError(404, "local_source_not_found")
 
     try:
         path = LocalFolderSourceType.resolve_path(source, file_id)
     except ArtSourceTypeError as e:
-        raise HTTPException(400, str(e)) from e
+        raise from_exception(400, e, "invalid_path") from e
     if path.suffix.lower() not in IMAGE_EXTENSIONS:
-        raise HTTPException(404, "Fichero no encontrado")
+        raise ApiError(404, "file_not_found")
     return FileResponse(path, headers={"Content-Security-Policy": USER_CONTENT_SECURITY_POLICY})

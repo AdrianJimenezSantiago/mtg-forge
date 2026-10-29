@@ -6,13 +6,13 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import (
-    HTTPException,
     Response,
     status,
 )
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.models import (
     Deck,
     DeckActivity,
@@ -144,7 +144,7 @@ async def list_activity(
 ) -> list[ActivityEntry]:
     deck = await db.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     kinds_list = [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
     limit = max(1, min(limit, 2000))
@@ -184,16 +184,16 @@ class UndoResponse(BaseModel):
 async def undo_event_endpoint(deck_id: int, event_id: int, db: DbDep) -> UndoResponse:
     event = await db.get(DeckActivity, event_id)
     if not event or event.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Evento no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "event_not_found")
 
     ok, reason = await undo_svc.can_undo(event)
     if not ok:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, reason)
+        raise ApiError(status.HTTP_400_BAD_REQUEST, reason)
 
     try:
         result = await undo_svc.undo_event(db, event)
     except undo_svc.UndoNotSupported as e:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+        raise from_exception(status.HTTP_409_CONFLICT, e, "undo_conflict") from e
 
     return UndoResponse(ok=True, summary=result["summary"], deck_id=deck_id)
 

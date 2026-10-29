@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.models import CustomArt
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.schemas import AddCustomArtFromUrlRequest, RescanResult
@@ -33,9 +34,9 @@ async def add_from_url(payload: AddCustomArtFromUrlRequest, db: DbDep) -> dict[s
             variant=payload.variant,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "invalid_image_url") from e
     except Exception as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Error descargando: {e}") from e
+        raise ApiError(status.HTTP_502_BAD_GATEWAY, "download_failed", reason=str(e)) from e
     return {
         "id": art.id,
         "filename": art.filename,
@@ -145,7 +146,7 @@ async def list_custom_arts(db: DbDep, card_name: str | None = None) -> list[Cust
 async def delete_custom_art(custom_art_id: int, db: DbDep) -> None:
     ca = await db.get(CustomArt, custom_art_id)
     if not ca:
-        raise HTTPException(status.HTTP_404_NOT_FOUND)
+        raise ApiError(status.HTTP_404_NOT_FOUND, "custom_art_not_found")
     if custom_art_service.is_linked(ca):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -223,5 +224,5 @@ async def link_folder(payload: LinkFolderRequest, db: DbDep) -> LinkedFolderView
 async def unlink_folder(folder_id: int, db: DbDep) -> UnlinkFolderResult:
     removed = await custom_art_folders.remove_folder(db, folder_id)
     if removed is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carpeta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "folder_not_found")
     return UnlinkFolderResult(removed_images=removed)

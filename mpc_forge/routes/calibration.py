@@ -4,10 +4,11 @@ import asyncio
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError
 from mpc_forge.services.printing import calibration
 
 log = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ async def calibration_sheet(
     flip_edge: Literal["long", "short"] = "long",
 ) -> FileResponse:
     if page_size.lower() not in ("a4", "letter"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unsupported_page_size")
     path = await asyncio.to_thread(
         calibration.build_sheet, None, page_size=page_size, flip_edge=flip_edge
     )
@@ -77,7 +78,7 @@ async def scale_sheet(
     scale_y_pct: float = Query(100.0),
 ) -> FileResponse:
     if page_size.lower() not in ("a4", "letter"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tamaño de página no soportado")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unsupported_page_size")
     path = await asyncio.to_thread(
         calibration.build_scale_sheet,
         None,

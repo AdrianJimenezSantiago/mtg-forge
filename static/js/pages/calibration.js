@@ -42,7 +42,7 @@ function calibrationWizard() {
         })
         this.goTo(3)
       } catch (e) {
-        this.error = e.detail || e.message || 'No se pudo calcular la corrección'
+        this.error = e.detail || e.message || window._t('js_error_calibration')
       } finally {
         this.loading = false
       }
@@ -140,7 +140,7 @@ function scaleCalibration() {
         })
         this.$nextTick(() => window.icons?.())
       } catch (e) {
-        this.error = e.detail || e.message || 'No se pudo calcular la escala'
+        this.error = e.detail || e.message || window._t('js_error_scale')
       } finally {
         this.loading = false
       }

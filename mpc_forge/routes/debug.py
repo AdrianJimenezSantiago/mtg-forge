@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
+from mpc_forge.errors import ApiError
 from mpc_forge.services.system import logging_setup
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
@@ -39,7 +40,7 @@ async def log_tail(n: int = 200) -> str:
 async def log_download() -> FileResponse:
     p = logging_setup.current_log_path()
     if p is None or not p.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay log activo")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "no_active_log")
     ts = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     filename = f"mpc-forge-{ts}.log"
     return FileResponse(

@@ -9,11 +9,12 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import Scope
 
 from mpc_forge import __version__
 from mpc_forge import config as cfg
+from mpc_forge.errors import localize_detail
 from mpc_forge.lifespan import lifespan, preload_path_overrides
 from mpc_forge.middleware import (
     DEFAULT_ALLOWED_HOSTS,
@@ -24,6 +25,7 @@ from mpc_forge.middleware import (
 from mpc_forge.paths import static_dir
 from mpc_forge.routes import ROUTERS, ui
 from mpc_forge.services.art import custom_art
+from mpc_forge.services.system.i18n import detect_lang
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,6 +100,12 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
     assert isinstance(exc, StarletteHTTPException)
     if exc.status_code == 404 and _wants_html_page(request):
         return ui.render_not_found(request)
+    if isinstance(exc.detail, dict):
+        return JSONResponse(
+            {"detail": localize_detail(exc.detail, detect_lang(request))},
+            status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+        )
     return await http_exception_handler(request, exc)
 
 

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Request, status
 from pydantic import BaseModel
 
 from mpc_forge import config as cfg
+from mpc_forge.errors import from_exception
 from mpc_forge.paths import install_root
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.system import settings as settings_service
+from mpc_forge.services.system.i18n import detect_lang
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -35,10 +37,10 @@ class PathsResponse(BaseModel):
 
 
 @router.get("/", response_model=SettingsResponse)
-async def get_settings(db: DbDep) -> SettingsResponse:
+async def get_settings(request: Request, db: DbDep) -> SettingsResponse:
     values, secrets_set = settings_service.redact_values(await settings_service.get_all(db))
     return SettingsResponse(
-        definitions=settings_service.definitions_dump(),
+        definitions=settings_service.definitions_dump(detect_lang(request)),
         values=values,
         secrets_set=secrets_set,
     )
@@ -59,14 +61,16 @@ async def get_paths() -> PathsResponse:
 
 
 @router.put("/", response_model=SettingsResponse)
-async def update_settings(payload: UpdateSettingsRequest, db: DbDep) -> SettingsResponse:
+async def update_settings(
+    request: Request, payload: UpdateSettingsRequest, db: DbDep
+) -> SettingsResponse:
     try:
         updated = await settings_service.set_many(db, payload.values)
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "invalid_setting") from e
     values, secrets_set = settings_service.redact_values(updated)
     return SettingsResponse(
-        definitions=settings_service.definitions_dump(),
+        definitions=settings_service.definitions_dump(detect_lang(request)),
         values=values,
         secrets_set=secrets_set,
     )

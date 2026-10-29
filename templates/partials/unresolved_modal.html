@@ -37,9 +37,9 @@
                     <div class="text-sm font-mono text-fg break-words"
                          x-text="entry.raw_line || (entry.quantity + ' ' + entry.name)"></div>
                     <div class="text-[11px] text-fg-faint mt-0.5 flex items-center gap-2 flex-wrap">
-                      <span x-show="entry.set">Set: <span class="font-mono uppercase" x-text="entry.set"></span></span>
-                      <span x-show="entry.number">Nº: <span class="font-mono" x-text="entry.number"></span></span>
-                      <span x-show="entry.role && entry.role !== 'mainboard'">Role: <span x-text="entry.role"></span></span>
+                      <span x-show="entry.set">{{ t.unresolved_set }} <span class="font-mono uppercase" x-text="entry.set"></span></span>
+                      <span x-show="entry.number">{{ t.unresolved_number }} <span class="font-mono" x-text="entry.number"></span></span>
+                      <span x-show="entry.role && entry.role !== 'mainboard'">{{ t.unresolved_role }} <span x-text="window._T['deck_role_' + entry.role] || entry.role"></span></span>
                     </div>
                     <div x-show="entry.suggestions && entry.suggestions.length"
                          class="mt-1.5 flex items-center gap-1.5 flex-wrap">

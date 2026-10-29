@@ -4,10 +4,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel
 
 from mpc_forge import config as cfg
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.services.printing import mpc_autofill
 
 log = logging.getLogger(__name__)
@@ -51,13 +52,13 @@ async def autofill_launch(payload: AutofillLaunchRequest) -> dict[str, Any]:
     try:
         xml_path.relative_to(exports_dir)
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ruta inválida") from None
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_path") from None
 
     if not xml_path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"XML no encontrado: {payload.xml_filename}")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "xml_not_found", filename=payload.xml_filename)
 
     try:
         pid = mpc_autofill.launch(xml_path)
     except RuntimeError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "autofill_launch_failed") from e
     return {"launched": True, "pid": pid, "xml_path": str(xml_path)}

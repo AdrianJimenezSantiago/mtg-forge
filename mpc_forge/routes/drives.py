@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.models import ArtSource, KeyValue
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
 from mpc_forge.services.cards import canonical
@@ -41,11 +42,7 @@ async def index_batch(payload: IndexBatchRequest, db: DbDep) -> IndexBatchRespon
     queue = get_index_queue()
 
     if queue.is_running():
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Ya hay un indexado en curso. Espera a que termine o cancélalo "
-            "con POST /drives/index-cancel.",
-        )
+        raise ApiError(status.HTTP_409_CONFLICT, "indexing_in_progress")
 
     found = {
         src.id: src
@@ -219,19 +216,13 @@ async def drives_stats(db: DbDep) -> DriveStatsResponse:
 async def rebuild_fts5(db: DbDep) -> dict[str, Any]:
     kv = await db.get(KeyValue, "fts5_available")
     if not kv or kv.value != "1":
-        raise HTTPException(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            "FTS5 no disponible en esta build de SQLite",
-        )
+        raise ApiError(status.HTTP_501_NOT_IMPLEMENTED, "fts5_unavailable")
     try:
         await db.execute(text("INSERT INTO indexed_art_fts(indexed_art_fts) VALUES ('rebuild')"))
         await db.commit()
     except Exception as e:
         log.exception("Rebuild FTS5 falló")
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            f"Rebuild FTS5 falló: {e}",
-        ) from e
+        raise from_exception(status.HTTP_500_INTERNAL_SERVER_ERROR, e, "fts5_rebuild_failed") from e
     return {"status": "ok", "message": "FTS5 rebuild completo"}
 
 

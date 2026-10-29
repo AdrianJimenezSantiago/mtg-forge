@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import HTTPException, status
+from fastapi import status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from mpc_forge import config as cfg
 from mpc_forge.config import DEFAULT_CARDSTOCK
+from mpc_forge.errors import ApiError
 from mpc_forge.models import DeckCard
 from mpc_forge.routes.dependencies import ArtCacheDep, DbDep, ScryfallDep
 from mpc_forge.routes.export._shared import (
@@ -223,11 +224,11 @@ async def build_split_xml_endpoint(
 
     resolved = await resolve_deck_for_xml(db, scryfall, art_cache, deck)
     if not resolved:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mazo sin cartas resueltas")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "deck_without_resolved_cards")
 
     plan = split_into_runs(resolved, max_tier=payload.max_tier)
     if not plan.runs:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El split no produjo runs")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "split_no_runs")
 
     cardstock = payload.cardstock or DEFAULT_CARDSTOCK
     cardback = await resolve_deck_cardback(db, deck)

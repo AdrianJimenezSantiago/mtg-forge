@@ -410,7 +410,9 @@ class TestStorage:
         assert (await client.get("/api/storage/?refresh=true")).json()["cached"] is False
 
         r = await client.post("/api/storage/purge", json={"targets": ["database"]})
-        assert r.status_code == 400 and "database" in r.json()["detail"]
+        detail = r.json()["detail"]
+        assert r.status_code == 400 and detail["code"] == "purge_failed"
+        assert "database" in detail["message"]
         assert (await client.post("/api/storage/purge", json={"targets": []})).status_code == 400
 
         body = (await client.post("/api/storage/purge", json={"targets": ["thumbs"]})).json()

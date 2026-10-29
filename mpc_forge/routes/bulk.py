@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel
 
+from mpc_forge.errors import ApiError
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.cards import bulk_data
 
@@ -40,7 +41,7 @@ async def status_endpoint(db: DbDep) -> BulkStatusResponse:
 @router.get("/check", response_model=BulkCheckResponse)
 async def check_endpoint(db: DbDep, kind: str = bulk_data.DEFAULT_KIND) -> BulkCheckResponse:
     if kind not in bulk_data.BULK_KINDS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Volcado desconocido: {kind}")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unknown_bulk_kind", kind=kind)
     needed, reason = await bulk_data.needs_sync(db, kind)
     return BulkCheckResponse(needs_sync=needed, reason=reason)
 
@@ -48,13 +49,15 @@ async def check_endpoint(db: DbDep, kind: str = bulk_data.DEFAULT_KIND) -> BulkC
 @router.post("/sync", response_model=BulkStartResponse)
 async def start_sync(kind: str = bulk_data.DEFAULT_KIND, force: bool = False) -> BulkStartResponse:
     if kind not in bulk_data.BULK_KINDS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Volcado desconocido: {kind}")
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "unknown_bulk_kind", kind=kind)
 
     if bulk_data.is_running():
         current = bulk_data.get_progress()
-        raise HTTPException(
+        raise ApiError(
             status.HTTP_409_CONFLICT,
-            f"Ya hay una importación en curso ({current['kind']}, {current['percent']}%)",
+            "bulk_in_progress",
+            kind=current["kind"],
+            percent=current["percent"],
         )
     bulk_data.start(kind, force=force)
 

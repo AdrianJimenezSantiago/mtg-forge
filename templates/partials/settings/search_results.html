@@ -15,9 +15,9 @@
     <template x-for="def in searchResults" :key="def.key">
       <div class="bg-bg-elevated border border-border-subtle rounded-xl p-5 shadow-card">
         <div class="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-fg-faint mb-2">
-          <button @click="selectSection(sectionKeyForGroup(def.group))"
+          <button @click="selectSection(def.section || 'general')"
                   class="hover:text-accent transition flex items-center gap-1">
-            <i :data-lucide="iconForGroup(def.group)" class="w-3 h-3"></i>
+            <i :data-lucide="iconForSection(def.section)" class="w-3 h-3"></i>
             <span x-text="def.group"></span>
           </button>
         </div>
@@ -27,7 +27,7 @@
             <div class="text-xs text-fg-muted mt-0.5" x-text="def.description"></div>
             <template x-if="!isDefault(def)">
               <div class="text-[11px] text-accent/80 mt-1">
-                ≠ default (<span x-text="String(def.default)"></span>)
+                ≠ {{ t.settings_default_value }} (<span x-text="String(def.default)"></span>)
               </div>
             </template>
           </div>

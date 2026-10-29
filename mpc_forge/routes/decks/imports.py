@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 
 from fastapi import (
-    HTTPException,
     status,
 )
 
 from mpc_forge.clients.import_sites import list_supported_sites
 from mpc_forge.clients.import_sites.base import ImportSiteError
 from mpc_forge.clients.moxfield import MoxfieldError
+from mpc_forge.errors import from_exception
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.decks._views import _deck_to_view
 from mpc_forge.routes.dependencies import DbDep, MoxfieldDep, ScryfallDep
@@ -46,7 +46,7 @@ async def import_moxfield(
             include_extras=payload.include_extras,
         )
     except MoxfieldError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+        raise from_exception(status.HTTP_502_BAD_GATEWAY, e, "import_failed") from e
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)
     await deck_activity.log_event(
@@ -129,9 +129,9 @@ async def import_url(
             include_extras=payload.include_extras,
         )
     except ValueError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "unsupported_url") from e
     except ImportSiteError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
+        raise from_exception(status.HTTP_502_BAD_GATEWAY, e, "import_failed") from e
 
     view = await _deck_to_view(db, deck)
     resolved_count = sum(c.quantity for c in view.cards)

@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.decks import snapshots
 
@@ -29,7 +30,7 @@ async def create_snapshot(
 ) -> dict[str, Any]:
     snapshot = await snapshots.create(db, deck_id, label=payload.label)
     if snapshot is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
     return snapshot
 
 
@@ -37,7 +38,7 @@ async def create_snapshot(
 async def restore_snapshot(snapshot_id: int, db: DbDep) -> dict[str, Any]:
     result = await snapshots.restore(db, snapshot_id)
     if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "snapshot_not_found")
     return result
 
 
@@ -45,11 +46,11 @@ async def restore_snapshot(snapshot_id: int, db: DbDep) -> dict[str, Any]:
 async def diff_snapshot(snapshot_id: int, db: DbDep, against: int | None = None) -> dict[str, Any]:
     result = await snapshots.diff(db, snapshot_id, against)
     if result is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "snapshot_not_found")
     return result
 
 
 @router.delete("/api/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_snapshot(snapshot_id: int, db: DbDep) -> None:
     if not await snapshots.delete_snapshot(db, snapshot_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "snapshot_not_found")

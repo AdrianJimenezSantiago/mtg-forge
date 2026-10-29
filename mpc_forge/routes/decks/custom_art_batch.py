@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field
 
+from mpc_forge.errors import ApiError
 from mpc_forge.models import CustomArtFolder
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep
@@ -90,7 +91,7 @@ class ApplyResultView(BaseModel):
 
 
 def _not_found() -> HTTPException:
-    return HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+    return ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
 
 @router.post("/{deck_id}/custom-art/plan", response_model=PlanView)
@@ -100,7 +101,7 @@ async def plan_from_library(deck_id: int, payload: LibraryPlanRequest, db: DbDep
     art_ids = payload.art_ids
     if payload.folder_id is not None:
         if await db.get(CustomArtFolder, payload.folder_id) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Carpeta no encontrada")
+            raise ApiError(status.HTTP_404_NOT_FOUND, "folder_not_found")
         art_ids = await custom_art_folders.folder_art_ids(db, payload.folder_id)
     try:
         plan = await batch.plan_from_library(

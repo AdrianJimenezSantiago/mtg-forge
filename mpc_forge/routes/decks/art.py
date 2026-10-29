@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 from fastapi import (
     Depends,
-    HTTPException,
     Query,
     status,
 )
@@ -16,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mpc_forge.db import get_session
+from mpc_forge.errors import ApiError
 from mpc_forge.models import (
     ArtPreference,
     CustomArt,
@@ -92,12 +92,14 @@ async def list_printings_for_card(
 ) -> ArtOptionsPage:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
 
     if sort not in _SORT_KEYS:
-        raise HTTPException(
+        raise ApiError(
             status.HTTP_400_BAD_REQUEST,
-            f"sort invalido: {sort!r}. Validos: {', '.join(sorted(_SORT_KEYS))}",
+            "invalid_sort",
+            sort=sort,
+            valid=", ".join(sorted(_SORT_KEYS)),
         )
 
     custom_options: list[ArtOption] = []
@@ -177,9 +179,8 @@ async def list_printings_for_card(
     if wanted:
         unknown = wanted - _FACET_PREDICATES.keys()
         if unknown:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                f"Facetas desconocidas: {', '.join(sorted(unknown))}",
+            raise ApiError(
+                status.HTTP_400_BAD_REQUEST, "unknown_facets", facets=", ".join(sorted(unknown))
             )
         options = [o for o in options if all(_FACET_PREDICATES[w](o) for w in wanted)]
 
@@ -242,7 +243,7 @@ async def change_art(
 ) -> DeckCardView:
     dc = await db.get(DeckCard, payload.deck_card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
 
     old_sfid = dc.scryfall_id
     old_custom_front = dc.custom_art_front_id
@@ -254,7 +255,7 @@ async def change_art(
     if payload.custom_art_id is not None:
         ca = await db.get(CustomArt, payload.custom_art_id)
         if not ca:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "custom_art_id inválido")
+            raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_custom_art_id")
         if payload.face == "back":
             dc.custom_art_back_id = ca.id
         else:
@@ -264,7 +265,7 @@ async def change_art(
         if not printing:
             raw = await scryfall.by_id(payload.scryfall_id)
             if not raw:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "scryfall_id inválido")
+                raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_scryfall_id")
             await printings.upsert_printing(db, raw)
         if payload.face == "back":
             dc.custom_art_back_id = None
@@ -278,9 +279,7 @@ async def change_art(
                 else:
                     db.add(ArtPreference(oracle_id=dc.oracle_id, scryfall_id=payload.scryfall_id))
     else:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Debe indicarse scryfall_id o custom_art_id"
-        )
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "art_choice_required")
 
     new_printing = await db.get(PrintingCache, dc.scryfall_id) if dc.scryfall_id else None
     activity_payload: dict[str, Any] = {
@@ -331,7 +330,7 @@ async def change_art(
 async def toggle_include(deck_id: int, card_id: int, db: DbDep) -> DeckCardView:
     dc = await db.get(DeckCard, card_id)
     if not dc or dc.deck_id != deck_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Carta no encontrada")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "card_not_found")
     dc.include = not dc.include
     await deck_activity.log_event(
         db,
@@ -386,7 +385,7 @@ async def recommend_by_artist(
 ) -> ArtistRecommendResponse:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     role = (payload.role or "all").lower()
     if role not in {"all", "mainboard", "commander", "sideboard"}:
@@ -452,7 +451,7 @@ async def recommend_by_style_endpoint(
 ) -> StyleRecommendResponse:
     deck = await db.get(Deck, deck_id, options=[selectinload(Deck.cards)])
     if not deck:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mazo no encontrado")
+        raise ApiError(status.HTTP_404_NOT_FOUND, "deck_not_found")
 
     role = (payload.role or "all").lower()
     if role not in {"all", "mainboard", "commander", "sideboard"}:

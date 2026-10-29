@@ -5,7 +5,7 @@
       <div class="text-[10px] uppercase tracking-wider text-fg-faint mb-2">{{ t.pdf_deck_label }}</div>
       <div class="text-sm font-medium truncate" x-text='deck ? deck.name : {{ deck.name | tojson }}'></div>
       <div class="text-[11px] text-fg-muted mt-1" x-show="deck">
-        <span x-text="uniqueCards"></span> · <span x-text="totalSlots"></span> slots
+        <span x-text="uniqueCards"></span> · <span x-text="totalSlots"></span> {{ t.pdf_slots }}
       </div>
     </div>
 
@@ -50,13 +50,13 @@
       </div>
       <div class="flex justify-between">
         <span class="text-fg-muted">{{ t.pdf_summary_total }}</span>
-        <span class="font-mono"><span x-text="totalPages"></span> hojas</span>
+        <span class="font-mono"><span x-text="totalPages"></span> {{ t.pdf_sheets }}</span>
       </div>
       <div class="flex justify-between">
         <span class="text-fg-muted">{{ t.pdf_summary_guides }}</span>
         <span class="font-mono">
-          <span x-text="opts.card_guides_enabled ? opts.card_guides_style : 'off'"></span>
-          <span class="text-fg-faint" x-show="opts.page_guides !== 'none'"> + página</span>
+          <span x-text="opts.card_guides_enabled ? opts.card_guides_style : window._T.pdf_off"></span>
+          <span class="text-fg-faint" x-show="opts.page_guides !== 'none'"> + {{ t.pdf_page_lower }}</span>
         </span>
       </div>
       <div class="flex justify-between">
@@ -144,23 +144,23 @@
       <div data-tour="pdf-presets" class="grid grid-cols-2 gap-1.5">
         <button @click="applyPreset('mpc_classic')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
-          MPC classic
+          {{ t.pdfg_preset_classic_title }}
         </button>
         <button @click="applyPreset('mpc_bleed')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
-          MPC with bleed
+          {{ t.pdfg_preset_bleed_title }}
         </button>
         <button @click="applyPreset('duplex_dfc')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
-          Duplex DFC
+          {{ t.pdfg_preset_duplex_title }}
         </button>
         <button @click="applyPreset('duplex_all')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition">
-          Duplex all-backs
+          {{ t.pdfg_preset_allbacks_title }}
         </button>
         <button @click="applyPreset('silhouette')"
                 class="text-[11px] py-1.5 rounded border border-border-subtle hover:bg-bg-subtle hover:border-accent transition col-span-2">
-          Silhouette (reg. marks)
+          {{ t.pdf_preset_silhouette }}
         </button>
       </div>
       <template x-if="pressShops.length">
