@@ -19,7 +19,7 @@ from mpc_forge.schemas import (
 from mpc_forge.services.art import custom_art
 from mpc_forge.services.art.name_matching import card_keys
 from mpc_forge.services.cards import oracle_tags
-from mpc_forge.services.decks import deck_covers, deck_validation
+from mpc_forge.services.decks import deck_covers, deck_validation, library
 from mpc_forge.services.printing import history
 from mpc_forge.services.system import settings as settings_service
 from mpc_forge.utils.iterables import chunked
@@ -221,6 +221,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         "imported_at": deck.imported_at,
         "updated_at": deck.updated_at,
         "notes": deck.notes or "",
+        "tags": library.parse_tags(deck.tags),
     }
     if not cards:
         val = deck_validation.validate_deck(deck.format, [])

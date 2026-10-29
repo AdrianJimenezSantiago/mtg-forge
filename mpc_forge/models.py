@@ -147,6 +147,7 @@ class Deck(Base):
     format: Mapped[str] = mapped_column(String(32), default="commander")
     commander_scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[str] = mapped_column(Text, default="", server_default="")
     custom_cardback_art_id: Mapped[int | None] = mapped_column(
         ForeignKey("custom_arts.id", ondelete="SET NULL"), nullable=True
     )

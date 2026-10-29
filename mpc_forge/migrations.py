@@ -230,6 +230,11 @@ MIGRATIONS: list[Migration] = [
             """,
         ],
     ),
+    Migration(
+        version=19,
+        description="Etiquetas de mazo para organizar la biblioteca",
+        statements=["ALTER TABLE decks ADD COLUMN tags TEXT NOT NULL DEFAULT ''"],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

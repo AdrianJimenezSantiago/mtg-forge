@@ -35,6 +35,7 @@ class UpdateDeckRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     format: str | None = None
     notes: str | None = Field(default=None, max_length=20_000)
+    tags: list[str] | None = Field(default=None, max_length=50)
 
 
 class AddCardRequest(BaseModel):
@@ -175,6 +176,7 @@ class DeckView(BaseModel):
     imported_at: datetime
     updated_at: datetime
     notes: str = ""
+    tags: list[str] = []
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
     price: DeckPriceView | None = None

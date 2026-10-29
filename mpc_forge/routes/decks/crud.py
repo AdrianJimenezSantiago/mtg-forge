@@ -33,7 +33,7 @@ from mpc_forge.schemas import (
     UpdateDeckRequest,
 )
 from mpc_forge.services.cards import printings
-from mpc_forge.services.decks import deck_activity, deck_validation
+from mpc_forge.services.decks import deck_activity, deck_validation, library
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ class DeckSummaryView(BaseModel):
     updated_at: datetime
     card_count: int
     notes: str = ""
+    tags: list[str] = []
 
 
 @router.get("/", response_model=list[DeckSummaryView])
@@ -77,6 +78,7 @@ async def list_decks(db: DbDep) -> list[DeckSummaryView]:
             updated_at=deck.updated_at,
             card_count=int(card_count or 0),
             notes=deck.notes or "",
+            tags=library.parse_tags(deck.tags),
         )
         for deck, card_count in rows
     ]
@@ -166,6 +168,7 @@ async def duplicate_deck(
         format=src.format,
         commander_scryfall_id=src.commander_scryfall_id,
         notes=src.notes,
+        tags=src.tags,
     )
     db.add(new_deck)
     await db.flush()
@@ -217,6 +220,8 @@ async def update_deck(deck_id: int, payload: UpdateDeckRequest, db: DbDep) -> De
         deck.format = payload.format
     if payload.notes is not None:
         deck.notes = payload.notes
+    if payload.tags is not None:
+        deck.tags = library.serialize_tags(payload.tags)
     if payload.name is not None and payload.name != old_name:
         await deck_activity.log_event(
             db,

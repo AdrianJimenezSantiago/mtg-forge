@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -18,7 +19,7 @@ from mpc_forge.models import CollectionEntry, Deck
 from mpc_forge.paths import static_dir, template_dir
 from mpc_forge.routes.dependencies import DbDep
 from mpc_forge.services.cards import bulk_data
-from mpc_forge.services.decks import deck_covers
+from mpc_forge.services.decks import deck_covers, library
 from mpc_forge.services.indexing import gdrive_search
 from mpc_forge.services.system import i18n as i18n_service
 from mpc_forge.services.system.i18n import (
@@ -110,22 +111,50 @@ class DeckTile:
     card_count: int
     commander_image_url: str | None
     commander_name: str | None
+    tags: tuple[str, ...] = ()
+    colors: str = ""
+    total_cards: int = 0
+    expected: int = 0
+    level: str = "ok"
+    custom_art: int = 0
+    has_notes: bool = False
+    source_host: str = ""
+
+
+def _source_host(url: str | None) -> str:
+    if not url:
+        return ""
+    host = urlsplit(url).hostname or ""
+    return host.removeprefix("www.")
 
 
 async def _decks_with_covers(db: AsyncSession, limit: int | None = None) -> list[DeckTile]:
-    return [
-        DeckTile(
-            id=deck.id,
-            name=deck.name,
-            format=deck.format,
-            moxfield_id=deck.moxfield_id,
-            updated_at=deck.updated_at,
-            card_count=count,
-            commander_image_url=cover.image_url,
-            commander_name=cover.name,
+    rows = await deck_covers.decks_with_covers(db, limit)
+    stats = await library.stats_for_decks(db, [deck for deck, _, _ in rows])
+    tiles = []
+    for deck, count, cover in rows:
+        st = stats.get(deck.id) or library.DeckStats()
+        tiles.append(
+            DeckTile(
+                id=deck.id,
+                name=deck.name,
+                format=deck.format,
+                moxfield_id=deck.moxfield_id,
+                updated_at=deck.updated_at,
+                card_count=count,
+                commander_image_url=cover.image_url,
+                commander_name=cover.name,
+                tags=tuple(library.parse_tags(deck.tags)),
+                colors=st.colors,
+                total_cards=st.total,
+                expected=st.expected,
+                level=st.level,
+                custom_art=st.custom_art,
+                has_notes=bool((deck.notes or "").strip()),
+                source_host=_source_host(deck.source_url),
+            )
         )
-        for deck, count, cover in await deck_covers.decks_with_covers(db, limit)
-    ]
+    return tiles
 
 
 async def _workshop_status(db: AsyncSession) -> dict[str, Any]:
@@ -220,12 +249,29 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
     )
 
 
+def _library_meta(decks: list[DeckTile]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "commander": d.commander_name or "",
+            "format": d.format,
+            "tags": list(d.tags),
+            "colors": d.colors,
+            "cards": d.total_cards,
+            "updated": d.updated_at.isoformat(),
+        }
+        for d in decks
+    ]
+
+
 @router.get("/decks", response_class=HTMLResponse)
 async def deck_library(request: Request, db: DbDep) -> HTMLResponse:
+    decks = await _decks_with_covers(db)
     return templates.TemplateResponse(
         request,
         "pages/deck_library.html",
-        {"decks": await _decks_with_covers(db), **_t_context(request)},
+        {"decks": decks, "decks_meta": _library_meta(decks), **_t_context(request)},
     )
 
 

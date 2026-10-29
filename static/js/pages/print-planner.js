@@ -26,6 +26,12 @@ function printPlanner() {
         ])
         this.decks = Array.isArray(deckList) ? deckList : (deckList.decks || [])
         this.tiers = tierInfo.tiers || []
+        const wanted = new URLSearchParams(window.location.search).get('decks')
+        if (wanted) {
+          const known = new Set(this.decks.map((d) => d.id))
+          this.selected = wanted.split(',').map(Number).filter((id) => known.has(id))
+          if (this.selected.length) this.replan()
+        }
       } catch (e) {
         this.error = e.detail || e.message || window._t('js_error_load_decks')
       } finally {

@@ -1343,6 +1343,20 @@ function deckEditor(deckId) {
         window.toast(window._t('common_error'), window._t('js_error_rename'), 'error');
       }
     },
+    async editTags() {
+      if (!this.deck) return;
+      const answer = prompt(window._t('library_edit_tags_prompt'), (this.deck.tags || []).join(', '));
+      if (answer === null) return;
+      try {
+        const updated = await window.api.decks.update(this.deckId, {
+          tags: answer.split(',').map((t) => t.trim()).filter(Boolean),
+        });
+        this.deck.tags = updated.tags;
+        window.toast(window._t('library_tags_saved'), updated.tags.join(', '), 'success');
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      }
+    },
     async saveNotes() {
       const notes = this.notesDraft;
       if (!this.deck || notes === (this.deck.notes || '')) return;

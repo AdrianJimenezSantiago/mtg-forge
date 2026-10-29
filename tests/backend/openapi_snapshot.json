@@ -227,6 +227,7 @@
     ]
   ],
   "GET /api/decks/_/supported-langs": [],
+  "GET /api/decks/_/tags": [],
   "GET /api/decks/_/undoable-kinds": [],
   "GET /api/decks/_/with-activity": [],
   "GET /api/decks/import/supported-sites": [],

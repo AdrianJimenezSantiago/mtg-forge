@@ -12,11 +12,22 @@ from mpc_forge.models import (
 )
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.dependencies import DbDep
+from mpc_forge.services.decks import library
 
 log = logging.getLogger(__name__)
 
 
 router = make_router()
+
+
+class DeckTagCount(BaseModel):
+    tag: str
+    count: int
+
+
+@router.get("/_/tags", response_model=list[DeckTagCount])
+async def deck_tags(db: DbDep) -> list[DeckTagCount]:
+    return [DeckTagCount.model_validate(t) for t in await library.all_tags(db)]
 
 
 class CardInDeck(BaseModel):

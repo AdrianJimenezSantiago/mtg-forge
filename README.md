@@ -85,6 +85,7 @@ Moxfield · Archidekt · Deckstats · TappedOut · MTGGoldfish · CubeCobra · S
 | 🧮 **Print planner** | Combine several decks into MakePlayingCards orders and see which bracket each order lands in before you buy. |
 | 🗃️ **Collection** | Track the cards you actually own, by set, and cross-reference them with your decks to print only what is missing. |
 | 📊 **Deck statistics** | Animated mana curve, colours, rarity, types, keywords and — with offline card data — each card's function (ramp, draw, removal…). |
+| 🗂️ **Deck library** | Search by name, commander or tag, filter by format, colours and tags, sort by date, name or size. Each deck shows its colours, size check and custom art at a glance; select several to tag, plan or delete them together. Tags and notes can be edited from the library or the editor. |
 | ⏪ **History and undo** | Every change to a deck is recorded on a timeline and can be reverted individually. Snapshots let you compare and restore whole versions. |
 | 💾 **Storage breakdown** | *Settings → Storage* shows what the app uses on disk, the free space left, and one-click cleanup of everything that can be regenerated. Your database, custom art and card backs are never offered for deletion. |
 | ✈️ **Offline card data** | Import Scryfall's bulk data so resolution, autocomplete, printings and recommendations are answered locally. See [Working with Scryfall](#working-with-scryfall). |
