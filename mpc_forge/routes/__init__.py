@@ -6,6 +6,7 @@ from mpc_forge.routes import (
     art_sources,
     art_themes,
     autofill,
+    backups,
     bulk,
     calibration,
     collection,
@@ -49,6 +50,7 @@ ROUTERS: tuple[APIRouter, ...] = (
     bulk.router,
     thumbs.router,
     storage.router,
+    backups.router,
     tour.router,
     debug.router,
 )

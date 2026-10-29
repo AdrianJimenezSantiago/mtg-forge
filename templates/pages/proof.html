@@ -34,6 +34,9 @@
   </template>
 
   <div x-show="!loading && deck">
+    <template x-if="deck && deck.notes">
+      <div class="mb-4 text-sm text-fg-muted whitespace-pre-line border-l-2 border-accent/50 pl-3" x-text="deck.notes"></div>
+    </template>
     <div class="flex items-center gap-4 text-sm text-fg-muted border-b border-border-subtle pb-3 mb-4">
       <span>
         <span class="text-fg font-medium" x-text="totalSlots"></span> {{ t.proof_slots }}

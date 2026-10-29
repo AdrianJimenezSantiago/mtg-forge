@@ -276,6 +276,13 @@ const api = {
     create: () => post('/api/backup'),
   },
 
+  backups: {
+    list:    () => get('/api/backups/'),
+    inspect: (filename) => get(`/api/backups/${encodeURIComponent(filename)}`),
+    restore: (filename) => post(`/api/backups/${encodeURIComponent(filename)}/restore`),
+    remove:  (filename) => del(`/api/backups/${encodeURIComponent(filename)}`),
+  },
+
   autofill: {
     status: () => get('/api/mpc-autofill/status'),
     launch: (payload) => post('/api/mpc-autofill/launch', payload),

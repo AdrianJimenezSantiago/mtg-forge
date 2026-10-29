@@ -220,6 +220,7 @@ async def _deck_to_view(db: AsyncSession, deck: Deck) -> DeckView:
         "commander_scryfall_id": deck.commander_scryfall_id,
         "imported_at": deck.imported_at,
         "updated_at": deck.updated_at,
+        "notes": deck.notes or "",
     }
     if not cards:
         val = deck_validation.validate_deck(deck.format, [])

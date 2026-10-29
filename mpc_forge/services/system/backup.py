@@ -13,6 +13,8 @@ MAX_TAGGED_BACKUPS = 5
 
 MANUAL_TAG = "manual"
 
+AUTOMATIC_TAGS = frozenset({"pre-migration", "pre-restore"})
+
 REGENERABLE_TABLES = frozenset({"printings", "oracle_roles", "oracle_artists", "bulk_sync_state"})
 PRINTINGS_TABLE = "printings"
 
@@ -147,6 +149,12 @@ def prune_tagged_backups(
     return removed
 
 
+def _tag_of(filename: str) -> str:
+    stem = filename.removesuffix(".zip").removeprefix("mpc-forge-backup-")
+    parts = stem.split("-", 2)
+    return parts[2] if len(parts) == 3 else ""
+
+
 def list_backups(directory: Path | None = None) -> list[dict[str, Any]]:
     out = directory or cfg.PATHS.backups_dir
     if not out.exists():
@@ -160,7 +168,8 @@ def list_backups(directory: Path | None = None) -> list[dict[str, Any]]:
                 "path": str(f),
                 "bytes_size": stat.st_size,
                 "created_at": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
-                "automatic": "-pre-migration" in f.name,
+                "automatic": _tag_of(f.name) in AUTOMATIC_TAGS,
+                "tag": _tag_of(f.name),
             }
         )
     items.sort(key=lambda d: str(d["created_at"]), reverse=True)

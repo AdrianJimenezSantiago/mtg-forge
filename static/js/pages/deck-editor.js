@@ -62,6 +62,11 @@ function deckEditor(deckId) {
 
     backModal: null,
 
+    notesOpen: false,
+    notesDraft: '',
+    notesSaving: false,
+    notesSavedAt: 0,
+
     artPickerOpen: false,
     pickerCard: null,
     pickerLoading: false,
@@ -356,6 +361,8 @@ function deckEditor(deckId) {
       const d = await r.json();
       this.deck = d;
       this.cards = d.cards;
+      this.notesDraft = d.notes || '';
+      this.notesOpen = !!this.notesDraft;
       this._growRows();
       this.loadEstimate();
 
@@ -1334,6 +1341,20 @@ function deckEditor(deckId) {
         window.toast(window._t('history_kind_renamed'), v, 'success');
       } else {
         window.toast(window._t('common_error'), window._t('js_error_rename'), 'error');
+      }
+    },
+    async saveNotes() {
+      const notes = this.notesDraft;
+      if (!this.deck || notes === (this.deck.notes || '')) return;
+      this.notesSaving = true;
+      try {
+        const updated = await window.api.decks.update(this.deckId, { notes });
+        this.deck.notes = updated.notes;
+        this.notesSavedAt = Date.now();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.notesSaving = false;
       }
     },
     async deleteDeck() {

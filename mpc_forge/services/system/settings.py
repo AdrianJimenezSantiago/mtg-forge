@@ -321,6 +321,11 @@ def _serialize(sd: SettingDef, value: Any) -> str:
     return str(value)
 
 
+def invalidate_cache() -> None:
+    global _cached_snapshot
+    _cached_snapshot = None
+
+
 async def get_all(db: AsyncSession) -> dict[str, Any]:
     global _cached_snapshot
     if _cached_snapshot is not None:

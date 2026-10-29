@@ -300,7 +300,14 @@ Every location except the database can be changed in *Settings → Paths*.
 > Backups leave out what can be downloaded again: the Scryfall catalog (except
 > the printings your decks and collection use) and the `art/` cache. After
 > restoring one, import the Scryfall data again from *Settings*. The 5 most
-> recent automatic and manual backups are kept.
+> recent backups of each kind (manual, before an update, before a restore,
+> uploaded) are kept.
+
+*Settings → Backup & data* lists every backup with its date and size. **Restore**
+shows what the backup holds (decks, cards, collection, images) before asking for
+confirmation, saves a copy of the current state first and reloads the app with
+the restored data; *Restore from file…* does the same with a backup `.zip` from
+another computer. Each backup can also be downloaded or deleted from there.
 
 ## Working with Scryfall
 

@@ -215,19 +215,6 @@ class PrintRunItem(Base):
     run: Mapped[PrintRun] = relationship(back_populates="items")
 
 
-class PhysicalInventory(Base):
-    __tablename__ = "physical_inventory"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    oracle_id: Mapped[str] = mapped_column(String(64), index=True)
-    scryfall_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    deck_id: Mapped[int | None] = mapped_column(
-        ForeignKey("decks.id", ondelete="SET NULL"), nullable=True
-    )
-    status: Mapped[str] = mapped_column(String(32), default="ready")
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow)
-
-
 class DeckActivity(Base):
     __tablename__ = "deck_activity"
 

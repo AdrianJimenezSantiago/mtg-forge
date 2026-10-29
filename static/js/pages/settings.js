@@ -27,6 +27,9 @@ function settingsShell() {
     storagePurging: '',
     exportsKeepRecent: true,
     _storageLoaded: false,
+    backups: [],
+    backupsLoading: false,
+    restoringBackup: '',
 
     get customPathsConfig() {
       const map = [
@@ -132,6 +135,7 @@ function settingsShell() {
       this.activeSection = key;
       this.searchQuery = '';
       if (key === 'storage' || key === 'backup') this.loadStorage();
+      if (key === 'backup') this.loadBackups();
       this.$nextTick(() => window.icons && window.icons());
     },
 
@@ -246,10 +250,93 @@ function settingsShell() {
         if (!r.ok) throw new Error(window._t('common_error'));
         this.lastBackup = await r.json();
         window.toast(window._t('settings_backup_created'), this.lastBackup.path, 'success');
+        this.loadBackups();
       } catch (e) {
         window.toast(window._t('common_error'), e.message, 'error');
       } finally {
         this.backingUp = false;
+      }
+    },
+
+    async loadBackups() {
+      this.backupsLoading = true;
+      try {
+        this.backups = await window.api.backups.list();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.backupsLoading = false;
+        this.$nextTick(() => window.icons && window.icons());
+      }
+    },
+
+    backupTagLabel(tag) {
+      const key = 'backup_tag_' + String(tag || '').replace('-', '_');
+      return (window._T && window._T[key]) || tag;
+    },
+
+    _backupSummaryText(s) {
+      return window._t('backup_restore_summary')
+        .replace('{decks}', s.decks).replace('{cards}', s.cards)
+        .replace('{collection}', s.collection).replace('{arts}', s.custom_arts + s.art_files)
+        .replace('{date}', new Date(s.created_at).toLocaleString());
+    },
+
+    async restoreBackup(b) {
+      let summary;
+      try {
+        summary = await window.api.backups.inspect(b.filename);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+        return;
+      }
+      const ok = await window.confirmDialog(
+        window._t('backup_restore_confirm_title'),
+        this._backupSummaryText(summary) + '\n\n' + window._t('backup_restore_confirm_body'),
+        { danger: true, icon: 'rotate-ccw', confirmLabel: window._t('backup_restore_btn') },
+      );
+      if (!ok) return;
+      this.restoringBackup = b.filename;
+      try {
+        const res = await window.api.backups.restore(b.filename);
+        window.toast(window._t('backup_restore_done'),
+          window._t('backup_restore_done_body').replace('{file}', res.safety_backup), 'success');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+        this.restoringBackup = '';
+      }
+    },
+
+    async uploadBackup(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;
+      this.restoringBackup = '__upload__';
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        const r = await fetch('/api/backups/upload', { method: 'POST', body });
+        if (!r.ok) throw new window.ApiError(r.status, await window.apiErrorDetail(r), r.url);
+        const summary = await r.json();
+        this.restoringBackup = '';
+        await this.loadBackups();
+        await this.restoreBackup({ filename: summary.filename });
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+        this.restoringBackup = '';
+      }
+    },
+
+    async deleteBackup(b) {
+      const ok = await window.confirmDialog(window._t('backup_delete_title'),
+        new Date(b.created_at).toLocaleString(), { danger: true });
+      if (!ok) return;
+      try {
+        await window.api.backups.remove(b.filename);
+        this.backups = this.backups.filter((x) => x.filename !== b.filename);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
       }
     },
 

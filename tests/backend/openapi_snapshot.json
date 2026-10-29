@@ -13,6 +13,20 @@
       true
     ]
   ],
+  "DELETE /api/art-themes/{theme_id}": [
+    [
+      "theme_id",
+      "path",
+      true
+    ]
+  ],
+  "DELETE /api/backups/{filename}": [
+    [
+      "filename",
+      "path",
+      true
+    ]
+  ],
   "DELETE /api/custom-art/folders/{folder_id}": [
     [
       "folder_id",
@@ -72,10 +86,52 @@
       true
     ]
   ],
+  "DELETE /api/snapshots/{snapshot_id}": [
+    [
+      "snapshot_id",
+      "path",
+      true
+    ]
+  ],
   "DELETE /api/tour/": [],
   "GET /": [],
   "GET /api/art-sources/": [],
   "GET /api/art-sources/catalog-info": [],
+  "GET /api/art-themes": [],
+  "GET /api/art-themes/{theme_id}": [
+    [
+      "theme_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/art-themes/{theme_id}/preview/{deck_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "theme_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/backups/": [],
+  "GET /api/backups/{filename}": [
+    [
+      "filename",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/backups/{filename}/download": [
+    [
+      "filename",
+      "path",
+      true
+    ]
+  ],
   "GET /api/bulk/check": [
     [
       "kind",
@@ -85,8 +141,44 @@
   ],
   "GET /api/bulk/progress": [],
   "GET /api/bulk/status": [],
+  "GET /api/calibration/scale-sheet": [
+    [
+      "page_size",
+      "query",
+      false
+    ],
+    [
+      "scale_x_pct",
+      "query",
+      false
+    ],
+    [
+      "scale_y_pct",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/calibration/sheet": [
+    [
+      "flip_edge",
+      "query",
+      false
+    ],
+    [
+      "page_size",
+      "query",
+      false
+    ]
+  ],
   "GET /api/cardback": [],
   "GET /api/collection/recent-decks": [],
+  "GET /api/collection/set-icons/{name}.svg": [
+    [
+      "name",
+      "path",
+      true
+    ]
+  ],
   "GET /api/collection/sets": [],
   "GET /api/collection/sets/{set_code}/cards": [
     [
@@ -261,6 +353,23 @@
       true
     ]
   ],
+  "GET /api/decks/{deck_id}/print-needs": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "include_basics",
+      "query",
+      false
+    ],
+    [
+      "match_mode",
+      "query",
+      false
+    ]
+  ],
   "GET /api/decks/{deck_id}/print-runs/preview": [
     [
       "deck_id",
@@ -276,6 +385,13 @@
       "optimize",
       "query",
       false
+    ]
+  ],
+  "GET /api/decks/{deck_id}/snapshots": [
+    [
+      "deck_id",
+      "path",
+      true
     ]
   ],
   "GET /api/decks/{deck_id}/tokens-analysis": [
@@ -388,11 +504,156 @@
       true
     ]
   ],
+  "GET /api/library/browse": [
+    [
+      "card_type",
+      "query",
+      false
+    ],
+    [
+      "exclude",
+      "query",
+      false
+    ],
+    [
+      "expansion",
+      "query",
+      false
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "offset",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      false
+    ],
+    [
+      "sort",
+      "query",
+      false
+    ],
+    [
+      "sources",
+      "query",
+      false
+    ],
+    [
+      "tags",
+      "query",
+      false
+    ],
+    [
+      "variants",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/library/cards": [
+    [
+      "expansion",
+      "query",
+      false
+    ],
+    [
+      "limit",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      false
+    ],
+    [
+      "sources",
+      "query",
+      false
+    ],
+    [
+      "variants",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/library/facets": [
+    [
+      "card_type",
+      "query",
+      false
+    ],
+    [
+      "exclude",
+      "query",
+      false
+    ],
+    [
+      "expansion",
+      "query",
+      false
+    ],
+    [
+      "q",
+      "query",
+      false
+    ],
+    [
+      "sources",
+      "query",
+      false
+    ],
+    [
+      "tags",
+      "query",
+      false
+    ],
+    [
+      "variants",
+      "query",
+      false
+    ]
+  ],
+  "GET /api/library/overview": [],
+  "GET /api/library/variants": [],
   "GET /api/mpc-autofill/status": [],
+  "GET /api/planner/compare": [
+    [
+      "total_cards",
+      "query",
+      true
+    ]
+  ],
+  "GET /api/planner/tiers": [],
   "GET /api/print-shops": [],
   "GET /api/runs": [],
   "GET /api/settings/": [],
   "GET /api/settings/paths": [],
+  "GET /api/snapshots/{snapshot_id}/diff": [
+    [
+      "against",
+      "query",
+      false
+    ],
+    [
+      "snapshot_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/storage/": [
+    [
+      "refresh",
+      "query",
+      false
+    ]
+  ],
   "GET /api/tag-vocabulary/current": [],
   "GET /api/thumb/{art_path}": [
     [
@@ -403,7 +664,10 @@
   ],
   "GET /api/thumbs/stats": [],
   "GET /api/tour/": [],
+  "GET /art-library": [],
+  "GET /calibrate": [],
   "GET /collection": [],
+  "GET /decks": [],
   "GET /decks/{deck_id}": [
     [
       "deck_id",
@@ -426,6 +690,13 @@
     ]
   ],
   "GET /history": [],
+  "GET /i18n/{lang}.js": [
+    [
+      "lang",
+      "path",
+      true
+    ]
+  ],
   "GET /local-source/{source_id}/{file_id}": [
     [
       "file_id",
@@ -438,11 +709,19 @@
       true
     ]
   ],
+  "GET /print-planner": [],
   "GET /settings": [],
   "HEAD /api/cardback": [],
   "PATCH /api/art-sources/{source_id}": [
     [
       "source_id",
+      "path",
+      true
+    ]
+  ],
+  "PATCH /api/art-themes/{theme_id}": [
+    [
+      "theme_id",
       "path",
       true
     ]
@@ -481,7 +760,23 @@
       false
     ]
   ],
+  "POST /api/art-themes": [],
+  "POST /api/art-themes/{theme_id}/apply": [
+    [
+      "theme_id",
+      "path",
+      true
+    ]
+  ],
   "POST /api/backup": [],
+  "POST /api/backups/upload": [],
+  "POST /api/backups/{filename}/restore": [
+    [
+      "filename",
+      "path",
+      true
+    ]
+  ],
   "POST /api/bulk/cancel": [],
   "POST /api/bulk/sync": [
     [
@@ -495,6 +790,8 @@
       false
     ]
   ],
+  "POST /api/calibration/derive": [],
+  "POST /api/calibration/derive-scale": [],
   "POST /api/collection/batch-toggle": [],
   "POST /api/collection/toggle-owned": [],
   "POST /api/custom-art/folders": [],
@@ -653,6 +950,13 @@
       true
     ]
   ],
+  "POST /api/decks/{deck_id}/snapshots": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
   "POST /api/decks/{deck_id}/tokens-add-many": [
     [
       "deck_id",
@@ -697,6 +1001,16 @@
   "POST /api/drives/phash/compute-all": [],
   "POST /api/drives/rebuild-fts5": [],
   "POST /api/mpc-autofill/launch": [],
+  "POST /api/planner/plan": [],
+  "POST /api/planner/print-needs": [],
+  "POST /api/snapshots/{snapshot_id}/restore": [
+    [
+      "snapshot_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/storage/purge": [],
   "POST /api/tag-vocabulary/reload": [],
   "POST /api/thumbs/clear": [],
   "POST /api/tour/seen": [],

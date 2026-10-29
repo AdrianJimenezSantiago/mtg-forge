@@ -34,7 +34,7 @@ class ImportFromTextRequest(BaseModel):
 class UpdateDeckRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=256)
     format: str | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=20_000)
 
 
 class AddCardRequest(BaseModel):
@@ -174,6 +174,7 @@ class DeckView(BaseModel):
     commander_scryfall_id: str | None
     imported_at: datetime
     updated_at: datetime
+    notes: str = ""
     cards: list[DeckCardView]
     validation: DeckValidation | None = None
     price: DeckPriceView | None = None

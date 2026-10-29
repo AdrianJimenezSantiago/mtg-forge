@@ -18,7 +18,6 @@ _MERGE_TARGETS = (
     ("deck_cards", "scryfall_id"),
     ("decks", "commander_scryfall_id"),
     ("art_preferences", "scryfall_id"),
-    ("physical_inventory", "scryfall_id"),
     ("art_theme_entries", "scryfall_id"),
 )
 

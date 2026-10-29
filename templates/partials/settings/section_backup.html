@@ -34,6 +34,57 @@
       </div>
     </template>
 
+    <div class="pt-4 border-t border-border-subtle space-y-3" data-testid="backup-restore">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">{{ t.backup_restore_title }}</div>
+          <p class="text-xs text-fg-faint mt-1">{{ t.backup_restore_desc }}</p>
+        </div>
+        <label class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                      px-3 py-1.5 rounded-md transition flex items-center gap-1.5 cursor-pointer"
+               :class="restoringBackup ? 'opacity-50 pointer-events-none' : ''">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+          {{ t.backup_restore_from_file }}
+          <input type="file" accept=".zip,application/zip" class="sr-only" @change="uploadBackup($event)">
+        </label>
+      </div>
+      <div x-show="backupsLoading" class="text-xs text-fg-faint">{{ t.common_loading }}</div>
+      <p x-show="!backupsLoading && backups.length === 0" class="text-xs text-fg-faint">{{ t.storage_backup_none }}</p>
+      <ul class="divide-y divide-border-subtle/50" x-show="backups.length > 0">
+        <template x-for="b in backups" :key="b.filename">
+          <li class="py-2 flex items-center gap-3 text-xs">
+            <i data-lucide="archive" class="w-3.5 h-3.5 text-fg-faint shrink-0"></i>
+            <div class="min-w-0 flex-1">
+              <div class="text-fg truncate" x-text="new Date(b.created_at).toLocaleString()"></div>
+              <div class="text-[11px] text-fg-faint flex items-center gap-2">
+                <span x-text="fmtBytes(b.bytes_size)"></span>
+                <span x-show="b.tag" class="px-1.5 rounded bg-bg-subtle border border-border-subtle"
+                      x-text="backupTagLabel(b.tag)"></span>
+              </div>
+            </div>
+            <button @click="restoreBackup(b)" :disabled="!!restoringBackup"
+                    class="text-[11px] bg-accent/10 hover:bg-accent/20 text-accent border border-accent/30
+                           px-2 py-1 rounded transition disabled:opacity-40 flex items-center gap-1">
+              <i data-lucide="rotate-ccw" class="w-3 h-3" x-show="restoringBackup !== b.filename"></i>
+              <i data-lucide="loader-2" class="w-3 h-3 animate-spin" x-show="restoringBackup === b.filename"></i>
+              {{ t.backup_restore_btn }}
+            </button>
+            <a :href="`/api/backups/${encodeURIComponent(b.filename)}/download`"
+               @click.prevent="window.saveFile(`/api/backups/${encodeURIComponent(b.filename)}/download`, b.filename)"
+               class="text-fg-faint hover:text-fg p-1 rounded hover:bg-bg-subtle" title="{{ t.common_download }}"
+               aria-label="{{ t.common_download }}">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            </a>
+            <button @click="deleteBackup(b)" :disabled="!!restoringBackup"
+                    class="text-fg-faint hover:text-danger p-1 rounded hover:bg-bg-subtle disabled:opacity-40"
+                    title="{{ t.common_delete }}" aria-label="{{ t.common_delete }}">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </li>
+        </template>
+      </ul>
+    </div>
+
     <div class="pt-4 border-t border-border-subtle space-y-3">
       <div class="flex items-center justify-between">
         <div class="text-xs font-medium text-fg-muted uppercase tracking-wider">
