@@ -138,7 +138,7 @@ async def _load_collection_index(
 
     for entry in rows:
         key = entry.scryfall_id if match_mode == "exact" else entry.oracle_id
-        counts[key] += 1
+        counts[key] += max(0, (entry.quantity or 0) + (entry.foil_quantity or 0))
         details[entry.oracle_id].append(
             {
                 "scryfall_id": entry.scryfall_id,

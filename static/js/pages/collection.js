@@ -9,6 +9,9 @@ function collectionApp() {
     cardFilter: 'all',
     globalOwned: 0,
     setsStarted: 0,
+    totalCopies: 0,
+    importing: false,
+    importMode: 'merge',
     setOwnedCount: 0,
 
     cardWidth: 210,
@@ -64,6 +67,7 @@ function collectionApp() {
 
     async loadSets() {
       this.loadingSets = true;
+      this.loadStats();
       try {
         const r = await fetch('/api/collection/sets');
         if (!r.ok) throw new Error(await window.apiErrorDetail(r));
@@ -100,6 +104,92 @@ function collectionApp() {
       }
     },
 
+    async loadStats() {
+      try {
+        const stats = await window.api.collection.stats();
+        this.totalCopies = stats.total_copies;
+      } catch (_) {}
+    },
+
+    _cardPayload(card) {
+      return {
+        scryfall_id: card.scryfall_id,
+        oracle_id: card.oracle_id,
+        name: card.name,
+        set_code: this.selectedSet.code,
+        set_name: this.selectedSet.name,
+        collector_number: card.collector_number,
+        rarity: card.rarity,
+        image_small: card.image_small,
+      };
+    },
+
+    _applySetCount(count) {
+      this.setOwnedCount = count;
+      if (this.selectedSet) {
+        this.selectedSet.owned_count = count;
+        const idx = this.sets.findIndex(s => s.code === this.selectedSet.code);
+        if (idx >= 0) this.sets[idx].owned_count = count;
+      }
+      this.globalOwned = this.sets.reduce((sum, s) => sum + s.owned_count, 0);
+      this.setsStarted = this.sets.filter(s => s.owned_count > 0).length;
+    },
+
+    async changeQuantity(card, kind, delta) {
+      const next = { quantity: card.quantity || 0, foil_quantity: card.foil_quantity || 0 };
+      next[kind] = Math.max(0, next[kind] + delta);
+      try {
+        const data = await window.apiRequest('POST', '/api/collection/set-quantity', {
+          body: { ...this._cardPayload(card), ...next },
+        });
+        card.quantity = data.quantity;
+        card.foil_quantity = data.foil_quantity;
+        card.owned = data.owned;
+        this._applySetCount(data.set_owned_count);
+        this.loadStats();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      }
+    },
+
+    async importCsv(ev) {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (!file) return;
+      const replace = this.importMode === 'replace';
+      if (replace && !await window.confirmDialog(window._t('coll_import_mode_title'),
+        window._t('coll_import_mode_body'),
+        { danger: true, icon: 'upload', confirmLabel: window._t('coll_import_replace') })) return;
+      this.importing = true;
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        body.append('mode', replace ? 'replace' : 'merge');
+        const r = await fetch('/api/collection/import', { method: 'POST', body });
+        if (!r.ok) throw new window.ApiError(r.status, await window.apiErrorDetail(r), r.url);
+        const rep = await r.json();
+        let msg = window._t('coll_import_done_body')
+          .replace('{cards}', rep.cards).replace('{printings}', rep.printings)
+          .replace('{added}', rep.added).replace('{updated}', rep.updated);
+        if (rep.unresolved.length) {
+          msg += ' ' + window._t('coll_import_unresolved').replace('{n}', rep.unresolved.length)
+            + ' ' + rep.unresolved.slice(0, 5).map(u => u.name).join(', ');
+        }
+        window.toast(window._t('coll_import_done'), msg, rep.unresolved.length ? 'warning' : 'success');
+        await this.loadSets();
+        this.loadStats();
+        if (this.selectedSet) await this.selectSet(this.sets.find(s => s.code === this.selectedSet.code) || this.selectedSet);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.importing = false;
+      }
+    },
+
+    exportCsv() {
+      window.saveFile('/api/collection/export.csv', 'mpc-forge-collection.csv');
+    },
+
     async toggleCard(card) {
       const wasOwned = card.owned;
       card.owned = !card.owned;
@@ -123,14 +213,10 @@ function collectionApp() {
         });
         if (!r.ok) throw new Error(await window.apiErrorDetail(r));
         const data = await r.json();
-        this.setOwnedCount = data.set_owned_count;
-        if (this.selectedSet) {
-          this.selectedSet.owned_count = data.set_owned_count;
-          const idx = this.sets.findIndex(s => s.code === this.selectedSet.code);
-          if (idx >= 0) this.sets[idx].owned_count = data.set_owned_count;
-        }
-        this.globalOwned = this.sets.reduce((sum, s) => sum + s.owned_count, 0);
-        this.setsStarted = this.sets.filter(s => s.owned_count > 0).length;
+        card.quantity = data.owned ? 1 : 0;
+        card.foil_quantity = 0;
+        this._applySetCount(data.set_owned_count);
+        this.loadStats();
       } catch (e) {
         card.owned = wasOwned;
         this.setOwnedCount += wasOwned ? 1 : -1;

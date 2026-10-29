@@ -314,6 +314,8 @@ class CollectionEntry(Base):
     collector_number: Mapped[str] = mapped_column(String(32), default="")
     rarity: Mapped[str] = mapped_column(String(32), default="common")
     image_small: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    foil_quantity: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     added_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 

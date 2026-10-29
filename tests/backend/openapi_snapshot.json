@@ -171,6 +171,7 @@
     ]
   ],
   "GET /api/cardback": [],
+  "GET /api/collection/export.csv": [],
   "GET /api/collection/recent-decks": [],
   "GET /api/collection/set-icons/{name}.svg": [
     [
@@ -813,6 +814,8 @@
   "POST /api/calibration/derive": [],
   "POST /api/calibration/derive-scale": [],
   "POST /api/collection/batch-toggle": [],
+  "POST /api/collection/import": [],
+  "POST /api/collection/set-quantity": [],
   "POST /api/collection/toggle-owned": [],
   "POST /api/custom-art/folders": [],
   "POST /api/custom-art/from-url": [],

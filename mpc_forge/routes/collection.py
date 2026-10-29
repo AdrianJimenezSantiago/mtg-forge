@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Annotated, Any, Literal, cast
 
 import httpx
-from fastapi import APIRouter, status
+from fastapi import APIRouter, File, Form, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import CursorResult, delete, func, select
 
-from mpc_forge.errors import ApiError
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.models import CollectionEntry
 from mpc_forge.routes.dependencies import DbDep, ScryfallDep
-from mpc_forge.services.cards import images, printings, sets
+from mpc_forge.services.cards import collection_io, images, printings, sets
 
 router = APIRouter(prefix="/api/collection", tags=["collection"])
 log = logging.getLogger(__name__)
@@ -81,6 +81,8 @@ class SetCardInfo(BaseModel):
     image_small: str | None = None
     image_normal: str | None = None
     owned: bool = False
+    quantity: int = 0
+    foil_quantity: int = 0
 
 
 @router.get("/set-icons/{name}.svg")
@@ -114,13 +116,18 @@ async def set_cards(
             f"set:{set_code} -is:digital", unique="prints", order="set"
         )
 
-    owned_ids = set(
-        (
-            await db.scalars(
-                select(CollectionEntry.scryfall_id).where(CollectionEntry.set_code == set_code)
+    owned = {
+        sid: (qty or 0, foil or 0)
+        for sid, qty, foil in (
+            await db.execute(
+                select(
+                    CollectionEntry.scryfall_id,
+                    CollectionEntry.quantity,
+                    CollectionEntry.foil_quantity,
+                ).where(CollectionEntry.set_code == set_code)
             )
         ).all()
-    )
+    }
 
     out = []
     for c in all_cards:
@@ -137,7 +144,9 @@ async def set_cards(
                 rarity=c.get("rarity", "common"),
                 image_small=images.thumb(imgs),
                 image_normal=images.grid(imgs),
-                owned=sid in owned_ids,
+                owned=sid in owned,
+                quantity=owned.get(sid, (0, 0))[0],
+                foil_quantity=owned.get(sid, (0, 0))[1],
             )
         )
 
@@ -261,10 +270,99 @@ async def batch_toggle(payload: BatchToggleRequest, db: DbDep) -> BatchToggleRes
 class CollectionStats(BaseModel):
     total_owned: int = 0
     unique_sets: int = 0
+    total_copies: int = 0
+    foil_copies: int = 0
 
 
 @router.get("/stats", response_model=CollectionStats)
 async def collection_stats(db: DbDep) -> CollectionStats:
     total = (await db.scalar(select(func.count()).select_from(CollectionEntry))) or 0
     sets = (await db.scalar(select(func.count(func.distinct(CollectionEntry.set_code))))) or 0
-    return CollectionStats(total_owned=total, unique_sets=sets)
+    normal, foil = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(CollectionEntry.quantity), 0),
+                func.coalesce(func.sum(CollectionEntry.foil_quantity), 0),
+            )
+        )
+    ).one()
+    return CollectionStats(
+        total_owned=total,
+        unique_sets=sets,
+        total_copies=int(normal) + int(foil),
+        foil_copies=int(foil),
+    )
+
+
+class SetQuantityRequest(ToggleOwnedRequest):
+    quantity: int = Field(ge=0, le=collection_io.MAX_QUANTITY)
+    foil_quantity: int = Field(default=0, ge=0, le=collection_io.MAX_QUANTITY)
+
+
+class SetQuantityResponse(BaseModel):
+    owned: bool
+    quantity: int
+    foil_quantity: int
+    set_owned_count: int
+
+
+@router.post("/set-quantity", response_model=SetQuantityResponse)
+async def set_quantity(payload: SetQuantityRequest, db: DbDep) -> SetQuantityResponse:
+    fields = payload.model_dump(exclude={"quantity", "foil_quantity"})
+    entry = await collection_io.set_quantity(db, fields, payload.quantity, payload.foil_quantity)
+    await db.flush()
+    count = (
+        await db.scalar(
+            select(func.count())
+            .select_from(CollectionEntry)
+            .where(CollectionEntry.set_code == payload.set_code)
+        )
+    ) or 0
+    await db.commit()
+    return SetQuantityResponse(
+        owned=entry is not None,
+        quantity=entry.quantity if entry else 0,
+        foil_quantity=entry.foil_quantity if entry else 0,
+        set_owned_count=count,
+    )
+
+
+class ImportReportView(BaseModel):
+    rows: int
+    cards: int
+    printings: int
+    added: int
+    updated: int
+    removed: int
+    unresolved: list[dict[str, Any]]
+
+
+MAX_CSV_BYTES = 20 * 1024 * 1024
+
+
+@router.post("/import", response_model=ImportReportView)
+async def import_collection(
+    db: DbDep,
+    scryfall: ScryfallDep,
+    file: Annotated[UploadFile, File()],
+    mode: Annotated[Literal["merge", "replace"], Form()] = "merge",
+) -> ImportReportView:
+    raw = await file.read(MAX_CSV_BYTES + 1)
+    await file.close()
+    if len(raw) > MAX_CSV_BYTES:
+        raise ApiError(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "collection_csv_too_large")
+    text = raw.decode("utf-8-sig", errors="replace")
+    try:
+        report = await collection_io.import_csv(db, scryfall, text, mode)
+    except collection_io.CollectionImportError as e:
+        raise from_exception(status.HTTP_400_BAD_REQUEST, e, "collection_import_failed") from e
+    return ImportReportView(**report.to_dict())
+
+
+@router.get("/export.csv")
+async def export_collection(db: DbDep) -> Response:
+    return Response(
+        content=await collection_io.export_csv(db),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="mpc-forge-collection.csv"'},
+    )

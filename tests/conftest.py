@@ -141,12 +141,13 @@ def fake_scryfall():
         for i in idents:
             name = (i.get("name") or "").lower().strip()
             sfid = i.get("id")
+            set_number = (i.get("set"), i.get("collector_number"))
             for k, v in SAMPLE_CARDS.items():
-                if v["id"] in seen:
-                    continue
-                if sfid == v["id"] or (name and v["name"].lower() == name):
-                    out.append(v)
-                    seen.add(v["id"])
+                by_set = set_number[0] and (v["set"], v["collector_number"]) == set_number
+                if sfid == v["id"] or by_set or (name and v["name"].lower() == name):
+                    if v["id"] not in seen:
+                        out.append(v)
+                        seen.add(v["id"])
                     break
         return out
 

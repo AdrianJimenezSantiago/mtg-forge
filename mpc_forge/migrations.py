@@ -235,6 +235,14 @@ MIGRATIONS: list[Migration] = [
         description="Etiquetas de mazo para organizar la biblioteca",
         statements=["ALTER TABLE decks ADD COLUMN tags TEXT NOT NULL DEFAULT ''"],
     ),
+    Migration(
+        version=20,
+        description="Cantidades normales y foil de cada impresión de la colección",
+        statements=[
+            "ALTER TABLE collection_entries ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE collection_entries ADD COLUMN foil_quantity INTEGER NOT NULL DEFAULT 0",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)
