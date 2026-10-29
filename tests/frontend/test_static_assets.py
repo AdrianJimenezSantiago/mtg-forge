@@ -247,3 +247,10 @@ def test_downloads_go_through_save_file():
             if "@click.prevent" not in tag and 'target="_blank"' not in tag:
                 offenders.append(f"{path.name}: {' '.join(tag.split())[:120]}")
     assert not offenders, "\n".join(offenders)
+
+
+@needs_node
+def test_batch_custom_art_uploads_only_what_the_user_confirmed():
+    result, report = run_js_test("custom_art_batch.mjs", "core/custom-art-batch.js")
+    assert result.returncode == 0, result.stderr
+    assert report == {"problems": []}, report

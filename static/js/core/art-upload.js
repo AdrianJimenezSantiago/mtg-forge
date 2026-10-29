@@ -338,5 +338,6 @@
     open: (opts) => Alpine.store('artUpload').start(opts),
     fileFrom: fileFromDataTransfer,
     hasFile: dataTransferHasFile,
+    errorDetail,
   }
 })()

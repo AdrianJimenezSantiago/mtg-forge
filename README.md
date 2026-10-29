@@ -77,6 +77,7 @@ Moxfield · Archidekt · Deckstats · TappedOut · MTGGoldfish · CubeCobra · S
 | --- | --- |
 | 📥 **Import from anywhere** | Paste a URL from any supported deck site, or a plain-text list in the usual formats (`1 Sol Ring`, `1 Sol Ring (C21) 263`, section headers for commander, sideboard and maybeboard). Cards that cannot be resolved come back with the original line and "did you mean" suggestions. |
 | 🖼️ **Art picker over community drives** | Indexes the public MPC Autofill Google Drives with SQLite FTS5 and makes them searchable instantly, with filters for full art, borderless, extended, showcase, retro frame, artist and set. Perceptual hashing removes duplicates across drives. |
+| 🪄 **Batch custom art** | Give a whole deck your own images in one go: drop a folder, a set of images or a ZIP, or use a folder linked from anywhere on disk. Files are matched to cards by name — accents, underscores, numbering and Windows-safe spellings included — and you review every pairing before anything is saved. One click undoes it. |
 | 📚 **Art library** | Browse the whole index without starting from a card: an artist's work, every full-art print of a set, and so on. |
 | 📄 **PDF Studio** | Fine control over home printing: margins, bleed, per-card and per-page cut guides, square or rounded corners, duplex with drift compensation, and card backs for DFCs or the whole deck. |
 | 🏭 **Print shop export** | A CMYK, one-card-per-page package ready to send to a professional print shop. [More below](#sending-a-deck-to-a-print-shop). |
@@ -241,7 +242,36 @@ name decides the match:
 | `Sol Ring - Anime.png`        | Sol Ring, "Anime" variant                 |
 | `Sol Ring (Retro Frame).png`  | Sol Ring, "Retro Frame" variant           |
 | `Delver of Secrets [BACK].png`| Delver of Secrets, back face              |
-| `Opt [DMU 100].png`           | That exact Scryfall printing              |
+| `Insectile Aberration.png`    | The back face of a double-faced card      |
+| `Opt [DMU 100].png`           | Opt, labelled "DMU 100"                   |
+| `001 - Sol Ring.png`, `sol_ring.jpg` | Sol Ring (numbering and underscores are ignored) |
+
+Matching ignores case, accents and punctuation, so `Lim-Dul's Vault.png` finds
+*Lim-Dûl's Vault* and `Circle of Protection- Red.png` (Windows does not allow
+`:` in file names) finds *Circle of Protection: Red*.
+
+#### A whole deck at once
+
+Press **Batch art** in the deck editor toolbar and pick where the images come
+from:
+
+- **Your computer.** Drag a folder (subfolders included), several images or a
+  ZIP onto the window, or use *Choose folder* / *Choose images or ZIP*. Only the
+  images that match a card are uploaded.
+- **The app library.** Everything already in `custom_art/` and in your linked
+  folders.
+- **A linked folder.** Paste the path of any folder on your computer to use its
+  images where they are, without copying them. Edits there are picked up on the
+  next rescan, the app never deletes those files, and if the folder is on a
+  drive that is disconnected its images are kept until it comes back. Linked
+  folders can also be managed from *Settings → Custom art*.
+
+Before saving you see every card with the image it will get (and a choice when
+there are several), the cards left without one, and the images that match no
+card, with suggestions for near misses such as typos. Cards that already have
+custom art are kept unless you tick *Also replace custom art already chosen*.
+Applying saves a snapshot of the deck first and records a single entry in the
+history, so the whole batch can be undone in one step.
 
 ## Your data
 

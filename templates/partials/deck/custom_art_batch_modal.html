@@ -1,0 +1,378 @@
+<div x-data>
+<template x-if="$store.artBatch.open">
+  <div class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+       @click.self="$store.artBatch.close()"
+       @keydown.escape.window="$store.artBatch.close()"
+       @dragover.prevent="$store.artBatch.dragOver = $store.artBatch.step === 'source'"
+       @dragleave.self="$store.artBatch.dragOver = false"
+       @drop.prevent="$store.artBatch.onDrop($event)">
+    <div class="bg-bg-elevated border border-border-strong rounded-2xl shadow-modal animate-scale-in w-full max-w-5xl
+                max-h-[92vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="art-batch-title" x-trap.noscroll="true">
+
+      <div class="flex items-center justify-between gap-4 px-5 py-3 border-b border-border-subtle shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-9 h-9 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0">
+            <i data-lucide="images" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <h2 id="art-batch-title" class="text-lg font-semibold text-fg">{{ t.batch_title }}</h2>
+            <p class="text-xs text-fg-faint truncate"
+               x-text="$store.artBatch.source ? $store.artBatch.source.label : window._T.batch_subtitle"></p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <template x-if="$store.artBatch.step === 'review'">
+            <button type="button" @click="$store.artBatch.back()"
+                    class="text-xs text-fg-muted hover:text-fg px-3 py-1.5 rounded-md hover:bg-bg-subtle transition flex items-center gap-1.5">
+              <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+              {{ t.batch_change_source }}
+            </button>
+          </template>
+          <button type="button" @click="$store.artBatch.close()" :disabled="$store.artBatch.step === 'working'"
+                  aria-label="{{ t.common_close }}"
+                  class="text-fg-faint hover:text-fg-muted p-2 rounded hover:bg-bg-subtle transition disabled:opacity-40">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <input type="file" x-ref="batchFiles" class="hidden" multiple
+             accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp,.zip,application/zip"
+             aria-label="{{ t.batch_pick_files }}" @change="$store.artBatch.onInput($event)">
+      <input type="file" x-ref="batchFolder" class="hidden" webkitdirectory directory multiple
+             aria-label="{{ t.batch_pick_folder }}" @change="$store.artBatch.onInput($event)">
+
+      <div class="flex-1 min-h-0 overflow-y-auto p-5">
+
+        <template x-if="$store.artBatch.error">
+          <div role="alert" class="mb-4 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-start gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5 shrink-0"></i>
+            <span x-text="$store.artBatch.error"></span>
+          </div>
+        </template>
+
+        {# ── Paso 1: de dónde salen las imágenes ─────────────────────────── #}
+        <template x-if="$store.artBatch.step === 'source'">
+          <div class="space-y-5">
+            <p class="text-sm text-fg-muted">{{ t.batch_intro }}</p>
+
+            <div class="rounded-xl border-2 border-dashed px-6 py-8 text-center transition"
+                 :class="$store.artBatch.dragOver
+                         ? 'border-accent bg-accent/10'
+                         : 'border-border-strong hover:border-accent/60'">
+              <i data-lucide="folder-up" class="w-10 h-10 mx-auto text-accent"></i>
+              <div class="text-base font-medium text-fg mt-3">{{ t.batch_drop_title }}</div>
+              <div class="text-sm text-fg-muted mt-1">{{ t.batch_drop_hint }}</div>
+              <div class="flex flex-wrap items-center justify-center gap-2 mt-4">
+                <button type="button" @click="$refs.batchFolder.click()"
+                        class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md transition flex items-center gap-1.5">
+                  <i data-lucide="folder-open" class="w-4 h-4"></i>
+                  {{ t.batch_pick_folder }}
+                </button>
+                <button type="button" @click="$refs.batchFiles.click()"
+                        class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm px-4 py-2 rounded-md transition flex items-center gap-1.5">
+                  <i data-lucide="file-image" class="w-4 h-4"></i>
+                  {{ t.batch_pick_files }}
+                </button>
+              </div>
+              <div class="flex flex-wrap items-center justify-center gap-3 mt-4 text-xs text-fg-muted">
+                <label class="flex items-center gap-2">
+                  <span>{{ t.batch_fit_label }}</span>
+                  <select x-model="$store.artBatch.fit"
+                          class="bg-bg-subtle border border-border-subtle rounded px-2 py-1 text-xs">
+                    <option value="crop">{{ t.batch_fit_crop }}</option>
+                    <option value="contain">{{ t.batch_fit_contain }}</option>
+                    <option value="stretch">{{ t.batch_fit_stretch }}</option>
+                  </select>
+                </label>
+              </div>
+              <p class="text-[11px] text-fg-faint mt-3">{{ t.batch_naming_hint }}</p>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="bg-bg-subtle/40 border border-border-subtle rounded-xl p-4 space-y-3">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="library" class="w-4 h-4 text-accent"></i>
+                  <h3 class="text-sm font-medium text-fg">{{ t.batch_library_title }}</h3>
+                </div>
+                <p class="text-xs text-fg-muted">{{ t.batch_library_desc }}</p>
+                <template x-if="$store.artBatch.appFolder">
+                  <div class="text-[11px] font-mono bg-bg-inset rounded px-2 py-1.5 text-fg-muted break-all border border-border-subtle"
+                       x-text="$store.artBatch.appFolder"></div>
+                </template>
+                <button type="button" @click="$store.artBatch.useLibrary()"
+                        class="w-full bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm px-4 py-2 rounded-md transition flex items-center justify-center gap-1.5">
+                  <i data-lucide="scan-search" class="w-4 h-4"></i>
+                  {{ t.batch_library_use }}
+                </button>
+              </div>
+
+              <div class="bg-bg-subtle/40 border border-border-subtle rounded-xl p-4 space-y-3">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="link" class="w-4 h-4 text-accent"></i>
+                  <h3 class="text-sm font-medium text-fg">{{ t.batch_linked_title }}</h3>
+                </div>
+                <p class="text-xs text-fg-muted">{{ t.batch_linked_desc }}</p>
+                {% include "partials/shared/linked_folders.html" %}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        {# ── Trabajando: emparejando, importando o subiendo ──────────────── #}
+        <template x-if="$store.artBatch.step === 'loading' || $store.artBatch.step === 'working'">
+          <div class="text-center py-16 text-fg-muted text-sm space-y-3" role="status" aria-live="polite">
+            <div class="spinner-ring"></div>
+            <p x-text="$store.artBatch.progress.label"></p>
+            <template x-if="$store.artBatch.progress.total > 0">
+              <div class="max-w-xs mx-auto space-y-1">
+                <div class="h-1.5 bg-bg-inset rounded-full overflow-hidden">
+                  <div class="h-full bg-accent transition-all duration-300"
+                       :style="`width: ${Math.round(100 * $store.artBatch.progress.done / Math.max($store.artBatch.progress.total, 1))}%`"></div>
+                </div>
+                <div class="font-mono text-xs text-fg-faint"
+                     x-text="`${$store.artBatch.progress.done}/${$store.artBatch.progress.total}`"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        {# ── Paso 2: revisar antes de aplicar ─────────────────────────────── #}
+        <template x-if="$store.artBatch.step === 'review' && $store.artBatch.plan">
+          <div class="space-y-4">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.batch_stat_match }}</div>
+                <div class="text-2xl font-semibold text-emerald-400 mt-1 tabular-nums" x-text="$store.artBatch.plan?.summary.match ?? 0"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.batch_stat_same }}</div>
+                <div class="text-2xl font-semibold text-fg mt-1 tabular-nums"
+                     x-text="($store.artBatch.plan?.summary.same ?? 0) + ($store.artBatch.plan?.summary.keep ?? 0)"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.batch_stat_missing }}</div>
+                <div class="text-2xl font-semibold mt-1 tabular-nums"
+                     :class="$store.artBatch.missing.length ? 'text-amber-400' : 'text-fg'"
+                     x-text="$store.artBatch.missing.length"></div>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <div class="text-[10px] uppercase tracking-wider text-fg-faint">{{ t.batch_stat_unused }}</div>
+                <div class="text-2xl font-semibold mt-1 tabular-nums"
+                     :class="$store.artBatch.unused.length ? 'text-amber-400' : 'text-fg'"
+                     x-text="$store.artBatch.unused.length"></div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex gap-1 bg-bg-subtle/60 border border-border-subtle rounded-lg p-1" role="tablist">
+                <button type="button" role="tab" @click="$store.artBatch.tab = 'assign'"
+                        :aria-selected="$store.artBatch.tab === 'assign'"
+                        class="text-xs px-3 py-1.5 rounded-md transition"
+                        :class="$store.artBatch.tab === 'assign' ? 'bg-bg-elevated text-fg shadow-card' : 'text-fg-muted hover:text-fg'"
+                        x-text="`${window._T.batch_tab_assign} (${$store.artBatch.rows.length})`"></button>
+                <button type="button" role="tab" @click="$store.artBatch.tab = 'missing'"
+                        :aria-selected="$store.artBatch.tab === 'missing'"
+                        class="text-xs px-3 py-1.5 rounded-md transition"
+                        :class="$store.artBatch.tab === 'missing' ? 'bg-bg-elevated text-fg shadow-card' : 'text-fg-muted hover:text-fg'"
+                        x-text="`${window._T.batch_tab_missing} (${$store.artBatch.missing.length})`"></button>
+                <button type="button" role="tab" @click="$store.artBatch.tab = 'unused'"
+                        :aria-selected="$store.artBatch.tab === 'unused'"
+                        class="text-xs px-3 py-1.5 rounded-md transition"
+                        :class="$store.artBatch.tab === 'unused' ? 'bg-bg-elevated text-fg shadow-card' : 'text-fg-muted hover:text-fg'"
+                        x-text="`${window._T.batch_tab_unused} (${$store.artBatch.unused.length})`"></button>
+              </div>
+              <label class="text-xs text-fg-muted flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" class="accent-accent w-3.5 h-3.5"
+                       :checked="$store.artBatch.overwrite"
+                       @change="$store.artBatch.setOverwrite($event.target.checked)">
+                {{ t.batch_overwrite }}
+              </label>
+            </div>
+
+            <template x-if="$store.artBatch.ignored + ($store.artBatch.plan?.rejected.length ?? 0) > 0 || $store.artBatch.truncated">
+              <p class="text-xs text-fg-faint flex items-center gap-1.5">
+                <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                <span x-text="$store.artBatch.count('batch_ignored', $store.artBatch.ignored + ($store.artBatch.plan?.rejected.length ?? 0))"></span>
+                <template x-if="$store.artBatch.truncated"><span>· {{ t.batch_truncated }}</span></template>
+              </p>
+            </template>
+
+            {# Asignaciones #}
+            <template x-if="$store.artBatch.tab === 'assign'">
+              <div class="space-y-2">
+                <template x-if="$store.artBatch.rows.length === 0">
+                  <p class="text-center py-8 text-sm text-fg-faint">{{ t.batch_none_matched }}</p>
+                </template>
+                <template x-if="$store.artBatch.rows.length > 0">
+                  <div class="flex items-center justify-end gap-3 text-xs">
+                    <button type="button" @click="$store.artBatch.setAll(true)" class="text-accent hover:underline">{{ t.batch_select_all }}</button>
+                    <button type="button" @click="$store.artBatch.setAll(false)" class="text-fg-faint hover:underline">{{ t.batch_select_none }}</button>
+                  </div>
+                </template>
+                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <template x-for="row in $store.artBatch.rows" :key="row.key">
+                    <label class="min-w-0 flex gap-3 items-center bg-bg-subtle/30 border rounded-lg p-2 cursor-pointer transition"
+                           :class="row.enabled ? 'border-accent/60 bg-accent/5' : 'border-border-subtle'">
+                      <input type="checkbox" x-model="row.enabled" class="accent-accent w-4 h-4 shrink-0"
+                             :aria-label="row.name">
+                      <div class="w-12 aspect-[63/88] rounded overflow-hidden bg-bg-inset shrink-0 border border-border-subtle transition"
+                           :class="row.enabled ? '' : 'grayscale opacity-50'">
+                        <img :src="$store.artBatch.thumb($store.artBatch.chosenOf(row))" :alt="row.name" loading="lazy"
+                             class="w-full h-full object-cover" @error="$el.style.opacity = 0.2">
+                      </div>
+                      <div class="min-w-0 flex-1 space-y-1">
+                        <div class="text-sm text-fg truncate flex items-center gap-1.5">
+                          <span class="truncate" x-text="row.name"></span>
+                          <template x-if="row.face === 'back'">
+                            <span class="text-[10px] uppercase tracking-wider text-accent bg-accent/10 rounded px-1">{{ t.batch_back_badge }}</span>
+                          </template>
+                        </div>
+                        <template x-if="row.candidates.length > 1">
+                          <select x-model.number="row.chosen" @click.stop
+                                  :aria-label="window._T.batch_choose_image + ' · ' + row.name"
+                                  class="w-full bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5 text-[11px]">
+                            <template x-for="c in row.candidates" :key="c.ref">
+                              <option :value="c.ref" :selected="c.ref === row.chosen" x-text="c.variant || c.filename"></option>
+                            </template>
+                          </select>
+                        </template>
+                        <template x-if="row.candidates.length === 1">
+                          <div class="text-[11px] text-fg-faint truncate" x-text="row.candidates[0].filename"></div>
+                        </template>
+                        <template x-if="row.status === 'same'">
+                          <div class="text-[10px] text-fg-muted">{{ t.batch_status_same }}</div>
+                        </template>
+                        <template x-if="row.status === 'keep'">
+                          <div class="text-[10px] text-amber-400">{{ t.batch_status_keep }}</div>
+                        </template>
+                      </div>
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            {# Cartas sin imagen #}
+            <template x-if="$store.artBatch.tab === 'missing'">
+              <div>
+                <template x-if="$store.artBatch.missing.length === 0">
+                  <p class="text-center py-8 text-sm text-emerald-400">{{ t.batch_all_covered }}</p>
+                </template>
+                <ul class="grid gap-1 sm:grid-cols-2 xl:grid-cols-3 text-sm">
+                  <template x-for="m in $store.artBatch.missing" :key="m.deck_card_id">
+                    <li class="min-w-0 flex items-center gap-2 px-3 py-1.5 rounded-md bg-bg-subtle/30 border border-border-subtle">
+                      <i data-lucide="image-off" class="w-3.5 h-3.5 text-fg-faint shrink-0"></i>
+                      <span class="truncate text-fg-muted" x-text="m.name"></span>
+                    </li>
+                  </template>
+                </ul>
+                <template x-if="$store.artBatch.missing.length > 0">
+                  <p class="text-xs text-fg-faint mt-3">{{ t.batch_missing_hint }}</p>
+                </template>
+              </div>
+            </template>
+
+            {# Imágenes sin carta #}
+            <template x-if="$store.artBatch.tab === 'unused'">
+              <div class="space-y-2">
+                <template x-if="$store.artBatch.unused.length === 0">
+                  <p class="text-center py-8 text-sm text-fg-faint">{{ t.batch_no_unused }}</p>
+                </template>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <template x-for="u in $store.artBatch.unused" :key="u.ref">
+                    <div class="min-w-0 flex gap-3 items-center bg-bg-subtle/30 border border-border-subtle rounded-lg p-2">
+                      <div class="w-12 aspect-[63/88] rounded overflow-hidden bg-bg-inset shrink-0 border border-border-subtle">
+                        <img :src="$store.artBatch.thumb(u)" :alt="u.filename" loading="lazy"
+                             class="w-full h-full object-cover" @error="$el.style.opacity = 0.2">
+                      </div>
+                      <div class="min-w-0 flex-1 space-y-1">
+                        <div class="text-xs text-fg truncate" x-text="u.filename"></div>
+                        <div class="flex flex-wrap gap-1">
+                          <template x-for="id in u.suggestions" :key="id">
+                            <button type="button" @click="$store.artBatch.assignUnused(u, id)"
+                                    class="text-[11px] bg-accent/10 hover:bg-accent/20 text-accent border border-accent/40 rounded px-1.5 py-0.5 transition truncate max-w-full"
+                                    x-text="$store.artBatch.cardName(id)"></button>
+                          </template>
+                        </div>
+                        <select @change="$store.artBatch.assignUnused(u, $event.target.value)"
+                                :aria-label="window._T.batch_assign_to + ' · ' + u.filename"
+                                class="w-full bg-bg-subtle border border-border-subtle rounded px-1.5 py-0.5 text-[11px]">
+                          <option value="">{{ t.batch_assign_to }}…</option>
+                          <template x-for="c in $store.artBatch.deckCards" :key="c.id">
+                            <option :value="c.id" x-text="c.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        {# ── Paso 3: resultado ───────────────────────────────────────────── #}
+        <template x-if="$store.artBatch.step === 'done' && $store.artBatch.result">
+          <div class="text-center py-10 space-y-4">
+            <div class="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
+              <i data-lucide="check" class="w-7 h-7"></i>
+            </div>
+            <div class="text-lg font-semibold text-fg"
+                 x-text="$store.artBatch.count('batch_done', $store.artBatch.result?.changed ?? 0)"></div>
+            <template x-if="$store.artBatch.result?.snapshot_id">
+              <p class="text-xs text-fg-faint">{{ t.batch_done_snapshot }}</p>
+            </template>
+            <template x-if="$store.artBatch.result?.failed.length > 0">
+              <div class="text-left max-w-xl mx-auto bg-red-500/5 border border-red-500/30 rounded-lg p-3 space-y-1">
+                <div class="text-xs font-medium text-red-300"
+                     x-text="$store.artBatch.count('batch_failed', $store.artBatch.result?.failed.length ?? 0)"></div>
+                <ul class="text-[11px] text-fg-muted space-y-0.5 max-h-40 overflow-y-auto">
+                  <template x-for="f in ($store.artBatch.result?.failed || [])" :key="f.name + f.card">
+                    <li><span class="font-mono" x-text="f.name"></span> — <span x-text="f.error"></span></li>
+                  </template>
+                </ul>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <div class="p-4 border-t border-border-subtle bg-bg-subtle/30 flex items-center justify-between gap-3 shrink-0">
+        <template x-if="$store.artBatch.step === 'review'">
+          <div class="text-xs text-fg-faint"
+               x-text="$store.artBatch.count('batch_selected', $store.artBatch.pending.length)"></div>
+        </template>
+        <template x-if="$store.artBatch.step !== 'review'">
+          <div class="text-xs text-fg-faint">{{ t.batch_footer_hint }}</div>
+        </template>
+
+        <template x-if="$store.artBatch.step === 'review'">
+          <button type="button" @click="$store.artBatch.apply()" :disabled="$store.artBatch.pending.length === 0"
+                  class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md
+                         disabled:opacity-50 transition flex items-center gap-2">
+            <i data-lucide="wand-sparkles" class="w-4 h-4"></i>
+            <span x-text="$store.artBatch.count('batch_apply', $store.artBatch.pending.length)"></span>
+          </button>
+        </template>
+        <template x-if="$store.artBatch.step === 'done'">
+          <div class="flex items-center gap-2">
+            <template x-if="$store.artBatch.result && $store.artBatch.result.event_id">
+              <button type="button" @click="$store.artBatch.undo()"
+                      class="bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-sm px-4 py-2 rounded-md transition flex items-center gap-1.5">
+                <i data-lucide="undo-2" class="w-4 h-4"></i>
+                {{ t.batch_undo }}
+              </button>
+            </template>
+            <button type="button" @click="$store.artBatch.close()"
+                    class="bg-accent hover:bg-accent-soft text-black text-sm font-medium px-4 py-2 rounded-md transition">
+              {{ t.batch_close }}
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+</div>

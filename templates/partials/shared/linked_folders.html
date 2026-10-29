@@ -1,0 +1,49 @@
+<div class="space-y-2">
+  <form class="flex gap-2" @submit.prevent="$store.artBatch.deckId != null ? $store.artBatch.linkAndUse() : $store.artBatch.linkFolder()">
+    <input type="text" x-model="$store.artBatch.linkPath" :disabled="$store.artBatch.linking"
+           placeholder="{{ t.batch_link_placeholder }}" aria-label="{{ t.batch_link_label }}"
+           class="flex-1 min-w-0 bg-bg-subtle border border-border-subtle rounded-md px-2.5 py-1.5 text-xs font-mono
+                  focus:outline-none focus:border-accent">
+    <button type="submit" :disabled="$store.artBatch.linking || !$store.artBatch.linkPath.trim()"
+            class="shrink-0 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg text-xs px-3 py-1.5 rounded-md
+                   disabled:opacity-50 transition flex items-center gap-1.5">
+      <i data-lucide="link" class="w-3.5 h-3.5" x-show="!$store.artBatch.linking"></i>
+      <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="$store.artBatch.linking"></i>
+      {{ t.batch_link }}
+    </button>
+  </form>
+  <template x-if="$store.artBatch.folderError">
+    <p role="alert" class="text-[11px] text-red-300" x-text="$store.artBatch.folderError"></p>
+  </template>
+  <p class="text-[11px] text-fg-faint">{{ t.batch_link_hint }}</p>
+
+  <template x-if="$store.artBatch.foldersLoaded && $store.artBatch.folders.length === 0">
+    <p class="text-[11px] text-fg-faint italic">{{ t.batch_no_folders }}</p>
+  </template>
+  <ul class="space-y-1.5">
+    <template x-for="folder in $store.artBatch.folders" :key="folder.id">
+      <li class="flex items-center gap-2 bg-bg-inset/60 border border-border-subtle rounded-md px-2.5 py-1.5">
+        <span class="w-2 h-2 rounded-full shrink-0" :class="folder.online ? 'bg-emerald-400' : 'bg-amber-400'"
+              :title="folder.online ? window._T.batch_folder_online : window._T.batch_folder_offline"></span>
+        <div class="min-w-0 flex-1">
+          <div class="text-xs text-fg truncate" x-text="folder.label"></div>
+          <div class="text-[10px] text-fg-faint truncate font-mono" :title="folder.path" x-text="folder.path"></div>
+          <div class="text-[10px] text-fg-faint"
+               x-text="window._T.batch_folder_stats.replace('{files}', folder.file_count).replace('{cards}', folder.in_use)"></div>
+        </div>
+        <template x-if="$store.artBatch.deckId != null">
+          <button type="button" @click="$store.artBatch.useFolder(folder)" :disabled="!folder.online"
+                  class="shrink-0 text-xs bg-accent/10 hover:bg-accent/20 text-accent border border-accent/40 rounded px-2 py-1
+                         disabled:opacity-40 transition">
+            {{ t.batch_folder_use }}
+          </button>
+        </template>
+        <button type="button" @click="$store.artBatch.unlinkFolder(folder)"
+                :aria-label="window._T.batch_unlink + ' · ' + folder.label" :title="window._T.batch_unlink"
+                class="shrink-0 p-1 text-fg-faint hover:text-red-300 rounded hover:bg-bg-subtle transition">
+          <i data-lucide="unlink" class="w-3.5 h-3.5"></i>
+        </button>
+      </li>
+    </template>
+  </ul>
+</div>

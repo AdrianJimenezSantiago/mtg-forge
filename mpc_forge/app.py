@@ -69,9 +69,14 @@ class CachedStaticFiles(StaticFiles):
 
 
 class LinkedCustomArtFiles(CachedStaticFiles):
-    """Sirve `/custom_art/_linked/<id>/…` desde la carpeta vinculada `<id>`."""
+    """Sirve `/custom_art/_linked/<id>/…` desde la carpeta vinculada `<id>`.
+
+    Solo imágenes, y sin caché larga: el usuario puede editarlas en su carpeta.
+    """
 
     def lookup_path(self, path: str) -> tuple[str, os.stat_result | None]:
+        if not custom_art.is_servable(path):
+            return "", None
         resolved = custom_art.resolve_relative(f"{custom_art.LINKED_PREFIX}/{path}")
         if resolved is None:
             return "", None
@@ -112,7 +117,7 @@ def _mount_static(app: FastAPI) -> None:
     )
     app.mount(
         f"/custom_art/{custom_art.LINKED_PREFIX}",
-        LinkedCustomArtFiles(check_dir=False, max_age=THIRTY_DAYS, user_content=True),
+        LinkedCustomArtFiles(check_dir=False, max_age=0, user_content=True),
         name="custom_art_linked",
     )
     for path, directory, max_age, name, user_content in mounts:

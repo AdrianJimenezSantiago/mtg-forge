@@ -235,6 +235,14 @@
 
       <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
 
+      <button @click="window.artBatch.open({ deckId })"
+              class="text-xs bg-accent/10 hover:bg-accent/20 border border-accent/50 text-accent-glow
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.batch_button_title }}">
+        <i data-lucide="images" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.batch_button }}</span>
+      </button>
+
       <button @click="rescanCustom()" :disabled="rescanning"
               class="text-xs text-fg-muted hover:text-fg border border-border-subtle hover:border-border-strong
                      px-3 py-1.5 rounded-md transition disabled:opacity-50 flex items-center gap-1.5"

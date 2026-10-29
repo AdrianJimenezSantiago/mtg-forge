@@ -332,8 +332,16 @@ class TestLinkedFolders:
         assert (
             served.status_code == 200 and served.content == (linked / "Sol Ring.png").read_bytes()
         )
+        assert served.headers["cache-control"] == "public, max-age=0"
         thumb = await client.get(thumbnails.url_for_relative(arts[0]["relative_path"]))
         assert thumb.status_code in (200, 302)
+        if thumb.status_code == 200:
+            assert thumb.headers["cache-control"] == "no-cache"
+        (linked / "secreto.txt").write_text("no")
+        _write(linked / ".oculta" / "x.png")
+        for leak in ("secreto.txt", ".oculta/x.png"):
+            r = await client.get(f"/custom_art/_linked/{folder['id']}/{leak}")
+            assert r.status_code == 404, leak
         escape = await client.get(f"/custom_art/_linked/{folder['id']}/../../custom/x.png")
         assert escape.status_code == 404
 
@@ -395,3 +403,17 @@ class TestDeletingArtDetachesIt:
         async with session_scope() as db:
             refs = (await db.scalars(select(DeckCard.custom_art_front_id))).all()
         assert set(refs) == {None}
+
+
+@needs_pillow
+async def test_a_truncated_scan_never_drops_what_it_did_not_reach(
+    client, deck, custom_dir, monkeypatch
+):
+    for name in ("Sol Ring", "Command Tower", "Arcane Signet"):
+        _write(custom_dir / f"{name}.png")
+    assert (await client.post("/api/custom-art/rescan")).json()["total"] == 3
+
+    monkeypatch.setattr(custom_art, "MAX_FILES_PER_ROOT", 1)
+    stats = (await client.post("/api/custom-art/rescan")).json()
+    assert stats["removed"] == 0
+    assert len((await client.get("/api/custom-art/")).json()) == 3

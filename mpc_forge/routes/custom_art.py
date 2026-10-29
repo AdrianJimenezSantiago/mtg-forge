@@ -172,9 +172,13 @@ class ZipImportResultView(BaseModel):
 
 
 @router.post("/import-zip", response_model=ZipImportResultView)
-async def import_zip(db: DbDep, file: Annotated[UploadFile, File()]) -> ZipImportResultView:
+async def import_zip(
+    db: DbDep,
+    file: Annotated[UploadFile, File()],
+    fit: Annotated[Literal["stretch", "crop", "contain"], Form()] = "stretch",
+) -> ZipImportResultView:
     try:
-        result = await custom_art_service.import_zip(db, file.file, file.filename or "zip")
+        result = await custom_art_service.import_zip(db, file.file, file.filename or "zip", fit=fit)
     except custom_art_service.UploadRejected as e:
         raise HTTPException(e.status_code, {"code": e.code, "message": str(e)}) from e
     finally:

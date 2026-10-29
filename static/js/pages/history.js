@@ -83,6 +83,17 @@ function buildKindMeta() {
       return `${_t('history_kind_art')} <b>${esc(ev.card_name || 'card')}</b>: <span class="text-fg-muted font-mono">${fromLoc}</span> → <b class="font-mono">${toLoc}</b>${remember}`;
     }
   },
+  custom_art_applied:   { icon: 'images',          tone: 'accent',  label: _t('history_kind_custom_batch'),
+    render: (ev) => {
+      const p = ev.payload || {};
+      if (p.undone_event_id) return esc(ev.summary || '');
+      const sample = (p.changes || []).slice(0, 5).map((c) => esc(c.name || '')).join(', ');
+      const more = (p.changes || []).length > 5 ? ` +${(p.changes || []).length - 5}` : '';
+      let msg = `${_t('history_kind_custom_batch')}: <b>${p.count || 0}</b> ${_t('history_custom_batch_cards')}`;
+      if (sample) msg += ` <span class="text-fg-faint text-[11px]">(${sample}${more})</span>`;
+      return msg;
+    }
+  },
   role_cleared:         { icon: 'trash-2',         tone: 'danger',  label: _t('history_kind_cleared'),
     render: (ev) => {
       const p = ev.payload || {};
@@ -134,7 +145,7 @@ function buildFilterGroups() {
   return [
     { value: 'all',     label: _t('history_filter_all'),     icon: null,            kinds: null },
     { value: 'cards',   label: _t('history_filter_cards'),   icon: 'square-stack',  kinds: ['card_added','card_removed','card_moved','card_qty_changed','card_include_toggled','related_added','role_cleared'] },
-    { value: 'art',     label: _t('history_filter_art'),     icon: 'image',         kinds: ['card_art_changed'] },
+    { value: 'art',     label: _t('history_filter_art'),     icon: 'image',         kinds: ['card_art_changed','custom_art_applied'] },
     { value: 'lang',    label: _t('history_filter_lang'),    icon: 'languages',     kinds: ['deck_localized'] },
     { value: 'exports', label: _t('history_filter_exports'), icon: 'printer',       kinds: ['xml_generated','pdf_generated','press_exported'] },
     { value: 'meta',    label: _t('history_filter_meta'),    icon: 'settings',      kinds: ['deck_created','deck_renamed'] },

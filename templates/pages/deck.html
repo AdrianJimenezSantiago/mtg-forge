@@ -11,6 +11,7 @@
 {% block title %}{{ deck.name }} · MPC Forge{% endblock %}
 {% block content %}
 <div x-data="deckEditor({{ deck.id }})" x-init="load()"
+     @custom-art-applied.window="refreshCards()"
      class="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto animate-fade-in">
 
   {% include "partials/deck/build_progress.html" %}
@@ -34,6 +35,8 @@
   {% include "partials/deck/tokens_modal.html" %}
 
   {% include "partials/deck/stats_modal.html" %}
+
+  {% include "partials/deck/custom_art_batch_modal.html" %}
 </div>
 
 {% endblock %}

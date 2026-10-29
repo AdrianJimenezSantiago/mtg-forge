@@ -404,6 +404,19 @@ function deckEditor(deckId) {
         this._startPreload();
       }
     },
+    async refreshCards() {
+      try {
+        const d = await window.api.decks.get(this.deckId);
+        this.deck = d;
+        this.cards = d.cards;
+        this._pickerCache = {};
+        this._growRows();
+        this.loadEstimate();
+        if (this.selectedCard) await this.selectCard(this.selectedCard);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.message, 'error');
+      }
+    },
     async loadEstimate() {
       const r = await fetch(`/api/decks/${this.deckId}/estimate`);
       this.estimate = await r.json();
@@ -1138,12 +1151,14 @@ function deckEditor(deckId) {
         `"${art.variant_label || art.filename}"`,
         { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') })) return;
       const r = await fetch(`/api/custom-art/${art.custom_art_id}`, {method: 'DELETE'});
-      if (r.ok) {
-        window.toast(window._t('deck_custom_deleted'), art.filename, 'success');
-        const card = this.selectedCard;
-        await this.selectCard(card);
-        await this.load();
+      if (!r.ok) {
+        window.toast(window._t('common_error'), await window.artUpload.errorDetail(r), 'error');
+        return;
       }
+      window.toast(window._t('deck_custom_deleted'), art.filename, 'success');
+      const card = this.selectedCard;
+      await this.selectCard(card);
+      await this.load();
     },
     async rescanCustom() {
       this.rescanning = true;

@@ -45,10 +45,11 @@ async def get_thumbnail(art_path: str) -> Response:
         )
         return RedirectResponse(original_url, status_code=status.HTTP_302_FOUND)
 
+    linked = custom_art.linked_folder_id(art_path) is not None
     return FileResponse(
         thumb,
         media_type="image/webp",
-        headers={"Cache-Control": _CACHE_CONTROL},
+        headers={"Cache-Control": "no-cache" if linked else _CACHE_CONTROL},
     )
 
 

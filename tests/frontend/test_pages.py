@@ -112,3 +112,25 @@ async def test_proof_page_is_translated(client, deck):
     client.cookies.set("lang", "en")
     r = await client.get(f"/decks/{deck['id']}/proof", headers=HTML)
     assert "Show DFC backs" in r.text and "Cuadrícula" not in r.text
+
+
+class TestBatchCustomArt:
+    async def test_deck_editor_offers_every_way_to_bring_images(self, client, deck):
+        r = await client.get(f"/decks/{deck['id']}", headers=HTML)
+        html = r.text
+        assert "window.artBatch.open({ deckId })" in html
+        assert '@custom-art-applied.window="refreshCards()"' in html
+        assert 'id="art-batch-title"' in html
+        assert "webkitdirectory" in html and ".zip" in html
+        assert "$store.artBatch.useLibrary()" in html and "$store.artBatch.linkAndUse()" in html
+        assert "/static/js/core/custom-art-batch.js?v=" in html
+
+        client.cookies.set("lang", "en")
+        r = await client.get(f"/decks/{deck['id']}", headers=HTML)
+        assert "Batch custom art" in r.text and "Drop a folder, images or a ZIP here" in r.text
+
+    async def test_settings_manages_linked_folders(self, client):
+        r = await client.get("/settings", headers=HTML)
+        assert "$store.artBatch.loadFolders()" in r.text
+        assert "$store.artBatch.unlinkFolder(folder)" in r.text
+        assert "Carpetas vinculadas" in r.text

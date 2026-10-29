@@ -171,11 +171,20 @@ def _is_ignored(parts: tuple[str, ...]) -> bool:
     return any(p.startswith(".") or p in _IGNORED_DIRS for p in parts)
 
 
-def _scan_disk(root: Path, *, skip_top: frozenset[str] = frozenset()) -> dict[str, int]:
-    """Imágenes bajo `root` como {ruta relativa POSIX: bytes}.
+def is_servable(relative: str) -> bool:
+    """Si una ruta dentro de una raíz de arte custom se puede servir al navegador."""
+    parts = PurePosixPath(relative.replace("\\", "/")).parts
+    return bool(parts) and not _is_ignored(parts) and Path(parts[-1]).suffix.lower() in _IMAGE_EXTS
+
+
+def _scan_disk(
+    root: Path, *, skip_top: frozenset[str] = frozenset()
+) -> tuple[dict[str, int], bool]:
+    """Imágenes bajo `root` como ({ruta relativa POSIX: bytes}, escaneo completo).
 
     Ignora carpetas ocultas o de sistema y se detiene en `MAX_FILES_PER_ROOT`
-    para que vincular por error una carpeta enorme no bloquee la app.
+    para que vincular por error una carpeta enorme no bloquee la app; en ese
+    caso el escaneo no está completo y lo que falte no se da por borrado.
     """
     disk: dict[str, int] = {}
     for f in root.rglob("*"):
@@ -191,8 +200,8 @@ def _scan_disk(root: Path, *, skip_top: frozenset[str] = frozenset()) -> dict[st
         disk["/".join(rel_parts)] = size
         if len(disk) >= MAX_FILES_PER_ROOT:
             log.warning("%s tiene más de %d imágenes; se indexan solo esas", root, len(disk))
-            break
-    return disk
+            return disk, False
+    return disk, True
 
 
 async def detach_references(db: AsyncSession, art_ids: list[int]) -> None:
@@ -233,17 +242,20 @@ async def rescan(db: AsyncSession) -> dict[str, int]:
 
 async def _rescan(db: AsyncSession) -> dict[str, int]:
     roots = await load_linked_roots(db)
-    disk_files = await asyncio.to_thread(
+    disk_files, main_complete = await asyncio.to_thread(
         _scan_disk, cfg.PATHS.custom_art_dir, skip_top=frozenset({LINKED_PREFIX})
     )
 
     offline: set[int] = set()
+    partial: set[int | None] = set() if main_complete else {None}
     per_folder: dict[int, int] = {}
     for folder_id, root in roots.items():
         if not await asyncio.to_thread(root.is_dir):
             offline.add(folder_id)
             continue
-        files = await asyncio.to_thread(_scan_disk, root)
+        files, complete = await asyncio.to_thread(_scan_disk, root)
+        if not complete:
+            partial.add(folder_id)
         per_folder[folder_id] = len(files)
         for rel, size in files.items():
             disk_files[linked_relative_path(folder_id, rel)] = size
@@ -254,7 +266,9 @@ async def _rescan(db: AsyncSession) -> dict[str, int]:
     orphan_ids = [
         ca.id
         for path, ca in existing_by_path.items()
-        if path not in disk_files and linked_folder_id(path) not in offline
+        if path not in disk_files
+        and linked_folder_id(path) not in offline
+        and linked_folder_id(path) not in partial
     ]
     await delete_arts(db, orphan_ids)
 
@@ -786,10 +800,10 @@ def _zip_image_entries(zf: zipfile.ZipFile, result: ZipImportResult) -> list[zip
     return out
 
 
-def _read_and_prepare(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> PreparedImage:
+def _read_and_prepare(zf: zipfile.ZipFile, info: zipfile.ZipInfo, fit: str) -> PreparedImage:
     with zf.open(info) as fh:
         data = fh.read(MAX_UPLOAD_BYTES + 1)
-    return prepare_upload(data)
+    return prepare_upload(data, fit)
 
 
 def _free_target(folder: Path, stem: str, ext: str) -> Path:
@@ -801,13 +815,17 @@ def _free_target(folder: Path, stem: str, ext: str) -> Path:
     return target
 
 
-async def import_zip(db: AsyncSession, fileobj: IO[bytes], archive_name: str) -> ZipImportResult:
+async def import_zip(
+    db: AsyncSession, fileobj: IO[bytes], archive_name: str, *, fit: str = "stretch"
+) -> ZipImportResult:
     """Extrae las imágenes de un ZIP a la biblioteca de arte custom.
 
     Cada imagen pasa por las mismas comprobaciones que una subida suelta y
     conserva su nombre, que es lo que decide a qué carta corresponde. Se
     extraen de una en una para no tener el ZIP entero en memoria.
     """
+    if fit not in FIT_MODES:
+        raise UploadRejected("invalid_fit", f"Modo de ajuste desconocido: {fit!r}")
     result = ZipImportResult()
     try:
         zf = zipfile.ZipFile(fileobj)
@@ -821,7 +839,7 @@ async def import_zip(db: AsyncSession, fileobj: IO[bytes], archive_name: str) ->
         for info in entries:
             name = PurePosixPath(info.filename.replace("\\", "/")).name
             try:
-                prepared = await asyncio.to_thread(_read_and_prepare, zf, info)
+                prepared = await asyncio.to_thread(_read_and_prepare, zf, info, fit)
             except UploadRejected as e:
                 result.skipped.append({"name": name, "code": e.code})
                 continue
