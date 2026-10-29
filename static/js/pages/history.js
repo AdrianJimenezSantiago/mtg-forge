@@ -30,6 +30,13 @@ function buildKindMeta() {
       return `${_t('history_kind_renamed')}: <span class="text-fg-muted">${esc(p.old_name || '')}</span> → <b>${esc(p.new_name || '')}</b>`;
     }
   },
+  deck_synced:          { icon: 'refresh-cw',      tone: 'info',    label: _t('history_kind_synced'),
+    render: (ev) => {
+      const p = ev.payload || {};
+      return `${_t('history_kind_synced')} <b>${esc(p.site || '')}</b>: ` + esc(_t('sync_done_body')
+        .replace('{added}', p.added || 0).replace('{removed}', p.removed || 0).replace('{quantity}', p.quantity || 0));
+    }
+  },
   deck_localized:       { icon: 'languages',       tone: 'info',    label: _t('history_kind_localized'),
     render: (ev) => {
       const p = ev.payload || {};

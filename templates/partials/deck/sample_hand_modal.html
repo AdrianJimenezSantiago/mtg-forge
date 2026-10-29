@@ -1,0 +1,78 @@
+<template x-if="handOpen">
+  <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="handOpen = false" @keydown.escape.window="handOpen = false">
+    <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="hand-title" x-trap="true">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
+        <div class="flex items-center gap-2">
+          <i data-lucide="hand" class="w-4 h-4 text-accent"></i>
+          <h2 id="hand-title" class="font-semibold">{{ t.hand_title }}</h2>
+          <span class="text-xs text-fg-faint" x-text="window._T.hand_library.replace('{n}', handLibrary.length).replace('{lands}', handOdds.lands)"></span>
+        </div>
+        <button type="button" aria-label="{{ t.common_close }}" @click="handOpen = false" class="text-fg-faint hover:text-fg p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <template x-if="handLibrary.length < 7">
+          <p class="text-sm text-warning">{{ t.hand_too_small }}</p>
+        </template>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" @click="newHand(true)" class="text-xs bg-accent text-bg-base font-medium px-3 py-1.5 rounded-md flex items-center gap-1.5">
+            <i data-lucide="shuffle" class="w-3.5 h-3.5"></i>{{ t.hand_new }}
+          </button>
+          <button type="button" @click="mulligan()" class="text-xs bg-bg-subtle border border-border-strong px-3 py-1.5 rounded-md flex items-center gap-1.5">
+            <i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i>{{ t.hand_mulligan }}
+          </button>
+          <button type="button" @click="drawCard()" :disabled="!handDeck.length" class="text-xs bg-bg-subtle border border-border-strong px-3 py-1.5 rounded-md flex items-center gap-1.5 disabled:opacity-40">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>{{ t.hand_draw }}
+          </button>
+          <span class="text-xs text-fg-muted ml-2" aria-live="polite"
+                x-text="window._T.hand_status.replace('{cards}', hand.length).replace('{lands}', handLands).replace('{mulls}', handMulligans)"></span>
+        </div>
+        <div class="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-8 gap-2" x-auto-animate>
+          <template x-for="c in hand" :key="c.uid">
+            <figure class="relative">
+              <img :src="c.thumb" :alt="c.name" :data-preview="c.thumb"
+                   class="w-full aspect-[63/88] object-cover rounded-md border border-border-subtle bg-bg-subtle">
+              <figcaption class="text-[10px] text-fg-muted truncate mt-0.5" x-text="c.name"></figcaption>
+            </figure>
+          </template>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4 text-xs">
+          <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+            <h3 class="font-medium text-fg-muted mb-2">{{ t.hand_opening_title }}</h3>
+            <table class="w-full">
+              <thead><tr class="text-fg-faint text-left"><th class="font-normal">{{ t.hand_lands }}</th><th class="font-normal text-right">{{ t.hand_probability }}</th></tr></thead>
+              <tbody>
+                <template x-for="o in handOdds.opening" :key="o.lands">
+                  <tr :class="o.lands >= 2 && o.lands <= 5 ? 'text-fg' : 'text-fg-faint'">
+                    <td x-text="o.lands"></td>
+                    <td class="text-right font-mono" x-text="pct(o.p)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p class="mt-2 text-fg-muted" x-text="window._T.hand_keepable.replace('{p}', pct(handOdds.keepable))"></p>
+          </div>
+          <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+            <h3 class="font-medium text-fg-muted mb-2">{{ t.hand_drops_title }}</h3>
+            <table class="w-full">
+              <thead><tr class="text-fg-faint text-left"><th class="font-normal">{{ t.hand_turn }}</th><th class="font-normal text-right">{{ t.hand_on_play }}</th><th class="font-normal text-right">{{ t.hand_on_draw }}</th></tr></thead>
+              <tbody>
+                <template x-for="r in handOdds.byTurn" :key="r.turn">
+                  <tr>
+                    <td x-text="window._T.hand_turn_n.replace('{n}', r.turn)"></td>
+                    <td class="text-right font-mono" x-text="pct(r.play)"></td>
+                    <td class="text-right font-mono" x-text="pct(r.draw)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p class="mt-2 text-fg-faint">{{ t.hand_drops_note }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

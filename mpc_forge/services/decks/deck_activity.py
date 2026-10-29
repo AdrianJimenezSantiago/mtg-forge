@@ -16,6 +16,7 @@ class DeckActivityKind:
     DECK_CREATED = "deck_created"
     DECK_RENAMED = "deck_renamed"
     DECK_LOCALIZED = "deck_localized"
+    DECK_SYNCED = "deck_synced"
 
     CARD_ADDED = "card_added"
     CARD_REMOVED = "card_removed"
@@ -38,6 +39,7 @@ _DEFAULT_SUMMARY: dict[str, str] = {
     DeckActivityKind.DECK_CREATED: "Mazo creado",
     DeckActivityKind.DECK_RENAMED: "Mazo renombrado",
     DeckActivityKind.DECK_LOCALIZED: "Idioma del mazo cambiado",
+    DeckActivityKind.DECK_SYNCED: "Mazo sincronizado con su web de origen",
     DeckActivityKind.CARD_ADDED: "Carta añadida",
     DeckActivityKind.CARD_REMOVED: "Carta eliminada",
     DeckActivityKind.CARD_MOVED: "Carta movida de sección",

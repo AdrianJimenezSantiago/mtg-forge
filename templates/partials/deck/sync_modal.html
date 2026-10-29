@@ -1,0 +1,57 @@
+<template x-if="syncOpen">
+  <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="syncOpen = false" @keydown.escape.window="syncOpen = false">
+    <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="sync-title" x-trap="true">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
+        <div class="flex items-center gap-2 min-w-0">
+          <i data-lucide="refresh-cw" class="w-4 h-4 text-accent"></i>
+          <h2 id="sync-title" class="font-semibold">{{ t.sync_title }}</h2>
+          <span class="text-xs text-fg-faint truncate" x-text="syncData ? syncData.site : ''"></span>
+        </div>
+        <button type="button" aria-label="{{ t.common_close }}" @click="syncOpen = false" class="text-fg-faint hover:text-fg p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 text-sm space-y-3">
+        <p class="text-xs text-fg-muted">{{ t.sync_desc }}</p>
+        <template x-if="syncLoading">
+          <div class="text-center py-8 text-fg-faint"><div class="spinner-ring mb-3"></div>{{ t.sync_loading }}</div>
+        </template>
+        <template x-if="syncError">
+          <p class="text-danger text-sm" x-text="syncError"></p>
+        </template>
+        <template x-if="syncData && !syncData.changes.length">
+          <p class="text-success py-6 text-center">{{ t.sync_up_to_date }}</p>
+        </template>
+        <template x-if="syncData && syncData.changes.length">
+          <ul class="divide-y divide-border-subtle/50">
+            <template x-for="c in syncData.changes" :key="c.key">
+              <li class="py-1.5 flex items-center gap-3">
+                <input type="checkbox" x-model="syncChecked[c.key]" class="accent-accent" :aria-label="c.name">
+                <span class="text-[10px] font-mono px-1.5 rounded"
+                      :class="{ 'bg-green-500/15 text-green-400': c.change === 'added', 'bg-red-500/15 text-red-400': c.change === 'removed', 'bg-amber-500/15 text-amber-400': c.change === 'quantity' }"
+                      x-text="window._T['sync_change_' + c.change]"></span>
+                <span class="flex-1 truncate" x-text="c.name"></span>
+                <span class="text-xs text-fg-faint" x-text="window._T['deck_role_' + c.role] || c.role"></span>
+                <span class="font-mono text-xs text-fg-muted" x-text="c.before + ' → ' + c.after"></span>
+              </li>
+            </template>
+          </ul>
+        </template>
+        <template x-if="syncData && syncData.unresolved.length">
+          <p class="text-xs text-warning" x-text="window._T.sync_unresolved.replace('{n}', syncData.unresolved.length) + ' ' + syncData.unresolved.map(u => u.name).join(', ')"></p>
+        </template>
+      </div>
+      <div class="px-5 py-3 border-t border-border-subtle flex items-center justify-between gap-2">
+        <p class="text-[11px] text-fg-faint">{{ t.sync_keep_art }}</p>
+        <button type="button" @click="applySync()" :disabled="syncApplying || !syncSelectedKeys.length"
+                class="bg-accent text-bg-base text-sm font-medium px-4 py-2 rounded-md disabled:opacity-40 flex items-center gap-1.5">
+          <i data-lucide="check" class="w-4 h-4" x-show="!syncApplying"></i>
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin" x-show="syncApplying"></i>
+          <span x-text="window._T.sync_apply.replace('{n}', syncSelectedKeys.length)"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

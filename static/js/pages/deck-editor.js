@@ -67,6 +67,33 @@ function deckEditor(deckId) {
     notesSaving: false,
     notesSavedAt: 0,
 
+    selecting: false,
+    selectedIds: [],
+    bulkBusy: false,
+
+    shortcutsOpen: false,
+    _shortcutsBound: false,
+    undoing: false,
+
+    handOpen: false,
+    handLibrary: [],
+    hand: [],
+    handDeck: [],
+    handMulligans: 0,
+
+    compareOpen: false,
+    compareChoices: [],
+    compareWith: '',
+    compareData: null,
+    compareLoading: false,
+
+    syncOpen: false,
+    syncLoading: false,
+    syncApplying: false,
+    syncData: null,
+    syncError: '',
+    syncChecked: {},
+
     artPickerOpen: false,
     pickerCard: null,
     pickerLoading: false,
@@ -404,6 +431,7 @@ function deckEditor(deckId) {
         this._preloadStarted = true;
         this._startPreload();
       }
+      this._bindShortcuts();
     },
     async refreshCards() {
       try {
@@ -1343,6 +1371,184 @@ function deckEditor(deckId) {
         window.toast(window._t('common_error'), window._t('js_error_rename'), 'error');
       }
     },
+    toggleSelecting() {
+      this.selecting = !this.selecting;
+      if (!this.selecting) this.selectedIds = [];
+    },
+    isCardSelected(card) { return this.selectedIds.includes(card.id); },
+    toggleCardSelected(card) {
+      this.selectedIds = this.isCardSelected(card)
+        ? this.selectedIds.filter((id) => id !== card.id)
+        : [...this.selectedIds, card.id];
+    },
+    selectAllVisibleCards() {
+      this.selectedIds = this.filteredCards.map((c) => c.id);
+    },
+    async bulkEdit(action, role = null) {
+      const ids = [...this.selectedIds];
+      if (!ids.length || this.bulkBusy) return;
+      if (action === 'delete') {
+        const ok = await window.confirmDialog(window._t('bulk_delete_title'),
+          window._t('bulk_delete_body').replace('{n}', ids.length),
+          { danger: true, icon: 'trash-2', confirmLabel: window._t('common_delete') });
+        if (!ok) return;
+      }
+      this.bulkBusy = true;
+      try {
+        const res = await window.apiRequest('POST', `/api/decks/${this.deckId}/cards/bulk`,
+          { body: { card_ids: ids, action, role } });
+        window.toast(window._t('bulk_edit_done'), window._t('bulk_done_body').replace('{n}', res.changed), 'success');
+        this.selectedIds = [];
+        await this.refreshCards();
+        this._refreshValidation();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.bulkBusy = false;
+      }
+    },
+
+    _bindShortcuts() {
+      if (this._shortcutsBound) return;
+      this._shortcutsBound = true;
+      window.addEventListener('keydown', (e) => this.onShortcut(e));
+    },
+    _modalOpen() {
+      return this.artPickerOpen || this.handOpen || this.compareOpen || this.syncOpen
+        || this.shortcutsOpen || !!this.backModal || (window.Alpine?.store('ui')?.confirmState?.open);
+    },
+    onShortcut(e) {
+      const action = window.deckTools.shortcutFor(e);
+      if (!action) return;
+      if (action === 'escape') {
+        if (this.selecting && !this._modalOpen()) { this.toggleSelecting(); }
+        return;
+      }
+      if (this._modalOpen()) return;
+      e.preventDefault();
+      if (action === 'search') this.$root.querySelector('[data-tour=deck-filters] input[type=search]')?.focus();
+      else if (action === 'add') {
+        this.showAddCard = true;
+        this.$nextTick(() => this.$refs.newCardInput?.focus());
+      } else if (action === 'select') this.toggleSelecting();
+      else if (action === 'hand') this.openHand();
+      else if (action === 'stats') this.openStats();
+      else if (action === 'pdf') window.location.href = `/decks/${this.deckId}/pdf`;
+      else if (action === 'undo') this.undoLast();
+      else if (action === 'help') this.shortcutsOpen = true;
+    },
+    async undoLast() {
+      if (this.undoing) return;
+      this.undoing = true;
+      try {
+        const [events, kinds] = await Promise.all([
+          window.api.decks.activity(this.deckId),
+          window.apiRequest('GET', '/api/decks/_/undoable-kinds', { dedupe: true }),
+        ]);
+        const undone = new Set(events.map((ev) => ev.payload?.undone_event_id).filter(Boolean));
+        const target = events.find((ev) => kinds.includes(ev.kind) && !ev.payload?.undone_event_id
+          && !undone.has(ev.id));
+        if (!target) {
+          window.toast(window._t('shortcut_undo'), window._t('undo_nothing'), 'info');
+          return;
+        }
+        const res = await window.api.decks.undo(this.deckId, target.id);
+        window.toast(window._t('history_undone'), res.summary, 'success');
+        await this.refreshCards();
+        this._refreshValidation();
+      } catch (e) {
+        window.toast(window._t('history_undo_failed'), e.detail || e.message, 'warning');
+      } finally {
+        this.undoing = false;
+      }
+    },
+    get shortcutList() { return window.deckTools.SHORTCUTS; },
+
+    openHand() {
+      this.handLibrary = window.deckTools.buildLibrary(this.cards);
+      this.handMulligans = 0;
+      this.newHand(true);
+      this.handOpen = true;
+      this.$nextTick(() => window.icons && window.icons());
+    },
+    newHand(reset = false) {
+      if (reset) this.handMulligans = 0;
+      const shuffled = window.deckTools.shuffle(this.handLibrary);
+      this.hand = shuffled.slice(0, 7);
+      this.handDeck = shuffled.slice(7);
+    },
+    mulligan() {
+      this.handMulligans += 1;
+      this.newHand(false);
+    },
+    drawCard() {
+      if (!this.handDeck.length) return;
+      this.hand = [...this.hand, this.handDeck[0]];
+      this.handDeck = this.handDeck.slice(1);
+    },
+    get handLands() { return this.hand.filter((c) => c.land).length; },
+    get handOdds() { return window.deckTools.landOdds(this.handLibrary); },
+    pct(p) { return window.deckTools.percent(p); },
+
+    async openCompare() {
+      this.compareOpen = true;
+      this.compareData = null;
+      try {
+        const decks = await window.api.decks.list();
+        this.compareChoices = decks.filter((d) => d.id !== this.deckId);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      }
+    },
+    async runCompare() {
+      if (!this.compareWith) return;
+      this.compareLoading = true;
+      try {
+        this.compareData = await window.apiRequest('GET',
+          `/api/decks/${this.deckId}/compare/${this.compareWith}`);
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.compareLoading = false;
+      }
+    },
+
+    async openSync() {
+      this.syncOpen = true;
+      this.syncData = null;
+      this.syncError = '';
+      this.syncLoading = true;
+      try {
+        this.syncData = await window.apiRequest('GET', `/api/decks/${this.deckId}/sync/preview`);
+        this.syncChecked = Object.fromEntries(this.syncData.changes.map((c) => [c.key, true]));
+      } catch (e) {
+        this.syncError = e.detail || e.message;
+      } finally {
+        this.syncLoading = false;
+        this.$nextTick(() => window.icons && window.icons());
+      }
+    },
+    get syncSelectedKeys() {
+      return Object.entries(this.syncChecked).filter(([, v]) => v).map(([k]) => k);
+    },
+    async applySync() {
+      const keys = this.syncSelectedKeys;
+      if (!keys.length) return;
+      this.syncApplying = true;
+      try {
+        const res = await window.apiRequest('POST', `/api/decks/${this.deckId}/sync/apply`, { body: { keys } });
+        window.toast(window._t('sync_done'), window._t('sync_done_body')
+          .replace('{added}', res.added).replace('{removed}', res.removed).replace('{quantity}', res.quantity), 'success');
+        this.syncOpen = false;
+        await this.refreshCards();
+        this._refreshValidation();
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error');
+      } finally {
+        this.syncApplying = false;
+      }
+    },
+
     async editTags() {
       if (!this.deck) return;
       const answer = prompt(window._t('library_edit_tags_prompt'), (this.deck.tags || []).join(', '));

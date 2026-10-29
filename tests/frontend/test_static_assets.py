@@ -254,3 +254,10 @@ def test_batch_custom_art_uploads_only_what_the_user_confirmed():
     result, report = run_js_test("custom_art_batch.mjs", "core/custom-art-batch.js")
     assert result.returncode == 0, result.stderr
     assert report == {"problems": []}, report
+
+
+@needs_node
+def test_deck_tools_compute_odds_and_shortcuts():
+    result, report = run_js_test("deck_tools.mjs", "pages/deck-tools.js")
+    assert result.returncode == 0, result.stderr
+    assert report == {"problems": []}, report

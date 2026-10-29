@@ -153,6 +153,35 @@
         <i data-lucide="split-square-vertical" class="w-3.5 h-3.5"></i>
         <span class="hidden sm:inline">{{ t.deck_runs }}</span>
       </button>
+      <button @click="openHand()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.hand_title }} (H)">
+        <i data-lucide="hand" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.hand_button }}</span>
+      </button>
+      <button @click="openCompare()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.compare_title }}">
+        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.compare_button }}</span>
+      </button>
+      {% if deck.source_url %}
+      <button @click="openSync()"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              title="{{ t.sync_title }}">
+        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">{{ t.sync_button }}</span>
+      </button>
+      {% endif %}
+      <button @click="shortcutsOpen = true"
+              class="text-xs bg-bg-subtle hover:bg-border-subtle border border-border-strong text-fg-muted hover:text-fg
+                     px-2 py-1.5 rounded-md transition flex items-center"
+              title="{{ t.shortcut_title }} (?)" aria-label="{{ t.shortcut_title }}">
+        <i data-lucide="keyboard" class="w-3.5 h-3.5"></i>
+      </button>
 
       <div class="w-px h-5 bg-border-subtle/60 mx-0.5"></div>
 

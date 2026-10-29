@@ -306,6 +306,18 @@
       false
     ]
   ],
+  "GET /api/decks/{deck_id}/compare/{other_id}": [
+    [
+      "deck_id",
+      "path",
+      true
+    ],
+    [
+      "other_id",
+      "path",
+      true
+    ]
+  ],
   "GET /api/decks/{deck_id}/decklist": [
     [
       "deck_id",
@@ -389,6 +401,13 @@
     ]
   ],
   "GET /api/decks/{deck_id}/snapshots": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "GET /api/decks/{deck_id}/sync/preview": [
     [
       "deck_id",
       "path",
@@ -843,6 +862,13 @@
       true
     ]
   ],
+  "POST /api/decks/{deck_id}/cards/bulk": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
   "POST /api/decks/{deck_id}/cards/change-art": [
     [
       "deck_id",
@@ -952,6 +978,13 @@
     ]
   ],
   "POST /api/decks/{deck_id}/snapshots": [
+    [
+      "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "POST /api/decks/{deck_id}/sync/apply": [
     [
       "deck_id",
       "path",

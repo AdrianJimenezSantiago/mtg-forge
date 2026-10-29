@@ -1,0 +1,64 @@
+<template x-if="compareOpen">
+  <div class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+       @click.self="compareOpen = false" @keydown.escape.window="compareOpen = false">
+    <div class="bg-bg-elevated border border-border-strong rounded-xl shadow-modal w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
+         role="dialog" aria-modal="true" aria-labelledby="compare-title" x-trap="true">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-border-subtle gap-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="git-compare" class="w-4 h-4 text-accent"></i>
+          <h2 id="compare-title" class="font-semibold">{{ t.compare_title }}</h2>
+        </div>
+        <button type="button" aria-label="{{ t.common_close }}" @click="compareOpen = false" class="text-fg-faint hover:text-fg p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="px-5 py-3 border-b border-border-subtle flex items-center gap-2 flex-wrap text-sm">
+        <label for="compare-with" class="text-fg-muted">{{ t.compare_with }}</label>
+        <select id="compare-with" x-model="compareWith" @change="runCompare()"
+                class="bg-bg-subtle border border-border-subtle rounded-md px-2 py-1.5 text-sm min-w-[14rem]">
+          <option value="">{{ t.compare_pick }}</option>
+          <template x-for="d in compareChoices" :key="d.id">
+            <option :value="d.id" x-text="d.name"></option>
+          </template>
+        </select>
+        <span x-show="compareLoading" class="text-xs text-fg-faint">{{ t.common_loading }}</span>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <template x-if="!compareData && !compareLoading">
+          <p class="text-sm text-fg-faint text-center py-8">{{ t.compare_empty }}</p>
+        </template>
+        <template x-if="compareData">
+          <div class="space-y-4">
+            <p class="text-sm text-fg-muted" x-text="window._T.compare_summary.replace('{shared}', compareData.shared).replace('{a}', compareData.only_a.length).replace('{b}', compareData.only_b.length)"></p>
+            <div class="grid md:grid-cols-3 gap-3 text-xs">
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <h3 class="font-medium mb-2 text-fg-muted" x-text="window._T.compare_only_in.replace('{deck}', compareData.a.name)"></h3>
+                <ul class="space-y-0.5">
+                  <template x-for="c in compareData.only_a" :key="c.key">
+                    <li><span class="font-mono text-fg-faint" x-text="c.quantity + '×'"></span> <span x-text="c.name"></span></li>
+                  </template>
+                </ul>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <h3 class="font-medium mb-2 text-fg-muted" x-text="window._T.compare_only_in.replace('{deck}', compareData.b.name)"></h3>
+                <ul class="space-y-0.5">
+                  <template x-for="c in compareData.only_b" :key="c.key">
+                    <li><span class="font-mono text-fg-faint" x-text="c.quantity + '×'"></span> <span x-text="c.name"></span></li>
+                  </template>
+                </ul>
+              </div>
+              <div class="bg-bg-subtle/50 border border-border-subtle rounded-lg p-3">
+                <h3 class="font-medium mb-2 text-fg-muted">{{ t.compare_different }}</h3>
+                <ul class="space-y-0.5">
+                  <template x-for="c in compareData.different" :key="c.key">
+                    <li><span x-text="c.name"></span> <span class="font-mono text-fg-faint" x-text="c.a + ' → ' + c.b"></span></li>
+                  </template>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>

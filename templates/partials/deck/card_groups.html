@@ -43,6 +43,12 @@
         <span x-show="!showAddCard">{{ t.deck_add_card }}</span>
         <span x-show="showAddCard">{{ t.common_cancel }}</span>
       </button>
+      <button type="button" @click="toggleSelecting()" :aria-pressed="selecting.toString()"
+              class="text-xs border px-3 py-1.5 rounded-md transition flex items-center gap-1.5"
+              :class="selecting ? 'border-accent text-accent bg-accent/10' : 'bg-bg-subtle border-border-subtle text-fg-muted hover:text-fg'"
+              title="{{ t.library_select }} (S)">
+        <i data-lucide="list-checks" class="w-3.5 h-3.5"></i>{{ t.library_select }}
+      </button>
       <span class="ml-auto text-xs text-fg-faint">
         <span x-text="totalCards"></span> {{ t.history_cards_count }} · <span x-text="uniqueCards"></span>
       </span>
@@ -142,13 +148,21 @@
                  :class="[
                    uploadDropCardId === card.id ? 'bg-accent/10 ring-2 ring-inset ring-accent' : '',
                    selectedCardId === card.id ? 'bg-bg-subtle/80 ring-1 ring-inset ring-accent/40' : '',
-                   !card.include ? 'opacity-50' : '',
                    rarityBorderClass(card.rarity)
                  ]">
 
-              <button data-tour="deck-row-art" @click="openArtPicker(card)"
+              <template x-if="selecting">
+                <button type="button" @click="toggleCardSelected(card)" :aria-pressed="isCardSelected(card).toString()"
+                        :aria-label="card.name"
+                        class="shrink-0 self-center w-5 h-5 rounded border-2 flex items-center justify-center transition"
+                        :class="isCardSelected(card) ? 'border-accent bg-accent/20 text-accent' : 'border-border-strong text-transparent'">
+                  <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                </button>
+              </template>
+              <button data-tour="deck-row-art" @click="selecting ? toggleCardSelected(card) : openArtPicker(card)"
                       class="shrink-0 w-11 h-[60px] rounded-md overflow-hidden border border-border-subtle
                              hover:border-accent/60 transition relative bg-bg-base"
+                      :class="!card.include ? 'opacity-40 grayscale' : ''"
                       title="{{ t.deck_card_change_art }}">
                 <img x-show="card.thumbnail_url" alt=""
                      :src="card.thumbnail_url" :data-preview="card.thumbnail_url"
@@ -164,7 +178,7 @@
               </button>
 
               <div class="flex-1 min-w-0 cursor-pointer self-center space-y-0.5"
-                   @click="openArtPicker(card)">
+                   @click="selecting ? toggleCardSelected(card) : openArtPicker(card)">
 
                 <div class="flex items-start gap-2 min-w-0">
                   <div class="flex-1 min-w-0">
@@ -172,6 +186,7 @@
                       <span x-show="card.quantity === 1"
                             class="text-[10px] font-mono text-fg-faint shrink-0">1×</span>
                       <span class="text-[13px] font-semibold text-fg leading-snug"
+                            :class="!card.include ? 'line-through decoration-fg-muted' : ''"
                             style="word-break:break-word" x-text="card.name"></span>
                     </div>
                   </div>
@@ -320,6 +335,39 @@
         </div>
       </template>
     </div>
+  </div>
+
+  <div x-show="selecting" x-cloak x-transition
+       class="sticky bottom-4 z-30 mx-auto w-fit max-w-full bg-bg-elevated border border-border-strong rounded-xl shadow-modal
+              px-4 py-2 flex items-center gap-3 text-sm flex-wrap" role="toolbar" aria-label="{{ t.library_selection }}">
+    <span class="text-fg-muted" x-text="window._T.library_selected.replace('{n}', selectedIds.length)"></span>
+    <button type="button" @click="selectAllVisibleCards()" class="text-xs text-fg-muted hover:text-fg underline">{{ t.library_select_all }}</button>
+    <div x-data="{ open: false }" class="relative" @click.outside="open = false">
+      <button type="button" @click="open = !open" :disabled="!selectedIds.length || bulkBusy"
+              class="flex items-center gap-1 text-fg-muted hover:text-fg disabled:opacity-40">
+        <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i>{{ t.bulk_move }}
+      </button>
+      <div x-show="open" x-transition class="absolute bottom-8 left-0 bg-bg-elevated border border-border-strong rounded-lg shadow-modal py-1 min-w-[10rem]">
+        <template x-for="r in ['mainboard','commander','sideboard','maybeboard','companion','tokens']" :key="r">
+          <button type="button" @click="bulkEdit('move', r); open = false"
+                  class="w-full text-left text-xs px-3 py-1.5 hover:bg-bg-subtle text-fg-muted hover:text-fg"
+                  x-text="window._T['deck_role_' + r]"></button>
+        </template>
+      </div>
+    </div>
+    <button type="button" @click="bulkEdit('exclude')" :disabled="!selectedIds.length || bulkBusy"
+            class="flex items-center gap-1 text-fg-muted hover:text-fg disabled:opacity-40">
+      <i data-lucide="eye-off" class="w-3.5 h-3.5"></i>{{ t.bulk_exclude }}
+    </button>
+    <button type="button" @click="bulkEdit('include')" :disabled="!selectedIds.length || bulkBusy"
+            class="flex items-center gap-1 text-fg-muted hover:text-fg disabled:opacity-40">
+      <i data-lucide="eye" class="w-3.5 h-3.5"></i>{{ t.bulk_include }}
+    </button>
+    <button type="button" @click="bulkEdit('delete')" :disabled="!selectedIds.length || bulkBusy"
+            class="flex items-center gap-1 text-danger disabled:opacity-40">
+      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>{{ t.common_delete }}
+    </button>
+    <button type="button" @click="toggleSelecting()" class="text-xs text-fg-faint hover:text-fg">{{ t.common_cancel }}</button>
   </div>
 
 </div>

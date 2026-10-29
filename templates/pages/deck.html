@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block view_module %}
+  <script defer src="/static/js/pages/deck-tools.js?v={{ asset_v('js/pages/deck-tools.js') }}"></script>
   <script defer src="/static/js/pages/deck-editor.js?v={{ asset_v('js/pages/deck-editor.js') }}"></script>
 {% endblock %}
 {% block title %}{{ deck.name }} · MPC Forge{% endblock %}
@@ -37,6 +38,14 @@
   {% include "partials/deck/stats_modal.html" %}
 
   {% include "partials/deck/custom_art_batch_modal.html" %}
+
+  {% include "partials/deck/sample_hand_modal.html" %}
+
+  {% include "partials/deck/compare_modal.html" %}
+
+  {% include "partials/deck/sync_modal.html" %}
+
+  {% include "partials/deck/shortcuts_modal.html" %}
 </div>
 
 {% endblock %}
