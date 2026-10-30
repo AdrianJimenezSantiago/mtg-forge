@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-_TMP_ROOT = Path(tempfile.mkdtemp(prefix="mtgforge_pytest_"))
+_TMP_ROOT = Path(tempfile.mkdtemp(prefix="mtgforge_pytest_")).resolve()
 os.environ["APPDATA"] = str(_TMP_ROOT)
 os.environ["XDG_DATA_HOME"] = str(_TMP_ROOT)
 
