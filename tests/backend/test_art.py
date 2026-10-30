@@ -504,3 +504,30 @@ class TestCustomArtUpload:
         assert view["custom_art_back_id"] == art["id"] and view["custom_art_front_id"] is None
         assert view["back_thumbnail_url"] == art["image_url"]
         assert view["thumbnail_url"] == "https://img/front.jpg"
+
+
+async def test_custom_art_resolution_reaches_the_deck_card(client, deck):
+    from PIL import Image
+
+    from mpc_forge import config as cfg
+
+    path = cfg.PATHS.custom_art_dir / "Sol Ring - Tiny.png"
+    Image.new("RGB", (300, 419), "red").save(path)
+    try:
+        await client.post("/api/custom-art/rescan")
+        arts = (await client.get("/api/custom-art/")).json()
+        art = next(a for a in arts if a["filename"] == "Sol Ring - Tiny.png")
+        card = next(c for c in deck["cards"] if c["name"] == "Sol Ring")
+        r = await client.post(
+            f"/api/decks/{deck['id']}/cards/change-art",
+            json={"deck_card_id": card["id"], "custom_art_id": art["id"]},
+        )
+        assert r.status_code == 200, r.text
+        cards = (await client.get(f"/api/decks/{deck['id']}")).json()["cards"]
+        sol = next(c for c in cards if c["name"] == "Sol Ring")
+        assert sol["custom_art_dpi"] == 121
+        others = [c for c in cards if c["name"] != "Sol Ring"]
+        assert all(c["custom_art_dpi"] is None for c in others)
+    finally:
+        path.unlink(missing_ok=True)
+        await client.post("/api/custom-art/rescan")

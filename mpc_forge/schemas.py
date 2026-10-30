@@ -120,6 +120,7 @@ class DeckCardView(BaseModel):
     scryfall_id: str
     custom_art_front_id: int | None = None
     custom_art_back_id: int | None = None
+    custom_art_dpi: int | None = None
     role: str
     include: bool
     layout: str

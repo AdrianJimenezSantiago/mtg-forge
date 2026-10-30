@@ -152,6 +152,7 @@ def _card_view(dc: DeckCard, ctx: _CardContext, *, with_faces: bool) -> DeckCard
         scryfall_id=dc.scryfall_id,
         custom_art_front_id=dc.custom_art_front_id,
         custom_art_back_id=dc.custom_art_back_id,
+        custom_art_dpi=custom_art.dpi_of(custom) if custom else None,
         role=dc.role,
         include=dc.include,
         layout=printing.layout if printing else "normal",

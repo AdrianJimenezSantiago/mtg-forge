@@ -2247,7 +2247,8 @@ function deckEditor(deckId) {
         });
         await window.saveFile(
           `/api/decks/${this.deckId}/decklist.txt?${params.toString()}`,
-          window.saveFileName(`${this.deck?.name || 'deck'} - ${this.decklistFormat}`, 'txt'),
+          window.saveFileName(`${this.deck?.name || 'deck'} - ${this.decklistFormat}`,
+            ({ csv: 'csv', cockatrice: 'cod' })[this.decklistFormat] || 'txt'),
         );
       } catch (e) {
         window.toast(window._t('common_error'), e.message, 'error');

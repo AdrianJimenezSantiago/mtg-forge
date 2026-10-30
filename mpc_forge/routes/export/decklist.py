@@ -25,6 +25,7 @@ class DecklistResponse(BaseModel):
     format: str
     total_cards: int
     filename: str
+    extension: str = "txt"
 
 
 async def _build_text(
@@ -53,12 +54,13 @@ async def get_decklist(
     include_headers: bool = True,
 ) -> DecklistResponse:
     deck, text, parsed = await _build_text(db, deck_id, format, include_headers)
-    total = sum(1 for line in text.splitlines() if line and line[0].isdigit())
+    total = decklist_export.count_cards(text, parsed)
     return DecklistResponse(
         text=text,
         format=format,
         total_cards=total,
         filename=decklist_export.filename_for(deck.name, parsed),
+        extension=decklist_export.extension_for(parsed),
     )
 
 
@@ -73,4 +75,5 @@ async def download_decklist(
     filename = decklist_export.filename_for(deck.name, parsed)
     out_path = cfg.PATHS.exports_dir / filename
     out_path.write_text(text, encoding="utf-8")
-    return FileResponse(out_path, media_type="text/plain; charset=utf-8", filename=filename)
+    media = decklist_export.MEDIA_TYPES[decklist_export.extension_for(parsed)]
+    return FileResponse(out_path, media_type=media, filename=filename)

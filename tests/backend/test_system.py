@@ -227,6 +227,7 @@ class TestSettings:
             "Datos de cartas",
             "General",
             "MPC Autofill",
+            "Precios MPC",
             "Precios y envío",
             "Red y conexión",
             "Ubicación de datos",

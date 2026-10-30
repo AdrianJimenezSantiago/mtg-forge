@@ -5,6 +5,8 @@ function settingsShell() {
     secretsSet: [],
     secretInputs: {},
     values: {},
+    tiersDraft: [],
+    tiersDirty: false,
     saving: false,
     backingUp: false,
     lastBackup: null,
@@ -122,6 +124,7 @@ function settingsShell() {
         this.definitions = data.definitions;
         this.values = data.values;
         this.secretsSet = data.secrets_set || [];
+        this._syncTiers();
         this.loadPaths();
       } catch (e) {
         window.toast(window._t('settings_error_loading'), e.message, 'error');
@@ -199,6 +202,27 @@ function settingsShell() {
       this.secretInputs[key] = '';
     },
 
+    _syncTiers() {
+      const tiers = this.values.mpc_tiers;
+      this.tiersDraft = Array.isArray(tiers) ? tiers.map((t) => ({ ...t })) : [];
+      this.tiersDirty = false;
+    },
+
+    async saveTiers() {
+      const tiers = this.tiersDraft
+        .filter((t) => t.size > 0 && t.unit_usd > 0)
+        .sort((a, b) => a.size - b.size);
+      await this.update('mpc_tiers', tiers);
+      this._syncTiers();
+    },
+
+    resetTiers() {
+      const def = this.definitions.find((d) => d.key === 'mpc_tiers');
+      if (!def) return;
+      this.tiersDraft = def.default.map((t) => ({ ...t }));
+      this.tiersDirty = true;
+    },
+
     async update(key, value) {
       this.values[key] = value;
       try {
@@ -211,6 +235,7 @@ function settingsShell() {
         const data = await r.json();
         this.values = data.values;
         this.secretsSet = data.secrets_set || [];
+        if (key === 'mpc_tiers') this._syncTiers();
         window.toast(window._t('settings_saved'), '', 'success');
       } catch (e) {
         window.toast(window._t('common_error'), e.message, 'error');

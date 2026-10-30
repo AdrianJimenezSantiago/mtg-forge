@@ -80,8 +80,10 @@ Moxfield · Archidekt · Deckstats · TappedOut · MTGGoldfish · CubeCobra · S
 | 🪄 **Batch custom art** | Give a whole deck your own images in one go: drop a folder, a set of images or a ZIP, or use a folder linked from anywhere on disk. Files are matched to cards by name — accents, underscores, numbering and Windows-safe spellings included — and you review every pairing before anything is saved. One click undoes it. |
 | 📚 **Art library** | Browse the whole index without starting from a card: an artist's work, every full-art print of a set, and so on. |
 | 📄 **PDF Studio** | Fine control over home printing: margins, bleed, per-card and per-page cut guides, square or rounded corners, duplex with drift compensation, and card backs for DFCs or the whole deck. |
+| 💾 **Your own PDF presets** | Save the current PDF Studio settings as a named preset ("My printer") and reuse them with any deck. Presets are stored in the database, so they travel with your backups. |
 | 🏭 **Print shop export** | A CMYK, one-card-per-page package ready to send to a professional print shop. [More below](#sending-a-deck-to-a-print-shop). |
 | 🎯 **Duplex and scale calibration** | A test sheet turns "the back comes out misaligned" into two offsets, and a ruler sheet undoes the printer's "fit to page" scaling. |
+| 💶 **Prices** | The deck editor shows the MPC cost of the order next to the Scryfall market value of the real cards. MPC's price tiers can be edited in *Settings → Prices* if they change. |
 | 🧮 **Print planner** | Combine several decks into MakePlayingCards orders and see which bracket each order lands in before you buy. |
 | 🗃️ **Collection** | Track the cards you actually own, by set, with normal and foil quantities, and cross-reference them with your decks to print only what is missing. Import a CSV from Moxfield, Deckbox, ManaBox, Archidekt, Dragon Shield or any list with name, set and quantity (adding to or replacing what you have), and export it back as CSV. |
 | 📊 **Deck statistics** | Animated mana curve, colours, rarity, types, keywords and — with offline card data — each card's function (ramp, draw, removal…). |
@@ -165,6 +167,8 @@ this feature have to be updated by hand once.
      for one image per card.
    - *PDF Studio → Print shop* — a package ready to send to a professional
      print shop (see [below](#sending-a-deck-to-a-print-shop)).
+   - *Decklist* — copy or download the list as text (with or without set
+     codes), Arena, MTGO, CSV or a Cockatrice `.cod` file.
 
 > [!TIP]
 > Every download (PDFs, ZIPs, XML, decklists, calibration sheets, the log)

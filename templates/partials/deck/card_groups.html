@@ -229,6 +229,12 @@
                   <span class="text-[10px] text-fg-faint">
                     <span x-text="card.printings_available"></span> {{ t.deck_card_printings }}
                   </span>
+                  <span x-show="card.custom_art_dpi && card.custom_art_dpi < 240"
+                        class="text-[10px] text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 flex items-center gap-1"
+                        :title="window._T.deck_low_res_title.replace('{dpi}', card.custom_art_dpi)">
+                    <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+                    <span x-text="window._T.deck_low_res.replace('{dpi}', card.custom_art_dpi)"></span>
+                  </span>
                   <span x-show="card.custom_arts_available > 0"
                         class="text-[10px] text-fuchsia-400">
                     +<span x-text="card.custom_arts_available"></span> {{ t.deck_custom_short }}

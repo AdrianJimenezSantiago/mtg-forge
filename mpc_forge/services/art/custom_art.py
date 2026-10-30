@@ -296,6 +296,9 @@ async def _rescan(db: AsyncSession) -> dict[str, int]:
         )
         added += 1
 
+    await db.flush()
+    await _fill_dimensions(db)
+
     if per_folder:
         now = datetime.now(UTC)
         for folder in (
@@ -312,6 +315,36 @@ async def _rescan(db: AsyncSession) -> dict[str, int]:
         "kept": kept,
         "offline_folders": len(offline),
     }
+
+
+def image_size(path: Path) -> tuple[int, int] | None:
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(path) as img:
+            return int(img.width), int(img.height)
+    except (OSError, UnidentifiedImageError, ValueError):
+        return None
+
+
+async def _fill_dimensions(db: AsyncSession) -> None:
+    missing = (await db.scalars(select(CustomArt).where(CustomArt.width.is_(None)))).all()
+    if not missing:
+        return
+    paths = {art.id: resolve_relative(art.relative_path) for art in missing}
+
+    def read_all() -> dict[int, tuple[int, int] | None]:
+        return {aid: image_size(p) if p else None for aid, p in paths.items()}
+
+    sizes = await asyncio.to_thread(read_all)
+    for art in missing:
+        size = sizes.get(art.id)
+        if size:
+            art.width, art.height = size
+
+
+def dpi_of(art: CustomArt) -> int | None:
+    return round(art.width / CARD_WIDTH_IN) if art.width else None
 
 
 async def find_for_card(db: AsyncSession, card_name: str, face: str = "front") -> list[CustomArt]:
@@ -391,6 +424,8 @@ async def add_from_url(
         variant_label=variant,
         face=face,
         bytes_size=len(data),
+        width=size[0] if (size := image_size(target)) else None,
+        height=size[1] if size else None,
     )
     db.add(art)
     await db.commit()
@@ -730,6 +765,8 @@ async def add_from_upload(
         variant_label=label,
         face=face,
         bytes_size=len(prepared.data),
+        width=prepared.width,
+        height=prepared.height,
     )
     db.add(art)
     try:
@@ -864,6 +901,8 @@ async def import_zip(
                 variant_label=variant,
                 face=face,
                 bytes_size=len(prepared.data),
+                width=prepared.width,
+                height=prepared.height,
             )
             db.add(art)
             await db.flush()

@@ -79,6 +79,13 @@
       true
     ]
   ],
+  "DELETE /api/pdf-presets/{name}": [
+    [
+      "name",
+      "path",
+      true
+    ]
+  ],
   "DELETE /api/runs/{run_id}": [
     [
       "run_id",
@@ -644,6 +651,7 @@
   "GET /api/library/overview": [],
   "GET /api/library/variants": [],
   "GET /api/mpc-autofill/status": [],
+  "GET /api/pdf-presets/": [],
   "GET /api/planner/compare": [
     [
       "total_cards",
@@ -1055,6 +1063,13 @@
   "PUT /api/decks/{deck_id}/cardback-settings": [
     [
       "deck_id",
+      "path",
+      true
+    ]
+  ],
+  "PUT /api/pdf-presets/{name}": [
+    [
+      "name",
       "path",
       true
     ]

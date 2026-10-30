@@ -18,6 +18,14 @@
             <span class="text-border-subtle">·</span>
             <span x-text="'≈ $' + estimate.subtotal_usd + ' USD {{ t.deck_cost_usd }}'"></span>
           </div>
+          <template x-if="deck && deck.price && deck.price.priced_cards > 0">
+            <div class="text-[11px] text-fg-faint mt-0.5" data-testid="market-value"
+                 :title="window._T.deck_market_value_title">
+              <span x-text="window._T.deck_market_value.replace('{eur}', deck.price.eur.toFixed(2)).replace('{usd}', deck.price.usd.toFixed(2))"></span>
+              <span x-show="deck.price.unpriced_cards > 0"
+                    x-text="' · ' + window._T.deck_market_unpriced.replace('{n}', deck.price.unpriced_cards)"></span>
+            </div>
+          </template>
           <template x-if="estimate.next_tier_saves_eur">
             <div class="text-[11px] text-accent mt-1">
               <span x-text="window._T.toolbar_next_tier.replace('{n}', estimate.cards_to_next_tier).replace('{tier}', estimate.next_tier_size).replace('{total}', estimate.next_tier_total_eur.toFixed(2)).replace('{saves}', estimate.next_tier_saves_eur.toFixed(2))"></span>
@@ -236,6 +244,9 @@
               <option value="with_set">{{ t.deck_decklist_opt_set }}</option>
               <option value="arena">{{ t.deck_decklist_opt_arena }}</option>
               <option value="simple">{{ t.deck_decklist_opt_simple }}</option>
+              <option value="mtgo">{{ t.deck_decklist_opt_mtgo }}</option>
+              <option value="csv">{{ t.deck_decklist_opt_csv }}</option>
+              <option value="cockatrice">{{ t.deck_decklist_opt_cockatrice }}</option>
             </select>
           </label>
           <label class="flex items-center gap-2 text-xs text-fg-muted">
@@ -251,7 +262,7 @@
             <button @click="downloadDecklist(); open = false"
                     class="flex-1 bg-bg-subtle hover:bg-border-subtle border border-border-strong text-xs font-medium px-3 py-2 rounded transition flex items-center justify-center gap-1.5">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
-              .txt
+              <span x-text="'.' + ({csv: 'csv', cockatrice: 'cod'}[decklistFormat] || 'txt')"></span>
             </button>
           </div>
           <div class="text-[10px] text-fg-faint text-center pt-1">{{ t.deck_decklist_note }}</div>

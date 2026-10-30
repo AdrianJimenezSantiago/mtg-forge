@@ -136,6 +136,17 @@ DEFINITIONS: list[SettingDef] = [
         max_value=100.0,
     ),
     SettingDef(
+        key="mpc_tiers",
+        label="Tramos de precio de MPC",
+        type="json",
+        group="Precios MPC",
+        default=[dict(t) for t in cfg.DEFAULT_MPC_TIERS],
+        description=(
+            "Tamaño de pedido y precio por carta en USD de cada tramo de MakePlayingCards. "
+            "Son precios de referencia: compáralos con la web de MPC y ajústalos si cambian."
+        ),
+    ),
+    SettingDef(
         key="moxfield_user_agent",
         label="User-Agent para Moxfield",
         type="str",
@@ -368,6 +379,8 @@ async def set_many(db: AsyncSession, updates: dict[str, Any]) -> dict[str, Any]:
                 continue
             else:
                 value = text
+        if key in _VALIDATORS:
+            value = _VALIDATORS[key](value)
         if sd.type in {"float", "int"}:
             fv = float(value)
             if sd.min_value is not None and fv < sd.min_value:
@@ -419,6 +432,11 @@ def apply_to_config(values: dict[str, Any]) -> None:
             cfg.GOOGLE_API_KEY = str(value).strip()
         elif key == "ssl_insecure":
             ssl_config.set_runtime_insecure(bool(value))
+        elif key == "mpc_tiers":
+            try:
+                cfg.MPC_TIERS = validate_mpc_tiers(value)
+            except (TypeError, ValueError):
+                cfg.MPC_TIERS = [dict(t) for t in cfg.DEFAULT_MPC_TIERS]
 
     path_keys = {
         "paths.art_dir",
@@ -446,7 +464,29 @@ GROUP_SECTIONS: dict[str, str] = {
     "Datos de cartas": "offline",
     "Ubicación de datos": "backup",
     "Búsqueda avanzada": "general",
+    "Precios MPC": "prices",
 }
+
+
+MAX_TIERS = 30
+
+
+def validate_mpc_tiers(value: Any) -> list[dict[str, float]]:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_TIERS:
+        raise ValueError(f"mpc_tiers: entre 1 y {MAX_TIERS} tramos")
+    tiers: dict[int, float] = {}
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("mpc_tiers: cada tramo necesita size y unit_usd")
+        size = int(item.get("size", 0))
+        unit = float(item.get("unit_usd", -1))
+        if not 1 <= size <= 10_000 or not 0 < unit <= 10:
+            raise ValueError(f"mpc_tiers: tramo no válido ({size}, {unit})")
+        tiers[size] = round(unit, 4)
+    return [{"size": s, "unit_usd": u} for s, u in sorted(tiers.items())]
+
+
+_VALIDATORS: dict[str, Any] = {"mpc_tiers": validate_mpc_tiers}
 
 
 def _translation_key(sd: SettingDef, field: str) -> str:

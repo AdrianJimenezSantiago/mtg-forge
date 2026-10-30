@@ -13,6 +13,7 @@ let dropTarget = null;
 
 function pdfStudio(deckId) { return {
   deckId,
+  userPresets: [],
   deck: null,
   cardbackSettings: null,
   buildProgress: null,
@@ -103,6 +104,7 @@ function pdfStudio(deckId) { return {
       if (rp.ok) this.pressShops = await rp.json();
     } catch (e) {}
     if (this.press && !this.pressSpec) this.press = null;
+    this.loadUserPresets();
     if (window.lucide) window.lucide.createIcons();
     this.$nextTick(() => window.lucide && window.lucide.createIcons());
   },
@@ -860,6 +862,42 @@ function pdfStudio(deckId) { return {
     if (!p) return;
     Object.assign(this.opts, p);
     if (window.toast) window.toast(window._t('pdf_preset_applied'), PRESET_LABEL_KEYS[name] ? window._t(PRESET_LABEL_KEYS[name]) : name, 'info');
+  },
+
+  async loadUserPresets() {
+    try {
+      this.userPresets = await window.apiRequest('GET', '/api/pdf-presets/');
+    } catch (e) {
+      this.userPresets = [];
+    }
+  },
+
+  async saveUserPreset() {
+    const name = (prompt(window._t('pdf_save_preset_prompt'), '') || '').trim();
+    if (!name) return;
+    try {
+      this.userPresets = await window.apiRequest('PUT', `/api/pdf-presets/${encodeURIComponent(name)}`,
+        { body: { opts: { ...this.opts } } });
+      window.toast(window._t('pdf_preset_saved'), name, 'success');
+    } catch (e) {
+      window.toast(window._t('common_error'), e.detail || e.message, 'error');
+    }
+  },
+
+  applyUserPreset(preset) {
+    const { page_range: _ignored, ...opts } = preset.opts || {};
+    Object.assign(this.opts, opts);
+    window.toast(window._t('pdf_preset_applied'), preset.name, 'info');
+  },
+
+  async deleteUserPreset(preset) {
+    if (!await window.confirmDialog(window._t('pdf_delete_preset'), preset.name, { danger: true })) return;
+    try {
+      await window.apiRequest('DELETE', `/api/pdf-presets/${encodeURIComponent(preset.name)}`);
+      this.userPresets = this.userPresets.filter((p) => p.name !== preset.name);
+    } catch (e) {
+      window.toast(window._t('common_error'), e.detail || e.message, 'error');
+    }
   },
 
   resetOpts() {

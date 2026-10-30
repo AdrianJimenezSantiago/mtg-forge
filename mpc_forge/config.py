@@ -35,6 +35,8 @@ MPC_TIERS: list[dict[str, float]] = [
     {"size": 612, "unit_usd": 0.16},
 ]
 
+DEFAULT_MPC_TIERS: list[dict[str, float]] = [dict(t) for t in MPC_TIERS]
+
 CARDSTOCK_OPTIONS = [
     "(S30) Standard Smooth",
     "(S33) Superior Smooth",

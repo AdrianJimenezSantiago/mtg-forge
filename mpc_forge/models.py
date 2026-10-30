@@ -123,6 +123,8 @@ class CustomArt(Base):
     variant_label: Mapped[str | None] = mapped_column(String(256), nullable=True)
     face: Mapped[str] = mapped_column(String(16), default="front")
     bytes_size: Mapped[int] = mapped_column(Integer, default=0)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     indexed_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow)
 
 

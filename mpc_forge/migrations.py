@@ -243,6 +243,14 @@ MIGRATIONS: list[Migration] = [
             "ALTER TABLE collection_entries ADD COLUMN foil_quantity INTEGER NOT NULL DEFAULT 0",
         ],
     ),
+    Migration(
+        version=21,
+        description="Dimensiones del arte custom para avisar de la baja resolución",
+        statements=[
+            "ALTER TABLE custom_arts ADD COLUMN width INTEGER",
+            "ALTER TABLE custom_arts ADD COLUMN height INTEGER",
+        ],
+    ),
 ]
 
 LATEST_VERSION = max([m.version for m in MIGRATIONS], default=BASELINE_VERSION)

@@ -11,4 +11,52 @@
       </template>
     </div>
   </div>
+  <div class="bg-bg-elevated border border-border-subtle rounded-xl p-6 shadow-card space-y-3" data-testid="mpc-tiers">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+      <div>
+        <h3 class="font-medium text-sm">{{ t.setting_mpc_tiers_label }}</h3>
+        <p class="text-xs text-fg-muted mt-0.5">{{ t.setting_mpc_tiers_desc }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" @click="resetTiers()" class="text-xs text-fg-faint hover:text-fg underline">{{ t.common_reset }}</button>
+        <button type="button" @click="saveTiers()" :disabled="!tiersDirty"
+                class="text-xs bg-accent text-bg-base font-medium px-3 py-1.5 rounded-md disabled:opacity-40">{{ t.common_save }}</button>
+      </div>
+    </div>
+    <table class="w-full max-w-md text-sm">
+      <thead>
+        <tr class="text-[11px] text-fg-faint text-left">
+          <th class="font-normal py-1">{{ t.tiers_size }}</th>
+          <th class="font-normal py-1">{{ t.tiers_unit }}</th>
+          <th class="font-normal py-1 text-right">{{ t.tiers_total }}</th>
+          <th class="sr-only">{{ t.common_actions }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="(tier, i) in tiersDraft" :key="i">
+          <tr>
+            <td class="py-0.5 pr-2">
+              <input type="number" min="1" max="10000" step="1" x-model.number="tier.size" @input="tiersDirty = true"
+                     :aria-label="window._T.tiers_size + ' ' + (i + 1)"
+                     class="w-24 bg-bg-subtle border border-border-subtle rounded px-2 py-1 font-mono text-xs">
+            </td>
+            <td class="py-0.5 pr-2">
+              <input type="number" min="0.01" max="10" step="0.01" x-model.number="tier.unit_usd" @input="tiersDirty = true"
+                     :aria-label="window._T.tiers_unit + ' ' + (i + 1)"
+                     class="w-24 bg-bg-subtle border border-border-subtle rounded px-2 py-1 font-mono text-xs">
+            </td>
+            <td class="py-0.5 text-right font-mono text-xs text-fg-muted" x-text="'$' + ((tier.size || 0) * (tier.unit_usd || 0)).toFixed(2)"></td>
+            <td class="py-0.5 pl-2 text-right">
+              <button type="button" @click="tiersDraft.splice(i, 1); tiersDirty = true" :aria-label="window._T.common_delete"
+                      class="p-1 text-fg-faint hover:text-danger"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <button type="button" @click="tiersDraft.push({size: 0, unit_usd: 0}); tiersDirty = true"
+            class="text-xs text-accent hover:text-accent-glow flex items-center gap-1">
+      <i data-lucide="plus" class="w-3 h-3"></i>{{ t.tiers_add }}
+    </button>
+  </div>
 </div>
