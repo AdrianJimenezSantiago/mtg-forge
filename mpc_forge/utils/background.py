@@ -37,11 +37,10 @@ class BackgroundTasks:
         log.info("Cancelando %d tareas de background…", len(pending))
         for task in pending:
             task.cancel()
-        try:
-            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout)
-        except TimeoutError:
+        _done, stuck = await asyncio.wait(pending, timeout=timeout)
+        if stuck:
             log.warning(
                 "%d tareas no respondieron a la cancelación en %.0fs; se continúa con el cierre.",
-                len(pending),
+                len(stuck),
                 timeout,
             )
