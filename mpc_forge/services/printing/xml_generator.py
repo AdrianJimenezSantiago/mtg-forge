@@ -109,15 +109,18 @@ async def resolve_deck_for_xml(
         printings_by_id.update(await ensure_printings(db, scryfall, set(meld_result_ids.values())))
     await db.commit()
 
+    def usable_custom(art_id: int | None) -> bool:
+        art = customs_by_id.get(art_id) if art_id else None
+        path = custom_art_service.absolute_path(art) if art else None
+        return path is not None and path.exists()
+
     art_requests: list[tuple[str, Face]] = []
     for dc in cards:
         printing = printings_by_id.get(dc.scryfall_id)
-        needs_official_front = not dc.custom_art_front_id or (
-            dc.custom_art_front_id not in customs_by_id
-        )
+        needs_official_front = not usable_custom(dc.custom_art_front_id)
         if needs_official_front and dc.scryfall_id:
             art_requests.append((dc.scryfall_id, "front"))
-        if dc.custom_art_back_id and dc.custom_art_back_id in customs_by_id:
+        if usable_custom(dc.custom_art_back_id):
             continue
         if printing and printing.layout in _DFC_LAYOUTS:
             art_requests.append((dc.scryfall_id, "back"))
