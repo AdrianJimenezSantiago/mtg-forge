@@ -76,7 +76,7 @@ jobs:
         run: pytest -q --cov=mpc_forge --cov-report=xml --cov-report=term-missing --cov-fail-under=80
       - name: Subir cobertura
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.xml
@@ -172,7 +172,7 @@ jobs:
         run: npx --yes @lhci/cli@0.15.x autorun
       - name: Informes
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse
           path: .lighthouseci
