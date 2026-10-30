@@ -2,7 +2,7 @@
      class="fixed top-5 right-5 z-[100] space-y-2 pointer-events-none w-96 max-w-[calc(100vw-2.5rem)]">
   <template x-for="t in $store.ui.toasts" :key="t.id">
     <div class="fx-toast pointer-events-auto relative overflow-hidden rounded-lg shadow-modal border"
-         :data-type="t.type"
+         :data-type="t.type" :role="t.type === 'error' ? 'alert' : null"
          :class="{
            'bg-bg-elevated border-border-strong':            t.type === 'info',
            'bg-bg-elevated border-success/40':               t.type === 'success',

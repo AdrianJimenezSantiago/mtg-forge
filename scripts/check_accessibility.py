@@ -19,6 +19,11 @@ PAGES = (
     "/art-library",
     "/calibrate",
     "/no-existe",
+    *(
+        f"/decks/{deck}{suffix}"
+        for deck in filter(None, [os.environ.get("CHECK_DECK_ID")])
+        for suffix in ("", "/pdf", "/proof")
+    ),
 )
 BLOCKING = {"critical", "serious"}
 RUN_AXE = """() => axe.run(document, { resultTypes: ['violations'] }).then(r => r.violations.map(v => ({

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mpc_forge import __version__
+from mpc_forge import config as cfg
 from mpc_forge.clients.import_sites import list_supported_sites
 from mpc_forge.middleware import is_same_origin
 from mpc_forge.models import CollectionEntry, Deck
@@ -22,6 +23,7 @@ from mpc_forge.services.cards import bulk_data
 from mpc_forge.services.decks import deck_covers, library
 from mpc_forge.services.indexing import gdrive_search
 from mpc_forge.services.system import i18n as i18n_service
+from mpc_forge.services.system import tour as tour_service
 from mpc_forge.services.system.i18n import (
     BASE_LANG,
     LANG_FLAGS,
@@ -230,10 +232,30 @@ def render_not_found(request: Request, kind: str = "page") -> HTMLResponse:
     )
 
 
+ONBOARDING_TOUR = "onboarding"
+
+
+async def _onboarding(db: AsyncSession, ws: dict[str, Any]) -> list[dict[str, Any]] | None:
+    try:
+        state = await tour_service.get_state(db)
+    except Exception:
+        return None
+    if ONBOARDING_TOUR in state["seen"]:
+        return None
+    steps = [
+        {"key": "offline", "done": bool(ws.get("offline")), "href": "/settings#offline"},
+        {"key": "art", "done": bool(ws.get("art_files")), "href": "/settings#art-sources"},
+        {"key": "google", "done": bool(cfg.GOOGLE_API_KEY), "href": "/settings#network"},
+        {"key": "deck", "done": bool(ws.get("decks")), "href": None},
+    ]
+    return None if all(s["done"] for s in steps) else steps
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: DbDep) -> HTMLResponse:
     ctx = _t_context(request)
     recent = await _decks_with_covers(db, limit=8)
+    workshop = await _workshop_status(db)
     return templates.TemplateResponse(
         request,
         "pages/landing.html",
@@ -242,7 +264,8 @@ async def home(request: Request, db: DbDep) -> HTMLResponse:
             "has_covers": any(d.commander_image_url for d in recent),
             "recent_decks": recent[:4],
             "latest_deck": recent[0] if recent else None,
-            "workshop": await _workshop_status(db),
+            "workshop": workshop,
+            "onboarding": await _onboarding(db, workshop),
             "site_names": [s["name"] for s in list_supported_sites()],
             **ctx,
         },

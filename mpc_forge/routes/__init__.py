@@ -27,6 +27,7 @@ from mpc_forge.routes import (
     thumbs,
     tour,
     ui,
+    whats_new,
 )
 
 ROUTERS: tuple[APIRouter, ...] = (
@@ -55,4 +56,5 @@ ROUTERS: tuple[APIRouter, ...] = (
     backups.router,
     tour.router,
     debug.router,
+    whats_new.router,
 )

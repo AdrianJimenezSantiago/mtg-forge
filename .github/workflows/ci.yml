@@ -118,7 +118,11 @@ jobs:
           cache: npm
       - run: pip install -r requirements.txt
       - run: npm ci
+      - name: Sembrar un mazo para revisar el editor, PDF Studio y la prueba
+        run: PYTHONPATH=. python scripts/seed_benchmark_deck.py 60
       - name: Arrancar el servidor
+        env:
+          MPC_FORGE_NO_UPDATE: '1'
         run: |
           python -m uvicorn mpc_forge.app:app --port 8000 &
           for i in $(seq 1 30); do
@@ -129,6 +133,8 @@ jobs:
         run: node scripts/check_api_client.mjs
 
       - name: Humo de arranque de la interfaz
+        env:
+          CHECK_DECK_ID: '1'
         run: node scripts/check_pages_in_browser.mjs http://127.0.0.1:8000
 
       - name: Instalar Chromium para Playwright
@@ -136,6 +142,8 @@ jobs:
           pip install playwright
           python -m playwright install --with-deps chromium
       - name: Accesibilidad (axe-core)
+        env:
+          CHECK_DECK_ID: '1'
         run: python scripts/check_accessibility.py http://127.0.0.1:8000
 
   lighthouse:

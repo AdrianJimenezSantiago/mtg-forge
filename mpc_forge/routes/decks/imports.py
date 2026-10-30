@@ -5,11 +5,12 @@ import logging
 from fastapi import (
     status,
 )
+from pydantic import BaseModel, Field
 
 from mpc_forge.clients.import_sites import list_supported_sites
 from mpc_forge.clients.import_sites.base import ImportSiteError
 from mpc_forge.clients.moxfield import MoxfieldError
-from mpc_forge.errors import from_exception
+from mpc_forge.errors import ApiError, from_exception
 from mpc_forge.routes.decks._common import make_router
 from mpc_forge.routes.decks._views import _deck_to_view
 from mpc_forge.routes.dependencies import DbDep, MoxfieldDep, ScryfallDep
@@ -21,7 +22,7 @@ from mpc_forge.schemas import (
     SupportedSite,
     UnresolvedEntry,
 )
-from mpc_forge.services.decks import deck_activity, importer
+from mpc_forge.services.decks import deck_activity, importer, sample
 from mpc_forge.services.decks.deck_activity import DeckActivityKind as K
 
 log = logging.getLogger(__name__)
@@ -97,6 +98,37 @@ async def import_text(
             "unresolved_count": len(unresolved),
             "include_extras": payload.include_extras,
         },
+        deck_name=deck.name,
+    )
+    await db.commit()
+    return ImportResult(
+        deck=view,
+        unresolved=[UnresolvedEntry(**u) for u in unresolved],
+        resolved_count=resolved_count,
+        total_entries=resolved_count + sum(u["quantity"] for u in unresolved),
+    )
+
+
+class SampleDeckRequest(BaseModel):
+    name: str = Field(default="Sample deck", min_length=1, max_length=256)
+
+
+@router.post("/import/sample", response_model=ImportResult)
+async def import_sample(
+    payload: SampleDeckRequest, db: DbDep, scryfall: ScryfallDep
+) -> ImportResult:
+    try:
+        deck, unresolved = await sample.create_sample_deck(db, scryfall, payload.name)
+    except Exception as e:
+        log.warning("No se pudo crear el mazo de ejemplo", exc_info=True)
+        raise ApiError(status.HTTP_502_BAD_GATEWAY, "sample_deck_failed", reason=str(e)) from e
+    view = await _deck_to_view(db, deck)
+    resolved_count = sum(c.quantity for c in view.cards)
+    await deck_activity.log_event(
+        db,
+        deck.id,
+        K.DECK_CREATED,
+        payload={"source": "sample", "card_count": resolved_count},
         deck_name=deck.name,
     )
     await db.commit()

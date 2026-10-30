@@ -99,5 +99,25 @@ function sidebarData() {
   };
 }
 
+function whatsNew() {
+  return {
+    info: null,
+    async check() {
+      try {
+        const data = await window.apiRequest('GET', '/api/whats-new/');
+        if (data) {
+          this.info = data;
+          this.$nextTick(() => window.icons && window.icons());
+        }
+      } catch (_) {}
+    },
+    async close() {
+      this.info = null;
+      try { await window.apiRequest('POST', '/api/whats-new/seen'); } catch (_) {}
+    },
+  };
+}
+
+window.whatsNew = whatsNew;
 window.globalCardSearch = globalCardSearch;
 window.sidebarData = sidebarData;

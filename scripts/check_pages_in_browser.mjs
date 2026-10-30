@@ -2,6 +2,10 @@ import { JSDOM, VirtualConsole } from 'jsdom'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8000'
 const PAGES = ['/', '/decks', '/history', '/collection', '/settings', '/print-planner', '/art-library', '/calibrate']
+if (process.env.CHECK_DECK_ID) {
+  const id = process.env.CHECK_DECK_ID
+  PAGES.push(`/decks/${id}`, `/decks/${id}/pdf`, `/decks/${id}/proof`)
+}
 
 const REAL_FAILURE =
   /is not defined|Alpine Expression Error|ReferenceError|TypeError/

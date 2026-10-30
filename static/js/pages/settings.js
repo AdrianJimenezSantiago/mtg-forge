@@ -116,7 +116,19 @@ function settingsShell() {
       ];
     },
 
+    _sectionFromHash() {
+      const key = decodeURIComponent((window.location.hash || '').slice(1));
+      if (key && this.sections.some((s) => s.key === key) && key !== this.activeSection) {
+        this.selectSection(key);
+      }
+    },
+
     async load() {
+      if (!this._hashBound) {
+        this._hashBound = true;
+        window.addEventListener('hashchange', () => this._sectionFromHash());
+        this._sectionFromHash();
+      }
       this.loading = true;
       try {
         const r = await fetch('/api/settings/');

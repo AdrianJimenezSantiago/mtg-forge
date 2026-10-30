@@ -1,0 +1,43 @@
+{% if onboarding %}
+<section class="lp-section" x-data="onboardingPanel()" x-show="!dismissed" data-testid="onboarding">
+  <header class="lp-section__head flex items-center justify-between gap-3">
+    <div>
+      <h2 class="lp-h2">{{ t.onboarding_title }}</h2>
+      <p class="text-sm text-fg-muted mt-1">{{ t.onboarding_subtitle }}</p>
+    </div>
+    <button type="button" @click="dismiss()" class="text-xs text-fg-faint hover:text-fg underline">{{ t.onboarding_dismiss }}</button>
+  </header>
+  <ol class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    {% for step in onboarding %}
+      <li class="bg-bg-elevated border rounded-xl p-4 flex flex-col gap-2
+                 {% if step.done %}border-success/40{% else %}border-border-subtle{% endif %}">
+        <div class="flex items-center gap-2">
+          {% if step.done %}
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-success" aria-hidden="true"></i>
+            <span class="sr-only">{{ t.onboarding_done }}</span>
+          {% else %}
+            <span class="w-4 h-4 rounded-full border-2 border-border-strong" aria-hidden="true"></span>
+          {% endif %}
+          <h3 class="text-sm font-medium">{{ t['onboarding_' ~ step.key ~ '_title'] }}</h3>
+          {% if step.key == 'google' %}<span class="text-[10px] text-fg-faint">{{ t.onboarding_optional }}</span>{% endif %}
+        </div>
+        <p class="text-xs text-fg-muted flex-1">{{ t['onboarding_' ~ step.key ~ '_body'] }}</p>
+        {% if not step.done %}
+          {% if step.href %}
+            <a href="{{ step.href }}" class="text-xs text-accent hover:text-accent-glow">{{ t.onboarding_go }} →</a>
+          {% else %}
+            <div class="flex items-center gap-3 flex-wrap">
+              <a href="/decks" class="text-xs text-accent hover:text-accent-glow">{{ t.onboarding_import }} →</a>
+              <button type="button" @click="createSample()" :disabled="creating"
+                      class="text-xs text-fg-muted hover:text-fg underline disabled:opacity-50">
+                <span x-show="!creating">{{ t.onboarding_sample }}</span>
+                <span x-show="creating">{{ t.common_loading }}</span>
+              </button>
+            </div>
+          {% endif %}
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}

@@ -121,7 +121,8 @@ python -m mpc_forge
 | Option         | Description                                                    |
 | -------------- | -------------------------------------------------------------- |
 | `--port N`     | Listen on port `N` (default `8765`).                           |
-| `--host H`     | Bind address (default `127.0.0.1`). The app has no password: any other address exposes it to the network. |
+| `--host H`     | Bind address (default `127.0.0.1`). Any other address opens the app to your network and requires an access key (see [SECURITY.md](SECURITY.md)). |
+| `--token K`    | Access key for `--host` mode; a random one is generated and printed if omitted, `off` disables it. |
 | `--no-browser` | Do not open a browser tab on startup.                          |
 | `--window`     | Open in a native window instead (`pip install pywebview`).     |
 | `--no-update`  | Skip the update check on startup.                              |
@@ -207,6 +208,13 @@ image or no back, and lists anything worth a second look (low resolution,
 rotated horizontal cards). When it is done, the studio offers the ZIP, the PDF
 for review and a ready-made message; upload the ZIP to WeTransfer and send it to
 the address shown (the shop does not accept attachments by email).
+
+### First steps and what's new
+
+Until you hide it, the home screen shows a *Getting started* checklist: offline
+card data, art sources, an optional Google API key and your first deck (or a
+sample deck to try things out). After an update, a dialog shows the notes of
+the new version once.
 
 ### Guided tour
 
@@ -357,9 +365,11 @@ instead of being hotlinked.
 
 ## Contributing
 
-Bug reports and pull requests are welcome. The [development guide](docs/DEVELOPMENT.md)
-covers the project layout, the test suite, frontend assets, database
-migrations, building the executable and how releases are cut.
+Bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md)
+and, for vulnerabilities, [SECURITY.md](SECURITY.md). The
+[development guide](docs/DEVELOPMENT.md) covers the project layout, the test
+suite, frontend assets, database migrations, building the executable and how
+releases are cut.
 
 ## Credits and disclaimer
 

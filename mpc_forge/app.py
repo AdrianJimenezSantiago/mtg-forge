@@ -17,13 +17,16 @@ from mpc_forge import config as cfg
 from mpc_forge.errors import localize_detail
 from mpc_forge.lifespan import lifespan, preload_path_overrides
 from mpc_forge.middleware import (
+    ACCESS_TOKEN_ENV,
     DEFAULT_ALLOWED_HOSTS,
+    EXPOSED_ENV,
     USER_CONTENT_SECURITY_POLICY,
+    AccessTokenMiddleware,
     LocalhostGuardMiddleware,
     SecurityHeadersMiddleware,
 )
 from mpc_forge.paths import static_dir
-from mpc_forge.routes import ROUTERS, ui
+from mpc_forge.routes import ROUTERS, debug, ui
 from mpc_forge.services.art import custom_art
 from mpc_forge.services.system.i18n import detect_lang
 
@@ -145,9 +148,15 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(LocalhostGuardMiddleware, allowed_hosts=_allowed_hosts())
+    token = os.environ.get(ACCESS_TOKEN_ENV, "").strip()
+    if token:
+        app.add_middleware(AccessTokenMiddleware, token=token)
     _mount_static(app)
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)
+    exposed = os.environ.get(EXPOSED_ENV) == "1"
     for router in ROUTERS:
+        if exposed and router is debug.router:
+            continue
         app.include_router(router)
     return app
 

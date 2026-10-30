@@ -693,6 +693,7 @@
   ],
   "GET /api/thumbs/stats": [],
   "GET /api/tour/": [],
+  "GET /api/whats-new/": [],
   "GET /art-library": [],
   "GET /calibrate": [],
   "GET /collection": [],
@@ -831,6 +832,7 @@
   "POST /api/custom-art/rescan": [],
   "POST /api/custom-art/upload": [],
   "POST /api/decks/import/moxfield": [],
+  "POST /api/decks/import/sample": [],
   "POST /api/decks/import/text": [],
   "POST /api/decks/import/url": [],
   "POST /api/decks/{deck_id}/activity/{event_id}/undo": [
@@ -1059,6 +1061,7 @@
   "POST /api/tag-vocabulary/reload": [],
   "POST /api/thumbs/clear": [],
   "POST /api/tour/seen": [],
+  "POST /api/whats-new/seen": [],
   "POST /set-lang": [],
   "PUT /api/decks/{deck_id}/cardback-settings": [
     [

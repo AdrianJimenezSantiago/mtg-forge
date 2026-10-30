@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hmac
 import ipaddress
 import logging
+from urllib.parse import urlencode
 
 from starlette.datastructures import URL
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 log = logging.getLogger(__name__)
@@ -164,6 +166,66 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+ACCESS_TOKEN_ENV = "MPC_FORGE_ACCESS_TOKEN"  # noqa: S105
+EXPOSED_ENV = "MPC_FORGE_EXPOSED"
+TOKEN_COOKIE = "mpc_forge_token"  # noqa: S105
+TOKEN_QUERY = "token"  # noqa: S105
+
+_LOCKED_PAGE = (
+    "<!doctype html><meta charset=utf-8><title>MPC Forge</title>"
+    "<body style='font-family:sans-serif;background:#111;color:#ddd;padding:2rem'>"
+    "<h1>MPC Forge</h1>"
+    "<p>Esta instancia está abierta a la red y pide la clave de acceso. "
+    "Abre el enlace con <code>?token=…</code> que aparece en la consola del servidor.</p>"
+    "<p>This instance is open to the network and needs its access key. "
+    "Open the link with <code>?token=…</code> shown in the server console.</p>"
+)
+
+
+class AccessTokenMiddleware:
+    """Pide una clave compartida cuando la app escucha fuera de 127.0.0.1.
+
+    La clave llega una vez en la URL (`?token=`), se guarda en una cookie
+    HttpOnly y se quita de la barra de direcciones. Los clientes de la API
+    pueden mandarla como `Authorization: Bearer <clave>`.
+    """
+
+    def __init__(self, app: ASGIApp, token: str) -> None:
+        self.app = app
+        self._token = token.encode()
+
+    def _matches(self, value: str | None) -> bool:
+        return bool(value) and hmac.compare_digest(str(value).encode(), self._token)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
+        auth = request.headers.get("authorization", "")
+        bearer = auth[7:] if auth.lower().startswith("bearer ") else None
+        if self._matches(request.cookies.get(TOKEN_COOKIE)) or self._matches(bearer):
+            await self.app(scope, receive, send)
+            return
+        query_token = request.query_params.get(TOKEN_QUERY)
+        if self._matches(query_token):
+            params = [(k, v) for k, v in request.query_params.multi_items() if k != TOKEN_QUERY]
+            target = request.url.path + (f"?{urlencode(params)}" if params else "")
+            response: Response = RedirectResponse(target, status_code=303)
+            response.set_cookie(
+                TOKEN_COOKIE,
+                str(query_token),
+                httponly=True,
+                samesite="strict",
+                max_age=30 * 24 * 3600,
+            )
+        elif request.url.path.startswith("/api/"):
+            response = JSONResponse({"detail": {"code": "access_token_required"}}, status_code=401)
+        else:
+            response = HTMLResponse(_LOCKED_PAGE, status_code=401)
+        await response(scope, receive, send)
 
 
 def is_same_origin(request: Request, target: str) -> bool:

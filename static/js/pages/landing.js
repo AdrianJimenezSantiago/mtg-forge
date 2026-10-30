@@ -47,5 +47,31 @@ function formatBytes(value) {
   return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[i]}`
 }
 
+function onboardingPanel() {
+  return {
+    dismissed: false,
+    creating: false,
+    async dismiss() {
+      this.dismissed = true
+      try {
+        await window.apiRequest('POST', '/api/tour/seen', { body: { tour: 'onboarding' } })
+      } catch (_) {}
+    },
+    async createSample() {
+      this.creating = true
+      try {
+        const data = await window.apiRequest('POST', '/api/decks/import/sample', {
+          body: { name: window._t('onboarding_sample_name') },
+        })
+        window.location.href = `/decks/${data.deck.id}`
+      } catch (e) {
+        window.toast(window._t('common_error'), e.detail || e.message, 'error')
+        this.creating = false
+      }
+    },
+  }
+}
+
+window.onboardingPanel = onboardingPanel
 window.landingImport = landingImport
 window.workshopStorage = workshopStorage
