@@ -10,7 +10,7 @@ pip install -r requirements.txt
 pip install -e ".[dev]"
 
 pytest -q                                     # test suite
-pytest -q --cov=mpc_forge --cov-report=html   # with coverage
+pytest -q --cov=mpc_forge --cov-fail-under=80 # with coverage (CI requires 80 %)
 ruff check . && ruff format --check .         # lint and format
 mypy                                          # type check
 
@@ -91,6 +91,13 @@ CI also runs, against a live server: the API client check
 (`scripts/check_api_client.mjs`), a jsdom boot of every page
 (`scripts/check_pages_in_browser.mjs`), axe-core accessibility
 (`scripts/check_accessibility.py`) and Lighthouse on a seeded 300-card deck.
+
+### Coverage
+
+CI fails below 80 % line coverage. Coverage traces greenlets
+(`[tool.coverage.run]` in `pyproject.toml`) because SQLAlchemy's asyncio
+layer runs code in them: without it, lines after an `await db.…` are reported
+as missed and the total reads several points lower than it really is.
 
 ## Frontend assets
 
